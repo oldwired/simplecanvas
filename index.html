@@ -1503,6 +1503,10 @@
     cursive:'"Comic Sans MS","Segoe Print","Bradley Hand",cursive'
   };
   function fontStr(family, size){ return '600 ' + size + 'px ' + (FONTS[family] || FONTS.sans); }
+  // read a text item's family/size back out of its font string (older files store only the string,
+  // and a corner-resize rewrites the px inside it)
+  function familyOf(it){ return it.fontFamily || Object.keys(FONTS).find(k=>it.font && it.font.indexOf(FONTS[k])>=0) || 'sans'; }
+  function fontPxOf(it){ const m = /(\d+)px/.exec(it.font||''); return m ? +m[1] : (it.fontSize || 24); }
 
   // ---------- table tool: click to place, sized so a cell comfortably fits sample text at the current font size ----------
   function placeTable(x,y){
@@ -1534,7 +1538,7 @@
     } else if(val && textPos){
       beginHistory();
       items.push({ type:'text', text:val, x:textPos.x, y:textPos.y, color:ui.color,
-                   fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize) });
+                   fontFamily:ui.fontFamily, fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize) });
       commitHistory();
     }
     textPos=null; editingTextIdx=null; render();
@@ -1643,18 +1647,23 @@
   }
 
   // ---------- undo / redo / clear ----------
+  // undo/redo keep the selection (so a recolor can be undone and redone while the item stays
+  // selected); only indices that no longer exist are dropped, and groups are re-completed
+  function keepSelection(){
+    selection = expandSelection(selection.filter(i=>i<items.length));
+  }
   function undo(){
     if(!undoStack.length) return;
     redoStack.push(snap());
     items = JSON.parse(undoStack.pop());
-    selection=[]; current=null;
+    keepSelection(); current=null;
     save(); render(); updateButtons();
   }
   function redo(){
     if(!redoStack.length) return;
     undoStack.push(snap());
     items = JSON.parse(redoStack.pop());
-    selection=[]; current=null;
+    keepSelection(); current=null;
     save(); render(); updateButtons();
   }
   function clearAll(){
@@ -1764,10 +1773,34 @@
     document.getElementById('undo').disabled = undoStack.length===0;
     document.getElementById('redo').disabled = redoStack.length===0;
   }
+  // shapes that can carry a fill (and so a second, fill color)
+  const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table';
+  // selected items whose color can be edited (images have none); empty outside the select tool
+  function colorableSelection(){
+    return ui.tool==='select' ? selection.map(i=>items[i]).filter(it=>it && it.type!=='image') : [];
+  }
   function updateOrderButtons(){
     const active = ui.tool==='select' && selection.length>0;
     const disp = active ? '' : 'none';
     if(arrangeGroup.style.display !== disp){ arrangeGroup.style.display = disp; arrangeSep.style.display = disp; }
+    if(ui.tool==='select'){
+      // the palette doubles as the recolor tool for whatever is selected
+      const sel = colorableSelection();
+      const fillable = sel.filter(it=>FILLABLE(it.type));
+      const setDisp = (el,on)=>{ const d = on ? '' : 'none'; if(el.style.display !== d) el.style.display = d; };
+      setDisp(colorGroup, sel.length>0); setDisp(colorSep, sel.length>0);
+      setDisp(targetBtn, fillable.length>0); setDisp(fillGroup, fillable.length>0);
+      const sized = sel.filter(it=>it.type!=='text');   // text has a font size instead of a stroke width
+      const texts = sel.filter(it=>it.type==='text');
+      setDisp(sizeGroup, sized.length>0); setDisp(textOpts, texts.length>0); setDisp(optsSep, sized.length>0 || texts.length>0);
+      if(sel.length){
+        if(!fillable.length) ui.colorTarget = 'stroke';
+        else fillInput.checked = !!fillable[0].fill;   // checkbox mirrors the selection while selecting
+        if(sized.length){ sizeInput.value = sized[0].size; sizeVal.innerHTML = sized[0].size + '&nbsp;px'; }   // so does the slider
+        if(texts.length){ fontFamilySel.value = familyOf(texts[0]); setFontSizeSel(fontPxOf(texts[0])); }   // and the font controls
+        refreshColorUI();
+      }
+    }
     if(!active) return;
     toDupBtn.disabled = toFrontBtn.disabled = toBackBtn.disabled = delSelBtn.disabled = false;
     groupBtn.disabled = selection.length<2;
@@ -1988,6 +2021,9 @@
     targetBtn.style.display = canFill ? '' : 'none';
     fillGroup.style.display = canFill ? '' : 'none';
     if(!canFill) ui.colorTarget = 'stroke';          // no fill → palette edits the stroke
+    fillInput.checked = ui.fill;                     // back to the drawing defaults (select mode mirrors the selection instead)
+    sizeInput.value = ui.size; sizeVal.innerHTML = ui.size + '&nbsp;px';
+    fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
   }
@@ -2059,14 +2095,30 @@
 
   function refreshColorUI(){
     const onFill = ui.colorTarget === 'fill';
-    const c = onFill ? ui.fillColor : ui.color;
+    // with a selection, the palette shows the (first) selected item's colors rather than the drawing defaults
+    const src = colorableSelection()[0] || ui;
+    const c = onFill ? (src.fillColor || ui.fillColor) : (src.color || ui.color);
     colorPick.value = c;
     targetLbl.textContent = onFill ? 'Fill' : 'Stroke';
     targetDot.style.background = c;
     swatchBox.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('active', s.dataset.c===c));
   }
   function applyColor(c){
-    if(ui.colorTarget === 'fill'){
+    const onFill = ui.colorTarget === 'fill';
+    const sel = colorableSelection();
+    if(sel.length){
+      // recolor the selection (and remember the color as the new default for drawing)
+      beginHistory();
+      for(const it of sel){
+        if(!onFill) it.color = c;
+        else if(FILLABLE(it.type)){ it.fillColor = c; it.fill = true; }   // choosing a fill color turns Fill on
+      }
+      commitHistory();
+      if(onFill) ui.fillColor = c; else ui.color = c;
+      render();
+      return;
+    }
+    if(onFill){
       ui.fillColor = c;
       if(!fillInput.checked){ fillInput.checked = true; ui.fill = true; }  // choosing a fill color turns Fill on
     } else {
@@ -2081,12 +2133,48 @@
   });
 
   sizeInput.addEventListener('input', e=>{
-    ui.size = +e.target.value;
-    sizeVal.innerHTML = ui.size + '&nbsp;px';
+    const v = +e.target.value;
+    sizeVal.innerHTML = v + '&nbsp;px';
+    const sel = colorableSelection().filter(it=>it.type!=='text');
+    if(sel.length){
+      // live-resize the selection's stroke; one undo step for the whole slider drag (committed on 'change')
+      if(historyBefore===null) beginHistory();
+      for(const it of sel) it.size = v;
+      render();
+      return;
+    }
+    ui.size = v;
   });
-  fillInput.addEventListener('change', e=>{ ui.fill = e.target.checked; });
-  fontFamilySel.addEventListener('change', e=>{ ui.fontFamily = e.target.value; });
-  fontSizeSel.addEventListener('change', e=>{ ui.fontSize = +e.target.value; });
+  sizeInput.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
+  fillInput.addEventListener('change', e=>{
+    const sel = colorableSelection().filter(it=>FILLABLE(it.type));
+    if(sel.length){ beginHistory(); for(const it of sel) it.fill = e.target.checked; commitHistory(); render(); return; }   // toggles the selection's fill
+    ui.fill = e.target.checked;
+  });
+  // show a size in the dropdown even when it isn't one of the presets (e.g. after a corner-resize)
+  function setFontSizeSel(px){
+    if(![...fontSizeSel.options].some(o=>+o.value===px)){
+      const o = document.createElement('option'); o.value = px; o.textContent = px; o.dataset.temp = '1';
+      const after = [...fontSizeSel.options].find(x=>+x.value>px);
+      fontSizeSel.insertBefore(o, after || null);
+    }
+    fontSizeSel.value = px;
+    [...fontSizeSel.options].forEach(o=>{ if(o.dataset.temp && +o.value!==px) o.remove(); });
+  }
+  // font controls edit the selected text items, or the defaults for the next one
+  function applyFont(fn){
+    const texts = colorableSelection().filter(it=>it.type==='text');
+    if(!texts.length){ fn(ui); return; }
+    beginHistory();
+    for(const it of texts){
+      it.fontFamily = familyOf(it); it.fontSize = fontPxOf(it);   // sync from the font string first (a resize only rewrites that)
+      fn(it);
+      it.font = fontStr(it.fontFamily, it.fontSize);
+    }
+    commitHistory(); render();
+  }
+  fontFamilySel.addEventListener('change', e=>applyFont(o=>{ o.fontFamily = e.target.value; }));
+  fontSizeSel.addEventListener('change', e=>applyFont(o=>{ o.fontSize = +e.target.value; }));
 
   document.getElementById('undo').addEventListener('click', undo);
   document.getElementById('redo').addEventListener('click', redo);
