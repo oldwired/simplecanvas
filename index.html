@@ -231,6 +231,10 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Export PNG
       </button>
+      <button data-act="svg" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 17c2-9 5-9 8 0s6 9 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="1.6" fill="currentColor"/></svg>
+        Export SVG
+      </button>
       <button data-act="print" role="menuitem">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1M6 14h12v7H6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Print
@@ -1590,7 +1594,7 @@
     const m = 24, scale = 2;                              // margin (px) and export supersampling
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
     for(const it of items){
-      const b = bbox(it);
+      const b = worldBBox(it);   // rotation-aware, so rotated items aren't clipped
       minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
       maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
     }
@@ -1614,6 +1618,117 @@
     a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.png';
     a.click();
     toast('Saved PNG');
+  }
+
+  // Mirrors drawItem(), but emits SVG markup instead of issuing canvas calls.
+  function escXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function smoothPathD(p){
+    let d = 'M' + p[0].x + ',' + p[0].y;
+    for(let i=1;i<p.length-1;i++){
+      const mx=(p[i].x+p[i+1].x)/2, my=(p[i].y+p[i+1].y)/2;
+      d += ' Q' + p[i].x + ',' + p[i].y + ' ' + mx + ',' + my;
+    }
+    d += ' L' + p[p.length-1].x + ',' + p[p.length-1].y;
+    return d;
+  }
+  function itemToSVG(it){
+    let inner = '';
+    switch(it.type){
+      case 'image': {
+        const src = assets[it.id];
+        if(src) inner = `<image href="${escXml(src)}" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`;
+        break;
+      }
+      case 'path': {
+        const w = strokeWidthOf(it);
+        const opacity = it.mode==='marker' ? 0.4 : 1;
+        const cap = it.mode==='marker' ? 'square' : 'round';
+        if(it.points.length===1){
+          const p = it.points[0];
+          inner = `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(0.5,w/2)}" fill="${it.color}" opacity="${opacity}"/>`;
+        } else {
+          inner = `<path d="${smoothPathD(it.points)}" fill="none" stroke="${it.color}" stroke-width="${w}" stroke-linecap="${cap}" stroke-linejoin="round" opacity="${opacity}"/>`;
+        }
+        break;
+      }
+      case 'line': case 'arrow': {
+        inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round"/>`;
+        if(it.type==='arrow'){
+          const ang = Math.atan2(it.y2-it.y1, it.x2-it.x1);
+          const len = Math.max(10, it.size*2.6), a = Math.PI/7;
+          const hx1 = it.x2-len*Math.cos(ang-a), hy1 = it.y2-len*Math.sin(ang-a);
+          const hx2 = it.x2-len*Math.cos(ang+a), hy2 = it.y2-len*Math.sin(ang+a);
+          inner += `<path d="M${hx1},${hy1} L${it.x2},${it.y2} L${hx2},${hy2}" fill="none" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+        break;
+      }
+      case 'rect': {
+        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        break;
+      }
+      case 'ellipse': {
+        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const cx=it.x+it.w/2, cy=it.y+it.h/2;
+        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}"/>`;
+        break;
+      }
+      case 'polygon': {
+        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const pts = it.points.map(p=>p.x+','+p.y).join(' ');
+        inner = `<polygon points="${pts}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        break;
+      }
+      case 'text':
+        inner = `<text x="${it.x}" y="${it.y}" fill="${it.color}" style="font:${escXml(it.font)}" dominant-baseline="text-before-edge">${escXml(it.text)}</text>`;
+        break;
+      case 'table': {
+        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        let lines = '';
+        for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${it.color}" stroke-width="${it.size}"/>`; }
+        for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${it.color}" stroke-width="${it.size}"/>`; }
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
+        break;
+      }
+    }
+    // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
+    let transform = '';
+    if(it.group!=null && it.groupRotation){
+      const piv = groupPivot(it.group);
+      transform += `rotate(${it.groupRotation*180/Math.PI} ${piv.cx} ${piv.cy}) `;
+    }
+    if(it.rotation){
+      const b = bbox(it);
+      transform += `rotate(${it.rotation*180/Math.PI} ${b.x+b.w/2} ${b.y+b.h/2})`;
+    }
+    transform = transform.trim();
+    return transform ? `<g transform="${transform}">${inner}</g>` : inner;
+  }
+  function saveSvg(){
+    if(!items.length){ toast('Nothing to export yet'); return; }
+    const m = 24;
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    for(const it of items){
+      const b = worldBBox(it);
+      minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+      maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+    }
+    const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
+    const ox = -minX + m, oy = -minY + m;
+    let body = '';
+    for(const it of items) body += itemToSVG(it);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
+      + `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`
+      + `<g transform="translate(${ox} ${oy})">${body}</g>`
+      + `</svg>`;
+    const blob = new Blob([svg], {type:'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Saved SVG');
   }
 
   // ---------- save / open the sketch as a file (our own JSON format) ----------
@@ -1800,6 +1915,7 @@
     save: exportProject,
     open: ()=>projectInput.click(),
     png: savePng,
+    svg: saveSvg,
     print: ()=>window.print(),
     clear: clearAll,
   };
