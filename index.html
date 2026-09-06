@@ -281,6 +281,9 @@
     <button class="btn" data-tool="ellipse" title="Ellipse (O)">
       <svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="12" rx="8" ry="6" stroke="currentColor" stroke-width="1.8"/></svg>
     </button>
+    <button class="btn" data-tool="polygon" title="Polygon — click each corner, then tap the start point, press Enter, or tap Finish (G)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 21 9.5 17.8 20H6.2L3 9.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
     <button class="btn" data-tool="text" title="Text (T)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M12 6v13M9 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
@@ -359,12 +362,25 @@
     </button>
   </div>
 
+  <div class="sep" id="polySep" style="display:none"></div>
+
+  <!-- Polygon in progress: explicit finish/cancel, so touch users aren't stuck tapping the exact start point -->
+  <div class="group" id="polyGroup" style="display:none">
+    <button class="btn" id="polyFinish" title="Finish polygon (Enter)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Finish
+    </button>
+    <button class="btn ghost danger" id="polyCancel" title="Discard polygon (Esc)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 6 18 18M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
 
 </header>
 
 <div class="stage">
   <div class="wrap" id="wrap">
     <canvas id="canvas"></canvas>
+    <svg id="polyOverlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
     <input id="textInput" type="text" autocomplete="off" spellcheck="false">
     <div class="hint" id="hint">
       Pick a tool and start sketching.<br>
@@ -406,6 +422,11 @@
   const toBackBtn = document.getElementById('toBack');
   const delSelBtn = document.getElementById('delSel');
   const toastEl = document.getElementById('toast');
+  const polyOverlay = document.getElementById('polyOverlay');
+  const polySep = document.getElementById('polySep');
+  const polyGroup = document.getElementById('polyGroup');
+  const polyFinishBtn = document.getElementById('polyFinish');
+  const polyCancelBtn = document.getElementById('polyCancel');
 
   const STORE_KEY = 'simplecanvas:v1';
   const FORMAT_VERSION = 1;     // bump when the saved-file schema changes
@@ -425,7 +446,10 @@
   let marquee = null;           // {x0,y0,x,y,add} rubber-band selection in progress
   let clipboard = [];           // deep-cloned items for internal copy/paste
   let groupSeq = 0;             // counter for minting fresh group ids
-  let resizing = null;          // {aspect,moved} while dragging an image corner
+  let resizing = null;          // {rotation,anchor*,snapshots,moved} while dragging a corner handle
+  let rotating = null;          // {cx,cy,startAngle,startRotation,field,members,moved} while dragging the rotation handle
+  let polyDraft = null;         // {color,size,fill,fillColor,points} while clicking out a polygon
+  let longPressTimer = null;    // pending "open text for editing" timer while a click sits still on a text item
   let assetSeq = 0;
   const assets = {};            // id -> image data URL (kept out of history snapshots)
   const imgCache = new Map();   // id -> HTMLImageElement
@@ -491,6 +515,7 @@
     canvas.height = Math.floor(cssH*dpr);
     canvas.style.width = cssW+'px';
     canvas.style.height = cssH+'px';
+    polyOverlay.setAttribute('viewBox', '0 0 '+cssW+' '+cssH);
     render();
   }
 
@@ -547,6 +572,15 @@
 
   function drawItem(it){
     ctx.save();
+    if(it.group!=null && it.groupRotation){
+      const piv = groupPivot(it.group);
+      ctx.translate(piv.cx,piv.cy); ctx.rotate(it.groupRotation); ctx.translate(-piv.cx,-piv.cy);
+    }
+    if(it.rotation){
+      const b = bbox(it);
+      const cx = b.x+b.w/2, cy = b.y+b.h/2;
+      ctx.translate(cx,cy); ctx.rotate(it.rotation); ctx.translate(-cx,-cy);
+    }
     switch(it.type){
       case 'image':{
         const im = getImg(it.id);
@@ -575,6 +609,15 @@
         if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
         ctx.strokeStyle = it.color; ctx.stroke();
         break;
+      case 'polygon':
+        ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
+        ctx.beginPath();
+        ctx.moveTo(it.points[0].x, it.points[0].y);
+        for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
+        ctx.closePath();
+        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
+        ctx.strokeStyle = it.color; ctx.stroke();
+        break;
       case 'text':
         ctx.fillStyle = it.color;
         ctx.textBaseline = 'top';
@@ -582,6 +625,29 @@
         ctx.fillText(it.text, it.x, it.y);
         break;
     }
+    ctx.restore();
+  }
+
+  // Draw a polygon that is still being clicked out (open path + rubber-band edge to the cursor)
+  function drawPolygonDraft(it){
+    if(!it.points.length) return;
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.lineWidth = it.size; ctx.strokeStyle = it.color; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(it.points[0].x, it.points[0].y);
+    for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
+    if(it._hover) ctx.lineTo(it._hover.x, it._hover.y);
+    ctx.stroke();
+    if(it._hover && it.points.length>=3){
+      const first = it.points[0];
+      if(Math.hypot(it._hover.x-first.x, it._hover.y-first.y) <= 10){
+        ctx.setLineDash([4,3]); ctx.strokeStyle = '#6366f1';
+        ctx.beginPath(); ctx.moveTo(it._hover.x, it._hover.y); ctx.lineTo(first.x, first.y); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]); ctx.fillStyle = it.color;
+    for(const p of it.points){ ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
 
@@ -609,12 +675,83 @@
       }
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
+      case 'polygon':{
+        let xs=it.points.map(p=>p.x), ys=it.points.map(p=>p.y);
+        const pad=(it.size||2)/2+2;
+        return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
+      }
     }
     return {x:0,y:0,w:0,h:0};
   }
   function inBox(b,x,y){ return x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h; }
+
+  // ---------- rotation helpers ----------
+  // Two independent, nestable rotation layers, both purely rendering/hit-test transforms —
+  // stored coordinates always stay in the item's unrotated ("local") frame:
+  //  - it.rotation: the item's own spin, pivoted on its own bbox center.
+  //  - it.groupRotation: shared identically by every member of a group, pivoted on the group's
+  //    own (own-rotation-only) baseline bounding box center, applied OUTSIDE each member's own
+  //    rotation — so rotating a group spins it as one rigid body without touching each member's
+  //    individual spin.
+  function rotatePoint(x,y,cx,cy,ang){
+    const s=Math.sin(ang), c=Math.cos(ang);
+    const dx=x-cx, dy=y-cy;
+    return { x: cx + dx*c - dy*s, y: cy + dx*s + dy*c };
+  }
+  // world bbox using ONLY the item's own rotation (never groupRotation) — this is the stable
+  // baseline used to find a group's pivot, so it can never recurse into the group-aware worldBBox.
+  function worldBBoxOwn(it){
+    const b = bbox(it);
+    if(!it.rotation) return b;
+    const cx=b.x+b.w/2, cy=b.y+b.h/2;
+    const corners = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]
+      .map(([x,y])=>rotatePoint(x,y,cx,cy,it.rotation));
+    const xs=corners.map(c=>c.x), ys=corners.map(c=>c.y);
+    return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs)-Math.min(...xs), h:Math.max(...ys)-Math.min(...ys)};
+  }
+  function unionBoxOwn(idxs){
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    for(const i of idxs){ const b=worldBBoxOwn(items[i]); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
+    return {x:x0,y:y0,w:x1-x0,h:y1-y0};
+  }
+  // a group's fixed pivot + its baseline (own-rotation-only) bounding box — the box a group's
+  // outline/handle are drawn in before the outer groupRotation transform is applied
+  function groupPivot(groupId){
+    const box = unionBoxOwn(itemsInGroup(groupId));
+    return { cx:box.x+box.w/2, cy:box.y+box.h/2, box };
+  }
+  // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
+  // (the reverse order of how they're applied when drawing)
+  function toLocal(it,x,y){
+    let px=x, py=y;
+    if(it.group!=null && it.groupRotation){
+      const piv = groupPivot(it.group);
+      const p = rotatePoint(px,py,piv.cx,piv.cy,-it.groupRotation);
+      px=p.x; py=p.y;
+    }
+    if(!it.rotation) return {x:px,y:py};
+    const b = bbox(it);
+    return rotatePoint(px,py, b.x+b.w/2, b.y+b.h/2, -it.rotation);
+  }
+  // axis-aligned box that fully contains the item as actually rendered (own rotation AND
+  // groupRotation) — used wherever we compare against world-space rectangles (marquee, PNG export)
+  function worldBBox(it){
+    let b = worldBBoxOwn(it);
+    if(it.group!=null && it.groupRotation){
+      const piv = groupPivot(it.group);
+      const corners = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]
+        .map(([x,y])=>rotatePoint(x,y,piv.cx,piv.cy,it.groupRotation));
+      const xs=corners.map(c=>c.x), ys=corners.map(c=>c.y);
+      b = {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs)-Math.min(...xs), h:Math.max(...ys)-Math.min(...ys)};
+    }
+    return b;
+  }
   function hitTest(x,y){
-    for(let i=items.length-1;i>=0;i--){ if(inBox(bbox(items[i]),x,y)) return i; }
+    for(let i=items.length-1;i>=0;i--){
+      const it = items[i];
+      const p = toLocal(it,x,y);
+      if(inBox(bbox(it),p.x,p.y)) return i;
+    }
     return -1;
   }
   function rectsIntersect(a,b){
@@ -638,13 +775,94 @@
   }
   function unionBox(idxs){
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-    for(const i of idxs){ const b=bbox(items[i]); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
+    for(const i of idxs){ const b=worldBBox(items[i]); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
     return {x:x0,y:y0,w:x1-x0,h:y1-y0};
+  }
+
+  // One rotation handle/pivot descriptor that works for both cases: a lone ungrouped item rotates
+  // around its own center (handle rides along with its own rotation); a whole group rotates as a
+  // rigid body around the group's fixed pivot (handle rides along with the group's rotation too).
+  function rotationPivotFor(sel){
+    if(!sel || !sel.length) return null;
+    const first = items[sel[0]];
+    if(!first) return null;
+    if(sel.length===1 && first.group==null){
+      const b = bbox(first);
+      const cx=b.x+b.w/2, cy=b.y+b.h/2;
+      return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-26, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
+    }
+    if(first.group!=null){
+      const grp = itemsInGroup(first.group);
+      const piv = groupPivot(first.group);
+      const u = piv.box;
+      return { cx:piv.cx, cy:piv.cy, stemTop:u.y-4, handleX:piv.cx, handleY:u.y-30, rotation:first.groupRotation||0, members:grp, isGroup:true };
+    }
+    return null;
+  }
+
+  // ---------- resize (corner handles) ----------
+  // Captures just the coordinates a resize needs to touch, so each move-frame can recompute the
+  // new geometry fresh from this untouched snapshot rather than compounding rounding error.
+  function snapshotOf(it){
+    switch(it.type){
+      case 'rect': case 'ellipse': case 'image': return {x:it.x, y:it.y, w:it.w, h:it.h};
+      case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
+      case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
+      case 'text': return {x:it.x, y:it.y, font:it.font};
+      default: return {};
+    }
+  }
+  // Scale one point relative to a fixed anchor by independent per-axis factors.
+  function scalePt(p, ax, ay, sx, sy){ return { x: ax+(p.x-ax)*sx, y: ay+(p.y-ay)*sy }; }
+  function applyScaleFromSnapshot(it, snap, ax, ay, sx, sy){
+    switch(it.type){
+      case 'rect': case 'ellipse': case 'image': {
+        const p1 = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
+        const p2 = scalePt({x:snap.x+snap.w,y:snap.y+snap.h}, ax,ay,sx,sy);
+        it.x = Math.min(p1.x,p2.x); it.y = Math.min(p1.y,p2.y);
+        it.w = Math.abs(p2.x-p1.x); it.h = Math.abs(p2.y-p1.y);
+        break;
+      }
+      case 'line': case 'arrow': {
+        const p1 = scalePt({x:snap.x1,y:snap.y1}, ax,ay,sx,sy);
+        const p2 = scalePt({x:snap.x2,y:snap.y2}, ax,ay,sx,sy);
+        it.x1=p1.x; it.y1=p1.y; it.x2=p2.x; it.y2=p2.y;
+        break;
+      }
+      case 'path': case 'polygon':
+        it.points = snap.points.map(p=>scalePt(p, ax,ay,sx,sy));
+        break;
+      case 'text': {
+        const p = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
+        it.x=p.x; it.y=p.y;
+        const avg = (Math.abs(sx)+Math.abs(sy))/2;
+        const m = snap.font.match(/(\d+)px/);
+        if(m) it.font = snap.font.replace(/\d+px/, Math.max(8, Math.round(parseInt(m[1],10)*avg))+'px');
+        break;
+      }
+    }
+  }
+  // One descriptor for both cases, exactly like rotationPivotFor: a lone ungrouped item resizes in
+  // its own local (unrotated) box; a whole group resizes together in the group's baseline box.
+  function resizePivotFor(sel){
+    if(!sel || !sel.length) return null;
+    const first = items[sel[0]];
+    if(!first) return null;
+    if(sel.length===1 && first.group==null){
+      if(first.type==='text') return null;   // resizing text alone would just be a proxy for font size — not wanted
+      const b = bbox(first);
+      return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
+    }
+    if(first.group!=null){
+      const piv = groupPivot(first.group);
+      return { box:piv.box, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
+    }
+    return null;
   }
 
   function translateItem(it,dx,dy){
     switch(it.type){
-      case 'path': it.points.forEach(p=>{p.x=norm(p.x+dx);p.y=norm(p.y+dy);}); break;
+      case 'path': case 'polygon': it.points.forEach(p=>{p.x=norm(p.x+dx);p.y=norm(p.y+dy);}); break;
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
       default: it.x=norm(it.x+dx); it.y=norm(it.y+dy);
     }
@@ -656,9 +874,10 @@
   // surviving sub-strokes (0 or more), or null if the ring didn't touch this stroke.
   function splitPath(it, x, y, r){
     const t = r + strokeWidthOf(it)/2;   // hit the painted ink, not just the centerline
+    const lp = toLocal(it, x, y);        // rotated strokes are stored in local coords
     const runs=[]; let cur=[]; let changed=false;
     for(const pt of it.points){
-      if(Math.hypot(pt.x-x, pt.y-y) <= t){ changed=true; if(cur.length){ runs.push(cur); cur=[]; } }
+      if(Math.hypot(pt.x-lp.x, pt.y-lp.y) <= t){ changed=true; if(cur.length){ runs.push(cur); cur=[]; } }
       else cur.push(pt);
     }
     if(cur.length) runs.push(cur);
@@ -683,42 +902,74 @@
     ctx.fillStyle = BG;
     ctx.fillRect(0,0,cssW,cssH);
 
-    for(const it of items) drawItem(it);
-    if(current) drawItem(current);
+    items.forEach((it,i)=>{ if(i!==editingTextIdx) drawItem(it); });
+    if(current){ current.type==='polygon' ? drawPolygonDraft(current) : drawItem(current); }
 
-    // selection outlines, single-image resize handle, and the rubber-band box
-    if(ui.tool==='select'){
+    // selection outlines, rotation/resize handles, and the rubber-band box — suppressed while
+    // editing text, since the input's own box never quite matches the item's drawn outline
+    if(ui.tool==='select' && editingTextIdx==null){
       ctx.save();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#6366f1';
-      // dashed outline for each ungrouped selected item
+      // dashed outline for each ungrouped selected item — rotated along with the item itself
       ctx.setLineDash([5,4]);
       for(const i of selection){
         const it = items[i]; if(!it || it.group!=null) continue;
         const b = bbox(it);
+        const cx=b.x+b.w/2, cy=b.y+b.h/2;
+        ctx.save();
+        if(it.rotation){ ctx.translate(cx,cy); ctx.rotate(it.rotation); ctx.translate(-cx,-cy); }
         ctx.strokeRect(b.x-3, b.y-3, b.w+6, b.h+6);
+        ctx.restore();
       }
-      // solid box around each selected group
+      // solid box around each selected group — rotates as one rigid piece with its members
       ctx.setLineDash([]);
       const seenGroups = new Set();
       for(const i of selection){
         const it = items[i]; if(!it || it.group==null || seenGroups.has(it.group)) continue;
         seenGroups.add(it.group);
-        const u = unionBox(itemsInGroup(it.group));
+        const piv = groupPivot(it.group);
+        const u = piv.box;
+        const grot = it.groupRotation||0;
+        ctx.save();
+        if(grot){ ctx.translate(piv.cx,piv.cy); ctx.rotate(grot); ctx.translate(-piv.cx,-piv.cy); }
         ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
+        ctx.restore();
       }
-      if(selection.length===1 && items[selection[0]] && items[selection[0]].type==='image'){
-        const it = items[selection[0]];
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.rect(it.x+it.w-5, it.y+it.h-5, 10, 10);
-        ctx.fill(); ctx.stroke();
+      // resize handles — 4 corners of the lone item's box, or of the whole group's box
+      if(selection.length){
+        const rp = resizePivotFor(selection);
+        if(rp){
+          const b = rp.box;
+          ctx.save();
+          if(rp.rotation){ ctx.translate(rp.cx,rp.cy); ctx.rotate(rp.rotation); ctx.translate(-rp.cx,-rp.cy); }
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+          for(const [hx,hy] of [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]){
+            ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill(); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      // rotation handle — a small knob above the item (or above the whole group's box)
+      if(selection.length){
+        const piv = rotationPivotFor(selection);
+        if(piv){
+          ctx.save();
+          if(piv.rotation){ ctx.translate(piv.cx,piv.cy); ctx.rotate(piv.rotation); ctx.translate(-piv.cx,-piv.cy); }
+          ctx.setLineDash([]);
+          ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(piv.handleX, piv.stemTop); ctx.lineTo(piv.handleX, piv.handleY); ctx.stroke();
+          ctx.beginPath(); ctx.arc(piv.handleX, piv.handleY, 6, 0, Math.PI*2);
+          ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#6366f1'; ctx.stroke();
+          ctx.restore();
+        }
       }
       if(marquee){
         const r = marqueeRect();
         ctx.setLineDash([3,3]); ctx.strokeStyle = '#818cf8';
         for(let i=0;i<items.length;i++){
-          if(rectsIntersect(bbox(items[i]), r)){ const b = bbox(items[i]); ctx.strokeRect(b.x-3, b.y-3, b.w+6, b.h+6); }
+          if(rectsIntersect(worldBBox(items[i]), r)){ const b = worldBBox(items[i]); ctx.strokeRect(b.x-3, b.y-3, b.w+6, b.h+6); }
         }
         ctx.setLineDash([4,3]); ctx.strokeStyle = '#6366f1'; ctx.fillStyle = 'rgba(99,102,241,.10)';
         ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -741,6 +992,7 @@
 
     hint.style.display = (items.length===0 && !current) ? 'block' : 'none';
     updateOrderButtons();
+    updatePolyButtons();
   }
 
   // ---------- pointer interaction ----------
@@ -756,13 +1008,54 @@
     canvas.setPointerCapture(e.pointerId);
 
     if(ui.tool==='select'){
-      // resize handle of a single selected image
-      if(selection.length===1 && items[selection[0]] && items[selection[0]].type==='image'){
-        const it = items[selection[0]];
-        if(Math.abs(x-(it.x+it.w))<=HANDLE && Math.abs(y-(it.y+it.h))<=HANDLE){
-          beginHistory();
-          resizing = { aspect:(it.w/it.h)||1, moved:false };
-          return;
+      // rotation handle — of the lone selected item, or of the whole group if a group is selected
+      if(selection.length){
+        const piv = rotationPivotFor(selection);
+        if(piv){
+          let lp = {x,y};
+          if(piv.rotation) lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
+          if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 9){
+            beginHistory();
+            rotating = { cx:piv.cx, cy:piv.cy, startAngle:Math.atan2(y-piv.cy, x-piv.cx),
+                         startRotation:piv.rotation, field: piv.isGroup?'groupRotation':'rotation',
+                         members:piv.members, moved:false };
+            return;
+          }
+        }
+      }
+      // resize handles — 4 corners of the lone item's box, or of the whole group's box
+      if(selection.length){
+        const rp = resizePivotFor(selection);
+        if(rp){
+          const lp = rp.rotation ? rotatePoint(x,y,rp.cx,rp.cy,-rp.rotation) : {x,y};
+          const b = rp.box;
+          const corners = {
+            nw:{x:b.x,       y:b.y,       ax:b.x+b.w, ay:b.y+b.h},
+            ne:{x:b.x+b.w,   y:b.y,       ax:b.x,     ay:b.y+b.h},
+            sw:{x:b.x,       y:b.y+b.h,   ax:b.x+b.w, ay:b.y},
+            se:{x:b.x+b.w,   y:b.y+b.h,   ax:b.x,     ay:b.y},
+          };
+          let hitHandle = null, bestD = HANDLE;
+          for(const key in corners){
+            const c = corners[key];
+            const d = Math.hypot(lp.x-c.x, lp.y-c.y);
+            if(d<=bestD){ bestD=d; hitHandle=key; }
+          }
+          if(hitHandle){
+            const c = corners[hitHandle];
+            beginHistory();
+            const Aw = rp.rotation ? rotatePoint(c.ax, c.ay, rp.cx, rp.cy, rp.rotation) : {x:c.ax, y:c.ay};
+            resizing = {
+              rotation:rp.rotation,
+              anchorX:c.ax, anchorY:c.ay,
+              anchorWorldX:Aw.x, anchorWorldY:Aw.y,
+              origW: b.w, origH: b.h,
+              origSignedW: c.x-c.ax, origSignedH: c.y-c.ay,
+              snapshots: rp.members.map(idx=>({idx, snap:snapshotOf(items[idx])})),
+              moved:false
+            };
+            return;
+          }
         }
       }
       const hit = hitTest(x,y);
@@ -777,6 +1070,16 @@
         }
         beginHistory();
         drag = {sx:x, sy:y, moved:false};
+        if(items[hit].type==='text'){
+          const textIdx = hit;
+          longPressTimer = setTimeout(()=>{
+            longPressTimer = null;
+            if(drag && !drag.moved){
+              historyBefore = null; drag = null;
+              openText(items[textIdx].x, items[textIdx].y, textIdx);
+            }
+          }, 500);
+        }
         render();
       } else {
         marquee = { x0:x, y0:y, x, y, add:e.shiftKey };           // empty space → rubber-band box
@@ -786,6 +1089,8 @@
       return;
     }
     if(ui.tool==='text'){ openText(x,y); return; }
+
+    if(ui.tool==='polygon'){ handlePolygonClick(x,y); return; }
 
     if(ui.tool==='eraser'){
       beginHistory();
@@ -809,7 +1114,7 @@
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!current && !drag && !resizing && !erasing && !marquee) return;
+    if(!current && !drag && !resizing && !erasing && !marquee && !rotating) return;
     const {x,y} = p;
 
     if(erasing){
@@ -827,12 +1132,45 @@
       return;
     }
 
-    if(resizing && selection.length===1){
-      const it = items[selection[0]];
-      let w = x - it.x;
-      if(w < 16) w = 16;
-      it.w = norm(w);
-      it.h = norm(w / resizing.aspect);
+    if(rotating){
+      const ang = Math.atan2(y-rotating.cy, x-rotating.cx);
+      const delta = ang - rotating.startAngle;
+      let newRot = rotating.startRotation + delta;
+      if(e.shiftKey){ const step = Math.PI/12; newRot = Math.round(newRot/step)*step; }  // snap to 15° steps from absolute zero
+      for(const idx of rotating.members) items[idx][rotating.field] = newRot;
+      rotating.moved = true;
+      render();
+      return;
+    }
+
+    if(resizing){
+      const rot = resizing.rotation;
+      const rotd = rot ? rotatePoint(x, y, resizing.anchorWorldX, resizing.anchorWorldY, -rot) : {x,y};
+      let dx = rotd.x - resizing.anchorWorldX, dy = rotd.y - resizing.anchorWorldY;
+      if(e.shiftKey){
+        // proportional: project onto the original diagonal (anchor -> original corner)
+        const dW = resizing.origSignedW, dH = resizing.origSignedH;
+        const len2 = dW*dW + dH*dH;
+        const t = len2 ? (dx*dW + dy*dH) / len2 : 1;
+        dx = t*dW; dy = t*dH;
+      }
+      let sx = resizing.origSignedW ? dx/resizing.origSignedW : 1;
+      let sy = resizing.origSignedH ? dy/resizing.origSignedH : 1;
+      const MIN=0.02;
+      if(Math.abs(sx)<MIN){ sx = sx<0?-MIN:MIN; dx = sx*resizing.origSignedW; }
+      if(Math.abs(sy)<MIN){ sy = sy<0?-MIN:MIN; dy = sy*resizing.origSignedH; }
+      for(const {idx,snap} of resizing.snapshots) applyScaleFromSnapshot(items[idx], snap, resizing.anchorX, resizing.anchorY, sx, sy);
+      if(rot){
+        // resizing moves the box's center, and everything rotates around that center — compensate
+        // with a plain shift so the anchor corner's WORLD position lands exactly back where it was
+        const halfW = dx/2, halfH = dy/2;
+        const c = Math.cos(rot), s = Math.sin(rot);
+        const Rx = halfW*c - halfH*s, Ry = halfW*s + halfH*c;
+        const targetAnchorX = resizing.anchorWorldX - (halfW - Rx);
+        const targetAnchorY = resizing.anchorWorldY - (halfH - Ry);
+        const shiftX = targetAnchorX - resizing.anchorX, shiftY = targetAnchorY - resizing.anchorY;
+        for(const {idx} of resizing.snapshots) translateItem(items[idx], shiftX, shiftY);
+      }
       resizing.moved = true;
       render();
       return;
@@ -840,7 +1178,10 @@
 
     if(drag && selection.length){
       const dx=x-drag.sx, dy=y-drag.sy;
-      if(dx||dy) drag.moved = true;
+      if(dx||dy){
+        drag.moved = true;
+        if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+      }
       for(const i of selection) translateItem(items[i], dx, dy);
       drag.sx=x; drag.sy=y;
       render();
@@ -864,6 +1205,9 @@
       current.y = Math.min(current._y0, y);
       current.w = Math.abs(x-current._x0);
       current.h = Math.abs(y-current._y0);
+    } else if(current.type==='polygon'){
+      current._hover = {x,y};
+      updatePolyOverlay();
     }
     render();
   }
@@ -874,12 +1218,18 @@
       erasing=null;
       return;
     }
+    if(rotating){
+      if(rotating.moved) commitHistory(); else historyBefore=null;
+      rotating=null;
+      return;
+    }
     if(resizing){
       if(resizing.moved) commitHistory(); else historyBefore=null;
       resizing=null;
       return;
     }
     if(drag){
+      if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
       if(drag.moved) commitHistory(); else historyBefore=null;
       drag=null;
       return;
@@ -888,13 +1238,14 @@
       const r = marqueeRect();
       const sel = marquee.add ? selection.slice() : [];
       for(let i=0;i<items.length;i++){
-        if(rectsIntersect(bbox(items[i]), r) && sel.indexOf(i)<0) sel.push(i);
+        if(rectsIntersect(worldBBox(items[i]), r) && sel.indexOf(i)<0) sel.push(i);
       }
       selection = expandSelection(sel);
       marquee = null;
       render();
       return;
     }
+    if(ui.tool==='polygon'){ return; }   // polygon finishes via click-to-close / Enter / the Finish button, not pointerup
     if(!current){ return; }
 
     let keep = true;
@@ -913,15 +1264,19 @@
 
   // ---------- text tool ----------
   let textPos = null;
-  function openText(x,y){
+  let editingTextIdx = null;   // set while editing an existing text item (vs. creating a new one)
+  function openText(x,y,editIdx=null){
     textPos = {x,y};
+    editingTextIdx = editIdx;
+    const existing = editIdx!=null ? items[editIdx] : null;
     textInput.style.display='block';
     textInput.style.left = x+'px';
     textInput.style.top  = y+'px';
-    textInput.style.font = fontStr(ui.fontFamily, ui.fontSize);
-    textInput.style.color = ui.color;
-    textInput.value = '';
-    setTimeout(()=>textInput.focus(), 0);
+    textInput.style.font = existing ? existing.font : fontStr(ui.fontFamily, ui.fontSize);
+    textInput.style.color = existing ? existing.color : ui.color;
+    textInput.value = existing ? existing.text : '';
+    render();   // hide the original item behind the input while editing
+    setTimeout(()=>{ textInput.focus(); textInput.select(); }, 0);
   }
   const FONTS = {
     sans:'-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
@@ -933,20 +1288,83 @@
   function commitText(){
     const val = textInput.value.trim();
     textInput.style.display='none';
-    if(val && textPos){
+    if(editingTextIdx!=null){
+      const idx = editingTextIdx;
+      beginHistory();
+      if(val){ items[idx].text = val; }
+      else { items.splice(idx,1); selection = selection.filter(i=>i!==idx).map(i=>i>idx?i-1:i); }
+      commitHistory();
+    } else if(val && textPos){
       beginHistory();
       items.push({ type:'text', text:val, x:textPos.x, y:textPos.y, color:ui.color,
                    fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize) });
       commitHistory();
     }
-    textPos=null; render();
+    textPos=null; editingTextIdx=null; render();
   }
   textInput.addEventListener('keydown', e=>{
     if(e.key==='Enter'){ e.preventDefault(); commitText(); }
-    else if(e.key==='Escape'){ textInput.style.display='none'; textPos=null; }
+    else if(e.key==='Escape'){ textInput.style.display='none'; textPos=null; editingTextIdx=null; render(); }
     e.stopPropagation();
   });
   textInput.addEventListener('blur', commitText);
+
+  // ---------- polygon tool: click to add vertices, close on the start point / Enter / the Finish button ----------
+  // The in-progress preview is also drawn with real SVG elements (not just canvas): a stand-alone
+  // tap-to-tap canvas draw can be slow to composite on some mobile browsers, so the SVG overlay
+  // guarantees the draft always shows up immediately.
+  function updatePolyOverlay(){
+    if(!polyDraft || !polyDraft.points.length){ polyOverlay.innerHTML = ''; return; }
+    const pts = polyDraft.points.map(p=>p.x+','+p.y);
+    if(polyDraft._hover) pts.push(polyDraft._hover.x+','+polyDraft._hover.y);
+    let closing = '';
+    if(polyDraft._hover && polyDraft.points.length>=3){
+      const first = polyDraft.points[0];
+      if(Math.hypot(polyDraft._hover.x-first.x, polyDraft._hover.y-first.y)<=10){
+        closing = '<line x1="'+polyDraft._hover.x+'" y1="'+polyDraft._hover.y+'" x2="'+first.x+'" y2="'+first.y+
+                  '" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4,3"/>';
+      }
+    }
+    const dots = polyDraft.points.map(p=>'<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+polyDraft.color+'"/>').join('');
+    polyOverlay.innerHTML =
+      '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+polyDraft.color+'" stroke-width="'+polyDraft.size+
+      '" stroke-linejoin="round" stroke-linecap="round"/>' + closing + dots;
+  }
+  function handlePolygonClick(x,y){
+    if(!polyDraft){
+      beginHistory();
+      polyDraft = { color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
+      current = polyDraft;
+      render(); updatePolyOverlay();
+      return;
+    }
+    const first = polyDraft.points[0];
+    if(polyDraft.points.length>=3 && Math.hypot(x-first.x,y-first.y)<=10){ finishPolygon(); return; }
+    polyDraft.points.push({x,y});
+    render(); updatePolyOverlay();
+  }
+  function finishPolygon(){
+    if(!polyDraft) return;
+    if(polyDraft.points.length<3){ toast('Add at least 3 points first'); return; }
+    items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, fill:polyDraft.fill,
+                 fillColor:polyDraft.fillColor, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+    polyDraft = null; current = null;
+    commitHistory();
+    render(); updatePolyOverlay();
+  }
+  function cancelPolygon(){
+    polyDraft = null; current = null;
+    historyBefore = null;
+    render(); updatePolyOverlay();
+  }
+  function updatePolyButtons(){
+    const active = ui.tool==='polygon' && !!polyDraft;
+    const disp = active ? '' : 'none';
+    if(polyGroup.style.display !== disp){ polyGroup.style.display = disp; polySep.style.display = disp; }
+    if(active) polyFinishBtn.disabled = polyDraft.points.length < 3;
+  }
+  polyFinishBtn.addEventListener('click', finishPolygon);
+  polyCancelBtn.addEventListener('click', cancelPolygon);
 
   // ---------- images (insert / paste / drop) ----------
   function importImage(srcURL, place){
@@ -1056,7 +1474,7 @@
     beginHistory();
     const sel = expandSelection(selection);
     const g = 'g-' + Date.now() + '-' + (groupSeq++);
-    for(const i of sel) items[i].group = g;
+    for(const i of sel){ items[i].group = g; items[i].groupRotation = 0; }
     selection = sel;
     commitHistory(); render();
     toast('Grouped');
@@ -1066,7 +1484,26 @@
     const sel = expandSelection(selection);
     if(!sel.some(i=>items[i].group!=null)) return;
     beginHistory();
-    for(const i of sel) delete items[i].group;
+    // snapshot every distinct group's pivot BEFORE touching any member — baking one member
+    // would otherwise shift the pivot for the rest of that same group
+    const pivots = {};
+    for(const i of sel){
+      const g = items[i].group;
+      if(g!=null && !(g in pivots)) pivots[g] = groupPivot(g);
+    }
+    for(const i of sel){
+      const it = items[i];
+      if(it.group!=null && it.groupRotation){
+        const piv = pivots[it.group];
+        const b = worldBBoxOwn(it);
+        const ownCx = b.x+b.w/2, ownCy = b.y+b.h/2;
+        const target = rotatePoint(ownCx, ownCy, piv.cx, piv.cy, it.groupRotation);
+        translateItem(it, target.x-ownCx, target.y-ownCy);
+        it.rotation = (it.rotation||0) + it.groupRotation;
+      }
+      delete it.group;
+      delete it.groupRotation;
+    }
     selection = sel;
     commitHistory(); render();
     toast('Ungrouped');
@@ -1176,6 +1613,7 @@
 
   // ---------- toolbar wiring ----------
   function setTool(t){
+    if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
     document.querySelectorAll('[data-tool].btn').forEach(b=>{
       const on = b.dataset.tool===t;
@@ -1187,7 +1625,7 @@
     if(t!=='eraser') cursorPt=null;
     const isText = (t==='text');
     const isSelect = (t==='select');
-    const canFill = (t==='rect' || t==='ellipse');   // fill only makes sense for these
+    const canFill = (t==='rect' || t==='ellipse' || t==='polygon');   // fill only makes sense for these
     const usesColor = !isSelect && t!=='eraser';     // hide the palette where it has no effect
     const usesSize = !isText && !isSelect;
     colorGroup.style.display = usesColor ? '' : 'none';
@@ -1338,14 +1776,16 @@
   });
 
   // ---------- keyboard ----------
-  const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',t:'text'};
+  const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',g:'polygon',t:'text'};
   window.addEventListener('keydown', e=>{
     if(textInput.style.display==='block') return;
     if(e.key==='Escape'){
+      if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(!menu.hidden){ setMenu(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
       return;
     }
+    if(e.key==='Enter' && ui.tool==='polygon' && polyDraft){ e.preventDefault(); finishPolygon(); return; }
     const mod = e.metaKey || e.ctrlKey;
     if(mod && e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
     if(mod && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); return; }
@@ -1358,8 +1798,43 @@
     if(e.key==='Delete' || e.key==='Backspace'){ e.preventDefault(); deleteSelected(); return; }
     if(e.key===']'){ bringToFront(); return; }
     if(e.key==='['){ sendToBack(); return; }
+    // rotate the selected item — or whole group — by 15° with , / .
+    if((e.key===',' || e.key==='.') && ui.tool==='select' && selection.length){
+      const piv = rotationPivotFor(selection);
+      if(piv){
+        e.preventDefault();
+        beginHistory();
+        const delta = (Math.PI/12) * (e.key==='.' ? 1 : -1);
+        const field = piv.isGroup ? 'groupRotation' : 'rotation';
+        for(const idx of piv.members) items[idx][field] = (items[idx][field]||0) + delta;
+        commitHistory();
+        return;
+      }
+    }
     const t = TOOL_KEYS[e.key.toLowerCase()];
     if(t){ setTool(t); }
+  });
+
+  canvas.addEventListener('dblclick', e=>{
+    if(ui.tool!=='select') return;
+    const {x,y} = pos(e);
+    const hit = hitTest(x,y);
+    if(hit>=0 && items[hit].type==='text'){
+      openText(items[hit].x, items[hit].y, hit);
+      return;
+    }
+    if(selection.length){
+      const piv = rotationPivotFor(selection);
+      if(piv && piv.rotation){
+        const lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
+        if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 9){
+          beginHistory();
+          const field = piv.isGroup ? 'groupRotation' : 'rotation';
+          for(const idx of piv.members) items[idx][field] = 0;
+          commitHistory(); render();
+        }
+      }
+    }
   });
 
   // ---------- pointer listeners ----------
