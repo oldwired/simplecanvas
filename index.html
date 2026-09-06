@@ -578,6 +578,17 @@
     ctx.stroke();
   }
 
+  // Arrowheads live on lines and arrows alike: a 'line' has none, an 'arrow' has one at its end
+  // unless told otherwise (he:false), and optionally one at its start (hs:true). Toggling heads
+  // flips the type so old files and every existing `case 'arrow'` keep working.
+  function headsOf(it){ return { s: it.type==='arrow' && !!it.hs, e: it.type==='arrow' && it.he!==false }; }
+  function setHeads(it, s, e){
+    delete it.hs; delete it.he;
+    if(!s && !e){ it.type='line'; return; }
+    it.type='arrow';
+    if(s) it.hs = true;
+    if(!e) it.he = false;
+  }
   function drawArrowHead(x1,y1,x2,y2,size){
     const ang = Math.atan2(y2-y1, x2-x1);
     const len = Math.max(10, size*2.6);
@@ -626,7 +637,9 @@
       case 'arrow':
         ctx.strokeStyle = it.color; ctx.lineWidth = it.size; ctx.lineCap='round';
         ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(it.x2,it.y2); ctx.stroke();
-        if(it.type==='arrow') drawArrowHead(it.x1,it.y1,it.x2,it.y2,it.size);
+        { const h = headsOf(it);
+          if(h.e) drawArrowHead(it.x1,it.y1,it.x2,it.y2,it.size);
+          if(h.s) drawArrowHead(it.x2,it.y2,it.x1,it.y1,it.size); }
         break;
       case 'rect':
         ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
@@ -1082,8 +1095,13 @@
       const li = loneLineIdx(selection);
       if(li!=null){
         ctx.setLineDash([]);
-        ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
-        for(const p of lineEnds(items[li])){ ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
+        // filled knob = arrowhead at that end; a plain click on a knob toggles it
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+        const h = headsOf(items[li]);
+        lineEnds(items[li]).forEach((p,k)=>{
+          ctx.fillStyle = (k===0 ? h.s : h.e) ? '#6366f1' : '#fff';
+          ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        });
       }
       // rotation handle — a small knob above the item (or above the whole group's box)
       if(selection.length){
@@ -1175,7 +1193,7 @@
             beginHistory();
             // bake any rotation into the stored coordinates so the endpoint can be moved in world space
             it.x1=norm(ends[0].x); it.y1=norm(ends[0].y); it.x2=norm(ends[1].x); it.y2=norm(ends[1].y); delete it.rotation;
-            endDrag = { idx:li, end:k+1, moved:false };
+            endDrag = { idx:li, end:k+1, sx:x, sy:y, moved:false };   // a click without a drag toggles the head instead
             return;
           }
         }
@@ -1279,6 +1297,7 @@
     const {x,y} = p;
 
     if(endDrag){
+      if(!endDrag.moved && Math.hypot(x-endDrag.sx, y-endDrag.sy) < 3) return;   // still a click, not a drag
       const it = items[endDrag.idx];
       const fx = endDrag.end===1 ? it.x2 : it.x1, fy = endDrag.end===1 ? it.y2 : it.y1;   // the fixed end
       let nx=x, ny=y;
@@ -1416,7 +1435,12 @@
       return;
     }
     if(endDrag){
-      if(endDrag.moved) commitHistory(); else historyBefore=null;
+      if(!endDrag.moved){
+        // plain click on an endpoint knob: toggle the arrowhead at that end
+        const it = items[endDrag.idx], h = headsOf(it);
+        if(endDrag.end===1) setHeads(it, !h.s, h.e); else setHeads(it, h.s, !h.e);
+      }
+      commitHistory();
       endDrag=null; snapPt=null;
       render();
       return;
@@ -1815,13 +1839,16 @@
       }
       case 'line': case 'arrow': {
         inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round"/>`;
-        if(it.type==='arrow'){
-          const ang = Math.atan2(it.y2-it.y1, it.x2-it.x1);
+        const head = (fx,fy,tx,ty)=>{   // head at (tx,ty), pointing away from (fx,fy)
+          const ang = Math.atan2(ty-fy, tx-fx);
           const len = Math.max(10, it.size*2.6), a = Math.PI/7;
-          const hx1 = it.x2-len*Math.cos(ang-a), hy1 = it.y2-len*Math.sin(ang-a);
-          const hx2 = it.x2-len*Math.cos(ang+a), hy2 = it.y2-len*Math.sin(ang+a);
-          inner += `<path d="M${hx1},${hy1} L${it.x2},${it.y2} L${hx2},${hy2}" fill="none" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
-        }
+          const hx1 = tx-len*Math.cos(ang-a), hy1 = ty-len*Math.sin(ang-a);
+          const hx2 = tx-len*Math.cos(ang+a), hy2 = ty-len*Math.sin(ang+a);
+          return `<path d="M${hx1},${hy1} L${tx},${ty} L${hx2},${hy2}" fill="none" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        };
+        const h = headsOf(it);
+        if(h.e) inner += head(it.x1,it.y1,it.x2,it.y2);
+        if(h.s) inner += head(it.x2,it.y2,it.x1,it.y1);
         break;
       }
       case 'rect': {
