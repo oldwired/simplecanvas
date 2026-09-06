@@ -1242,10 +1242,17 @@
         current.x2=x; current.y2=y;
       }
     } else if(current.type==='rect' || current.type==='ellipse'){
-      current.x = Math.min(current._x0, x);
-      current.y = Math.min(current._y0, y);
-      current.w = Math.abs(x-current._x0);
-      current.h = Math.abs(y-current._y0);
+      let w = x-current._x0, h = y-current._y0;
+      if(e.shiftKey){
+        // square / circle — follow whichever axis the cursor has moved further along
+        const s = Math.max(Math.abs(w), Math.abs(h));
+        w = (w<0 ? -1 : 1) * s;
+        h = (h<0 ? -1 : 1) * s;
+      }
+      current.x = Math.min(current._x0, current._x0+w);
+      current.y = Math.min(current._y0, current._y0+h);
+      current.w = Math.abs(w);
+      current.h = Math.abs(h);
     } else if(current.type==='polygon'){
       current._hover = {x,y};
       updatePolyOverlay();
@@ -1997,6 +2004,7 @@
     if(textInput.style.display==='block') return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
+      if(current){ current=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
