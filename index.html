@@ -1231,7 +1231,16 @@
       const last = current.points[current.points.length-1];
       if(Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
     } else if(current.type==='line' || current.type==='arrow'){
-      current.x2=x; current.y2=y;
+      if(e.shiftKey){
+        // constrain to 45° steps, keeping the cursor's distance from the start point
+        const dx=x-current.x1, dy=y-current.y1;
+        const dist = Math.hypot(dx,dy);
+        const ang = Math.round(Math.atan2(dy,dx)/(Math.PI/4)) * (Math.PI/4);
+        current.x2 = norm(current.x1 + Math.cos(ang)*dist);
+        current.y2 = norm(current.y1 + Math.sin(ang)*dist);
+      } else {
+        current.x2=x; current.y2=y;
+      }
     } else if(current.type==='rect' || current.type==='ellipse'){
       current.x = Math.min(current._x0, x);
       current.y = Math.min(current._y0, y);
@@ -2006,6 +2015,18 @@
     if(e.key==='Delete' || e.key==='Backspace'){ e.preventDefault(); deleteSelected(); return; }
     if(e.key===']'){ bringToFront(); return; }
     if(e.key==='['){ sendToBack(); return; }
+    // nudge the selection with the arrow keys — 1px, or 10px with Shift. A held-down key auto-repeats
+    // (e.repeat) into many keydowns; those all fold into the one undo step opened by the first press.
+    if((e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown') && ui.tool==='select' && selection.length){
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
+      const dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
+      if(!e.repeat) beginHistory();
+      for(const i of selection) translateItem(items[i], dx, dy);
+      render();
+      return;
+    }
     // rotate the selected item — or whole group — by 15° with , / .
     if((e.key===',' || e.key==='.') && ui.tool==='select' && selection.length){
       const piv = rotationPivotFor(selection);
@@ -2022,6 +2043,9 @@
     const t = TOOL_KEYS[e.key.toLowerCase()];
     if(t==='table'){ activateTableTool(); }
     else if(t){ setTool(t); }
+  });
+  window.addEventListener('keyup', e=>{
+    if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown') commitHistory();
   });
 
   canvas.addEventListener('dblclick', e=>{
