@@ -131,6 +131,13 @@
   .menu button.danger svg{color:var(--danger)}
   .menu-sep{height:1px;background:var(--line);margin:5px 4px}
 
+  /* table size picker */
+  .table-picker{min-width:0;padding:10px;flex-direction:column;align-items:center}
+  .table-grid{display:grid;grid-template-columns:repeat(10,16px);grid-auto-rows:16px;gap:3px}
+  .table-grid .cell{width:16px;height:16px;border:1px solid var(--line);border-radius:2px;background:#fff;cursor:pointer}
+  .table-grid .cell.hi{background:var(--accent-soft);border-color:var(--accent)}
+  .table-picker-label{margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
+
   /* size */
   .size-ctrl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
   input[type=range]{width:104px;accent-color:var(--accent);cursor:pointer}
@@ -284,6 +291,15 @@
     <button class="btn" data-tool="polygon" title="Polygon — click each corner, then tap the start point, press Enter, or tap Finish (G)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 21 9.5 17.8 20H6.2L3 9.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
+    <div class="menu-wrap">
+      <button class="btn" data-tool="table" id="tableBtn" title="Table — drag across the grid to pick a size, then click to place (Y)" aria-haspopup="true" aria-expanded="false" aria-controls="tablePicker">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M3 16h18M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.8"/></svg>
+      </button>
+      <div class="menu table-picker" id="tablePicker" hidden>
+        <div class="table-grid" id="tableGrid"></div>
+        <div class="table-picker-label" id="tablePickerLabel">Pick a size</div>
+      </div>
+    </div>
     <button class="btn" data-tool="text" title="Text (T)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M12 6v13M9 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
@@ -436,7 +452,7 @@
   // ---------- state ----------
   let items = [];               // committed scene objects
   let current = null;           // in-progress preview object
-  let ui = { tool:'pen', color:'#1f2937', size:6, fill:false, fillColor:'#ffd166', colorTarget:'stroke', fontFamily:'sans', fontSize:28 };
+  let ui = { tool:'pen', color:'#1f2937', size:6, fill:false, fillColor:'#ffd166', colorTarget:'stroke', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3 };
   let dpr = 1, cssW = 0, cssH = 0;
 
   let undoStack = [], redoStack = [];
@@ -624,6 +640,16 @@
         ctx.font = it.font;
         ctx.fillText(it.text, it.x, it.y);
         break;
+      case 'table':
+        ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
+        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x, it.y, it.w, it.h); }
+        ctx.strokeStyle = it.color;
+        ctx.strokeRect(it.x, it.y, it.w, it.h);
+        ctx.beginPath();
+        for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; ctx.moveTo(it.x, yy); ctx.lineTo(it.x+it.w, yy); }
+        for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; ctx.moveTo(xx, it.y); ctx.lineTo(xx, it.y+it.h); }
+        ctx.stroke();
+        break;
     }
     ctx.restore();
   }
@@ -664,7 +690,7 @@
         const x=Math.min(it.x1,it.x2), y=Math.min(it.y1,it.y2);
         return {x:x-pad,y:y-pad,w:Math.abs(it.x2-it.x1)+pad*2,h:Math.abs(it.y2-it.y1)+pad*2};
       }
-      case 'rect':case 'ellipse':{
+      case 'rect':case 'ellipse':case 'table':{
         const x=Math.min(it.x,it.x+it.w), y=Math.min(it.y,it.y+it.h);
         return {x:x-2,y:y-2,w:Math.abs(it.w)+4,h:Math.abs(it.h)+4};
       }
@@ -805,7 +831,7 @@
   // new geometry fresh from this untouched snapshot rather than compounding rounding error.
   function snapshotOf(it){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': return {x:it.x, y:it.y, w:it.w, h:it.h};
+      case 'rect': case 'ellipse': case 'image': case 'table': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
       case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
       case 'text': return {x:it.x, y:it.y, font:it.font};
@@ -816,7 +842,7 @@
   function scalePt(p, ax, ay, sx, sy){ return { x: ax+(p.x-ax)*sx, y: ay+(p.y-ay)*sy }; }
   function applyScaleFromSnapshot(it, snap, ax, ay, sx, sy){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': {
+      case 'rect': case 'ellipse': case 'image': case 'table': {
         const p1 = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
         const p2 = scalePt({x:snap.x+snap.w,y:snap.y+snap.h}, ax,ay,sx,sy);
         it.x = Math.min(p1.x,p2.x); it.y = Math.min(p1.y,p2.y);
@@ -1090,6 +1116,8 @@
     }
     if(ui.tool==='text'){ openText(x,y); return; }
 
+    if(ui.tool==='table'){ placeTable(x,y); return; }
+
     if(ui.tool==='polygon'){ handlePolygonClick(x,y); return; }
 
     if(ui.tool==='eraser'){
@@ -1285,6 +1313,25 @@
     cursive:'"Comic Sans MS","Segoe Print","Bradley Hand",cursive'
   };
   function fontStr(family, size){ return '600 ' + size + 'px ' + (FONTS[family] || FONTS.sans); }
+
+  // ---------- table tool: click to place, sized so a cell comfortably fits sample text at the current font size ----------
+  function placeTable(x,y){
+    ctx.save();
+    ctx.font = fontStr(ui.fontFamily, ui.fontSize);
+    const tw = ctx.measureText('hello world').width;
+    ctx.restore();
+    const colW = Math.max(60, Math.round(tw + 24));       // "hello world" plus side padding
+    const rowH = Math.max(28, Math.round(ui.fontSize*1.5)); // current text size plus line padding
+    const rows = ui.tableRows, cols = ui.tableCols;
+    const w = colW*cols, h = rowH*rows;
+    beginHistory();
+    items.push({ type:'table', x:norm(x-w/2), y:norm(y-h/2), w:norm(w), h:norm(h), rows, cols, color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor });
+    selection = [items.length-1];
+    commitHistory();
+    setTool('select');
+    render();
+    toast('Table added — drag a corner to resize');
+  }
   function commitText(){
     const val = textInput.value.trim();
     textInput.style.display='none';
@@ -1623,9 +1670,10 @@
     canvas.className = 'tool-'+t;
     if(t!=='select'){ selection=[]; marquee=null; }
     if(t!=='eraser') cursorPt=null;
+    if(t!=='table') setTablePicker(false);
     const isText = (t==='text');
     const isSelect = (t==='select');
-    const canFill = (t==='rect' || t==='ellipse' || t==='polygon');   // fill only makes sense for these
+    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table');   // fill only makes sense for these
     const usesColor = !isSelect && t!=='eraser';     // hide the palette where it has no effect
     const usesSize = !isText && !isSelect;
     colorGroup.style.display = usesColor ? '' : 'none';
@@ -1640,7 +1688,50 @@
     render();
   }
   document.querySelectorAll('[data-tool].btn').forEach(b=>{
+    if(b.dataset.tool==='table') return;   // opens the size picker instead — wired separately below
     b.addEventListener('click', ()=>setTool(b.dataset.tool));
+  });
+
+  // ---------- table size picker: drag/click across a grid to pick rows & columns, Word/Excel-style ----------
+  const tableBtn = document.getElementById('tableBtn');
+  const tablePicker = document.getElementById('tablePicker');
+  const tableGrid = document.getElementById('tableGrid');
+  const tablePickerLabel = document.getElementById('tablePickerLabel');
+  const TABLE_MAX_ROWS = 8, TABLE_MAX_COLS = 10;
+  const tableCells = [];
+  for(let r=1;r<=TABLE_MAX_ROWS;r++){
+    for(let c=1;c<=TABLE_MAX_COLS;c++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      cell.addEventListener('mouseenter', ()=>highlightTablePicker(r,c));
+      cell.addEventListener('click', e=>{
+        e.stopPropagation();
+        ui.tableRows = r; ui.tableCols = c;
+        setTablePicker(false);
+        toast('Click the canvas to place a ' + c + '×' + r + ' table');
+      });
+      tableGrid.appendChild(cell);
+      tableCells.push(cell);
+    }
+  }
+  function highlightTablePicker(r,c){
+    for(const cell of tableCells){
+      const cr = +cell.dataset.r, cc = +cell.dataset.c;
+      cell.classList.toggle('hi', cr<=r && cc<=c);
+    }
+    tablePickerLabel.textContent = c + ' × ' + r;
+  }
+  tableGrid.addEventListener('mouseleave', ()=>highlightTablePicker(ui.tableRows, ui.tableCols));
+  function setTablePicker(open){
+    tablePicker.hidden = !open;
+    tableBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open) highlightTablePicker(ui.tableRows, ui.tableCols);
+  }
+  function activateTableTool(){ setTool('table'); setTablePicker(true); }
+  tableBtn.addEventListener('click', e=>{ e.stopPropagation(); activateTableTool(); });
+  document.addEventListener('click', e=>{
+    if(!tablePicker.hidden && !tablePicker.contains(e.target) && e.target!==tableBtn) setTablePicker(false);
   });
 
   // a single palette, retargeted between stroke and fill by the toggle button
@@ -1776,12 +1867,13 @@
   });
 
   // ---------- keyboard ----------
-  const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',g:'polygon',t:'text'};
+  const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',g:'polygon',t:'text',y:'table'};
   window.addEventListener('keydown', e=>{
     if(textInput.style.display==='block') return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(!menu.hidden){ setMenu(false); return; }
+      if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
       return;
     }
@@ -1812,7 +1904,8 @@
       }
     }
     const t = TOOL_KEYS[e.key.toLowerCase()];
-    if(t){ setTool(t); }
+    if(t==='table'){ activateTableTool(); }
+    else if(t){ setTool(t); }
   });
 
   canvas.addEventListener('dblclick', e=>{
