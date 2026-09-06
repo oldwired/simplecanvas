@@ -277,7 +277,7 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M14 4 8 10c-2 2-2 4-3 6 2-1 4-1 6-3l6-6-3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 16c-2 1-2 4-2 4s3 0 4-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
     <button class="btn" data-tool="eraser" title="Eraser (E)">
-      <svg viewBox="0 0 24 24" fill="none"><path d="m4 14 6-6 7 7-4 4H8l-4-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 21h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <svg viewBox="0 2.5 24 24" fill="none"><path d="m4 14 6-6 7 7-4 4H8l-4-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 21h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
     <div class="sep"></div>
     <button class="btn" data-tool="line" title="Line (L)">
@@ -292,7 +292,7 @@
     <button class="btn" data-tool="ellipse" title="Ellipse (O)">
       <svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="12" rx="8" ry="6" stroke="currentColor" stroke-width="1.8"/></svg>
     </button>
-    <button class="btn" data-tool="polygon" title="Polygon — click each corner, then tap the start point, press Enter, or tap Finish (G)">
+    <button class="btn" data-tool="polygon" title="Polygon — click each corner, then finish by tapping the start point, double-clicking, right-clicking, pressing Enter, or tapping Finish (G)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 21 9.5 17.8 20H6.2L3 9.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
     <div class="menu-wrap">
@@ -2025,6 +2025,13 @@
   });
 
   canvas.addEventListener('dblclick', e=>{
+    if(ui.tool==='polygon' && polyDraft){
+      // the two clicks that make up this dblclick each already added a vertex via onDown — the
+      // second one is essentially an accidental duplicate, so drop it before closing the shape
+      if(polyDraft.points.length>3) polyDraft.points.pop();
+      finishPolygon();
+      return;
+    }
     if(ui.tool!=='select') return;
     const {x,y} = pos(e);
     const hit = hitTest(x,y);
@@ -2052,7 +2059,10 @@
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('pointerleave', ()=>{ if(cursorPt){ cursorPt=null; render(); } });
-  canvas.addEventListener('contextmenu', e=>{ if(ui.tool!=='select') e.preventDefault(); });
+  canvas.addEventListener('contextmenu', e=>{
+    if(ui.tool!=='select') e.preventDefault();
+    if(ui.tool==='polygon' && polyDraft) finishPolygon();
+  });
 
   window.addEventListener('resize', resize);
   window.addEventListener('beforeunload', save);
