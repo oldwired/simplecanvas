@@ -484,6 +484,9 @@
   const HANDLE = 9;             // resize-handle hit radius (px)
   let erasing = null;           // {removed} while an erase gesture is active
   let cursorPt = null;          // eraser cursor position (for the ring)
+  let endDrag = null;           // {idx,end:1|2,moved} while dragging one endpoint of a lone line/arrow
+  let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
+  const SNAP_R = 12;            // snap magnet radius (px)
 
   // ---------- helpers ----------
   const snap = () => JSON.stringify(items);
@@ -771,6 +774,91 @@
     const b = bbox(it);
     return rotatePoint(px,py, b.x+b.w/2, b.y+b.h/2, -it.rotation);
   }
+  // item's local frame -> world point (the inverse of toLocal: own rotation first, then groupRotation)
+  function toWorld(it,x,y){
+    let p = {x,y};
+    if(it.rotation){ const b = bbox(it); p = rotatePoint(p.x,p.y, b.x+b.w/2, b.y+b.h/2, it.rotation); }
+    if(it.group!=null && it.groupRotation){ const piv = groupPivot(it.group); p = rotatePoint(p.x,p.y,piv.cx,piv.cy,it.groupRotation); }
+    return p;
+  }
+
+  // ---------- snapping (line/arrow endpoints magnetize to these anchors) ----------
+  // Anchors are the spots an arrow would naturally meet a shape: corners, side midpoints and the
+  // center of boxes; the four extreme points of an ellipse; per-row (left edge) and per-column (top
+  // edge) midpoints of a table; polygon vertices and edge midpoints; the two ends of lines and strokes.
+  function snapAnchorsOf(it){
+    const pts = [];
+    const norm4 = (x,y,w,h)=>({ x0:Math.min(x,x+w), y0:Math.min(y,y+h), W:Math.abs(w), H:Math.abs(h) });
+    switch(it.type){
+      case 'rect': case 'image': case 'text': {
+        const b = it.type==='text' ? bbox(it) : null;
+        const {x0,y0,W,H} = b ? norm4(b.x,b.y,b.w,b.h) : norm4(it.x,it.y,it.w,it.h);
+        for(const fx of [0,.5,1]) for(const fy of [0,.5,1]) pts.push({x:x0+W*fx, y:y0+H*fy});
+        break;
+      }
+      case 'ellipse': {
+        const {x0,y0,W,H} = norm4(it.x,it.y,it.w,it.h);
+        pts.push({x:x0+W/2,y:y0},{x:x0+W/2,y:y0+H},{x:x0,y:y0+H/2},{x:x0+W,y:y0+H/2},{x:x0+W/2,y:y0+H/2});
+        break;
+      }
+      case 'table': {
+        const {x0,y0,W,H} = norm4(it.x,it.y,it.w,it.h);
+        // corners and the true midpoint of each edge (so the middle is always reachable, even with an
+        // even row/column count), plus a per-row midpoint on the left/right edges and a per-column
+        // midpoint on the top/bottom edges
+        for(const fx of [0,.5,1]) for(const fy of [0,.5,1]) if(fx!==.5 || fy!==.5) pts.push({x:x0+W*fx, y:y0+H*fy});
+        for(let r=0;r<it.rows;r++){ const y=y0+H*(r+.5)/it.rows; pts.push({x:x0,y},{x:x0+W,y}); }
+        for(let c=0;c<it.cols;c++){ const x=x0+W*(c+.5)/it.cols; pts.push({x,y:y0},{x,y:y0+H}); }
+        break;
+      }
+      case 'polygon': {
+        const n = it.points.length;
+        let cx=0, cy=0;
+        for(let i=0;i<n;i++){
+          const a = it.points[i], b = it.points[(i+1)%n];
+          pts.push({x:a.x,y:a.y}, {x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+          cx+=a.x; cy+=a.y;
+        }
+        if(n) pts.push({x:cx/n, y:cy/n});
+        break;
+      }
+      case 'path': {
+        const n = it.points.length;
+        if(n){ pts.push(it.points[0]); if(n>1) pts.push(it.points[n-1]); }
+        break;
+      }
+      case 'line': case 'arrow':
+        pts.push({x:it.x1,y:it.y1},{x:it.x2,y:it.y2});
+        break;
+    }
+    return pts.map(p=>toWorld(it,p.x,p.y));
+  }
+  // nearest anchor within SNAP_R of (x,y), or null; excludeIdx = the item being edited itself
+  function nearestSnap(x,y,excludeIdx){
+    let best=null, bestD=SNAP_R;
+    for(let i=0;i<items.length;i++){
+      if(i===excludeIdx) continue;
+      for(const p of snapAnchorsOf(items[i])){
+        const d = Math.hypot(p.x-x, p.y-y);
+        if(d<bestD){ bestD=d; best=p; }
+      }
+    }
+    return best;
+  }
+  // a lone, ungrouped line/arrow gets endpoint handles instead of corner handles
+  function loneLineIdx(sel){
+    if(!sel || sel.length!==1) return null;
+    const it = items[sel[0]];
+    return it && it.group==null && (it.type==='line' || it.type==='arrow') ? sel[0] : null;
+  }
+  function lineEnds(it){ return [toWorld(it,it.x1,it.y1), toWorld(it,it.x2,it.y2)]; }
+  // 45° constraint of (x,y) around a fixed point, keeping the cursor's distance
+  function constrainAngle(fx,fy,x,y){
+    const dx=x-fx, dy=y-fy, dist=Math.hypot(dx,dy);
+    const ang = Math.round(Math.atan2(dy,dx)/(Math.PI/4)) * (Math.PI/4);
+    return { x:norm(fx + Math.cos(ang)*dist), y:norm(fy + Math.sin(ang)*dist) };
+  }
+
   // axis-aligned box that fully contains the item as actually rendered (own rotation AND
   // groupRotation) — used wherever we compare against world-space rectangles (marquee, PNG export)
   function worldBBox(it){
@@ -888,6 +976,7 @@
     if(!first) return null;
     if(sel.length===1 && first.group==null){
       if(first.type==='text') return null;   // resizing text alone would just be a proxy for font size — not wanted
+      if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
       const b = bbox(first);
       return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
     }
@@ -989,6 +1078,13 @@
           ctx.restore();
         }
       }
+      // endpoint handles — round knobs on both ends of a lone line/arrow
+      const li = loneLineIdx(selection);
+      if(li!=null){
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+        for(const p of lineEnds(items[li])){ ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
+      }
       // rotation handle — a small knob above the item (or above the whole group's box)
       if(selection.length){
         const piv = rotationPivotFor(selection);
@@ -1013,6 +1109,15 @@
         ctx.fillRect(r.x, r.y, r.w, r.h);
         ctx.strokeRect(r.x, r.y, r.w, r.h);
       }
+      ctx.restore();
+    }
+
+    // snap indicator — ring around the anchor a line/arrow endpoint is magnetized to
+    if(snapPt){
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#6366f1';
+      ctx.beginPath(); ctx.arc(snapPt.x, snapPt.y, 7, 0, Math.PI*2); ctx.stroke();
       ctx.restore();
     }
 
@@ -1057,6 +1162,20 @@
             rotating = { cx:piv.cx, cy:piv.cy, startAngle:Math.atan2(y-piv.cy, x-piv.cx),
                          startRotation:piv.rotation, field: piv.isGroup?'groupRotation':'rotation',
                          members:piv.members, moved:false };
+            return;
+          }
+        }
+      }
+      // endpoint handles of a lone line/arrow — drag one end, the other stays put
+      const li = loneLineIdx(selection);
+      if(li!=null){
+        const it = items[li], ends = lineEnds(it);
+        for(let k=0;k<2;k++){
+          if(Math.hypot(x-ends[k].x, y-ends[k].y) <= HANDLE){
+            beginHistory();
+            // bake any rotation into the stored coordinates so the endpoint can be moved in world space
+            it.x1=norm(ends[0].x); it.y1=norm(ends[0].y); it.x2=norm(ends[1].x); it.y2=norm(ends[1].y); delete it.rotation;
+            endDrag = { idx:li, end:k+1, moved:false };
             return;
           }
         }
@@ -1144,7 +1263,9 @@
     if(ui.tool==='pen' || ui.tool==='marker' || ui.tool==='brush'){
       current = { type:'path', mode:ui.tool, color:ui.color, size:ui.size, points:[{x,y}] };
     } else if(ui.tool==='line' || ui.tool==='arrow'){
-      current = { type:ui.tool, color:ui.color, size:ui.size, x1:x,y1:y,x2:x,y2:y };
+      snapPt = e.altKey ? null : nearestSnap(x,y);          // the start point snaps too
+      const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
+      current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse'){
       current = { type:ui.tool, color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
     }
@@ -1154,8 +1275,20 @@
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!current && !drag && !resizing && !erasing && !marquee && !rotating) return;
+    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag) return;
     const {x,y} = p;
+
+    if(endDrag){
+      const it = items[endDrag.idx];
+      const fx = endDrag.end===1 ? it.x2 : it.x1, fy = endDrag.end===1 ? it.y2 : it.y1;   // the fixed end
+      let nx=x, ny=y;
+      if(e.shiftKey){ ({x:nx,y:ny} = constrainAngle(fx,fy,x,y)); snapPt = null; }
+      else { snapPt = e.altKey ? null : nearestSnap(x,y,endDrag.idx); if(snapPt){ nx=snapPt.x; ny=snapPt.y; } }
+      if(endDrag.end===1){ it.x1=norm(nx); it.y1=norm(ny); } else { it.x2=norm(nx); it.y2=norm(ny); }
+      endDrag.moved = true;
+      render();
+      return;
+    }
 
     if(erasing){
       cursorPt = p;
@@ -1240,14 +1373,12 @@
       if(Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
     } else if(current.type==='line' || current.type==='arrow'){
       if(e.shiftKey){
-        // constrain to 45° steps, keeping the cursor's distance from the start point
-        const dx=x-current.x1, dy=y-current.y1;
-        const dist = Math.hypot(dx,dy);
-        const ang = Math.round(Math.atan2(dy,dx)/(Math.PI/4)) * (Math.PI/4);
-        current.x2 = norm(current.x1 + Math.cos(ang)*dist);
-        current.y2 = norm(current.y1 + Math.sin(ang)*dist);
+        // constrain to 45° steps, keeping the cursor's distance from the start point (no snapping)
+        const c = constrainAngle(current.x1, current.y1, x, y);
+        current.x2 = c.x; current.y2 = c.y; snapPt = null;
       } else {
-        current.x2=x; current.y2=y;
+        snapPt = e.altKey ? null : nearestSnap(x,y);        // Alt = draw free, no magnet
+        current.x2 = snapPt ? snapPt.x : x; current.y2 = snapPt ? snapPt.y : y;
       }
     } else if(current.type==='rect' || current.type==='ellipse'){
       let w = x-current._x0, h = y-current._y0;
@@ -1284,6 +1415,12 @@
       resizing=null;
       return;
     }
+    if(endDrag){
+      if(endDrag.moved) commitHistory(); else historyBefore=null;
+      endDrag=null; snapPt=null;
+      render();
+      return;
+    }
     if(drag){
       if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
       if(drag.moved) commitHistory(); else historyBefore=null;
@@ -1314,6 +1451,7 @@
       delete current._x0; delete current._y0;
     }
 
+    snapPt = null;
     if(keep){ items.push(current); current=null; commitHistory(); }
     else { current=null; historyBefore=null; render(); }
   }
@@ -2012,7 +2150,7 @@
     if(textInput.style.display==='block') return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
-      if(current){ current=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
+      if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
