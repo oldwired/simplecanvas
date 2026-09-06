@@ -243,11 +243,19 @@
 
   <div class="sep"></div>
 
-  <!-- Tools -->
+  <!-- Actions, select & tools -->
   <div class="group" id="tools">
+    <button class="btn ghost" id="undo" title="Undo (⌘/Ctrl+Z)">
+      <svg viewBox="0 2.5 24 24" fill="none"><path d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="btn ghost" id="redo" title="Redo (⌘/Ctrl+Shift+Z)">
+      <svg viewBox="0 2.5 24 24" fill="none"><path d="m15 7 5 5-5 5M20 12H9a5 5 0 0 0 0 10h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="sep"></div>
     <button class="btn" data-tool="select" title="Select / move — drag a box to select several (V)">
       <svg viewBox="0 0 24 24" fill="none"><path d="m5 3 14 7-6 2-2 6L5 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
+    <div class="sep"></div>
     <button class="btn" data-tool="pen" title="Pen (P)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 18 15 7l3 3L7 21l-4 1 1-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m14 8 2 2" stroke="currentColor" stroke-width="1.8"/></svg>
     </button>
@@ -351,15 +359,7 @@
     </button>
   </div>
 
-  <!-- Actions -->
-  <div class="group push-right">
-    <button class="btn ghost" id="undo" title="Undo (⌘/Ctrl+Z)">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <button class="btn ghost" id="redo" title="Redo (⌘/Ctrl+Shift+Z)">
-      <svg viewBox="0 0 24 24" fill="none"><path d="m15 7 5 5-5 5M20 12H9a5 5 0 0 0 0 10h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-  </div>
+
 </header>
 
 <div class="stage">
@@ -1177,7 +1177,7 @@
   // ---------- toolbar wiring ----------
   function setTool(t){
     ui.tool = t;
-    document.querySelectorAll('#tools .btn').forEach(b=>{
+    document.querySelectorAll('[data-tool].btn').forEach(b=>{
       const on = b.dataset.tool===t;
       b.classList.toggle('active', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -1201,7 +1201,7 @@
     refreshColorUI();
     render();
   }
-  document.querySelectorAll('#tools .btn').forEach(b=>{
+  document.querySelectorAll('[data-tool].btn').forEach(b=>{
     b.addEventListener('click', ()=>setTool(b.dataset.tool));
   });
 
