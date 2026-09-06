@@ -54,6 +54,7 @@
 
   .group{display:flex;align-items:center;gap:4px}
   .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}   /* 4px gap + 2px margin = 6px on both sides, everywhere */
+  .sep.row-edge{display:none}   /* set by tidySeps(): a separator with nothing beside it on its row */
   #fillGroup{margin-left:6px}   /* no separator before it, so give it a little air after the size slider */
 
   .btn{
@@ -255,19 +256,23 @@
 
   <div class="sep"></div>
 
-  <!-- Actions, select & tools -->
-  <div class="group" id="tools">
+  <!-- Actions, select & tools — separate groups so a narrow toolbar wraps between them, never inside -->
+  <div class="group">
     <button class="btn ghost" id="undo" title="Undo (⌘/Ctrl+Z)">
       <svg viewBox="0 2.5 24 24" fill="none"><path d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="btn ghost" id="redo" title="Redo (⌘/Ctrl+Shift+Z)">
       <svg viewBox="0 2.5 24 24" fill="none"><path d="m15 7 5 5-5 5M20 12H9a5 5 0 0 0 0 10h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <div class="sep"></div>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
     <button class="btn" data-tool="select" title="Select / move — drag a box to select several (V)">
       <svg viewBox="0 -1.5 24 24" fill="none"><path d="m5 3 14 7-6 2-2 6L5 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
-    <div class="sep"></div>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
     <button class="btn" data-tool="pen" title="Pen (P)">
       <svg viewBox="0 2.5 24 24" fill="none"><path d="M4 18 15 7l3 3L7 21l-4 1 1-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m14 8 2 2" stroke="currentColor" stroke-width="1.8"/></svg>
     </button>
@@ -280,7 +285,9 @@
     <button class="btn" data-tool="eraser" title="Eraser (E)">
       <svg viewBox="0 2.5 24 24" fill="none"><path d="m4 14 6-6 7 7-4 4H8l-4-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 21h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
-    <div class="sep"></div>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
     <button class="btn" data-tool="line" title="Line (L)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 19 19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
@@ -2099,6 +2106,26 @@
 
   window.addEventListener('resize', resize);
   window.addEventListener('beforeunload', save);
+
+  // When the toolbar wraps, a separator can end up first or last on a row, divorcing nothing from
+  // nothing. Hide those. Walk in DOM order twice: hiding one can pull the next item up a row.
+  const toolbarEl = document.querySelector('.toolbar');
+  function tidySeps(){
+    const seps = toolbarEl.querySelectorAll('.sep');
+    const shown = el => el && el.offsetParent !== null;
+    const rowOf = el => { const r = el.getBoundingClientRect(); return Math.round((r.top + r.bottom)/2); };
+    for(let pass=0; pass<2; pass++){
+      seps.forEach(s=>{
+        s.classList.remove('row-edge');
+        if(s.style.display==='none') return;
+        let p = s.previousElementSibling; while(p && !shown(p)) p = p.previousElementSibling;
+        let n = s.nextElementSibling;     while(n && !shown(n)) n = n.nextElementSibling;
+        if(!p || !n || Math.abs(rowOf(p)-rowOf(n)) > 10) s.classList.add('row-edge');
+      });
+    }
+  }
+  window.addEventListener('resize', tidySeps);
+  new MutationObserver(tidySeps).observe(toolbarEl, {attributes:true, subtree:true, attributeFilter:['style']});
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) save(); });
 
   // ---------- boot ----------
@@ -2122,6 +2149,7 @@
   sizeVal.innerHTML = ui.size + '&nbsp;px';
   resize();
   updateButtons();
+  tidySeps();
 })();
 </script>
 </body>
