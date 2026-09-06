@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SimpleCanvas — quick sketches</title>
+<title>SimpleCanvas — Quick Sketches</title>
 <style>
   :root{
     --bg:#eef0f4;
@@ -36,24 +36,25 @@
     display:flex;
     flex-wrap:wrap;
     align-items:center;
-    gap:6px 14px;
-    padding:10px 14px;
+    gap:6px 4px;              /* horizontal gap matches .group so every separator sits 6px from its neighbours */
+    padding:10px 8px;
     background:var(--panel);
     border-bottom:1px solid var(--line);
     box-shadow:var(--shadow);
     z-index:10;
   }
   .brand{
-    display:flex;align-items:center;gap:8px;
+    display:flex;align-items:center;gap:6px;
     font-weight:700;font-size:15px;letter-spacing:-.01em;
-    padding-right:6px;
+    padding:0 2px;
   }
   .brand svg{display:block}
   .brand .dot{color:var(--accent)}
-  @media(max-width:760px){ .brand .brand-name{display:none} .brand{padding-right:0} }
+  @media(max-width:760px){ .brand .brand-name{display:none} .brand{padding:0} }
 
   .group{display:flex;align-items:center;gap:4px}
-  .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}   /* 4px gap + 2px margin = 6px on both sides, everywhere */
+  #fillGroup{margin-left:6px}   /* no separator before it, so give it a little air after the size slider */
 
   .btn{
     -webkit-appearance:none;appearance:none;
@@ -353,7 +354,7 @@
     </select>
   </div>
 
-  <!-- Fill on/off (rectangles & ellipses) -->
+  <!-- Fill on/off (rectangles, ellipses, polygons & tables) -->
   <div class="group" id="fillGroup">
     <label class="check"><input type="checkbox" id="fill"> Fill</label>
   </div>
