@@ -486,21 +486,112 @@
   let cursorPt = null;          // eraser cursor position (for the ring)
   let endDrag = null;           // {idx,end:1|2,moved} while dragging one endpoint of a lone line/arrow
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
+  let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
   const SNAP_R = 12;            // snap magnet radius (px)
 
   // ---------- helpers ----------
-  const snap = () => JSON.stringify(items);
   const clone = o => JSON.parse(JSON.stringify(o));
   const norm = n => Math.round(n*100)/100;
+  // Every item carries a stable uid, so selection can follow an object's identity (not its array slot)
+  // through undo/redo and reordering. Assigned lazily: whatever is missing one gets one at the next snapshot.
+  let uidSeq = 0;
+  const newUid = () => 'u' + Date.now().toString(36) + '-' + (uidSeq++).toString(36);
+  function ensureUids(list){
+    const seen = new Set();
+    for(const it of list){ if(typeof it.uid !== 'string' || seen.has(it.uid)) it.uid = newUid(); seen.add(it.uid); }
+    return list;
+  }
+  const snap = () => JSON.stringify(ensureUids(items));
+  const setSizeLabel = v => { sizeVal.textContent = v + '\u00a0px'; };
 
   function beginHistory(){ historyBefore = snap(); }
   function commitHistory(){
     if(historyBefore === null) return;
+    ensureUids(items);
     undoStack.push(historyBefore);
     if(undoStack.length > 80) undoStack.shift();
     redoStack = [];
     historyBefore = null;
     save(); updateButtons();
+  }
+
+  // ---------- scene validation ----------
+  // Everything that comes from outside the running app (a saved file, the autosave) goes through
+  // here before it may touch live state: unknown types and malformed geometry are dropped, colors
+  // and numbers are normalized, images must have a real data-URL asset, text fonts are rebuilt.
+  const ITEM_TYPES = ['path','line','arrow','rect','ellipse','polygon','text','table','image'];
+  const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000;
+  const isNum = v => typeof v === 'number' && Number.isFinite(v);
+  const isColor = v => typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v);
+  function normalizeItem(raw, assetsIn){
+    if(!raw || typeof raw !== 'object' || ITEM_TYPES.indexOf(raw.type) < 0) return null;
+    const it = { type: raw.type };
+    const num = (k, d) => { const v = raw[k]; if(isNum(v)) return norm(v); if(d === undefined) throw new Error(k); return d; };
+    const pts = min => {
+      if(!Array.isArray(raw.points) || raw.points.length < min || raw.points.length > MAX_POINTS) throw new Error('points');
+      return raw.points.map(q => { if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point'); return {x:norm(q.x), y:norm(q.y)}; });
+    };
+    try{
+      switch(it.type){
+        case 'path': it.mode = ['pen','marker','brush'].indexOf(raw.mode) >= 0 ? raw.mode : 'pen'; it.points = pts(1); break;
+        case 'polygon': it.points = pts(3); break;
+        case 'line': case 'arrow':
+          it.x1 = num('x1'); it.y1 = num('y1'); it.x2 = num('x2'); it.y2 = num('y2');
+          if(raw.hs) it.hs = true;
+          if(raw.he === false) it.he = false;
+          break;
+        case 'rect': case 'ellipse': case 'image': case 'table':
+          it.x = num('x'); it.y = num('y'); it.w = num('w'); it.h = num('h'); break;
+        case 'text':
+          it.x = num('x'); it.y = num('y'); break;
+      }
+      if(it.type === 'table'){
+        it.rows = Math.min(100, Math.max(1, Math.round(num('rows', 3))));
+        it.cols = Math.min(100, Math.max(1, Math.round(num('cols', 3))));
+      }
+      if(it.type === 'image'){
+        const src = typeof raw.id === 'string' ? assetsIn[raw.id] : null;
+        if(typeof src !== 'string' || !/^data:image\/[a-z0-9.+-]+;base64,/i.test(src)) return null;
+        it.id = raw.id;
+      } else {
+        it.color = isColor(raw.color) ? raw.color : ui.color;
+        if(it.type !== 'text') it.size = Math.min(60, Math.max(1, num('size', ui.size)));
+      }
+      if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
+      if(it.type === 'text'){
+        it.text = String(raw.text == null ? '' : raw.text).slice(0, MAX_TEXT);
+        if(!it.text.trim()) return null;
+        const fstr = typeof raw.font === 'string' ? raw.font : '';
+        const m = /(\d+)px/.exec(fstr);   // the font string is what was actually rendered, so it wins over fontSize
+        const px = m ? +m[1] : (isNum(raw.fontSize) ? raw.fontSize : 24);
+        it.fontSize = Math.min(400, Math.max(6, Math.round(px)));
+        it.fontFamily = (typeof raw.fontFamily === 'string' && FONTS[raw.fontFamily]) ? raw.fontFamily : familyOf({font:fstr});
+        it.font = fontStr(it.fontFamily, it.fontSize);
+      }
+      if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
+      if(typeof raw.group === 'string' && raw.group.length <= 64){
+        it.group = raw.group;
+        it.groupRotation = isNum(raw.groupRotation) ? raw.groupRotation : 0;
+      }
+      if(typeof raw.uid === 'string' && raw.uid.length <= 64) it.uid = raw.uid;
+    }catch(e){ return null; }
+    return it;
+  }
+  // -> {items, assets, dropped}: the validated scene, only the assets it references, and how many
+  // objects were unreadable. Never touches live state.
+  function normalizeScene(rawItems, rawAssets){
+    const assetsIn = (rawAssets && typeof rawAssets === 'object') ? rawAssets : {};
+    const out = [];
+    let dropped = 0;
+    for(const raw of (Array.isArray(rawItems) ? rawItems : [])){
+      if(raw && raw.mode === 'eraser') continue;          // legacy white-stroke "erasers"
+      const it = out.length < MAX_ITEMS ? normalizeItem(raw, assetsIn) : null;
+      if(it) out.push(it); else dropped++;
+    }
+    ensureUids(out);
+    const used = {};
+    for(const it of out){ if(it.type === 'image') used[it.id] = assetsIn[it.id]; }
+    return { items: out, assets: used, dropped };
   }
 
   function referencedAssets(){
@@ -520,12 +611,9 @@
       const raw = localStorage.getItem(STORE_KEY);
       if(!raw) return;
       const d = JSON.parse(raw);
-      if(Array.isArray(d)){ items = d; }                 // legacy format (items only)
-      else if(d && Array.isArray(d.items)){
-        items = d.items;
-        if(d.assets) Object.assign(assets, d.assets);
-      }
-      items = items.filter(it => it && it.mode !== 'eraser');  // drop legacy white-stroke "erasers"
+      const scene = normalizeScene(Array.isArray(d) ? d : (d && d.items), d && d.assets);   // legacy format = items only
+      items = scene.items;
+      Object.assign(assets, scene.assets);
     }catch(e){ console.warn('Could not load sketch:', e); }
   }
 
@@ -714,17 +802,21 @@
         return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
       }
       case 'line':case 'arrow':{
-        const pad=(it.size||2)/2+4;
+        const sz = it.size||2, h = headsOf(it);
+        let pad = sz/2+4;
+        // an arrowhead's barbs stick out sideways from the tip by len*sin(a), plus half the stroke
+        if(h.s||h.e) pad = Math.max(pad, Math.max(10, sz*2.6)*Math.sin(Math.PI/7) + sz/2 + 2);
         const x=Math.min(it.x1,it.x2), y=Math.min(it.y1,it.y2);
         return {x:x-pad,y:y-pad,w:Math.abs(it.x2-it.x1)+pad*2,h:Math.abs(it.y2-it.y1)+pad*2};
       }
       case 'rect':case 'ellipse':case 'table':{
         const x=Math.min(it.x,it.x+it.w), y=Math.min(it.y,it.y+it.h);
-        return {x:x-2,y:y-2,w:Math.abs(it.w)+4,h:Math.abs(it.h)+4};
+        const pad=(it.size||2)/2+2;   // the stroke straddles the edge
+        return {x:x-pad,y:y-pad,w:Math.abs(it.w)+pad*2,h:Math.abs(it.h)+pad*2};
       }
       case 'text':{
         ctx.save(); ctx.font=it.font; const m=ctx.measureText(it.text); ctx.restore();
-        const h = it.fontSize || 24;
+        const h = it.fontSize || fontPxOf(it);
         return {x:it.x-2,y:it.y-2,w:m.width+4,h:h+6};
       }
       case 'image':
@@ -947,7 +1039,7 @@
       case 'rect': case 'ellipse': case 'image': case 'table': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
       case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
-      case 'text': return {x:it.x, y:it.y, font:it.font};
+      case 'text': return {x:it.x, y:it.y, fontSize:fontPxOf(it), fontFamily:familyOf(it)};
       default: return {};
     }
   }
@@ -975,8 +1067,10 @@
         const p = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
         it.x=p.x; it.y=p.y;
         const avg = (Math.abs(sx)+Math.abs(sy))/2;
-        const m = snap.font.match(/(\d+)px/);
-        if(m) it.font = snap.font.replace(/\d+px/, Math.max(8, Math.round(parseInt(m[1],10)*avg))+'px');
+        // fontSize is the one source of truth; the font string is rebuilt from it
+        it.fontSize = Math.max(8, Math.round(snap.fontSize*avg));
+        it.fontFamily = snap.fontFamily;
+        it.font = fontStr(it.fontFamily, it.fontSize);
         break;
       }
     }
@@ -1012,24 +1106,63 @@
   function eraserR(){ return Math.max(6, ui.size); }
   // Cut a freehand stroke wherever it passes under the eraser ring; returns the
   // surviving sub-strokes (0 or more), or null if the ring didn't touch this stroke.
+  // Where the segment p->q crosses the circle (c, r): parametric t values in (0,1), each tagged with
+  // whether the segment is entering the circle there or leaving it.
+  function segCircleCuts(p, q, cx, cy, r){
+    const dx=q.x-p.x, dy=q.y-p.y, fx=p.x-cx, fy=p.y-cy;
+    const a = dx*dx+dy*dy; if(!a) return [];
+    const b = 2*(fx*dx+fy*dy), c = fx*fx+fy*fy-r*r;
+    let disc = b*b-4*a*c; if(disc<=0) return [];
+    disc = Math.sqrt(disc);
+    return [{t:(-b-disc)/(2*a), enter:true}, {t:(-b+disc)/(2*a), enter:false}].filter(o=>o.t>0 && o.t<1);
+  }
   function splitPath(it, x, y, r){
     const t = r + strokeWidthOf(it)/2;   // hit the painted ink, not just the centerline
     const lp = toLocal(it, x, y);        // rotated strokes are stored in local coords
+    const pts = it.points;
+    const inside = p => Math.hypot(p.x-lp.x, p.y-lp.y) <= t;
     const runs=[]; let cur=[]; let changed=false;
-    for(const pt of it.points){
-      if(Math.hypot(pt.x-lp.x, pt.y-lp.y) <= t){ changed=true; if(cur.length){ runs.push(cur); cur=[]; } }
-      else cur.push(pt);
+    const cut = ()=>{ if(cur.length) runs.push(cur); cur=[]; changed=true; };
+    for(let i=0;i<pts.length;i++){
+      const p = pts[i];
+      if(inside(p)) cut(); else cur.push({x:p.x, y:p.y});
+      if(i===pts.length-1) break;
+      // the painted segment to the next vertex can dip through the ring even when neither vertex does
+      const q = pts[i+1];
+      for(const c of segCircleCuts(p, q, lp.x, lp.y, t)){
+        const ip = { x:norm(p.x+(q.x-p.x)*c.t), y:norm(p.y+(q.y-p.y)*c.t) };
+        if(c.enter){ cur.push(ip); cut(); }
+        else { if(cur.length) runs.push(cur); cur=[ip]; }
+      }
     }
     if(cur.length) runs.push(cur);
     if(!changed) return null;
-    return runs.filter(pts=>pts.length>0).map(pts => Object.assign({}, it, {points:pts}));
+    const b = bbox(it), cx=b.x+b.w/2, cy=b.y+b.h/2;
+    return runs.filter(run=>run.length>1 || pts.length===1).map(run=>{
+      const frag = Object.assign({}, it, {points:run, uid:newUid()});
+      if(it.rotation){
+        // own rotation pivots on the bbox center, and the fragment's center is elsewhere: shift it so
+        // the rotated (world) ink lands exactly where the original ink was
+        const fb = bbox(frag), fx=fb.x+fb.w/2, fy=fb.y+fb.h/2;
+        const rc = rotatePoint(fx, fy, cx, cy, it.rotation);
+        translateItem(frag, rc.x-fx, rc.y-fy);
+      }
+      return frag;
+    });
   }
   function eraseAt(x,y){
     const r = eraserR();
     let removed = false;
     for(let i=items.length-1;i>=0;i--){
-      if(items[i].type !== 'path') continue;            // eraser only affects freehand strokes
-      const res = splitPath(items[i], x, y, r);
+      const it = items[i];
+      if(it.type !== 'path') continue;            // eraser only affects freehand strokes
+      let res = splitPath(it, x, y, r);
+      if(res && it.group!=null && it.groupRotation){
+        // splitting changes the group's bounding box and so its rotation pivot, which would swing every
+        // member: fold the group rotation into the members first, then split in the new local frame
+        bakeGroupRotation(it.group);
+        res = splitPath(it, x, y, r);
+      }
       if(res){ items.splice(i, 1, ...res); removed = true; }
     }
     return removed;
@@ -1574,7 +1707,7 @@
   function handlePolygonClick(x,y){
     if(!polyDraft){
       beginHistory();
-      polyDraft = { color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
+      polyDraft = { type:'polygon', color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
       current = polyDraft;
       render(); updatePolyOverlay();
       return;
@@ -1647,28 +1780,46 @@
   }
 
   // ---------- undo / redo / clear ----------
+  // Drop whatever interaction is mid-flight (a stroke being drawn, a polygon being clicked out, a
+  // drag/resize/rotate...) together with its pending history transaction, so that swapping the
+  // document out from under it can never commit a stale snapshot.
+  function cancelGesture(){
+    current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
+    endDrag=null; snapPt=null; nudging=false;
+    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+    historyBefore=null;
+    updatePolyOverlay();
+  }
   // undo/redo keep the selection (so a recolor can be undone and redone while the item stays
-  // selected); only indices that no longer exist are dropped, and groups are re-completed
-  function keepSelection(){
-    selection = expandSelection(selection.filter(i=>i<items.length));
+  // selected) — by object identity, so a reorder that shuffles array slots still selects the same things
+  function selectedUids(){ return selection.map(i=>items[i] && items[i].uid).filter(Boolean); }
+  function selectByUids(uids){
+    const want = new Set(uids), sel = [];
+    items.forEach((it,i)=>{ if(want.has(it.uid)) sel.push(i); });
+    selection = expandSelection(sel);
   }
   function undo(){
     if(!undoStack.length) return;
+    cancelGesture();
+    const keep = selectedUids();
     redoStack.push(snap());
     items = JSON.parse(undoStack.pop());
-    keepSelection(); current=null;
+    selectByUids(keep);
     save(); render(); updateButtons();
   }
   function redo(){
     if(!redoStack.length) return;
+    cancelGesture();
+    const keep = selectedUids();
     undoStack.push(snap());
     items = JSON.parse(redoStack.pop());
-    keepSelection(); current=null;
+    selectByUids(keep);
     save(); render(); updateButtons();
   }
   function clearAll(){
     if(!items.length) return;
     if(!confirm('Erase everything on the canvas?')) return;
+    cancelGesture();
     beginHistory();
     items = []; selection=[]; current=null;
     commitHistory(); render();
@@ -1703,6 +1854,7 @@
     const newSel = [];
     for(const it of list){
       const copy = clone(it);
+      copy.uid = newUid();
       translateItem(copy, off, off);
       if(copy.group!=null){
         if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
@@ -1715,10 +1867,36 @@
     selection = newSel;
     commitHistory(); render();
   }
+  // Fold a group's shared groupRotation into each member's own geometry (a shift plus own rotation),
+  // leaving every member looking exactly as before with groupRotation back at 0. Needed before
+  // anything that changes the group's pivot or membership: ungrouping, regrouping, erasing a member.
+  function bakeGroupRotation(g){
+    const idxs = itemsInGroup(g);
+    if(!idxs.some(i=>items[i].groupRotation)) return;
+    const piv = groupPivot(g);   // snapshot BEFORE touching any member — baking one would shift the pivot for the rest
+    for(const i of idxs){
+      const it = items[i];
+      const rot = it.groupRotation || 0;
+      if(rot){
+        const b = worldBBoxOwn(it);
+        const ownCx = b.x+b.w/2, ownCy = b.y+b.h/2;
+        const target = rotatePoint(ownCx, ownCy, piv.cx, piv.cy, rot);
+        translateItem(it, target.x-ownCx, target.y-ownCy);
+        it.rotation = (it.rotation||0) + rot;
+      }
+      it.groupRotation = 0;
+    }
+  }
+  function groupsIn(sel){
+    const gs = new Set();
+    for(const i of sel){ if(items[i].group!=null) gs.add(items[i].group); }
+    return gs;
+  }
   function groupSelection(){
     if(ui.tool!=='select' || selection.length<2) return;
     beginHistory();
     const sel = expandSelection(selection);
+    for(const og of groupsIn(sel)) bakeGroupRotation(og);   // a rotated group being merged keeps its look
     const g = 'g-' + Date.now() + '-' + (groupSeq++);
     for(const i of sel){ items[i].group = g; items[i].groupRotation = 0; }
     selection = sel;
@@ -1730,26 +1908,8 @@
     const sel = expandSelection(selection);
     if(!sel.some(i=>items[i].group!=null)) return;
     beginHistory();
-    // snapshot every distinct group's pivot BEFORE touching any member — baking one member
-    // would otherwise shift the pivot for the rest of that same group
-    const pivots = {};
-    for(const i of sel){
-      const g = items[i].group;
-      if(g!=null && !(g in pivots)) pivots[g] = groupPivot(g);
-    }
-    for(const i of sel){
-      const it = items[i];
-      if(it.group!=null && it.groupRotation){
-        const piv = pivots[it.group];
-        const b = worldBBoxOwn(it);
-        const ownCx = b.x+b.w/2, ownCy = b.y+b.h/2;
-        const target = rotatePoint(ownCx, ownCy, piv.cx, piv.cy, it.groupRotation);
-        translateItem(it, target.x-ownCx, target.y-ownCy);
-        it.rotation = (it.rotation||0) + it.groupRotation;
-      }
-      delete it.group;
-      delete it.groupRotation;
-    }
+    for(const g of groupsIn(sel)) bakeGroupRotation(g);
+    for(const i of sel){ delete items[i].group; delete items[i].groupRotation; }
     selection = sel;
     commitHistory(); render();
     toast('Ungrouped');
@@ -1796,7 +1956,7 @@
       if(sel.length){
         if(!fillable.length) ui.colorTarget = 'stroke';
         else fillInput.checked = !!fillable[0].fill;   // checkbox mirrors the selection while selecting
-        if(sized.length){ sizeInput.value = sized[0].size; sizeVal.innerHTML = sized[0].size + '&nbsp;px'; }   // so does the slider
+        if(sized.length){ sizeInput.value = sized[0].size; setSizeLabel(sized[0].size); }   // so does the slider
         if(texts.length){ fontFamilySel.value = familyOf(texts[0]); setFontSizeSel(fontPxOf(texts[0])); }   // and the font controls
         refreshColorUI();
       }
@@ -1864,20 +2024,20 @@
         const cap = it.mode==='marker' ? 'square' : 'round';
         if(it.points.length===1){
           const p = it.points[0];
-          inner = `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(0.5,w/2)}" fill="${it.color}" opacity="${opacity}"/>`;
+          inner = `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(0.5,w/2)}" fill="${escXml(it.color)}" opacity="${opacity}"/>`;
         } else {
-          inner = `<path d="${smoothPathD(it.points)}" fill="none" stroke="${it.color}" stroke-width="${w}" stroke-linecap="${cap}" stroke-linejoin="round" opacity="${opacity}"/>`;
+          inner = `<path d="${smoothPathD(it.points)}" fill="none" stroke="${escXml(it.color)}" stroke-width="${w}" stroke-linecap="${cap}" stroke-linejoin="round" opacity="${opacity}"/>`;
         }
         break;
       }
       case 'line': case 'arrow': {
-        inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round"/>`;
+        inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round"/>`;
         const head = (fx,fy,tx,ty)=>{   // head at (tx,ty), pointing away from (fx,fy)
           const ang = Math.atan2(ty-fy, tx-fx);
           const len = Math.max(10, it.size*2.6), a = Math.PI/7;
           const hx1 = tx-len*Math.cos(ang-a), hy1 = ty-len*Math.sin(ang-a);
           const hx2 = tx-len*Math.cos(ang+a), hy2 = ty-len*Math.sin(ang+a);
-          return `<path d="M${hx1},${hy1} L${tx},${ty} L${hx2},${hy2}" fill="none" stroke="${it.color}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
+          return `<path d="M${hx1},${hy1} L${tx},${ty} L${hx2},${hy2}" fill="none" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
         };
         const h = headsOf(it);
         if(h.e) inner += head(it.x1,it.y1,it.x2,it.y2);
@@ -1886,30 +2046,30 @@
       }
       case 'rect': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
         break;
       }
       case 'ellipse': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
         const cx=it.x+it.w/2, cy=it.y+it.h/2;
-        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}"/>`;
+        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`;
         break;
       }
       case 'polygon': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
         const pts = it.points.map(p=>p.x+','+p.y).join(' ');
-        inner = `<polygon points="${pts}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        inner = `<polygon points="${pts}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
         break;
       }
       case 'text':
-        inner = `<text x="${it.x}" y="${it.y}" fill="${it.color}" style="font:${escXml(it.font)}" dominant-baseline="text-before-edge">${escXml(it.text)}</text>`;
+        inner = `<text x="${it.x}" y="${it.y}" fill="${escXml(it.color)}" style="font:${escXml(it.font)}" dominant-baseline="text-before-edge">${escXml(it.text)}</text>`;
         break;
       case 'table': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
         let lines = '';
-        for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${it.color}" stroke-width="${it.size}"/>`; }
-        for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${it.color}" stroke-width="${it.size}"/>`; }
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${fill}" stroke="${it.color}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
+        for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
+        for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
         break;
       }
     }
@@ -1982,14 +2142,17 @@
       }
       if(typeof data.version === 'number' && data.version > FORMAT_VERSION &&
          !confirm('This file was saved by a newer version ('+data.version+'). Open it anyway?')) return;
+      const scene = normalizeScene(data.items, data.assets);   // validated before live state is touched
+      if(!scene.items.length && data.items.length){ toast('No readable objects in that file'); return; }
       if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
+      cancelGesture();
       beginHistory();
-      items = data.items.filter(it => it && it.mode !== 'eraser');
-      if(data.assets) Object.assign(assets, data.assets);
+      items = scene.items;
+      Object.assign(assets, scene.assets);
       selection = [];
       commitHistory();
       render();
-      toast('Sketch loaded');
+      toast(scene.dropped ? 'Sketch loaded (' + scene.dropped + ' unreadable object' + (scene.dropped===1?'':'s') + ' skipped)' : 'Sketch loaded');
     };
     r.onerror = ()=>toast('Could not read that file');
     r.readAsText(file);
@@ -2022,7 +2185,7 @@
     fillGroup.style.display = canFill ? '' : 'none';
     if(!canFill) ui.colorTarget = 'stroke';          // no fill → palette edits the stroke
     fillInput.checked = ui.fill;                     // back to the drawing defaults (select mode mirrors the selection instead)
-    sizeInput.value = ui.size; sizeVal.innerHTML = ui.size + '&nbsp;px';
+    sizeInput.value = ui.size; setSizeLabel(ui.size);
     fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
@@ -2134,7 +2297,7 @@
 
   sizeInput.addEventListener('input', e=>{
     const v = +e.target.value;
-    sizeVal.innerHTML = v + '&nbsp;px';
+    setSizeLabel(v);
     const sel = colorableSelection().filter(it=>it.type!=='text');
     if(sel.length){
       // live-resize the selection's stroke; one undo step for the whole slider drag (committed on 'change')
@@ -2261,8 +2424,10 @@
 
   // ---------- keyboard ----------
   const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',g:'polygon',t:'text',y:'table'};
+  // shortcuts belong to the canvas: a focused slider/select/text field keeps its own keys
+  const isEditableTarget = el => !!el && (el.tagName==='INPUT' || el.tagName==='SELECT' || el.tagName==='TEXTAREA' || el.isContentEditable);
   window.addEventListener('keydown', e=>{
-    if(textInput.style.display==='block') return;
+    if(textInput.style.display==='block' || isEditableTarget(e.target)) return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
@@ -2291,7 +2456,7 @@
       const step = e.shiftKey ? 10 : 1;
       const dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
       const dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
-      if(!e.repeat) beginHistory();
+      if(!nudging){ beginHistory(); nudging = true; }
       for(const i of selection) translateItem(items[i], dx, dy);
       render();
       return;
@@ -2305,7 +2470,7 @@
         const delta = (Math.PI/12) * (e.key==='.' ? 1 : -1);
         const field = piv.isGroup ? 'groupRotation' : 'rotation';
         for(const idx of piv.members) items[idx][field] = (items[idx][field]||0) + delta;
-        commitHistory();
+        commitHistory(); render();
         return;
       }
     }
@@ -2314,7 +2479,8 @@
     else if(t){ setTool(t); }
   });
   window.addEventListener('keyup', e=>{
-    if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown') commitHistory();
+    if(!nudging) return;   // only close the step a nudge opened — never someone else's pending transaction
+    if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown'){ nudging = false; commitHistory(); }
   });
 
   canvas.addEventListener('dblclick', e=>{
@@ -2399,7 +2565,7 @@
   load();
   setTool('pen');
   refreshColorUI();
-  sizeVal.innerHTML = ui.size + '&nbsp;px';
+  setSizeLabel(ui.size);
   resize();
   updateButtons();
   tidySeps();
