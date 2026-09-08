@@ -550,7 +550,12 @@
   // ---------- state ----------
   let items = [];               // committed scene objects
   let current = null;           // in-progress preview object
-  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3 };
+  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3,
+             // a text box keeps its own border/fill/width, so plain text stays plain while shapes keep their outline
+             text: { color:'#1f2937', size:2, strokeOn:false, fill:false, fillColor:'#ffd166' } };
+  // the drawing defaults (color, size, strokeOn, fill, fillColor) that a tool or an item type uses
+  const styleFor = t => t==='text' ? ui.text : ui;
+  const drawStyle = () => styleFor(ui.tool);
   let dpr = 1, cssW = 0, cssH = 0;
 
   let undoStack = [], redoStack = [];
@@ -1604,7 +1609,8 @@
       const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
       current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
-      current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
+      const st = drawStyle();
+      current = { type:ui.tool, color:st.color, size:st.size, strokeOn:st.strokeOn, fill:st.fill, fillColor:st.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
       if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; }   // border/fill come from the toolbar, like a rect
     }
     render();
@@ -2528,7 +2534,7 @@
     sizeGroup.style.display = usesSize ? '' : 'none';
     sizeSep.style.display = usesSize ? '' : 'none';
     fillGroup.style.display = canFill ? '' : 'none';
-    setSizeVal(ui.size);                             // back to the drawing defaults (select mode mirrors the selection instead)
+    setSizeVal(drawStyle().size);                    // back to the drawing defaults (select mode mirrors the selection instead)
     fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
@@ -2651,11 +2657,12 @@
 
   function refreshColorUI(){
     // with a selection, the buttons show the (first) selected item's colors rather than the drawing defaults
-    const src = colorableSelection()[0] || ui;
-    const strokeIsOn = 'strokeOn' in src ? strokeOn(src) : (ui.strokeOn !== false);
-    const strokeC = strokeIsOn ? (src.color || ui.color) : 'none';
-    const fillOn = 'fill' in src ? src.fill : ui.fill;
-    const fillC = fillOn ? (src.fillColor || ui.fillColor) : 'none';
+    const def = drawStyle();
+    const src = colorableSelection()[0] || def;
+    const strokeIsOn = 'strokeOn' in src ? strokeOn(src) : (def.strokeOn !== false);
+    const strokeC = strokeIsOn ? (src.color || def.color) : 'none';
+    const fillOn = 'fill' in src ? src.fill : def.fill;
+    const fillC = fillOn ? (src.fillColor || def.fillColor) : 'none';
     if(strokeIsOn){ strokeColorBar.setAttribute('fill', strokeC); strokeColorBar.removeAttribute('stroke'); strokeColorBar.removeAttribute('stroke-width'); }
     else { strokeColorBar.setAttribute('fill', 'none'); strokeColorBar.setAttribute('stroke', '#9ca3af'); strokeColorBar.setAttribute('stroke-width', '15'); }
     strokePicker.querySelectorAll('.cswatch[data-c], .cswatch.none').forEach(s=>{
@@ -2684,11 +2691,11 @@
       beginHistory();
       for(const it of sel){ if(FILLABLE(it.type)) it.strokeOn = on; if(on) it.color = c; }
       commitHistory();
-      ui.strokeOn = on; if(on) ui.color = c;
+      const st = styleFor(sel[0].type); st.strokeOn = on; if(on) st.color = c;   // the defaults follow the last edit
       render();
       return;
     }
-    ui.strokeOn = on; if(on) ui.color = c;
+    const st = drawStyle(); st.strokeOn = on; if(on) st.color = c;
     refreshColorUI();
   }
   function applyFillColor(v){
@@ -2698,11 +2705,11 @@
       beginHistory();
       for(const it of sel){ it.fill = on; if(on) it.fillColor = v; }
       commitHistory();
-      ui.fill = on; if(on) ui.fillColor = v;
+      const st = styleFor(sel[0].type); st.fill = on; if(on) st.fillColor = v;
       render();
       return;
     }
-    ui.fill = on; if(on) ui.fillColor = v;
+    const st = drawStyle(); st.fill = on; if(on) st.fillColor = v;
     refreshColorUI();
   }
   function applyTextColor(c){
@@ -2744,7 +2751,7 @@
       render();
       return;
     }
-    ui.size = v;
+    drawStyle().size = v;
   });
   sizeRange.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
   // show a size in the dropdown even when it isn't one of the presets (e.g. after a corner-resize)
