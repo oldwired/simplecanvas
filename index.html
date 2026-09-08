@@ -1605,7 +1605,7 @@
       current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
       current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
-      if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; current.fill = false; current.strokeOn = false; }
+      if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; }   // border/fill come from the toolbar, like a rect
     }
     render();
   }
@@ -2516,11 +2516,9 @@
     if(t!=='table') setTablePicker(false);
     const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
-    // a new text always starts without fill or border (those are set on the finished box in select
-    // mode), so the text tool shows only the text controls
-    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table');   // fill only makes sense for these
-    const usesColor = !isSelect && t!=='eraser' && t!=='text';     // hide the buttons where they have no effect
-    const usesSize = !isSelect && t!=='text';
+    const canFill = FILLABLE(t);                     // fill only makes sense for these (a text box is a rect with words in it)
+    const usesColor = !isSelect && t!=='eraser';     // hide the buttons where they have no effect
+    const usesSize = !isSelect;
     strokeNoneSwatch.style.display = canFill ? '' : 'none';        // pen/line strokes can't be switched off
     colorGroup.style.display = usesColor ? '' : 'none';
     colorSep.style.display = usesColor ? '' : 'none';
