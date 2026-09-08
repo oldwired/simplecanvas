@@ -2533,8 +2533,16 @@
     tablePickerLabel.textContent = c + ' × ' + r;
   }
   tableGrid.addEventListener('mouseleave', ()=>highlightTablePicker(ui.tableRows, ui.tableCols));
+  // Popovers hang off their button's left edge; near the right edge of a narrow screen that puts
+  // their last column off-screen, so flip them to hang off the right edge instead.
+  function fitMenu(el){
+    el.style.left = ''; el.style.right = '';
+    const r = el.getBoundingClientRect();
+    if(r.right > window.innerWidth - 4){ el.style.left = 'auto'; el.style.right = '0'; }
+  }
   function setTablePicker(open){
     tablePicker.hidden = !open;
+    if(open) fitMenu(tablePicker);
     tableBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open) highlightTablePicker(ui.tableRows, ui.tableCols);
   }
@@ -2643,18 +2651,21 @@
 
   function setStrokePicker(open){
     strokePicker.hidden = !open;
+    if(open) fitMenu(strokePicker);
     if(!open) strokePicker._panel.el.hidden = true;
     strokeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setFillPicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
   }
   function setFillPicker(open){
     fillPicker.hidden = !open;
+    if(open) fitMenu(fillPicker);
     if(!open) fillPicker._panel.el.hidden = true;
     fillBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
   }
   function setTextColorPicker(open){
     textColorPicker.hidden = !open;
+    if(open) fitMenu(textColorPicker);
     if(!open) textColorPicker._panel.el.hidden = true;
     textColorBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setFillPicker(false); setSizePicker(false); setTablePicker(false); }
@@ -2742,6 +2753,7 @@
 
   function setSizePicker(open){
     sizePicker.hidden = !open;
+    if(open) fitMenu(sizePicker);
     sizeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setFillPicker(false); setTablePicker(false); }
   }
