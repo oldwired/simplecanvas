@@ -126,7 +126,30 @@
     position:relative;overflow:hidden;display:block;
     background:conic-gradient(#ef4444,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ef4444);
   }
-  .color-picker .cswatch.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+  /* custom color panel: shade square + hue strip + hex field, drawn by us — the browser's own
+     color input does not open reliably on iOS Safari */
+  .cpanel{width:100%;display:flex;flex-direction:column;gap:6px;padding-top:8px;margin-top:2px;border-top:1px solid var(--line)}
+  .cpanel[hidden]{display:none}
+  .cpanel-sv{
+    position:relative;height:96px;border-radius:6px;touch-action:none;cursor:crosshair;
+    background-image:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent);
+  }
+  .cpanel-dot{
+    position:absolute;width:12px;height:12px;border:2px solid #fff;border-radius:50%;
+    box-shadow:0 0 0 1px rgba(0,0,0,.45);transform:translate(-50%,-50%);pointer-events:none;
+  }
+  .cpanel-hue{
+    position:relative;height:14px;border-radius:7px;touch-action:none;cursor:pointer;
+    background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);
+  }
+  .cpanel-mark{
+    position:absolute;top:-2px;width:6px;height:18px;border:2px solid #fff;border-radius:3px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.45);transform:translateX(-50%);pointer-events:none;
+  }
+  .cpanel-hex{
+    width:100%;box-sizing:border-box;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;
+    padding:4px 6px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:#fff;
+  }
 
   /* stroke-width popover: a real vertical slider (rotated horizontal input), continuous 1–60px —
      doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
@@ -2538,26 +2561,78 @@
       b.addEventListener('click', ()=>onPick(c));
       container.appendChild(b);
     }
-    // any other color, through the browser's own picker. It stays open after a pick: the OS color
-    // panel keeps firing while the user tweaks, and hiding the input underneath it would close it.
-    const custom = document.createElement('label');
-    custom.className = 'cswatch custom'; custom.title = 'Custom color…';
-    const inp = document.createElement('input');
-    inp.type = 'color';
-    inp.addEventListener('input', ()=>onPick(inp.value, true));
-    custom.appendChild(inp);
+    // any other color: the rainbow tile folds out a panel below the swatches. Dragging in it applies
+    // live (keep the popover open); lifting the pointer commits the one undo step.
+    const custom = document.createElement('button');
+    custom.type = 'button'; custom.className = 'cswatch custom'; custom.title = 'Custom color…';
     container.appendChild(custom);
+    const panel = buildColorPanel(container, (c, live)=>onPick(c, true, live));
+    custom.addEventListener('click', ()=>{ panel.el.hidden = !panel.el.hidden; });
+    container._panel = panel;
   }
-  buildSwatchPopover(strokePicker, true, 'No stroke', 'strokeNoneSwatch', (c,keep)=>{ applyStrokeColor(c); if(!keep) setStrokePicker(false); });
-  buildSwatchPopover(fillPicker, true, 'No fill', 'fillNoneSwatch', (v,keep)=>{ applyFillColor(v); if(!keep) setFillPicker(false); });
-  buildSwatchPopover(textColorPicker, false, null, null, (c,keep)=>{ applyTextColor(c); if(!keep) setTextColorPicker(false); });
+  // ---------- custom color panel ----------
+  function hsvToHex(h, s, v){
+    const f = n => { const k = (n + h/60) % 6; return Math.round(255 * (v - v*s*Math.max(0, Math.min(k, 4-k, 1)))).toString(16).padStart(2, '0'); };
+    return '#' + f(5) + f(3) + f(1);
+  }
+  function hexToHsv(c){
+    let m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || '').trim());
+    if(!m) return null;
+    const hex = m[1].length === 3 ? m[1].replace(/./g, ch=>ch+ch) : m[1];
+    const r = parseInt(hex.slice(0,2),16)/255, g = parseInt(hex.slice(2,4),16)/255, b = parseInt(hex.slice(4,6),16)/255;
+    const max = Math.max(r,g,b), d = max - Math.min(r,g,b);
+    let h = 0;
+    if(d){ h = 60 * (max===r ? ((g-b)/d) % 6 : max===g ? (b-r)/d + 2 : (r-g)/d + 4); if(h < 0) h += 360; }
+    return { h, s: max ? d/max : 0, v: max };
+  }
+  // onPick(hex, live): live while a drag is in progress, false on release / a typed value
+  function buildColorPanel(container, onPick){
+    const el = document.createElement('div');
+    el.className = 'cpanel'; el.hidden = true;
+    el.innerHTML = '<div class="cpanel-sv"><div class="cpanel-dot"></div></div>'
+      + '<div class="cpanel-hue"><div class="cpanel-mark"></div></div>'
+      + '<input class="cpanel-hex" type="text" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex color">';
+    const sv = el.querySelector('.cpanel-sv'), dot = el.querySelector('.cpanel-dot');
+    const hue = el.querySelector('.cpanel-hue'), mark = el.querySelector('.cpanel-mark'), hex = el.querySelector('.cpanel-hex');
+    let h = 0, s = 1, v = 0.5;
+    const clamp01 = x => Math.max(0, Math.min(1, x));
+    function paint(){
+      sv.style.backgroundColor = 'hsl(' + h + ' 100% 50%)';
+      dot.style.left = s*100 + '%'; dot.style.top = (1-v)*100 + '%';
+      mark.style.left = h/360*100 + '%';
+      hex.value = hsvToHex(h, s, v);
+    }
+    // press-and-drag on either strip; pointer capture keeps the drag alive outside the element
+    function dragOn(target, read){
+      target.addEventListener('pointerdown', e=>{
+        e.preventDefault();
+        target.setPointerCapture(e.pointerId);
+        const step = ev=>{ read(ev, target.getBoundingClientRect()); paint(); onPick(hex.value, true); };
+        step(e);
+        target.addEventListener('pointermove', step);
+        target.addEventListener('pointerup', ()=>{ target.removeEventListener('pointermove', step); onPick(hex.value, false); }, { once:true });
+      });
+    }
+    dragOn(sv, (e, r)=>{ s = clamp01((e.clientX - r.left)/r.width); v = 1 - clamp01((e.clientY - r.top)/r.height); });
+    dragOn(hue, (e, r)=>{ h = clamp01((e.clientX - r.left)/r.width) * 359.99; });
+    hex.addEventListener('change', ()=>{
+      const p = hexToHsv(hex.value);
+      if(p){ ({h, s, v} = p); paint(); onPick(hex.value, false); } else paint();   // an unreadable entry just snaps back
+    });
+    hex.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); hex.blur(); } });
+    paint();
+    container.appendChild(el);
+    return { el, set(c){ const p = hexToHsv(c); if(p){ ({h, s, v} = p); paint(); } } };
+  }
+  buildSwatchPopover(strokePicker, true, 'No stroke', 'strokeNoneSwatch', (c,keep,live)=>{ applyStrokeColor(c, live); if(!keep) setStrokePicker(false); });
+  buildSwatchPopover(fillPicker, true, 'No fill', 'fillNoneSwatch', (v,keep,live)=>{ applyFillColor(v, live); if(!keep) setFillPicker(false); });
+  buildSwatchPopover(textColorPicker, false, null, null, (c,keep,live)=>{ applyTextColor(c, live); if(!keep) setTextColorPicker(false); });
   // the custom swatch shows as active when the current color is none of the presets, and its input
   // opens on the current color
   function syncCustomSwatch(picker, c){
-    const el = picker.querySelector('.cswatch.custom');
     const on = c !== 'none';
-    el.classList.toggle('active', on && !(c in PRESETS));
-    if(on && /^#[0-9a-f]{6}$/i.test(c)) el.firstChild.value = c;   // a color input only takes #rrggbb
+    picker.querySelector('.cswatch.custom').classList.toggle('active', on && !(c in PRESETS));
+    if(on && picker._panel.el.hidden) picker._panel.set(c);   // a folded-away panel opens on the current color; an open one is mid-use
   }
   const fillNoneSwatch = document.getElementById('fillNoneSwatch');
   const strokeNoneSwatch = document.getElementById('strokeNoneSwatch');
@@ -2568,16 +2643,19 @@
 
   function setStrokePicker(open){
     strokePicker.hidden = !open;
+    if(!open) strokePicker._panel.el.hidden = true;
     strokeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setFillPicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
   }
   function setFillPicker(open){
     fillPicker.hidden = !open;
+    if(!open) fillPicker._panel.el.hidden = true;
     fillBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
   }
   function setTextColorPicker(open){
     textColorPicker.hidden = !open;
+    if(!open) textColorPicker._panel.el.hidden = true;
     textColorBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setFillPicker(false); setSizePicker(false); setTablePicker(false); }
   }
@@ -2619,13 +2697,14 @@
     textColorPicker.querySelectorAll('.cswatch[data-c]').forEach(s=>s.classList.toggle('active', s.dataset.c===textC));
     syncCustomSwatch(textColorPicker, textC);
   }
-  function applyStrokeColor(c){
+  // live: a drag in the color panel is in progress — apply, but commit only when it ends
+  function applyStrokeColor(c, live){
     const on = c !== 'none';
     const sel = colorableSelection().filter(it=>STROKABLE(it.type));
     if(sel.length){
-      beginHistory();
+      if(historyBefore===null) beginHistory();
       for(const it of sel){ if(FILLABLE(it.type)) it.strokeOn = on; if(on) it.color = c; }
-      commitHistory();
+      if(!live) commitHistory();
       const st = styleFor(sel[0].type); st.strokeOn = on; if(on) st.color = c;   // the defaults follow the last edit
       render();
       return;
@@ -2633,13 +2712,13 @@
     const st = drawStyle(); st.strokeOn = on; if(on) st.color = c;
     refreshColorUI();
   }
-  function applyFillColor(v){
+  function applyFillColor(v, live){
     const on = v !== 'none';
     const sel = colorableSelection().filter(it=>FILLABLE(it.type));
     if(sel.length){
-      beginHistory();
+      if(historyBefore===null) beginHistory();
       for(const it of sel){ it.fill = on; if(on) it.fillColor = v; }
-      commitHistory();
+      if(!live) commitHistory();
       const st = styleFor(sel[0].type); st.fill = on; if(on) st.fillColor = v;
       render();
       return;
@@ -2647,12 +2726,12 @@
     const st = drawStyle(); st.fill = on; if(on) st.fillColor = v;
     refreshColorUI();
   }
-  function applyTextColor(c){
+  function applyTextColor(c, live){
     const sel = colorableSelection().filter(it=>it.type==='text'||it.type==='table');
     if(sel.length){
-      beginHistory();
+      if(historyBefore===null) beginHistory();
       for(const it of sel) it.textColor = c;
-      commitHistory();
+      if(!live) commitHistory();
       ui.textColor = c;
       render();
       return;
