@@ -794,6 +794,38 @@
     const ang = Math.atan2(ty-fy, tx-fx), {len, a} = arrowHeadGeom(size);
     return [['M', tx-len*Math.cos(ang-a), ty-len*Math.sin(ang-a)], ['L', tx, ty], ['L', tx-len*Math.cos(ang+a), ty-len*Math.sin(ang+a)]];
   }
+  // Felt-tip: a chisel nib — a short flat edge held at a fixed angle — swept along the stroke.
+  // Strokes across the nib come out at full width, strokes along it thin down to the edge's own
+  // thickness, and the width eases off a little where the stroke was drawn fast. The gaps between
+  // the recorded points serve as the speed record, so no timing is stored and a reloaded file or an
+  // export looks exactly like the screen.
+  const NIB_ANGLE = -Math.PI/4;   // edge runs lower-left to upper-right
+  const NIB_THICK = 0.18;         // the edge's own thickness, as a share of its width
+  const NIB_SPEED_EASE = 0.35;    // how much of the width a fast stroke gives up, at 24px+ between points
+  function nibWidths(p, w){
+    const gap = i => Math.hypot(p[i+1].x-p[i].x, p[i+1].y-p[i].y);
+    const raw = p.map((_,i)=>{
+      const d = i===0 ? gap(0) : i===p.length-1 ? gap(i-1) : (gap(i-1)+gap(i))/2;
+      return w * (1 - NIB_SPEED_EASE*Math.min(1, d/24));
+    });
+    return raw.map((v,i)=>((i ? raw[i-1] : v) + v + (i<raw.length-1 ? raw[i+1] : v))/3);   // 3-tap smoothing against jitter
+  }
+  function chiselOps(it){
+    const w = strokeWidthOf(it), t = Math.max(1, w*NIB_THICK);
+    const nx = Math.cos(NIB_ANGLE)/2, ny = Math.sin(NIB_ANGLE)/2;
+    const p = it.points;
+    if(p.length===1){   // a tap leaves the nib's footprint
+      const q = p[0];
+      return [{ kind:'path', d:[['M', norm(q.x-nx*w), norm(q.y-ny*w)], ['L', norm(q.x+nx*w), norm(q.y+ny*w)]], style:{ fill:'none', stroke:it.color, width:t, cap:'round' } }];
+    }
+    // the swept ribbon: one edge end along the stroke, back along the other end
+    const ws = nibWidths(p, w);
+    const edge = s => p.map((q,i)=>({ x:norm(q.x + s*nx*ws[i]), y:norm(q.y + s*ny*ws[i]) }));
+    const back = smoothSegments(edge(-1).reverse());
+    back[0][0] = 'L';
+    const d = smoothSegments(edge(1)).concat(back, [['Z']]);
+    return [{ kind:'path', d, style:{ fill:it.color, stroke:it.color, width:t, cap:'round', join:'round' } }];   // the stroke keeps it from vanishing along the nib
+  }
   function shapeOps(it, skipCell){
     const ops = [];
     switch(it.type){
@@ -801,6 +833,7 @@
         ops.push({ kind:'image', id:it.id, x:it.x, y:it.y, w:it.w, h:it.h });
         break;
       case 'path': {
+        if(it.mode==='brush'){ ops.push(...chiselOps(it)); break; }
         const w = strokeWidthOf(it), opacity = it.mode==='marker' ? 0.4 : 1;   // marker = translucent highlighter
         if(it.points.length===1) ops.push({ kind:'dot', cx:it.points[0].x, cy:it.points[0].y, r:Math.max(0.5, w/2), color:it.color, opacity });
         else ops.push({ kind:'path', d:smoothSegments(it.points), style:{ fill:'none', stroke:it.color, width:w, cap:it.mode==='marker' ? 'square' : 'round', join:'round', opacity } });
