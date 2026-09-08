@@ -648,9 +648,7 @@
         it.color = isColor(raw.color) ? raw.color : ui.color;
         it.size = Math.min(60, Math.max(1, num('size', ui.size)));
       }
-      if(it.type !== 'image' && it.type !== 'path'){
-        it.strokeOn = raw.strokeOn !== false;
-      }
+      if(FILLABLE(it.type)) it.strokeOn = raw.strokeOn !== false;   // "no outline" only means something on a shape with an inside
       if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
       if(it.type === 'text' || it.type === 'table'){
         if(isColor(raw.textColor)) it.textColor = raw.textColor;
@@ -1600,11 +1598,11 @@
 
     beginHistory();
     if(ui.tool==='pen' || ui.tool==='marker' || ui.tool==='brush'){
-      current = { type:'path', mode:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, points:[{x,y}] };
+      current = { type:'path', mode:ui.tool, color:ui.color, size:ui.size, points:[{x,y}] };
     } else if(ui.tool==='line' || ui.tool==='arrow'){
       snapPt = e.altKey ? null : nearestSnap(x,y);          // the start point snaps too
       const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
-      current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, x1:sx,y1:sy,x2:sx,y2:sy };
+      current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
       current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
       if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; current.fill = false; current.strokeOn = false; }
@@ -2243,7 +2241,7 @@
   }
   // shapes that can carry a fill (and so a second, fill color)
   const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
-  const STROKABLE = t => true;   // every shape has a meaningful "outline on/off" — text's border is separate from its glyph color
+  const STROKABLE = t => t !== 'image';   // everything but an image takes a stroke color; only FILLABLE shapes can switch the outline off
   function strokeOn(it){ return it.strokeOn !== false; }   // default true, for old saved files without the field
   // selected items whose color can be edited (images have none); empty outside the select tool
   function colorableSelection(){
@@ -2260,6 +2258,7 @@
       const setDisp = (el,on)=>{ const d = on ? '' : 'none'; if(el.style.display !== d) el.style.display = d; };
       setDisp(colorGroup, sel.length>0); setDisp(colorSep, sel.length>0);
       setDisp(fillGroup, fillable.length>0);
+      setDisp(strokeNoneSwatch, fillable.length>0);
       const sized = sel;   // every shape (including text, for its border) has a stroke width
       const texts = sel.filter(it=>it.type==='text' || it.type==='table');
       setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
@@ -2517,9 +2516,12 @@
     if(t!=='table') setTablePicker(false);
     const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
-    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text');   // fill only makes sense for these
-    const usesColor = !isSelect && t!=='eraser';     // hide the buttons where they have no effect
-    const usesSize = !isSelect;
+    // a new text always starts without fill or border (those are set on the finished box in select
+    // mode), so the text tool shows only the text controls
+    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table');   // fill only makes sense for these
+    const usesColor = !isSelect && t!=='eraser' && t!=='text';     // hide the buttons where they have no effect
+    const usesSize = !isSelect && t!=='text';
+    strokeNoneSwatch.style.display = canFill ? '' : 'none';        // pen/line strokes can't be switched off
     colorGroup.style.display = usesColor ? '' : 'none';
     colorSep.style.display = usesColor ? '' : 'none';
     textOpts.style.display = isText ? '' : 'none';
@@ -2682,7 +2684,7 @@
     const sel = colorableSelection().filter(it=>STROKABLE(it.type));
     if(sel.length){
       beginHistory();
-      for(const it of sel){ it.strokeOn = on; if(on) it.color = c; }
+      for(const it of sel){ if(FILLABLE(it.type)) it.strokeOn = on; if(on) it.color = c; }
       commitHistory();
       ui.strokeOn = on; if(on) ui.color = c;
       render();
