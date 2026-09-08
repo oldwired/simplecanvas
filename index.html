@@ -544,8 +544,10 @@
   const STORE_KEY = 'simplecanvas:v1';
   const FORMAT_VERSION = 2;     // bump when the saved-file schema changes (2: group pivots ignore stroke width)
   const BG = '#ffffff';
-  const PRESETS = ['#1f2937','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#ffffff','#e5e7eb','#78828e'];
-  const PRESET_NAMES = ['Dark','Red','Orange','Yellow','Green','Blue','Purple','Pink','White','Light Grey','Dark Grey'];
+  const PRESETS = {   // swatch color -> its tooltip, in display order
+    '#1f2937':'Dark', '#ef4444':'Red', '#f97316':'Orange', '#eab308':'Yellow', '#22c55e':'Green', '#3b82f6':'Blue',
+    '#8b5cf6':'Purple', '#ec4899':'Pink', '#ffffff':'White', '#e5e7eb':'Light Grey', '#78828e':'Dark Grey'
+  };
 
   // ---------- state ----------
   let items = [];               // committed scene objects
@@ -2540,13 +2542,13 @@
       b.addEventListener('click', ()=>onPick('none'));
       container.appendChild(b);
     }
-    PRESETS.forEach((c,i)=>{
+    for(const [c, name] of Object.entries(PRESETS)){
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'cswatch'; b.style.background = c; b.title = PRESET_NAMES[i];
+      b.type = 'button'; b.className = 'cswatch'; b.style.background = c; b.title = name;
       b.dataset.c = c;
       b.addEventListener('click', ()=>onPick(c));
       container.appendChild(b);
-    });
+    }
     // any other color, through the browser's own picker. It stays open after a pick: the OS color
     // panel keeps firing while the user tweaks, and hiding the input underneath it would close it.
     const custom = document.createElement('label');
@@ -2565,7 +2567,7 @@
   function syncCustomSwatch(picker, c){
     const el = picker.querySelector('.cswatch.custom');
     const on = c !== 'none';
-    el.classList.toggle('active', on && PRESETS.indexOf(c) < 0);
+    el.classList.toggle('active', on && !(c in PRESETS));
     if(on && /^#[0-9a-f]{6}$/i.test(c)) el.firstChild.value = c;   // a color input only takes #rrggbb
   }
   const fillNoneSwatch = document.getElementById('fillNoneSwatch');
