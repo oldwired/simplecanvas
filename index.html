@@ -36,8 +36,8 @@
     display:flex;
     flex-wrap:wrap;
     align-items:center;
-    gap:6px 4px;              /* horizontal gap matches .group so every separator sits 6px from its neighbours */
-    padding:10px 8px;
+    gap:6px 3px;              /* horizontal gap matches .group so every separator sits evenly from its neighbours */
+    padding:8px 6px;
     background:var(--panel);
     border-bottom:1px solid var(--line);
     box-shadow:var(--shadow);
@@ -52,21 +52,23 @@
   .brand .dot{color:var(--accent)}
   @media(max-width:760px){ .brand .brand-name{display:none} .brand{padding:0} }
 
-  .group{display:flex;align-items:center;gap:4px}
-  .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 2px}   /* 4px gap + 2px margin = 6px on both sides, everywhere */
+  .group{display:flex;align-items:center;gap:3px}
+  .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 1px}
+  #arrangeSep{margin-left:9px}
   .sep.row-edge{display:none}   /* set by tidySeps(): a separator with nothing beside it on its row */
-  #fillGroup{margin-left:6px}   /* no separator before it, so give it a little air after the size slider */
 
   .btn{
     -webkit-appearance:none;appearance:none;
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
-    height:38px;min-width:38px;padding:0 9px;
+    height:38px;min-width:38px;padding:0 7px;
     border:1px solid transparent;border-radius:10px;
     background:transparent;color:var(--ink);
     font-size:13px;font-weight:550;cursor:pointer;
     transition:background .12s ease,border-color .12s ease,color .12s ease,transform .05s ease;
   }
-  .btn svg{width:20px;height:20px;display:block}
+  .btn svg{width:24px;height:24px;display:block}
+  #sizeBtn{flex-direction:column;gap:3px;padding:3px 9px}
+  #sizeBtn .size-btn-line{display:block;width:20px;height:1.6px;border-radius:1px;background:#1f2937;flex:0 0 auto}
   .btn:hover{background:#f3f4f6}
   .btn:active{transform:translateY(1px)}
   .btn.active{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
@@ -119,14 +121,14 @@
   }
   .menu[hidden]{display:none}
   .menu button{
-    display:flex;align-items:center;gap:11px;
-    width:100%;padding:9px 11px;border:none;border-radius:8px;
+    display:flex;align-items:center;gap:9px;
+    width:100%;padding:8px 9px;border:none;border-radius:8px;
     background:transparent;color:var(--ink);font:inherit;font-size:13.5px;font-weight:550;
     text-align:left;cursor:pointer;white-space:nowrap;
   }
   .menu button:hover{background:#f3f4f6}
   .menu button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-  .menu button svg{width:18px;height:18px;flex:0 0 auto;color:var(--muted)}
+  .menu button svg{width:22px;height:22px;flex:0 0 auto;color:var(--muted)}
   .menu button .sc{margin-left:auto;font-size:11px;color:var(--muted);font-weight:600}
   .menu button.danger{color:var(--danger)}
   .menu button.danger:hover{background:#fef2f2}
@@ -140,9 +142,43 @@
   .table-grid .cell.hi{background:var(--accent-soft);border-color:var(--accent)}
   .table-picker-label{margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
 
+  /* stroke/fill color popovers: swatches only, no text — keeps the toolbar compact */
+  .color-picker{min-width:0;padding:8px;flex-direction:row;flex-wrap:wrap;width:132px;gap:6px}
+  .color-picker .cswatch{
+    width:22px;height:22px;border-radius:6px;flex:0 0 auto;cursor:pointer;
+    border:1px solid rgba(0,0,0,.12);padding:0;
+  }
+  .color-picker .cswatch.active{box-shadow:0 0 0 2px var(--accent)}
+  .color-picker .cswatch.none{
+    background:#fff;
+    background-image:linear-gradient(to top right, transparent calc(50% - 1px), var(--danger), transparent calc(50% + 1px));
+  }
+  #fillNoneSwatch.cswatch.none, #strokeNoneSwatch.cswatch.none{
+    background:#fff;background-image:none;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #fillNoneSwatch svg, #strokeNoneSwatch svg{width:16px;height:16px}
+
+  /* stroke-width popover: a real vertical slider (rotated horizontal input), continuous 1–60px —
+     doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
+  .size-picker{min-width:0;padding:12px 10px;flex-direction:column;align-items:center;gap:8px}
+  .vslider-wrap{width:42px;height:240px;position:relative}
+  .vslider{
+    -webkit-appearance:none;appearance:none;
+    position:absolute;top:50%;left:50%;
+    width:240px;height:22px;margin:0;
+    transform:translate(-50%,-50%) rotate(90deg);
+    background:transparent;cursor:pointer;
+  }
+  .vslider::-webkit-slider-runnable-track{width:240px;height:6px;border-radius:3px;background:var(--line)}
+  .vslider::-moz-range-track{width:240px;height:6px;border-radius:3px;background:var(--line);border:none}
+  .vslider::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);margin-top:-8px;cursor:pointer}
+  .vslider::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--accent);border:none;cursor:pointer}
+  .size-picker-label{font-size:12px;color:var(--muted);font-weight:600;min-width:40px;text-align:center}
+
   /* size */
   .size-ctrl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
-  input[type=range]{width:104px;accent-color:var(--accent);cursor:pointer}
+  input[type=range]:not(.vslider){width:104px;accent-color:var(--accent);cursor:pointer}
   .size-val{min-width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
 
   .select{
@@ -179,8 +215,9 @@
     position:absolute;z-index:5;display:none;
     border:1px dashed var(--accent);outline:none;
     background:rgba(255,255,255,.65);
-    font-family:inherit;padding:2px 4px;border-radius:4px;
+    font-family:inherit;padding:0 4px;border-radius:4px;
     color:var(--ink);min-width:40px;
+    appearance:none;-webkit-appearance:none;
   }
 
   .hint{
@@ -249,13 +286,6 @@
     </div>
   </div>
 
-  <div class="brand">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 17.5 14.5 6a2.5 2.5 0 0 1 3.5 3.5L6.5 21H3v-3.5Z" stroke="#6366f1" stroke-width="1.8" stroke-linejoin="round"/><path d="m12.5 8 3.5 3.5" stroke="#6366f1" stroke-width="1.8"/></svg>
-    <span class="brand-name">Simple<span class="dot">Canvas</span></span>
-  </div>
-
-  <div class="sep"></div>
-
   <!-- Actions, select & tools — separate groups so a narrow toolbar wraps between them, never inside -->
   <div class="group">
     <button class="btn ghost" id="undo" title="Undo (⌘/Ctrl+Z)">
@@ -283,7 +313,7 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M14 4 8 10c-2 2-2 4-3 6 2-1 4-1 6-3l6-6-3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 16c-2 1-2 4-2 4s3 0 4-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
     <button class="btn" data-tool="eraser" title="Eraser (E)">
-      <svg viewBox="0 2.5 24 24" fill="none"><path d="m4 14 6-6 7 7-4 4H8l-4-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 21h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><path d="M22 21H7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m5 11 9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
   </div>
   <div class="sep"></div>
@@ -303,21 +333,19 @@
     <button class="btn" data-tool="polygon" title="Polygon — click each corner, then finish by tapping the start point, double-clicking, right-clicking, pressing Enter, or tapping Finish (G)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 21 9.5 17.8 20H6.2L3 9.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
+    <button class="btn" data-tool="text" title="Text (T)">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M12 6v13M9 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
     <div class="menu-wrap">
       <button class="btn" data-tool="table" id="tableBtn" title="Table — drag across the grid to pick a size, then click to place (Y)" aria-haspopup="true" aria-expanded="false" aria-controls="tablePicker">
-        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M3 16h18M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.8"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 9.33h18M3 14.67h18M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.8"/></svg>
       </button>
       <div class="menu table-picker" id="tablePicker" hidden>
         <div class="table-grid" id="tableGrid"></div>
         <div class="table-picker-label" id="tablePickerLabel">Pick a size</div>
       </div>
     </div>
-    <button class="btn" data-tool="text" title="Text (T)">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M12 6v13M9 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-    </button>
   </div>
-
-  <div class="sep"></div>
 
   <!-- Insert image -->
   <div class="group">
@@ -329,22 +357,60 @@
 
   <div class="sep" id="colorSep"></div>
 
-  <!-- Color: one palette, toggled between stroke & fill -->
-  <div class="group" id="colorGroup">
-    <button class="btn target-btn" id="colorTarget" title="Switch what the palette edits: stroke outline or fill">
-      <span class="target-dot" id="targetDot"></span>
-      <span class="target-lbl" id="targetLbl">Stroke</span>
-    </button>
-    <div class="swatches" id="swatches"></div>
-    <div class="color-wrap"><input type="color" id="colorPick" value="#1f2937" title="Custom color"></div>
+  <!-- Fill color: exact user-supplied artwork (pouch + drip glyph, neutral) + a colored bar showing the current fill -->
+  <div class="group" id="fillGroup">
+    <div class="menu-wrap">
+      <button class="btn" id="fillBtn" title="Fill color" aria-haspopup="true" aria-expanded="false" aria-controls="fillPicker">
+        <svg viewBox="0 0 732 810">
+          <path d="M421.44 314.85 424.46 70.32C401.29 -5.66 322.24 8.93 305.12 68.81 305.62 91.95 306.12 115.1 306.63 138.24L75.5 360.14 303.61 577.5 572.5 310.32 524.16 263.53" stroke="#042433" stroke-width="36.6667" stroke-miterlimit="8" fill="none"/>
+          <path d="M660 548 654.61 305.28C621.65 233.93 552.73 215.33 500 264.58" stroke="#042433" stroke-width="64.1667" stroke-linejoin="round" stroke-miterlimit="10" fill="none"/>
+          <path id="fillColorBar" d="M0 678.33C0 663.79 11.79 652 26.33 652L705.67 652C720.21 652 732 663.79 732 678.33L732 783.67C732 798.21 720.21 810 705.67 810L26.33 810C11.79 810 0 798.21 0 783.67Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <div class="menu color-picker" id="fillPicker" hidden></div>
+    </div>
   </div>
 
-  <div class="sep" id="optsSep"></div>
+  <!-- Stroke color: exact user-supplied artwork (pencil glyph, neutral) + a colored bar showing the current stroke -->
+  <div class="group" id="colorGroup">
+    <div class="menu-wrap">
+      <button class="btn" id="strokeBtn" title="Stroke color" aria-haspopup="true" aria-expanded="false" aria-controls="strokePicker">
+        <svg viewBox="0 0 732 802">
+          <path d="M578.52 26.5 674.5 120.97 233.84 561.34 101.5 587.5 121.86 461.06 578.52 26.5Z" stroke="#042433" stroke-width="36.6667" stroke-miterlimit="8" fill="none"/>
+          <path id="strokeColorBar" d="M0 670.33C0 655.79 11.79 644 26.33 644L705.67 644C720.21 644 732 655.79 732 670.33L732 775.67C732 790.21 720.21 802 705.67 802L26.33 802C11.79 802 0 790.21 0 775.67Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <div class="menu color-picker" id="strokePicker" hidden></div>
+    </div>
+  </div>
 
-  <!-- Line width (hidden for the text tool) -->
-  <div class="group size-ctrl" id="sizeGroup">
-    <input type="range" id="size" min="1" max="60" value="6">
-    <span class="size-val" id="sizeVal">6&nbsp;px</span>
+  <!-- Text color: its own attribute, separate from the stroke color (shown only for text/table) -->
+  <!-- Line width: icon button opening a vertical, continuous slider (a horizontal one would be too wide;
+       a compact dropdown only offered fixed presets) -->
+  <div class="group" id="sizeGroup">
+    <div class="menu-wrap">
+      <button class="btn" id="sizeBtn" title="Stroke width" aria-haspopup="true" aria-expanded="false" aria-controls="sizePicker">
+        <span id="sizeBtnLabel">6px</span>
+        <span class="size-btn-line"></span>
+      </button>
+      <div class="menu size-picker" id="sizePicker" hidden>
+        <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical"></div>
+        <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
+      </div>
+    </div>
+  </div>
+  <div class="sep" id="sizeSep"></div>
+
+  <div class="group" id="textColorGroup">
+    <div class="menu-wrap">
+      <button class="btn" id="textColorBtn" title="Text color" aria-haspopup="true" aria-expanded="false" aria-controls="textColorPicker">
+        <svg viewBox="0 0 24 24">
+          <text x="12" y="15" font-size="14" font-weight="700" text-anchor="middle" fill="#1f2937">A</text>
+          <rect id="textColorBar" x="3" y="19" width="18" height="4" rx="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <div class="menu color-picker" id="textColorPicker" hidden></div>
+    </div>
   </div>
 
   <!-- Text font + size (shown only for the text tool) -->
@@ -360,11 +426,7 @@
       <option selected>28</option><option>36</option><option>48</option><option>64</option><option>96</option>
     </select>
   </div>
-
-  <!-- Fill on/off (rectangles, ellipses, polygons & tables) -->
-  <div class="group" id="fillGroup">
-    <label class="check"><input type="checkbox" id="fill"> Fill</label>
-  </div>
+  <div class="sep" id="textOptsSep" style="display:none"></div>
 
   <div class="sep" id="arrangeSep" style="display:none"></div>
 
@@ -394,9 +456,13 @@
 
   <!-- Polygon in progress: explicit finish/cancel, so touch users aren't stuck tapping the exact start point -->
   <div class="group" id="polyGroup" style="display:none">
-    <button class="btn" id="polyFinish" title="Finish polygon (Enter)">
+    <button class="btn" id="polyFinish" title="Finish polygon, closed (Enter)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17 19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Finish
+    </button>
+    <button class="btn" id="polyFinishOpen" title="Finish without closing the last point back to the first">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 18 9 6l5 9 6-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Leave open
     </button>
     <button class="btn ghost danger" id="polyCancel" title="Discard polygon (Esc)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M6 6 18 18M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -429,18 +495,30 @@
   const wrap = document.getElementById('wrap');
   const hint = document.getElementById('hint');
   const textInput = document.getElementById('textInput');
-  const colorPick = document.getElementById('colorPick');
-  const sizeInput = document.getElementById('size');
-  const sizeVal = document.getElementById('sizeVal');
-  const fillInput = document.getElementById('fill');
+  const strokeBtn = document.getElementById('strokeBtn');
+  const fillBtn = document.getElementById('fillBtn');
+  const textColorBtn = document.getElementById('textColorBtn');
+  const strokeColorBar = document.getElementById('strokeColorBar');
+  const fillColorBar = document.getElementById('fillColorBar');
+  const textColorBar = document.getElementById('textColorBar');
+  const strokePicker = document.getElementById('strokePicker');
+  const fillPicker = document.getElementById('fillPicker');
+  const textColorPicker = document.getElementById('textColorPicker');
+  const sizeBtn = document.getElementById('sizeBtn');
+  const sizeBtnLabel = document.getElementById('sizeBtnLabel');
+  const sizePicker = document.getElementById('sizePicker');
+  const sizeRange = document.getElementById('sizeRange');
+  const sizeRangeLabel = document.getElementById('sizeRangeLabel');
   const fontFamilySel = document.getElementById('fontFamily');
   const fontSizeSel = document.getElementById('fontSize');
   const sizeGroup = document.getElementById('sizeGroup');
+  const sizeSep = document.getElementById('sizeSep');
   const textOpts = document.getElementById('textOpts');
+  const textOptsSep = document.getElementById('textOptsSep');
   const fillGroup = document.getElementById('fillGroup');
+  const textColorGroup = document.getElementById('textColorGroup');
   const colorGroup = document.getElementById('colorGroup');
   const colorSep = document.getElementById('colorSep');
-  const optsSep = document.getElementById('optsSep');
   const arrangeGroup = document.getElementById('arrangeGroup');
   const arrangeSep = document.getElementById('arrangeSep');
   const toDupBtn = document.getElementById('toDup');
@@ -454,17 +532,19 @@
   const polySep = document.getElementById('polySep');
   const polyGroup = document.getElementById('polyGroup');
   const polyFinishBtn = document.getElementById('polyFinish');
+  const polyFinishOpenBtn = document.getElementById('polyFinishOpen');
   const polyCancelBtn = document.getElementById('polyCancel');
 
   const STORE_KEY = 'simplecanvas:v1';
   const FORMAT_VERSION = 1;     // bump when the saved-file schema changes
   const BG = '#ffffff';
   const PRESETS = ['#1f2937','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#ffffff'];
+  const PRESET_NAMES = ['Dark','Red','Orange','Yellow','Green','Blue','Purple','Pink','White'];
 
   // ---------- state ----------
   let items = [];               // committed scene objects
   let current = null;           // in-progress preview object
-  let ui = { tool:'pen', color:'#1f2937', size:6, fill:false, fillColor:'#ffd166', colorTarget:'stroke', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3 };
+  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3 };
   let dpr = 1, cssW = 0, cssH = 0;
 
   let undoStack = [], redoStack = [];
@@ -478,6 +558,7 @@
   let rotating = null;          // {cx,cy,startAngle,startRotation,field,members,moved} while dragging the rotation handle
   let polyDraft = null;         // {color,size,fill,fillColor,points} while clicking out a polygon
   let longPressTimer = null;    // pending "open text for editing" timer while a click sits still on a text item
+  let alignClickTimer = null;   // pending "set alignment" timer — cancelled if a dblclick follows (which only edits)
   let assetSeq = 0;
   const assets = {};            // id -> image data URL (kept out of history snapshots)
   const imgCache = new Map();   // id -> HTMLImageElement
@@ -502,7 +583,6 @@
     return list;
   }
   const snap = () => JSON.stringify(ensureUids(items));
-  const setSizeLabel = v => { sizeVal.textContent = v + '\u00a0px'; };
 
   function beginHistory(){ historyBefore = snap(); }
   function commitHistory(){
@@ -534,16 +614,19 @@
     try{
       switch(it.type){
         case 'path': it.mode = ['pen','marker','brush'].indexOf(raw.mode) >= 0 ? raw.mode : 'pen'; it.points = pts(1); break;
-        case 'polygon': it.points = pts(3); break;
+        case 'polygon':
+          it.points = pts(2);
+          it.closed = raw.closed !== false;
+          if(!it.closed && it.points.length < 2) return null;
+          if(it.closed && it.points.length < 3) return null;
+          break;
         case 'line': case 'arrow':
           it.x1 = num('x1'); it.y1 = num('y1'); it.x2 = num('x2'); it.y2 = num('y2');
           if(raw.hs) it.hs = true;
           if(raw.he === false) it.he = false;
           break;
-        case 'rect': case 'ellipse': case 'image': case 'table':
-          it.x = num('x'); it.y = num('y'); it.w = num('w'); it.h = num('h'); break;
-        case 'text':
-          it.x = num('x'); it.y = num('y'); break;
+        case 'rect': case 'ellipse': case 'image': case 'table': case 'text':
+          it.x = num('x'); it.y = num('y'); it.w = num('w', it.type==='text' ? 40 : undefined); it.h = num('h', it.type==='text' ? 40 : undefined); break;
       }
       if(it.type === 'table'){
         it.rows = Math.min(100, Math.max(1, Math.round(num('rows', 3))));
@@ -555,18 +638,32 @@
         it.id = raw.id;
       } else {
         it.color = isColor(raw.color) ? raw.color : ui.color;
-        if(it.type !== 'text') it.size = Math.min(60, Math.max(1, num('size', ui.size)));
+        it.size = Math.min(60, Math.max(1, num('size', ui.size)));
+      }
+      if(it.type !== 'image' && it.type !== 'path'){
+        it.strokeOn = raw.strokeOn !== false;
       }
       if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
-      if(it.type === 'text'){
-        it.text = String(raw.text == null ? '' : raw.text).slice(0, MAX_TEXT);
-        if(!it.text.trim()) return null;
+      if(it.type === 'text' || it.type === 'table'){
+        if(isColor(raw.textColor)) it.textColor = raw.textColor;
         const fstr = typeof raw.font === 'string' ? raw.font : '';
         const m = /(\d+)px/.exec(fstr);   // the font string is what was actually rendered, so it wins over fontSize
         const px = m ? +m[1] : (isNum(raw.fontSize) ? raw.fontSize : 24);
         it.fontSize = Math.min(400, Math.max(6, Math.round(px)));
         it.fontFamily = (typeof raw.fontFamily === 'string' && FONTS[raw.fontFamily]) ? raw.fontFamily : familyOf({font:fstr});
         it.font = fontStr(it.fontFamily, it.fontSize);
+      }
+      if(it.type === 'text'){
+        it.text = String(raw.text == null ? '' : raw.text).slice(0, MAX_TEXT);
+        if(!it.text.trim()) return null;
+        if(raw.align==='left' || raw.align==='right' || raw.align==='center') it.align = raw.align;
+      }
+      if(it.type === 'table' && Array.isArray(raw.texts)){
+        it.texts = raw.texts.slice(0, it.rows).map(row=>Array.isArray(row) ? row.slice(0, it.cols).map(v=>String(v==null?'':v).slice(0,MAX_TEXT)) : []);
+      }
+      if(it.type === 'table' && Array.isArray(raw.aligns)){
+        const okAlign = a => a==='left' || a==='right' || a==='center';
+        it.aligns = raw.aligns.slice(0, it.rows).map(row=>Array.isArray(row) ? row.slice(0, it.cols).map(v=>okAlign(v)?v:'center') : []);
       }
       if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
       if(typeof raw.group === 'string' && raw.group.length <= 64){
@@ -700,7 +797,7 @@
     return im;
   }
 
-  function drawItem(it){
+  function drawItem(it, skipCell){
     ctx.save();
     if(it.group!=null && it.groupRotation){
       const piv = groupPivot(it.group);
@@ -723,50 +820,96 @@
         break;
       case 'line':
       case 'arrow':
-        ctx.strokeStyle = it.color; ctx.lineWidth = it.size; ctx.lineCap='round';
-        ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(it.x2,it.y2); ctx.stroke();
-        { const h = headsOf(it);
+        if(strokeOn(it)){
+          ctx.strokeStyle = it.color; ctx.lineWidth = it.size; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(it.x2,it.y2); ctx.stroke();
+          const h = headsOf(it);
           if(h.e) drawArrowHead(it.x1,it.y1,it.x2,it.y2,it.size);
-          if(h.s) drawArrowHead(it.x2,it.y2,it.x1,it.y1,it.size); }
+          if(h.s) drawArrowHead(it.x2,it.y2,it.x1,it.y1,it.size);
+        }
         break;
       case 'rect':
         ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
         if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x,it.y,it.w,it.h); }
-        ctx.strokeStyle = it.color; ctx.strokeRect(it.x,it.y,it.w,it.h);
+        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.strokeRect(it.x,it.y,it.w,it.h); }
         break;
       case 'ellipse':
         ctx.lineWidth = it.size;
         ctx.beginPath();
         ctx.ellipse(it.x+it.w/2, it.y+it.h/2, Math.abs(it.w/2), Math.abs(it.h/2), 0, 0, Math.PI*2);
         if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
-        ctx.strokeStyle = it.color; ctx.stroke();
+        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.stroke(); }
         break;
-      case 'polygon':
-        ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
+      case 'polygon': {
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = it.size;
         ctx.beginPath();
         ctx.moveTo(it.points[0].x, it.points[0].y);
         for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
-        ctx.closePath();
-        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
-        ctx.strokeStyle = it.color; ctx.stroke();
+        const closed = it.closed !== false;
+        if(closed) ctx.closePath();
+        if(closed && it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
+        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.stroke(); }
         break;
+      }
       case 'text':
-        ctx.fillStyle = it.color;
-        ctx.textBaseline = 'top';
+        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x,it.y,it.w,it.h); }
+        if(strokeOn(it)){ ctx.lineWidth = it.size; ctx.strokeStyle = it.color; ctx.strokeRect(it.x,it.y,it.w,it.h); }
+        ctx.fillStyle = it.textColor || it.color;
         ctx.font = it.font;
-        ctx.fillText(it.text, it.x, it.y);
+        drawAlignedText(it.text, it.x, it.y, it.w, it.h, it.align);
         break;
       case 'table':
         ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
         if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x, it.y, it.w, it.h); }
-        ctx.strokeStyle = it.color;
-        ctx.strokeRect(it.x, it.y, it.w, it.h);
-        ctx.beginPath();
-        for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; ctx.moveTo(it.x, yy); ctx.lineTo(it.x+it.w, yy); }
-        for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; ctx.moveTo(xx, it.y); ctx.lineTo(xx, it.y+it.h); }
-        ctx.stroke();
+        if(strokeOn(it)){
+          ctx.strokeStyle = it.color;
+          ctx.strokeRect(it.x, it.y, it.w, it.h);
+          ctx.beginPath();
+          for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; ctx.moveTo(it.x, yy); ctx.lineTo(it.x+it.w, yy); }
+          for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; ctx.moveTo(xx, it.y); ctx.lineTo(xx, it.y+it.h); }
+          ctx.stroke();
+        }
+        if(it.texts){
+          ctx.fillStyle = it.textColor || it.color;
+          ctx.font = fontStr(it.fontFamily||'sans', it.fontSize||16);
+          const cw = it.w/it.cols, ch = it.h/it.rows;
+          for(let r=0;r<it.rows;r++){
+            if(!it.texts[r]) continue;
+            for(let c=0;c<it.cols;c++){
+              if(skipCell && skipCell.r===r && skipCell.c===c) continue;
+              const txt = it.texts[r][c];
+              if(!txt) continue;
+              const align = (it.aligns && it.aligns[r] && it.aligns[r][c]) || 'center';
+              drawAlignedText(txt, it.x+cw*c, it.y+ch*r, cw, ch, align);
+            }
+          }
+        }
         break;
     }
+    ctx.restore();
+  }
+
+  // Renders one line of text aligned within a box, vertically centered using its actual measured
+  // glyph bounds (not the 'middle' baseline heuristic, which sits visually high for most fonts).
+  // Caller must set ctx.font (and ctx.fillStyle) first; this only touches textAlign/textBaseline.
+  function drawAlignedText(text, boxX, boxY, boxW, boxH, align){
+    if(!text) return;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = 'alphabetic';
+    const tx = align==='left' ? boxX+6 : align==='right' ? boxX+boxW-6 : boxX+boxW/2;
+    const m = ctx.measureText(text);
+    const asc = m.actualBoundingBoxAscent||0, desc = m.actualBoundingBoxDescent||0;
+    const baselineY = boxY + boxH/2 + (asc-desc)/2;
+    ctx.fillText(text, tx, baselineY);
+    ctx.textAlign = 'left';
+  }
+  // A text box being dragged out with fill and stroke both off would otherwise be completely
+  // invisible while drawing (nothing to render until you release and type) — show a plain dashed
+  // guide so the drag itself stays visible, purely as a preview aid.
+  function drawTextDraftOutline(it){
+    ctx.save();
+    ctx.setLineDash([4,3]); ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1;
+    ctx.strokeRect(it.x, it.y, it.w, it.h);
     ctx.restore();
   }
 
@@ -809,15 +952,10 @@
         const x=Math.min(it.x1,it.x2), y=Math.min(it.y1,it.y2);
         return {x:x-pad,y:y-pad,w:Math.abs(it.x2-it.x1)+pad*2,h:Math.abs(it.y2-it.y1)+pad*2};
       }
-      case 'rect':case 'ellipse':case 'table':{
+      case 'rect':case 'ellipse':case 'table':case 'text':{
         const x=Math.min(it.x,it.x+it.w), y=Math.min(it.y,it.y+it.h);
         const pad=(it.size||2)/2+2;   // the stroke straddles the edge
         return {x:x-pad,y:y-pad,w:Math.abs(it.w)+pad*2,h:Math.abs(it.h)+pad*2};
-      }
-      case 'text':{
-        ctx.save(); ctx.font=it.font; const m=ctx.measureText(it.text); ctx.restore();
-        const h = it.fontSize || fontPxOf(it);
-        return {x:it.x-2,y:it.y-2,w:m.width+4,h:h+6};
       }
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
@@ -896,8 +1034,7 @@
     const norm4 = (x,y,w,h)=>({ x0:Math.min(x,x+w), y0:Math.min(y,y+h), W:Math.abs(w), H:Math.abs(h) });
     switch(it.type){
       case 'rect': case 'image': case 'text': {
-        const b = it.type==='text' ? bbox(it) : null;
-        const {x0,y0,W,H} = b ? norm4(b.x,b.y,b.w,b.h) : norm4(it.x,it.y,it.w,it.h);
+        const {x0,y0,W,H} = norm4(it.x,it.y,it.w,it.h);
         for(const fx of [0,.5,1]) for(const fy of [0,.5,1]) pts.push({x:x0+W*fx, y:y0+H*fy});
         break;
       }
@@ -1020,13 +1157,13 @@
     if(sel.length===1 && first.group==null){
       const b = bbox(first);
       const cx=b.x+b.w/2, cy=b.y+b.h/2;
-      return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-26, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
+      return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-33, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
     }
     if(first.group!=null){
       const grp = itemsInGroup(first.group);
       const piv = groupPivot(first.group);
       const u = piv.box;
-      return { cx:piv.cx, cy:piv.cy, stemTop:u.y-4, handleX:piv.cx, handleY:u.y-30, rotation:first.groupRotation||0, members:grp, isGroup:true };
+      return { cx:piv.cx, cy:piv.cy, stemTop:u.y-4, handleX:piv.cx, handleY:u.y-38, rotation:first.groupRotation||0, members:grp, isGroup:true };
     }
     return null;
   }
@@ -1036,10 +1173,9 @@
   // new geometry fresh from this untouched snapshot rather than compounding rounding error.
   function snapshotOf(it){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': case 'table': return {x:it.x, y:it.y, w:it.w, h:it.h};
+      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
       case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
-      case 'text': return {x:it.x, y:it.y, fontSize:fontPxOf(it), fontFamily:familyOf(it)};
       default: return {};
     }
   }
@@ -1047,7 +1183,7 @@
   function scalePt(p, ax, ay, sx, sy){ return { x: ax+(p.x-ax)*sx, y: ay+(p.y-ay)*sy }; }
   function applyScaleFromSnapshot(it, snap, ax, ay, sx, sy){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': case 'table': {
+      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': {
         const p1 = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
         const p2 = scalePt({x:snap.x+snap.w,y:snap.y+snap.h}, ax,ay,sx,sy);
         it.x = Math.min(p1.x,p2.x); it.y = Math.min(p1.y,p2.y);
@@ -1063,16 +1199,6 @@
       case 'path': case 'polygon':
         it.points = snap.points.map(p=>scalePt(p, ax,ay,sx,sy));
         break;
-      case 'text': {
-        const p = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
-        it.x=p.x; it.y=p.y;
-        const avg = (Math.abs(sx)+Math.abs(sy))/2;
-        // fontSize is the one source of truth; the font string is rebuilt from it
-        it.fontSize = Math.max(8, Math.round(snap.fontSize*avg));
-        it.fontFamily = snap.fontFamily;
-        it.font = fontStr(it.fontFamily, it.fontSize);
-        break;
-      }
     }
   }
   // One descriptor for both cases, exactly like rotationPivotFor: a lone ungrouped item resizes in
@@ -1082,7 +1208,6 @@
     const first = items[sel[0]];
     if(!first) return null;
     if(sel.length===1 && first.group==null){
-      if(first.type==='text') return null;   // resizing text alone would just be a proxy for font size — not wanted
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
       const b = bbox(first);
       return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
@@ -1175,8 +1300,17 @@
     ctx.fillStyle = BG;
     ctx.fillRect(0,0,cssW,cssH);
 
-    items.forEach((it,i)=>{ if(i!==editingTextIdx) drawItem(it); });
-    if(current){ current.type==='polygon' ? drawPolygonDraft(current) : drawItem(current); }
+    items.forEach((it,i)=>{
+      if(i===editingTextIdx && !editingCell) return;   // whole item hidden while editing a plain text box
+      drawItem(it, i===editingTextIdx ? editingCell : null);
+    });
+    if(current){
+      if(current.type==='polygon') drawPolygonDraft(current);
+      else {
+        drawItem(current);
+        if(current.type==='text' && !current.fill && !strokeOn(current)) drawTextDraftOutline(current);
+      }
+    }
 
     // selection outlines, rotation/resize handles, and the rubber-band box — suppressed while
     // editing text, since the input's own box never quite matches the item's drawn outline
@@ -1245,7 +1379,7 @@
           ctx.setLineDash([]);
           ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.moveTo(piv.handleX, piv.stemTop); ctx.lineTo(piv.handleX, piv.handleY); ctx.stroke();
-          ctx.beginPath(); ctx.arc(piv.handleX, piv.handleY, 6, 0, Math.PI*2);
+          ctx.beginPath(); ctx.arc(piv.handleX, piv.handleY, 8, 0, Math.PI*2);
           ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#6366f1'; ctx.stroke();
           ctx.restore();
         }
@@ -1308,7 +1442,7 @@
         if(piv){
           let lp = {x,y};
           if(piv.rotation) lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
-          if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 9){
+          if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 11){
             beginHistory();
             rotating = { cx:piv.cx, cy:piv.cy, startAngle:Math.atan2(y-piv.cy, x-piv.cx),
                          startRotation:piv.rotation, field: piv.isGroup?'groupRotation':'rotation',
@@ -1368,8 +1502,10 @@
       }
       const hit = hitTest(x,y);
       if(hit>=0){
-        const g = items[hit].group;
+        const hitItem = items[hit];
+        const g = hitItem.group;
         const grp = (g!=null) ? itemsInGroup(g) : [hit];         // grouped item → grab the whole group
+        const wasAlreadySelected = selection.indexOf(hit) >= 0;
         if(e.shiftKey){
           if(selection.indexOf(hit)>=0){ selection = selection.filter(i=>grp.indexOf(i)<0); render(); return; }
           for(const i of grp) if(selection.indexOf(i)<0) selection.push(i);
@@ -1377,14 +1513,16 @@
           selection = grp.slice();
         }
         beginHistory();
-        drag = {sx:x, sy:y, moved:false};
-        if(items[hit].type==='text'){
+        drag = {sx:x, sy:y, moved:false, hitIdx:hit, wasAlreadySelected};
+        if(hitItem.type==='text' || hitItem.type==='table'){
           const textIdx = hit;
+          const cellAtDown = hitItem.type==='table' ? tableCellAt(hitItem, toLocal(hitItem,x,y).x, toLocal(hitItem,x,y).y) : null;
           longPressTimer = setTimeout(()=>{
             longPressTimer = null;
             if(drag && !drag.moved){
               historyBefore = null; drag = null;
-              openText(items[textIdx].x, items[textIdx].y, textIdx);
+              if(hitItem.type==='table'){ if(cellAtDown) openText(textIdx, null, null, cellAtDown); }
+              else openText(textIdx);
             }
           }, 500);
         }
@@ -1396,8 +1534,6 @@
       }
       return;
     }
-    if(ui.tool==='text'){ openText(x,y); return; }
-
     if(ui.tool==='table'){ placeTable(x,y); return; }
 
     if(ui.tool==='polygon'){ handlePolygonClick(x,y); return; }
@@ -1412,13 +1548,14 @@
 
     beginHistory();
     if(ui.tool==='pen' || ui.tool==='marker' || ui.tool==='brush'){
-      current = { type:'path', mode:ui.tool, color:ui.color, size:ui.size, points:[{x,y}] };
+      current = { type:'path', mode:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, points:[{x,y}] };
     } else if(ui.tool==='line' || ui.tool==='arrow'){
       snapPt = e.altKey ? null : nearestSnap(x,y);          // the start point snaps too
       const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
-      current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
-    } else if(ui.tool==='rect' || ui.tool==='ellipse'){
-      current = { type:ui.tool, color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
+      current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, x1:sx,y1:sy,x2:sx,y2:sy };
+    } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
+      current = { type:ui.tool, color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
+      if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; current.fill = false; current.strokeOn = false; }
     }
     render();
   }
@@ -1532,7 +1669,7 @@
         snapPt = e.altKey ? null : nearestSnap(x,y);        // Alt = draw free, no magnet
         current.x2 = snapPt ? snapPt.x : x; current.y2 = snapPt ? snapPt.y : y;
       }
-    } else if(current.type==='rect' || current.type==='ellipse'){
+    } else if(current.type==='rect' || current.type==='ellipse' || current.type==='text'){
       let w = x-current._x0, h = y-current._y0;
       if(e.shiftKey){
         // square / circle — follow whichever axis the cursor has moved further along
@@ -1580,7 +1717,43 @@
     }
     if(drag){
       if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
-      if(drag.moved) commitHistory(); else historyBefore=null;
+      if(drag.moved){
+        commitHistory();
+      } else {
+        historyBefore=null;
+        if(drag.wasAlreadySelected && drag.hitIdx!=null){
+          const it = items[drag.hitIdx];
+          if(it && (it.type==='text' || it.type==='table')){
+            const {x,y} = pos(e);
+            // delayed: a dblclick is two of these clicks in a row — if one follows shortly, it should
+            // only open the editor, not also change the alignment first
+            if(alignClickTimer) clearTimeout(alignClickTimer);
+            alignClickTimer = setTimeout(()=>{
+              alignClickTimer = null;
+              const lp = toLocal(it, x, y);
+              if(it.type==='table'){
+                const cell = tableCellAt(it, lp.x, lp.y);
+                if(cell){
+                  const cw = it.w/it.cols;
+                  const relX = (lp.x - (it.x + cw*cell.c)) / cw;
+                  const align = relX<1/3 ? 'left' : relX>2/3 ? 'right' : 'center';
+                  beginHistory();
+                  if(!it.aligns) it.aligns = [];
+                  if(!it.aligns[cell.r]) it.aligns[cell.r] = [];
+                  it.aligns[cell.r][cell.c] = align;
+                  commitHistory(); render();
+                }
+              } else {
+                const relX = (lp.x - it.x) / it.w;
+                const align = relX<1/3 ? 'left' : relX>2/3 ? 'right' : 'center';
+                beginHistory();
+                it.align = align;
+                commitHistory(); render();
+              }
+            }, 300);
+          }
+        }
+      }
       drag=null;
       return;
     }
@@ -1599,34 +1772,98 @@
     if(!current){ return; }
 
     let keep = true;
+    let textDraftBox = null;
+    let clickWithoutDrag = false;   // a drag-required shape got no real drag — fall back to select instead of discarding silently
     if(current.type==='path'){
       keep = current.points.length>0;
     } else if(current.type==='line' || current.type==='arrow'){
       keep = Math.hypot(current.x2-current.x1, current.y2-current.y1) > 2;
+      if(!keep) clickWithoutDrag = true;
     } else if(current.type==='rect' || current.type==='ellipse'){
       keep = current.w>2 && current.h>2;
       delete current._x0; delete current._y0;
+      if(!keep) clickWithoutDrag = true;
+    } else if(current.type==='text'){
+      keep = false;   // text is never pushed directly — a big-enough drag opens the edit box instead
+      if(current.w>2 && current.h>2) textDraftBox = current;
+      else clickWithoutDrag = true;
     }
 
     snapPt = null;
+    if(textDraftBox){
+      const box = {x:textDraftBox.x, y:textDraftBox.y, w:textDraftBox.w, h:textDraftBox.h};
+      const draftStyle = {color:textDraftBox.color, fill:textDraftBox.fill, fillColor:textDraftBox.fillColor, strokeOn:textDraftBox.strokeOn, size:textDraftBox.size, textColor:textDraftBox.textColor};
+      current = null; historyBefore = null;
+      openText(null, box, draftStyle);
+      return;
+    }
     if(keep){ items.push(current); current=null; commitHistory(); }
-    else { current=null; historyBefore=null; render(); }
+    else {
+      current=null; historyBefore=null;
+      if(clickWithoutDrag){
+        const {x,y} = pos(e);
+        const hit = hitTest(x,y);
+        if(hit>=0){
+          const g = items[hit].group;
+          selection = (g!=null) ? itemsInGroup(g) : [hit];
+        }
+        setTool('select');
+      } else render();
+    }
   }
 
   // ---------- text tool ----------
-  let textPos = null;
-  let editingTextIdx = null;   // set while editing an existing text item (vs. creating a new one)
-  function openText(x,y,editIdx=null){
-    textPos = {x,y};
+  let textBox = null;       // {x,y,w,h} of the box currently being created or edited
+  let textDraft = null;     // {color,fill,fillColor,strokeOn,size} for a NEW text; null while editing an existing item
+  let editingTextIdx = null;   // set while editing an existing text item or table cell (vs. creating a new text)
+  let editingCell = null;      // {r,c} when editing one cell of a table, else null
+  function tableCellAt(it, lx, ly){
+    if(lx<it.x || lx>it.x+it.w || ly<it.y || ly>it.y+it.h) return null;
+    const c = Math.max(0, Math.min(it.cols-1, Math.floor((lx-it.x)/(it.w/it.cols))));
+    const r = Math.max(0, Math.min(it.rows-1, Math.floor((ly-it.y)/(it.h/it.rows))));
+    return {r,c};
+  }
+  function openText(editIdx, box, draftStyle, cell){
     editingTextIdx = editIdx;
+    editingCell = cell || null;
     const existing = editIdx!=null ? items[editIdx] : null;
+    let value, color, family, fontSize, align;
+    if(existing && editingCell){
+      const {r,c} = editingCell;
+      const cw = existing.w/existing.cols, ch = existing.h/existing.rows;
+      textBox = { x: existing.x+cw*c, y: existing.y+ch*r, w: cw, h: ch };
+      value = (existing.texts && existing.texts[r] && existing.texts[r][c]) || '';
+      color = existing.textColor || existing.color;
+      family = existing.fontFamily || 'sans'; fontSize = existing.fontSize || 16;
+      align = (existing.aligns && existing.aligns[r] && existing.aligns[r][c]) || 'center';
+    } else if(existing){
+      textBox = {x:existing.x, y:existing.y, w:existing.w, h:existing.h};
+      value = existing.text; color = existing.textColor || existing.color;
+      family = familyOf(existing); fontSize = fontPxOf(existing);
+      align = existing.align || 'center';
+    } else {
+      textBox = box; textDraft = draftStyle;
+      value = ''; color = (draftStyle && draftStyle.textColor) || ui.textColor;
+      family = ui.fontFamily; fontSize = ui.fontSize;
+      align = 'center';
+    }
     textInput.style.display='block';
-    textInput.style.left = x+'px';
-    textInput.style.top  = y+'px';
-    textInput.style.font = existing ? existing.font : fontStr(ui.fontFamily, ui.fontSize);
-    textInput.style.color = existing ? existing.color : ui.color;
-    textInput.value = existing ? existing.text : '';
-    render();   // hide the original item behind the input while editing
+    textInput.style.left = textBox.x+'px';
+    textInput.style.top  = (textBox.y-1)+'px';   // -1 = the input's own border width
+    textInput.style.width = textBox.w+'px';
+    textInput.style.height = textBox.h+'px';
+    textInput.style.textAlign = align;
+    textInput.style.paddingTop = '0px';
+    textInput.style.font = fontStr(family, fontSize);
+    // vertically center the single line of text: line-height set to the box's own content height
+    // (box height minus the 1px top+bottom border) is a reliable way to center it, independent of
+    // how a given browser otherwise lays out a native <input>'s text vertically.
+    // Must be set AFTER `font` above — the font shorthand resets line-height to 'normal' if it isn't
+    // set right afterward.
+    textInput.style.lineHeight = Math.max(1, textBox.h-2)+'px';
+    textInput.style.color = color;
+    textInput.value = value;
+    render();   // hide the original item (or its edited cell's text) behind the input while editing
     setTimeout(()=>{ textInput.focus(); textInput.select(); }, 0);
   }
   const FONTS = {
@@ -1652,7 +1889,10 @@
     const rows = ui.tableRows, cols = ui.tableCols;
     const w = colW*cols, h = rowH*rows;
     beginHistory();
-    items.push({ type:'table', x:norm(x-w/2), y:norm(y-h/2), w:norm(w), h:norm(h), rows, cols, color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor });
+    items.push({ type:'table', x:norm(x-w/2), y:norm(y-h/2), w:norm(w), h:norm(h), rows, cols,
+                 color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor,
+                 fontFamily:ui.fontFamily, fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize),
+                 textColor:ui.textColor, texts:[], aligns:[] });
     selection = [items.length-1];
     commitHistory();
     setTool('select');
@@ -1662,23 +1902,33 @@
   function commitText(){
     const val = textInput.value.trim();
     textInput.style.display='none';
-    if(editingTextIdx!=null){
+    if(editingTextIdx!=null && editingCell){
+      const idx = editingTextIdx, {r,c} = editingCell;
+      const it = items[idx];
+      beginHistory();
+      if(!it.texts) it.texts = [];
+      if(!it.texts[r]) it.texts[r] = [];
+      it.texts[r][c] = val;   // an empty cell is fine — it just clears that cell, unlike a plain text item
+      commitHistory();
+    } else if(editingTextIdx!=null){
       const idx = editingTextIdx;
       beginHistory();
       if(val){ items[idx].text = val; }
       else { items.splice(idx,1); selection = selection.filter(i=>i!==idx).map(i=>i>idx?i-1:i); }
       commitHistory();
-    } else if(val && textPos){
+    } else if(val && textBox && textDraft){
       beginHistory();
-      items.push({ type:'text', text:val, x:textPos.x, y:textPos.y, color:ui.color,
+      items.push({ type:'text', text:val, x:textBox.x, y:textBox.y, w:textBox.w, h:textBox.h,
+                   color:textDraft.color, fill:textDraft.fill, fillColor:textDraft.fillColor, strokeOn:textDraft.strokeOn, size:textDraft.size,
+                   textColor:textDraft.textColor || ui.textColor,
                    fontFamily:ui.fontFamily, fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize) });
       commitHistory();
     }
-    textPos=null; editingTextIdx=null; render();
+    textBox=null; textDraft=null; editingTextIdx=null; editingCell=null; render();
   }
   textInput.addEventListener('keydown', e=>{
     if(e.key==='Enter'){ e.preventDefault(); commitText(); }
-    else if(e.key==='Escape'){ textInput.style.display='none'; textPos=null; editingTextIdx=null; render(); }
+    else if(e.key==='Escape'){ textInput.style.display='none'; textBox=null; textDraft=null; editingTextIdx=null; editingCell=null; render(); }
     e.stopPropagation();
   });
   textInput.addEventListener('blur', commitText);
@@ -1707,7 +1957,7 @@
   function handlePolygonClick(x,y){
     if(!polyDraft){
       beginHistory();
-      polyDraft = { type:'polygon', color:ui.color, size:ui.size, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
+      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
       current = polyDraft;
       render(); updatePolyOverlay();
       return;
@@ -1717,11 +1967,13 @@
     polyDraft.points.push({x,y});
     render(); updatePolyOverlay();
   }
-  function finishPolygon(){
+  function finishPolygon(closed){
+    if(closed===undefined) closed = true;
     if(!polyDraft) return;
-    if(polyDraft.points.length<3){ toast('Add at least 3 points first'); return; }
-    items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, fill:polyDraft.fill,
-                 fillColor:polyDraft.fillColor, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+    const minPts = closed ? 3 : 2;
+    if(polyDraft.points.length<minPts){ toast(closed ? 'Add at least 3 points first' : 'Add at least 2 points first'); return; }
+    items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, strokeOn:polyDraft.strokeOn, fill:polyDraft.fill,
+                 fillColor:polyDraft.fillColor, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
     polyDraft = null; current = null;
     commitHistory();
     render(); updatePolyOverlay();
@@ -1735,9 +1987,13 @@
     const active = ui.tool==='polygon' && !!polyDraft;
     const disp = active ? '' : 'none';
     if(polyGroup.style.display !== disp){ polyGroup.style.display = disp; polySep.style.display = disp; }
-    if(active) polyFinishBtn.disabled = polyDraft.points.length < 3;
+    if(active){
+      polyFinishBtn.disabled = polyDraft.points.length < 3;
+      polyFinishOpenBtn.disabled = polyDraft.points.length < 2;
+    }
   }
-  polyFinishBtn.addEventListener('click', finishPolygon);
+  polyFinishBtn.addEventListener('click', ()=>finishPolygon(true));
+  polyFinishOpenBtn.addEventListener('click', ()=>finishPolygon(false));
   polyCancelBtn.addEventListener('click', cancelPolygon);
 
   // ---------- images (insert / paste / drop) ----------
@@ -1934,7 +2190,9 @@
     document.getElementById('redo').disabled = redoStack.length===0;
   }
   // shapes that can carry a fill (and so a second, fill color)
-  const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table';
+  const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
+  const STROKABLE = t => true;   // every shape has a meaningful "outline on/off" — text's border is separate from its glyph color
+  function strokeOn(it){ return it.strokeOn !== false; }   // default true, for old saved files without the field
   // selected items whose color can be edited (images have none); empty outside the select tool
   function colorableSelection(){
     return ui.tool==='select' ? selection.map(i=>items[i]).filter(it=>it && it.type!=='image') : [];
@@ -1944,19 +2202,19 @@
     const disp = active ? '' : 'none';
     if(arrangeGroup.style.display !== disp){ arrangeGroup.style.display = disp; arrangeSep.style.display = disp; }
     if(ui.tool==='select'){
-      // the palette doubles as the recolor tool for whatever is selected
+      // the icon buttons double as the recolor/resize tool for whatever is selected
       const sel = colorableSelection();
       const fillable = sel.filter(it=>FILLABLE(it.type));
       const setDisp = (el,on)=>{ const d = on ? '' : 'none'; if(el.style.display !== d) el.style.display = d; };
       setDisp(colorGroup, sel.length>0); setDisp(colorSep, sel.length>0);
-      setDisp(targetBtn, fillable.length>0); setDisp(fillGroup, fillable.length>0);
-      const sized = sel.filter(it=>it.type!=='text');   // text has a font size instead of a stroke width
-      const texts = sel.filter(it=>it.type==='text');
-      setDisp(sizeGroup, sized.length>0); setDisp(textOpts, texts.length>0); setDisp(optsSep, sized.length>0 || texts.length>0);
+      setDisp(fillGroup, fillable.length>0);
+      const sized = sel;   // every shape (including text, for its border) has a stroke width
+      const texts = sel.filter(it=>it.type==='text' || it.type==='table');
+      setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
+      setDisp(textOpts, texts.length>0);
+      setDisp(textColorGroup, texts.length>0);
       if(sel.length){
-        if(!fillable.length) ui.colorTarget = 'stroke';
-        else fillInput.checked = !!fillable[0].fill;   // checkbox mirrors the selection while selecting
-        if(sized.length){ sizeInput.value = sized[0].size; setSizeLabel(sized[0].size); }   // so does the slider
+        if(sized.length) setSizeVal(sized[0].size);   // so does the size control
         if(texts.length){ fontFamilySel.value = familyOf(texts[0]); setFontSizeSel(fontPxOf(texts[0])); }   // and the font controls
         refreshColorUI();
       }
@@ -2010,6 +2268,7 @@
     d += ' L' + p[p.length-1].x + ',' + p[p.length-1].y;
     return d;
   }
+  function svgAnchor(align){ return align==='left' ? 'start' : align==='right' ? 'end' : 'middle'; }
   function itemToSVG(it){
     let inner = '';
     switch(it.type){
@@ -2031,6 +2290,7 @@
         break;
       }
       case 'line': case 'arrow': {
+        if(!strokeOn(it)) break;
         inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round"/>`;
         const head = (fx,fy,tx,ty)=>{   // head at (tx,ty), pointing away from (fx,fy)
           const ang = Math.atan2(ty-fy, tx-fx);
@@ -2046,30 +2306,61 @@
       }
       case 'rect': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        const stroke = strokeOn(it) ? it.color : 'none';
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
         break;
       }
       case 'ellipse': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const stroke = strokeOn(it) ? it.color : 'none';
         const cx=it.x+it.w/2, cy=it.y+it.h/2;
-        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`;
+        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}"/>`;
         break;
       }
       case 'polygon': {
-        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const closed = it.closed !== false;
+        const fill = (closed && it.fill) ? (it.fillColor||it.color) : 'none';
+        const stroke = strokeOn(it) ? it.color : 'none';
         const pts = it.points.map(p=>p.x+','+p.y).join(' ');
-        inner = `<polygon points="${pts}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
+        const tag = closed ? 'polygon' : 'polyline';
+        inner = `<${tag} points="${pts}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round" stroke-linecap="round"/>`;
         break;
       }
-      case 'text':
-        inner = `<text x="${it.x}" y="${it.y}" fill="${escXml(it.color)}" style="font:${escXml(it.font)}" dominant-baseline="text-before-edge">${escXml(it.text)}</text>`;
+      case 'text': {
+        const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const stroke = strokeOn(it) ? it.color : 'none';
+        const box = (fill!=='none' || stroke!=='none')
+          ? `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}"/>`
+          : '';
+        const align = it.align || 'center';
+        const tx = align==='left' ? it.x+6 : align==='right' ? it.x+it.w-6 : it.x+it.w/2;
+        inner = box + `<text x="${tx}" y="${it.y+it.h/2}" fill="${escXml(it.textColor||it.color)}" text-anchor="${svgAnchor(align)}" dominant-baseline="middle" style="font:${escXml(it.font)}">${escXml(it.text)}</text>`;
         break;
+      }
       case 'table': {
         const fill = it.fill ? (it.fillColor||it.color) : 'none';
+        const stroke = strokeOn(it) ? it.color : 'none';
         let lines = '';
-        for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
-        for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
+        if(strokeOn(it)){
+          for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
+          for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
+        }
+        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
+        if(it.texts){
+          const cw = it.w/it.cols, ch = it.h/it.rows;
+          const font = fontStr(it.fontFamily||'sans', it.fontSize||16);
+          for(let r=0;r<it.rows;r++){
+            if(!it.texts[r]) continue;
+            for(let c=0;c<it.cols;c++){
+              const txt = it.texts[r][c];
+              if(!txt) continue;
+              const align = (it.aligns && it.aligns[r] && it.aligns[r][c]) || 'center';
+              const cx0 = it.x+cw*c, cy0 = it.y+ch*r;
+              const tx = align==='left' ? cx0+6 : align==='right' ? cx0+cw-6 : cx0+cw/2;
+              inner += `<text x="${tx}" y="${cy0+ch/2}" fill="${escXml(it.textColor||it.color)}" text-anchor="${svgAnchor(align)}" dominant-baseline="middle" style="font:${escXml(font)}">${escXml(txt)}</text>`;
+            }
+          }
+        }
         break;
       }
     }
@@ -2171,21 +2462,20 @@
     if(t!=='select'){ selection=[]; marquee=null; }
     if(t!=='eraser') cursorPt=null;
     if(t!=='table') setTablePicker(false);
-    const isText = (t==='text');
+    const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
-    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table');   // fill only makes sense for these
-    const usesColor = !isSelect && t!=='eraser';     // hide the palette where it has no effect
-    const usesSize = !isText && !isSelect;
+    const canFill = (t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text');   // fill only makes sense for these
+    const usesColor = !isSelect && t!=='eraser';     // hide the buttons where they have no effect
+    const usesSize = !isSelect;
     colorGroup.style.display = usesColor ? '' : 'none';
     colorSep.style.display = usesColor ? '' : 'none';
-    optsSep.style.display = (usesSize || isText) ? '' : 'none';
     textOpts.style.display = isText ? '' : 'none';
+    textOptsSep.style.display = isText ? '' : 'none';
+    textColorGroup.style.display = isText ? '' : 'none';
     sizeGroup.style.display = usesSize ? '' : 'none';
-    targetBtn.style.display = canFill ? '' : 'none';
+    sizeSep.style.display = usesSize ? '' : 'none';
     fillGroup.style.display = canFill ? '' : 'none';
-    if(!canFill) ui.colorTarget = 'stroke';          // no fill → palette edits the stroke
-    fillInput.checked = ui.fill;                     // back to the drawing defaults (select mode mirrors the selection instead)
-    sizeInput.value = ui.size; setSizeLabel(ui.size);
+    setSizeVal(ui.size);                             // back to the drawing defaults (select mode mirrors the selection instead)
     fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
@@ -2237,83 +2527,153 @@
     if(!tablePicker.hidden && !tablePicker.contains(e.target) && e.target!==tableBtn) setTablePicker(false);
   });
 
-  // a single palette, retargeted between stroke and fill by the toggle button
-  const swatchBox = document.getElementById('swatches');
-  const targetBtn = document.getElementById('colorTarget');
-  const targetDot = document.getElementById('targetDot');
-  const targetLbl = document.getElementById('targetLbl');
+  // Icon buttons (stroke/fill/text-color), each opening a small swatch-only popover — no text labels,
+  // no wide controls. Mirrors the existing table-size popover pattern.
+  function buildSwatchPopover(container, includeNone, noneTitle, noneId, onPick){
+    if(includeNone){
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'cswatch none'; b.title = noneTitle;
+      if(noneId) b.id = noneId;
+      b.addEventListener('click', ()=>onPick('none'));
+      container.appendChild(b);
+    }
+    PRESETS.forEach((c,i)=>{
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'cswatch'; b.style.background = c; b.title = PRESET_NAMES[i];
+      b.dataset.c = c;
+      b.addEventListener('click', ()=>onPick(c));
+      container.appendChild(b);
+    });
+  }
+  buildSwatchPopover(strokePicker, true, 'No stroke', 'strokeNoneSwatch', c=>{ applyStrokeColor(c); setStrokePicker(false); });
+  buildSwatchPopover(fillPicker, true, 'No fill', 'fillNoneSwatch', v=>{ applyFillColor(v); setFillPicker(false); });
+  buildSwatchPopover(textColorPicker, false, null, null, c=>{ applyTextColor(c); setTextColorPicker(false); });
+  const fillNoneSwatch = document.getElementById('fillNoneSwatch');
+  const strokeNoneSwatch = document.getElementById('strokeNoneSwatch');
+  // "None" is shown as a plain hollow rect (thin border, no fill) — same glyph for both dropdowns
+  const noneGlyph = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="#9ca3af" stroke-width="1"/></svg>';
+  if(fillNoneSwatch) fillNoneSwatch.innerHTML = noneGlyph;
+  if(strokeNoneSwatch) strokeNoneSwatch.innerHTML = noneGlyph;
 
-  PRESETS.forEach(c=>{
-    const s = document.createElement('button');
-    s.type = 'button';
-    s.className = 'swatch';
-    if(c==='#ffffff') s.classList.add('light');
-    s.dataset.c = c;
-    s.style.background = c;
-    s.title = c;
-    s.setAttribute('aria-label', 'Color ' + c);
-    s.addEventListener('click', ()=>applyColor(c));
-    swatchBox.appendChild(s);
+  function setStrokePicker(open){
+    strokePicker.hidden = !open;
+    strokeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ setFillPicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
+  }
+  function setFillPicker(open){
+    fillPicker.hidden = !open;
+    fillBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ setStrokePicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); }
+  }
+  function setTextColorPicker(open){
+    textColorPicker.hidden = !open;
+    textColorBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ setStrokePicker(false); setFillPicker(false); setSizePicker(false); setTablePicker(false); }
+  }
+  strokeBtn.addEventListener('click', e=>{ e.stopPropagation(); setStrokePicker(strokePicker.hidden); });
+  fillBtn.addEventListener('click', e=>{ e.stopPropagation(); setFillPicker(fillPicker.hidden); });
+  textColorBtn.addEventListener('click', e=>{ e.stopPropagation(); setTextColorPicker(textColorPicker.hidden); });
+  document.addEventListener('click', e=>{
+    if(!strokePicker.hidden && !strokePicker.contains(e.target) && e.target!==strokeBtn) setStrokePicker(false);
+    if(!fillPicker.hidden && !fillPicker.contains(e.target) && e.target!==fillBtn) setFillPicker(false);
+    if(!textColorPicker.hidden && !textColorPicker.contains(e.target) && e.target!==textColorBtn) setTextColorPicker(false);
   });
 
   function refreshColorUI(){
-    const onFill = ui.colorTarget === 'fill';
-    // with a selection, the palette shows the (first) selected item's colors rather than the drawing defaults
+    // with a selection, the buttons show the (first) selected item's colors rather than the drawing defaults
     const src = colorableSelection()[0] || ui;
-    const c = onFill ? (src.fillColor || ui.fillColor) : (src.color || ui.color);
-    colorPick.value = c;
-    targetLbl.textContent = onFill ? 'Fill' : 'Stroke';
-    targetDot.style.background = c;
-    swatchBox.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('active', s.dataset.c===c));
+    const strokeIsOn = 'strokeOn' in src ? strokeOn(src) : (ui.strokeOn !== false);
+    const strokeC = strokeIsOn ? (src.color || ui.color) : 'none';
+    const fillOn = 'fill' in src ? src.fill : ui.fill;
+    const fillC = fillOn ? (src.fillColor || ui.fillColor) : 'none';
+    if(strokeIsOn){ strokeColorBar.setAttribute('fill', strokeC); strokeColorBar.removeAttribute('stroke'); strokeColorBar.removeAttribute('stroke-width'); }
+    else { strokeColorBar.setAttribute('fill', 'none'); strokeColorBar.setAttribute('stroke', '#9ca3af'); strokeColorBar.setAttribute('stroke-width', '15'); }
+    strokePicker.querySelectorAll('.cswatch').forEach(s=>{
+      const isNone = s.classList.contains('none');
+      s.classList.toggle('active', isNone ? !strokeIsOn : (strokeIsOn && s.dataset.c===strokeC));
+    });
+    if(fillOn){ fillColorBar.setAttribute('fill', fillC); fillColorBar.removeAttribute('stroke'); fillColorBar.removeAttribute('stroke-width'); }
+    else { fillColorBar.setAttribute('fill', 'none'); fillColorBar.setAttribute('stroke', '#9ca3af'); fillColorBar.setAttribute('stroke-width', '15'); }
+    fillPicker.querySelectorAll('.cswatch').forEach(s=>{
+      const isNone = s.classList.contains('none');
+      s.classList.toggle('active', isNone ? fillC==='none' : s.dataset.c===fillC);
+    });
+    // text color: a separate attribute from stroke, only meaningful for text/table
+    const textSrc = colorableSelection().find(it=>it.type==='text'||it.type==='table');
+    const textC = (textSrc ? textSrc.textColor : null) || ui.textColor;
+    textColorBar.setAttribute('fill', textC);
+    textColorPicker.querySelectorAll('.cswatch').forEach(s=>s.classList.toggle('active', s.dataset.c===textC));
   }
-  function applyColor(c){
-    const onFill = ui.colorTarget === 'fill';
-    const sel = colorableSelection();
+  function applyStrokeColor(c){
+    const on = c !== 'none';
+    const sel = colorableSelection().filter(it=>STROKABLE(it.type));
     if(sel.length){
-      // recolor the selection (and remember the color as the new default for drawing)
       beginHistory();
-      for(const it of sel){
-        if(!onFill) it.color = c;
-        else if(FILLABLE(it.type)){ it.fillColor = c; it.fill = true; }   // choosing a fill color turns Fill on
-      }
+      for(const it of sel){ it.strokeOn = on; if(on) it.color = c; }
       commitHistory();
-      if(onFill) ui.fillColor = c; else ui.color = c;
+      ui.strokeOn = on; if(on) ui.color = c;
       render();
       return;
     }
-    if(onFill){
-      ui.fillColor = c;
-      if(!fillInput.checked){ fillInput.checked = true; ui.fill = true; }  // choosing a fill color turns Fill on
-    } else {
-      ui.color = c;
-    }
+    ui.strokeOn = on; if(on) ui.color = c;
     refreshColorUI();
   }
-  colorPick.addEventListener('input', e=>applyColor(e.target.value));
-  targetBtn.addEventListener('click', ()=>{
-    ui.colorTarget = ui.colorTarget === 'fill' ? 'stroke' : 'fill';
-    refreshColorUI();
-  });
-
-  sizeInput.addEventListener('input', e=>{
-    const v = +e.target.value;
-    setSizeLabel(v);
-    const sel = colorableSelection().filter(it=>it.type!=='text');
+  function applyFillColor(v){
+    const on = v !== 'none';
+    const sel = colorableSelection().filter(it=>FILLABLE(it.type));
     if(sel.length){
-      // live-resize the selection's stroke; one undo step for the whole slider drag (committed on 'change')
-      if(historyBefore===null) beginHistory();
+      beginHistory();
+      for(const it of sel){ it.fill = on; if(on) it.fillColor = v; }
+      commitHistory();
+      ui.fill = on; if(on) ui.fillColor = v;
+      render();
+      return;
+    }
+    ui.fill = on; if(on) ui.fillColor = v;
+    refreshColorUI();
+  }
+  function applyTextColor(c){
+    const sel = colorableSelection().filter(it=>it.type==='text'||it.type==='table');
+    if(sel.length){
+      beginHistory();
+      for(const it of sel) it.textColor = c;
+      commitHistory();
+      ui.textColor = c;
+      render();
+      return;
+    }
+    ui.textColor = c;
+    refreshColorUI();
+  }
+
+  function setSizePicker(open){
+    sizePicker.hidden = !open;
+    sizeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ setStrokePicker(false); setFillPicker(false); setTablePicker(false); }
+  }
+  sizeBtn.addEventListener('click', e=>{ e.stopPropagation(); setSizePicker(sizePicker.hidden); });
+  document.addEventListener('click', e=>{
+    if(!sizePicker.hidden && !sizePicker.contains(e.target) && e.target!==sizeBtn) setSizePicker(false);
+  });
+  // reflects a size even when nothing is selected yet, and after a corner-resize picks an odd value
+  function setSizeVal(px){
+    sizeRange.value = px;
+    sizeRangeLabel.textContent = px + ' px';
+    sizeBtnLabel.textContent = px + 'px';
+  }
+  sizeRange.addEventListener('input', e=>{
+    const v = +e.target.value;
+    setSizeVal(v);
+    const sel = colorableSelection();
+    if(sel.length){
+      if(historyBefore===null) beginHistory();   // one undo step for the whole drag, committed on 'change'
       for(const it of sel) it.size = v;
       render();
       return;
     }
     ui.size = v;
   });
-  sizeInput.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
-  fillInput.addEventListener('change', e=>{
-    const sel = colorableSelection().filter(it=>FILLABLE(it.type));
-    if(sel.length){ beginHistory(); for(const it of sel) it.fill = e.target.checked; commitHistory(); render(); return; }   // toggles the selection's fill
-    ui.fill = e.target.checked;
-  });
+  sizeRange.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
   // show a size in the dropdown even when it isn't one of the presets (e.g. after a corner-resize)
   function setFontSizeSel(px){
     if(![...fontSizeSel.options].some(o=>+o.value===px)){
@@ -2484,6 +2844,7 @@
   });
 
   canvas.addEventListener('dblclick', e=>{
+    if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
       // the two clicks that make up this dblclick each already added a vertex via onDown — the
       // second one is essentially an accidental duplicate, so drop it before closing the shape
@@ -2495,14 +2856,20 @@
     const {x,y} = pos(e);
     const hit = hitTest(x,y);
     if(hit>=0 && items[hit].type==='text'){
-      openText(items[hit].x, items[hit].y, hit);
+      openText(hit);
+      return;
+    }
+    if(hit>=0 && items[hit].type==='table'){
+      const lp = toLocal(items[hit], x, y);
+      const cell = tableCellAt(items[hit], lp.x, lp.y);
+      if(cell) openText(hit, null, null, cell);
       return;
     }
     if(selection.length){
       const piv = rotationPivotFor(selection);
       if(piv && piv.rotation){
         const lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
-        if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 9){
+        if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 11){
           beginHistory();
           const field = piv.isGroup ? 'groupRotation' : 'rotation';
           for(const idx of piv.members) items[idx][field] = 0;
@@ -2563,9 +2930,8 @@
   document.querySelectorAll('.toolbar svg').forEach(s=>s.setAttribute('aria-hidden','true'));
 
   load();
-  setTool('pen');
+  setTool(items.length ? 'select' : 'pen');
   refreshColorUI();
-  setSizeLabel(ui.size);
   resize();
   updateButtons();
   tidySeps();
