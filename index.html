@@ -43,14 +43,6 @@
     box-shadow:var(--shadow);
     z-index:10;
   }
-  .brand{
-    display:flex;align-items:center;gap:6px;
-    font-weight:700;font-size:15px;letter-spacing:-.01em;
-    padding:0 2px;
-  }
-  .brand svg{display:block}
-  .brand .dot{color:var(--accent)}
-  @media(max-width:760px){ .brand .brand-name{display:none} .brand{padding:0} }
 
   .group{display:flex;align-items:center;gap:3px}
   .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 1px}
@@ -77,38 +69,9 @@
   .btn.danger:hover{background:#fef2f2;color:var(--danger)}
 
   /* keyboard focus (mouse clicks don't show a ring) */
-  .btn:focus-visible,.select:focus-visible,.swatch:focus-visible,
-  input[type=color]:focus-visible,input[type=range]:focus-visible,
-  .check input:focus-visible{
+  .btn:focus-visible,.select:focus-visible,input[type=range]:focus-visible{
     outline:2px solid var(--accent);outline-offset:1px;
   }
-
-  .push-right{margin-left:auto}
-
-  /* color */
-  .swatches{display:flex;gap:5px;align-items:center}
-  .swatch{
-    -webkit-appearance:none;appearance:none;padding:0;
-    width:24px;height:24px;border-radius:7px;cursor:pointer;
-    border:2px solid #fff;box-shadow:0 0 0 1px var(--line);
-    transition:transform .08s ease,box-shadow .08s ease;
-  }
-  .swatch.light{box-shadow:0 0 0 1px #d1d5db}
-  .swatch:hover{transform:scale(1.08)}
-  .swatch.active{box-shadow:0 0 0 2px var(--accent);transform:scale(1.08)}
-  .color-wrap{position:relative;width:30px;height:30px}
-  input[type=color]{
-    position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;
-    border-radius:8px;cursor:pointer;background:none;
-    box-shadow:0 0 0 1px var(--line);
-  }
-  input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
-  input[type=color]::-webkit-color-swatch{border:none;border-radius:6px}
-
-  /* stroke/fill target toggle */
-  .target-btn{gap:8px;padding:0 11px;border:1px solid var(--line)}
-  .target-dot{width:16px;height:16px;border-radius:5px;box-shadow:0 0 0 1px rgba(0,0,0,.12);flex:0 0 auto}
-  .target-lbl{font-size:13px;font-weight:600;min-width:38px;text-align:left}
 
   /* hamburger dropdown */
   .menu-wrap{position:relative}
@@ -163,7 +126,7 @@
     position:relative;overflow:hidden;display:block;
     background:conic-gradient(#ef4444,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ef4444);
   }
-  .color-picker .cswatch.custom input{opacity:0;box-shadow:none}
+  .color-picker .cswatch.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 
   /* stroke-width popover: a real vertical slider (rotated horizontal input), continuous 1–60px —
      doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
@@ -182,11 +145,6 @@
   .vslider::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--accent);border:none;cursor:pointer}
   .size-picker-label{font-size:12px;color:var(--muted);font-weight:600;min-width:40px;text-align:center}
 
-  /* size */
-  .size-ctrl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
-  input[type=range]:not(.vslider){width:104px;accent-color:var(--accent);cursor:pointer}
-  .size-val{min-width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
-
   .select{
     height:38px;border:1px solid var(--line);border-radius:10px;
     background:#fff;color:var(--ink);font:inherit;font-size:13px;font-weight:550;
@@ -194,8 +152,6 @@
   }
   .select:focus-visible{border-color:var(--accent)}
 
-  .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
-  .check input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
 
   /* ---------- Canvas ---------- */
   .stage{
