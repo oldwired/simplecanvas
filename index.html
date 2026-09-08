@@ -783,32 +783,6 @@
 
   // ---------- drawing primitives ----------
   function strokeWidthOf(it){ return it.mode === 'brush' ? it.size*1.6 : it.size; }
-  function strokeStyleFor(it){
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = it.color;
-    ctx.lineWidth = strokeWidthOf(it);
-    if(it.mode === 'marker'){ ctx.lineCap = 'square'; ctx.globalAlpha = 0.4; } // translucent highlighter
-  }
-
-  function drawSmoothPath(p){
-    if(p.length === 1){
-      ctx.beginPath();
-      ctx.arc(p[0].x, p[0].y, Math.max(0.5, ctx.lineWidth/2), 0, Math.PI*2);
-      ctx.fillStyle = ctx.strokeStyle; ctx.fill();
-      return;
-    }
-    ctx.beginPath();
-    ctx.moveTo(p[0].x, p[0].y);
-    for(let i=1;i<p.length-1;i++){
-      const mx=(p[i].x+p[i+1].x)/2, my=(p[i].y+p[i+1].y)/2;
-      ctx.quadraticCurveTo(p[i].x, p[i].y, mx, my);
-    }
-    ctx.lineTo(p[p.length-1].x, p[p.length-1].y);
-    ctx.stroke();
-  }
-
   // Arrowheads live on lines and arrows alike: a 'line' has none, an 'arrow' has one at its end
   // unless told otherwise (he:false), and optionally one at its start (hs:true). Toggling heads
   // flips the type so old files and every existing `case 'arrow'` keep working.
@@ -822,17 +796,6 @@
   }
   // one arrowhead shape for canvas, SVG export and hit boxes: barb length and half-angle for a stroke width
   function arrowHeadGeom(size){ return { len: Math.max(10, size*2.6), a: Math.PI/7 }; }
-  function drawArrowHead(x1,y1,x2,y2,size){
-    const ang = Math.atan2(y2-y1, x2-x1);
-    const {len, a} = arrowHeadGeom(size);
-    ctx.beginPath();
-    ctx.moveTo(x2,y2);
-    ctx.lineTo(x2 - len*Math.cos(ang-a), y2 - len*Math.sin(ang-a));
-    ctx.moveTo(x2,y2);
-    ctx.lineTo(x2 - len*Math.cos(ang+a), y2 - len*Math.sin(ang+a));
-    ctx.stroke();
-  }
-
   function getImg(id){
     if(imgCache.has(id)) return imgCache.get(id);
     const src = assets[id];
@@ -844,6 +807,139 @@
     return im;
   }
 
+  // ---------- shape description ----------
+  // Every item is described once, as a short list of drawing primitives in its own (unrotated)
+  // frame. The canvas renderer (drawItem) and the SVG exporter (itemToSVG) both consume that list,
+  // so a shape cannot look different on screen and in an export.
+  //   {kind:'path', d, style}                  d: ['M',x,y] ['L',x,y] ['Q',cx,cy,x,y] ['Z'] segments
+  //   {kind:'rect', x,y,w,h, style}
+  //   {kind:'ellipse', cx,cy,rx,ry, style}
+  //   {kind:'dot', cx,cy,r, color, opacity}    a single-point freehand stroke
+  //   {kind:'text', text, x,y,w,h, align, font, color}   one line, centered in a box
+  //   {kind:'image', id, x,y,w,h}
+  //   style: {fill, stroke, width, cap, join, opacity}   fill/stroke are a color or 'none'
+  const fillOf = it => it.fill ? (it.fillColor || it.color) : 'none';
+  const strokeOf = it => strokeOn(it) ? it.color : 'none';
+  const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round' });
+  // text sits 6px in from the left/right edge, or on the center line
+  function textAnchorX(x, w, align){ return align==='left' ? x+6 : align==='right' ? x+w-6 : x+w/2; }
+  // freehand strokes are smoothed: each vertex becomes the control point of a quadratic curve
+  // ending at the midpoint to the next vertex
+  function smoothSegments(p){
+    const d = [['M', p[0].x, p[0].y]];
+    for(let i=1;i<p.length-1;i++) d.push(['Q', p[i].x, p[i].y, (p[i].x+p[i+1].x)/2, (p[i].y+p[i+1].y)/2]);
+    d.push(['L', p[p.length-1].x, p[p.length-1].y]);
+    return d;
+  }
+  // arrowhead at (tx,ty) pointing away from (fx,fy): barb - tip - barb
+  function arrowHeadSegments(fx,fy,tx,ty,size){
+    const ang = Math.atan2(ty-fy, tx-fx), {len, a} = arrowHeadGeom(size);
+    return [['M', tx-len*Math.cos(ang-a), ty-len*Math.sin(ang-a)], ['L', tx, ty], ['L', tx-len*Math.cos(ang+a), ty-len*Math.sin(ang+a)]];
+  }
+  function shapeOps(it, skipCell){
+    const ops = [];
+    switch(it.type){
+      case 'image':
+        ops.push({ kind:'image', id:it.id, x:it.x, y:it.y, w:it.w, h:it.h });
+        break;
+      case 'path': {
+        const w = strokeWidthOf(it), opacity = it.mode==='marker' ? 0.4 : 1;   // marker = translucent highlighter
+        if(it.points.length===1) ops.push({ kind:'dot', cx:it.points[0].x, cy:it.points[0].y, r:Math.max(0.5, w/2), color:it.color, opacity });
+        else ops.push({ kind:'path', d:smoothSegments(it.points), style:{ fill:'none', stroke:it.color, width:w, cap:it.mode==='marker' ? 'square' : 'round', join:'round', opacity } });
+        break;
+      }
+      case 'line': case 'arrow': {
+        if(!strokeOn(it)) break;
+        const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round' };
+        ops.push({ kind:'path', d:[['M', it.x1, it.y1], ['L', it.x2, it.y2]], style });
+        const h = headsOf(it);
+        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style });
+        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style });
+        break;
+      }
+      case 'rect':
+        ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style:boxStyle(it) });
+        break;
+      case 'ellipse':
+        ops.push({ kind:'ellipse', cx:it.x+it.w/2, cy:it.y+it.h/2, rx:Math.abs(it.w/2), ry:Math.abs(it.h/2), style:{ fill:fillOf(it), stroke:strokeOf(it), width:it.size } });
+        break;
+      case 'polygon': {
+        const closed = it.closed !== false;
+        const d = it.points.map((p,i)=>[i ? 'L' : 'M', p.x, p.y]);
+        if(closed) d.push(['Z']);
+        ops.push({ kind:'path', d, style:{ fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round' } });
+        break;
+      }
+      case 'text': {
+        const style = boxStyle(it);
+        if(style.fill!=='none' || style.stroke!=='none') ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style });
+        ops.push({ kind:'text', text:it.text, x:it.x, y:it.y, w:it.w, h:it.h, align:it.align||'center', font:it.font, color:it.textColor||it.color });
+        break;
+      }
+      case 'table': {
+        ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style:boxStyle(it) });
+        if(strokeOn(it)){
+          const d = [];
+          for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; d.push(['M', it.x, yy], ['L', it.x+it.w, yy]); }
+          for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; d.push(['M', xx, it.y], ['L', xx, it.y+it.h]); }
+          if(d.length) ops.push({ kind:'path', d, style:{ fill:'none', stroke:it.color, width:it.size } });
+        }
+        if(it.texts){
+          const cw = it.w/it.cols, ch = it.h/it.rows;
+          const font = fontStr(it.fontFamily||'sans', it.fontSize||16), color = it.textColor||it.color;
+          for(let r=0;r<it.rows;r++){
+            if(!it.texts[r]) continue;
+            for(let c=0;c<it.cols;c++){
+              if(skipCell && skipCell.r===r && skipCell.c===c) continue;   // the cell being edited is drawn by the input
+              const txt = it.texts[r][c];
+              if(!txt) continue;
+              const align = (it.aligns && it.aligns[r] && it.aligns[r][c]) || 'center';
+              ops.push({ kind:'text', text:txt, x:it.x+cw*c, y:it.y+ch*r, w:cw, h:ch, align, font, color });
+            }
+          }
+        }
+        break;
+      }
+    }
+    return ops;
+  }
+
+  // ---------- canvas renderer ----------
+  function tracePath(d){
+    ctx.beginPath();
+    for(const s of d){
+      if(s[0]==='M') ctx.moveTo(s[1], s[2]);
+      else if(s[0]==='L') ctx.lineTo(s[1], s[2]);
+      else if(s[0]==='Q') ctx.quadraticCurveTo(s[1], s[2], s[3], s[4]);
+      else ctx.closePath();
+    }
+  }
+  function paintCurrentPath(style){
+    ctx.lineWidth = style.width; ctx.lineCap = style.cap || 'butt'; ctx.lineJoin = style.join || 'miter';
+    ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
+    if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(); }
+    if(style.stroke !== 'none'){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
+  }
+  function paintOp(op){
+    switch(op.kind){
+      case 'image': {
+        const im = getImg(op.id);
+        if(im && im.complete && im.naturalWidth) ctx.drawImage(im, op.x, op.y, op.w, op.h);
+        break;
+      }
+      case 'dot':
+        ctx.globalAlpha = op.opacity; ctx.fillStyle = op.color;
+        ctx.beginPath(); ctx.arc(op.cx, op.cy, op.r, 0, Math.PI*2); ctx.fill();
+        break;
+      case 'path': tracePath(op.d); paintCurrentPath(op.style); break;
+      case 'rect': ctx.beginPath(); ctx.rect(op.x, op.y, op.w, op.h); paintCurrentPath(op.style); break;
+      case 'ellipse': ctx.beginPath(); ctx.ellipse(op.cx, op.cy, op.rx, op.ry, 0, 0, Math.PI*2); paintCurrentPath(op.style); break;
+      case 'text':
+        ctx.globalAlpha = 1; ctx.fillStyle = op.color; ctx.font = op.font;
+        drawAlignedText(op.text, op.x, op.y, op.w, op.h, op.align);
+        break;
+    }
+  }
   function drawItem(it, skipCell){
     ctx.save();
     if(it.group!=null && it.groupRotation){
@@ -855,84 +951,7 @@
       const cx = b.x+b.w/2, cy = b.y+b.h/2;
       ctx.translate(cx,cy); ctx.rotate(it.rotation); ctx.translate(-cx,-cy);
     }
-    switch(it.type){
-      case 'image':{
-        const im = getImg(it.id);
-        if(im && im.complete && im.naturalWidth){ ctx.drawImage(im, it.x, it.y, it.w, it.h); }
-        break;
-      }
-      case 'path':
-        strokeStyleFor(it);
-        drawSmoothPath(it.points);
-        break;
-      case 'line':
-      case 'arrow':
-        if(strokeOn(it)){
-          ctx.strokeStyle = it.color; ctx.lineWidth = it.size; ctx.lineCap='round';
-          ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(it.x2,it.y2); ctx.stroke();
-          const h = headsOf(it);
-          if(h.e) drawArrowHead(it.x1,it.y1,it.x2,it.y2,it.size);
-          if(h.s) drawArrowHead(it.x2,it.y2,it.x1,it.y1,it.size);
-        }
-        break;
-      case 'rect':
-        ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
-        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x,it.y,it.w,it.h); }
-        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.strokeRect(it.x,it.y,it.w,it.h); }
-        break;
-      case 'ellipse':
-        ctx.lineWidth = it.size;
-        ctx.beginPath();
-        ctx.ellipse(it.x+it.w/2, it.y+it.h/2, Math.abs(it.w/2), Math.abs(it.h/2), 0, 0, Math.PI*2);
-        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
-        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.stroke(); }
-        break;
-      case 'polygon': {
-        ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = it.size;
-        ctx.beginPath();
-        ctx.moveTo(it.points[0].x, it.points[0].y);
-        for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
-        const closed = it.closed !== false;
-        if(closed) ctx.closePath();
-        if(closed && it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fill(); }
-        if(strokeOn(it)){ ctx.strokeStyle = it.color; ctx.stroke(); }
-        break;
-      }
-      case 'text':
-        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x,it.y,it.w,it.h); }
-        if(strokeOn(it)){ ctx.lineWidth = it.size; ctx.strokeStyle = it.color; ctx.strokeRect(it.x,it.y,it.w,it.h); }
-        ctx.fillStyle = it.textColor || it.color;
-        ctx.font = it.font;
-        drawAlignedText(it.text, it.x, it.y, it.w, it.h, it.align);
-        break;
-      case 'table':
-        ctx.lineJoin = 'round'; ctx.lineWidth = it.size;
-        if(it.fill){ ctx.fillStyle = it.fillColor || it.color; ctx.fillRect(it.x, it.y, it.w, it.h); }
-        if(strokeOn(it)){
-          ctx.strokeStyle = it.color;
-          ctx.strokeRect(it.x, it.y, it.w, it.h);
-          ctx.beginPath();
-          for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; ctx.moveTo(it.x, yy); ctx.lineTo(it.x+it.w, yy); }
-          for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; ctx.moveTo(xx, it.y); ctx.lineTo(xx, it.y+it.h); }
-          ctx.stroke();
-        }
-        if(it.texts){
-          ctx.fillStyle = it.textColor || it.color;
-          ctx.font = fontStr(it.fontFamily||'sans', it.fontSize||16);
-          const cw = it.w/it.cols, ch = it.h/it.rows;
-          for(let r=0;r<it.rows;r++){
-            if(!it.texts[r]) continue;
-            for(let c=0;c<it.cols;c++){
-              if(skipCell && skipCell.r===r && skipCell.c===c) continue;
-              const txt = it.texts[r][c];
-              if(!txt) continue;
-              const align = (it.aligns && it.aligns[r] && it.aligns[r][c]) || 'center';
-              drawAlignedText(txt, it.x+cw*c, it.y+ch*r, cw, ch, align);
-            }
-          }
-        }
-        break;
-    }
+    for(const op of shapeOps(it, skipCell)) paintOp(op);
     ctx.restore();
   }
 
@@ -943,7 +962,7 @@
     if(!text) return;
     ctx.textAlign = align || 'center';
     ctx.textBaseline = 'alphabetic';
-    const tx = align==='left' ? boxX+6 : align==='right' ? boxX+boxW-6 : boxX+boxW/2;
+    const tx = textAnchorX(boxX, boxW, align);
     const m = ctx.measureText(text);
     const asc = m.actualBoundingBoxAscent||0, desc = m.actualBoundingBoxDescent||0;
     const baselineY = boxY + boxH/2 + (asc-desc)/2;
@@ -2314,113 +2333,38 @@
     toast('Saved PNG');
   }
 
-  // Mirrors drawItem(), but emits SVG markup instead of issuing canvas calls.
+  // ---------- SVG exporter: the same shape description, as markup ----------
   function escXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function smoothPathD(p){
-    let d = 'M' + p[0].x + ',' + p[0].y;
-    for(let i=1;i<p.length-1;i++){
-      const mx=(p[i].x+p[i+1].x)/2, my=(p[i].y+p[i+1].y)/2;
-      d += ' Q' + p[i].x + ',' + p[i].y + ' ' + mx + ',' + my;
+  const pathD = d => d.map(s => s[0]==='Z' ? 'Z' : s[0] + s.slice(1).join(',')).join(' ');
+  function styleAttrs(st){
+    let a = ` fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}"`;
+    if(st.stroke !== 'none'){
+      a += ` stroke-width="${st.width}"`;
+      if(st.cap) a += ` stroke-linecap="${st.cap}"`;
+      if(st.join) a += ` stroke-linejoin="${st.join}"`;
     }
-    d += ' L' + p[p.length-1].x + ',' + p[p.length-1].y;
-    return d;
+    if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
+    return a;
   }
-  function svgAnchor(align){ return align==='left' ? 'start' : align==='right' ? 'end' : 'middle'; }
-  function itemToSVG(it){
-    let inner = '';
-    switch(it.type){
+  function opToSVG(op){
+    switch(op.kind){
       case 'image': {
-        const src = assets[it.id];
-        if(src) inner = `<image href="${escXml(src)}" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`;
-        break;
+        const src = assets[op.id];
+        return src ? `<image href="${escXml(src)}" x="${op.x}" y="${op.y}" width="${op.w}" height="${op.h}" preserveAspectRatio="none"/>` : '';
       }
-      case 'path': {
-        const w = strokeWidthOf(it);
-        const opacity = it.mode==='marker' ? 0.4 : 1;
-        const cap = it.mode==='marker' ? 'square' : 'round';
-        if(it.points.length===1){
-          const p = it.points[0];
-          inner = `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(0.5,w/2)}" fill="${escXml(it.color)}" opacity="${opacity}"/>`;
-        } else {
-          inner = `<path d="${smoothPathD(it.points)}" fill="none" stroke="${escXml(it.color)}" stroke-width="${w}" stroke-linecap="${cap}" stroke-linejoin="round" opacity="${opacity}"/>`;
-        }
-        break;
-      }
-      case 'line': case 'arrow': {
-        if(!strokeOn(it)) break;
-        inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round"/>`;
-        const head = (fx,fy,tx,ty)=>{   // head at (tx,ty), pointing away from (fx,fy)
-          const ang = Math.atan2(ty-fy, tx-fx);
-          const {len, a} = arrowHeadGeom(it.size);
-          const hx1 = tx-len*Math.cos(ang-a), hy1 = ty-len*Math.sin(ang-a);
-          const hx2 = tx-len*Math.cos(ang+a), hy2 = ty-len*Math.sin(ang+a);
-          return `<path d="M${hx1},${hy1} L${tx},${ty} L${hx2},${hy2}" fill="none" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
-        };
-        const h = headsOf(it);
-        if(h.e) inner += head(it.x1,it.y1,it.x2,it.y2);
-        if(h.s) inner += head(it.x2,it.y2,it.x1,it.y1);
-        break;
-      }
-      case 'rect': {
-        const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        const stroke = strokeOn(it) ? it.color : 'none';
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round"/>`;
-        break;
-      }
-      case 'ellipse': {
-        const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        const stroke = strokeOn(it) ? it.color : 'none';
-        const cx=it.x+it.w/2, cy=it.y+it.h/2;
-        inner = `<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(it.w/2)}" ry="${Math.abs(it.h/2)}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}"/>`;
-        break;
-      }
-      case 'polygon': {
-        const closed = it.closed !== false;
-        const fill = (closed && it.fill) ? (it.fillColor||it.color) : 'none';
-        const stroke = strokeOn(it) ? it.color : 'none';
-        const pts = it.points.map(p=>p.x+','+p.y).join(' ');
-        const tag = closed ? 'polygon' : 'polyline';
-        inner = `<${tag} points="${pts}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round" stroke-linecap="round"/>`;
-        break;
-      }
+      case 'dot': return `<circle cx="${op.cx}" cy="${op.cy}" r="${op.r}" fill="${escXml(op.color)}"${op.opacity !== 1 ? ` opacity="${op.opacity}"` : ''}/>`;
+      case 'path': return `<path d="${pathD(op.d)}"${styleAttrs(op.style)}/>`;
+      case 'rect': return `<rect x="${op.x}" y="${op.y}" width="${op.w}" height="${op.h}"${styleAttrs(op.style)}/>`;
+      case 'ellipse': return `<ellipse cx="${op.cx}" cy="${op.cy}" rx="${op.rx}" ry="${op.ry}"${styleAttrs(op.style)}/>`;
       case 'text': {
-        const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        const stroke = strokeOn(it) ? it.color : 'none';
-        const box = (fill!=='none' || stroke!=='none')
-          ? `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}"/>`
-          : '';
-        const align = it.align || 'center';
-        const tx = align==='left' ? it.x+6 : align==='right' ? it.x+it.w-6 : it.x+it.w/2;
-        inner = box + `<text x="${tx}" y="${it.y+it.h/2}" fill="${escXml(it.textColor||it.color)}" text-anchor="${svgAnchor(align)}" dominant-baseline="middle" style="font:${escXml(it.font)}">${escXml(it.text)}</text>`;
-        break;
-      }
-      case 'table': {
-        const fill = it.fill ? (it.fillColor||it.color) : 'none';
-        const stroke = strokeOn(it) ? it.color : 'none';
-        let lines = '';
-        if(strokeOn(it)){
-          for(let i=1;i<it.rows;i++){ const yy = it.y+it.h*i/it.rows; lines += `<line x1="${it.x}" y1="${yy}" x2="${it.x+it.w}" y2="${yy}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
-          for(let j=1;j<it.cols;j++){ const xx = it.x+it.w*j/it.cols; lines += `<line x1="${xx}" y1="${it.y}" x2="${xx}" y2="${it.y+it.h}" stroke="${escXml(it.color)}" stroke-width="${it.size}"/>`; }
-        }
-        inner = `<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="${escXml(fill)}" stroke="${escXml(stroke)}" stroke-width="${it.size}" stroke-linejoin="round"/>` + lines;
-        if(it.texts){
-          const cw = it.w/it.cols, ch = it.h/it.rows;
-          const font = fontStr(it.fontFamily||'sans', it.fontSize||16);
-          for(let r=0;r<it.rows;r++){
-            if(!it.texts[r]) continue;
-            for(let c=0;c<it.cols;c++){
-              const txt = it.texts[r][c];
-              if(!txt) continue;
-              const align = (it.aligns && it.aligns[r] && it.aligns[r][c]) || 'center';
-              const cx0 = it.x+cw*c, cy0 = it.y+ch*r;
-              const tx = align==='left' ? cx0+6 : align==='right' ? cx0+cw-6 : cx0+cw/2;
-              inner += `<text x="${tx}" y="${cy0+ch/2}" fill="${escXml(it.textColor||it.color)}" text-anchor="${svgAnchor(align)}" dominant-baseline="middle" style="font:${escXml(font)}">${escXml(txt)}</text>`;
-            }
-          }
-        }
-        break;
+        const anchor = op.align==='left' ? 'start' : op.align==='right' ? 'end' : 'middle';
+        return `<text x="${textAnchorX(op.x, op.w, op.align)}" y="${op.y+op.h/2}" fill="${escXml(op.color)}" text-anchor="${anchor}" dominant-baseline="middle" style="font:${escXml(op.font)}">${escXml(op.text)}</text>`;
       }
     }
+    return '';
+  }
+  function itemToSVG(it){
+    const inner = shapeOps(it).map(opToSVG).join('');
     // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
     let transform = '';
     if(it.group!=null && it.groupRotation){
