@@ -158,6 +158,12 @@
     display:flex;align-items:center;justify-content:center;
   }
   #fillNoneSwatch svg, #strokeNoneSwatch svg{width:16px;height:16px}
+  /* custom color: a rainbow tile with the browser's own color input laid invisibly over it */
+  .color-picker .cswatch.custom{
+    position:relative;overflow:hidden;display:block;
+    background:conic-gradient(#ef4444,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ef4444);
+  }
+  .color-picker .cswatch.custom input{opacity:0;box-shadow:none}
 
   /* stroke-width popover: a real vertical slider (rotated horizontal input), continuous 1–60px —
      doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
@@ -536,7 +542,7 @@
   const polyCancelBtn = document.getElementById('polyCancel');
 
   const STORE_KEY = 'simplecanvas:v1';
-  const FORMAT_VERSION = 1;     // bump when the saved-file schema changes
+  const FORMAT_VERSION = 2;     // bump when the saved-file schema changes (2: group pivots ignore stroke width)
   const BG = '#ffffff';
   const PRESETS = ['#1f2937','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#ffffff','#e5e7eb','#78828e'];
   const PRESET_NAMES = ['Dark','Red','Orange','Yellow','Green','Blue','Purple','Pink','White','Light Grey','Dark Grey'];
@@ -601,15 +607,17 @@
   // and numbers are normalized, images must have a real data-URL asset, text fonts are rebuilt.
   const ITEM_TYPES = ['path','line','arrow','rect','ellipse','polygon','text','table','image'];
   const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000;
+  textInput.maxLength = MAX_TEXT;   // the same limit the loader enforces, so nothing typed is cut on reload
   const isNum = v => typeof v === 'number' && Number.isFinite(v);
-  const isColor = v => typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v);
+  const isColor = v => typeof v === 'string' && /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);   // CSS hex: 3, 4, 6 or 8 digits
   function normalizeItem(raw, assetsIn){
     if(!raw || typeof raw !== 'object' || ITEM_TYPES.indexOf(raw.type) < 0) return null;
     const it = { type: raw.type };
     const num = (k, d) => { const v = raw[k]; if(isNum(v)) return norm(v); if(d === undefined) throw new Error(k); return d; };
     const pts = min => {
-      if(!Array.isArray(raw.points) || raw.points.length < min || raw.points.length > MAX_POINTS) throw new Error('points');
-      return raw.points.map(q => { if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point'); return {x:norm(q.x), y:norm(q.y)}; });
+      if(!Array.isArray(raw.points) || raw.points.length < min) throw new Error('points');
+      return raw.points.slice(0, MAX_POINTS).map(q => {   // (the same cap the pen applies while drawing)
+        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point'); return {x:norm(q.x), y:norm(q.y)}; });
     };
     try{
       switch(it.type){
@@ -676,28 +684,54 @@
   }
   // -> {items, assets, dropped}: the validated scene, only the assets it references, and how many
   // objects were unreadable. Never touches live state.
-  function normalizeScene(rawItems, rawAssets){
+  function normalizeScene(rawItems, rawAssets, version){
     const assetsIn = (rawAssets && typeof rawAssets === 'object') ? rawAssets : {};
     const out = [];
     let dropped = 0;
+    const brokenGroups = new Set();
     for(const raw of (Array.isArray(rawItems) ? rawItems : [])){
       if(raw && raw.mode === 'eraser') continue;          // legacy white-stroke "erasers"
       const it = out.length < MAX_ITEMS ? normalizeItem(raw, assetsIn) : null;
-      if(it) out.push(it); else dropped++;
+      if(it) out.push(it);
+      else { dropped++; if(raw && typeof raw.group === 'string') brokenGroups.add(raw.group); }
     }
+    // A group that lost a member has lost the pivot its survivors were rotated around (it was derived
+    // from the whole group's box), so their shared rotation can't be reproduced: ungroup them rather
+    // than let them render somewhere else than they were saved.
+    let ungrouped = 0;
+    for(const it of out){
+      if(it.group != null && brokenGroups.has(it.group)){ delete it.group; delete it.groupRotation; ungrouped++; }
+    }
+    if(!(isNum(version) && version >= 2)) migrateGroupPivots(out);
     ensureUids(out);
-    const used = {};
-    for(const it of out){ if(it.type === 'image') used[it.id] = assetsIn[it.id]; }
-    return { items: out, assets: used, dropped };
+    return { items: out, assets: assetsUsedBy(out, assetsIn), dropped, ungrouped };
+  }
+  // Format 1 rotated groups around the center of the members' padded (stroke-width-dependent) boxes;
+  // format 2 uses the stroke-free geometry instead (see groupPivot). Rotating around a different point
+  // is the same as rotating around the new one plus a fixed shift, so shifting every member by that
+  // amount keeps the group exactly where the old app drew it.
+  function migrateGroupPivots(list){
+    const groups = new Map();
+    for(const it of list){ if(it.group != null && it.groupRotation){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); } }
+    for(const members of groups.values()){
+      const o = unionBoxOf(members, true), n = unionBoxOf(members, false);
+      const ox = o.x+o.w/2 - (n.x+n.w/2), oy = o.y+o.h/2 - (n.y+n.h/2);
+      if(!ox && !oy) continue;
+      const rot = members[0].groupRotation, c = Math.cos(rot), si = Math.sin(rot);
+      const dx = ox - (c*ox - si*oy), dy = oy - (si*ox + c*oy);   // (I - R)(old - new)
+      for(const it of members) translateItem(it, dx, dy);
+    }
   }
 
-  function referencedAssets(){
+  // only the assets that some image in `list` still points at (from the `pool` of known assets)
+  function assetsUsedBy(list, pool){
     const used = {};
-    for(const it of items){ if(it.type==='image' && assets[it.id]) used[it.id] = assets[it.id]; }
+    for(const it of list){ if(it.type==='image' && pool[it.id]) used[it.id] = pool[it.id]; }
     return used;
   }
+  function referencedAssets(){ return assetsUsedBy(items, assets); }
   function save(){
-    try{ localStorage.setItem(STORE_KEY, JSON.stringify({items, assets:referencedAssets()})); }
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify({version:FORMAT_VERSION, items, assets:referencedAssets()})); }
     catch(e){
       console.warn('Could not save sketch:', e);
       toast('Sketch too large to auto-save (try fewer/smaller images)');
@@ -708,12 +742,21 @@
       const raw = localStorage.getItem(STORE_KEY);
       if(!raw) return;
       const d = JSON.parse(raw);
-      const scene = normalizeScene(Array.isArray(d) ? d : (d && d.items), d && d.assets);   // legacy format = items only
+      const scene = normalizeScene(Array.isArray(d) ? d : (d && d.items), d && d.assets, d && d.version);   // legacy format = items only
       items = scene.items;
       Object.assign(assets, scene.assets);
+      const note = sceneLoadNote(scene);
+      if(note) setTimeout(()=>toast('Restored sketch: ' + note), 300);
     }catch(e){ console.warn('Could not load sketch:', e); }
   }
 
+  // what a load had to leave out, as a short phrase ('' when nothing was)
+  function sceneLoadNote(scene){
+    const parts = [];
+    if(scene.dropped) parts.push(scene.dropped + ' unreadable object' + (scene.dropped===1?'':'s') + ' skipped');
+    if(scene.ungrouped) parts.push(scene.ungrouped + ' object' + (scene.ungrouped===1?'':'s') + ' ungrouped');
+    return parts.join(', ');
+  }
   function toast(msg){
     toastEl.textContent = msg;
     toastEl.classList.add('show');
@@ -774,10 +817,11 @@
     if(s) it.hs = true;
     if(!e) it.he = false;
   }
+  // one arrowhead shape for canvas, SVG export and hit boxes: barb length and half-angle for a stroke width
+  function arrowHeadGeom(size){ return { len: Math.max(10, size*2.6), a: Math.PI/7 }; }
   function drawArrowHead(x1,y1,x2,y2,size){
     const ang = Math.atan2(y2-y1, x2-x1);
-    const len = Math.max(10, size*2.6);
-    const a = Math.PI/7;
+    const {len, a} = arrowHeadGeom(size);
     ctx.beginPath();
     ctx.moveTo(x2,y2);
     ctx.lineTo(x2 - len*Math.cos(ang-a), y2 - len*Math.sin(ang-a));
@@ -937,31 +981,32 @@
   }
 
   // ---------- bounding boxes / hit testing ----------
-  function bbox(it){
+  // padded=false gives the bare geometry (no stroke allowance) — what group pivots are derived from
+  function bbox(it, padded=true){
     switch(it.type){
       case 'path':{
         let xs=it.points.map(p=>p.x), ys=it.points.map(p=>p.y);
-        const pad=strokeWidthOf(it)/2+2;
+        const pad=padded ? strokeWidthOf(it)/2+2 : 0;
         return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
       }
       case 'line':case 'arrow':{
         const sz = it.size||2, h = headsOf(it);
-        let pad = sz/2+4;
+        let pad = padded ? sz/2+4 : 0;
         // an arrowhead's barbs stick out sideways from the tip by len*sin(a), plus half the stroke
-        if(h.s||h.e) pad = Math.max(pad, Math.max(10, sz*2.6)*Math.sin(Math.PI/7) + sz/2 + 2);
+        if(padded && (h.s||h.e)){ const g = arrowHeadGeom(sz); pad = Math.max(pad, g.len*Math.sin(g.a) + sz/2 + 2); }
         const x=Math.min(it.x1,it.x2), y=Math.min(it.y1,it.y2);
         return {x:x-pad,y:y-pad,w:Math.abs(it.x2-it.x1)+pad*2,h:Math.abs(it.y2-it.y1)+pad*2};
       }
       case 'rect':case 'ellipse':case 'table':case 'text':{
         const x=Math.min(it.x,it.x+it.w), y=Math.min(it.y,it.y+it.h);
-        const pad=(it.size||2)/2+2;   // the stroke straddles the edge
+        const pad=padded ? (it.size||2)/2+2 : 0;   // the stroke straddles the edge
         return {x:x-pad,y:y-pad,w:Math.abs(it.w)+pad*2,h:Math.abs(it.h)+pad*2};
       }
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'polygon':{
         let xs=it.points.map(p=>p.x), ys=it.points.map(p=>p.y);
-        const pad=(it.size||2)/2+2;
+        const pad=padded ? (it.size||2)/2+2 : 0;
         return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
       }
     }
@@ -984,8 +1029,8 @@
   }
   // world bbox using ONLY the item's own rotation (never groupRotation) — this is the stable
   // baseline used to find a group's pivot, so it can never recurse into the group-aware worldBBox.
-  function worldBBoxOwn(it){
-    const b = bbox(it);
+  function worldBBoxOwn(it, padded=true){
+    const b = bbox(it, padded);
     if(!it.rotation) return b;
     const cx=b.x+b.w/2, cy=b.y+b.h/2;
     const corners = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]
@@ -993,16 +1038,20 @@
     const xs=corners.map(c=>c.x), ys=corners.map(c=>c.y);
     return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs)-Math.min(...xs), h:Math.max(...ys)-Math.min(...ys)};
   }
-  function unionBoxOwn(idxs){
+  function unionBoxOf(list, padded=true){
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-    for(const i of idxs){ const b=worldBBoxOwn(items[i]); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
+    for(const it of list){ const b=worldBBoxOwn(it, padded); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
     return {x:x0,y:y0,w:x1-x0,h:y1-y0};
   }
+  function unionBoxOwn(idxs, padded=true){ return unionBoxOf(idxs.map(i=>items[i]), padded); }
   // a group's fixed pivot + its baseline (own-rotation-only) bounding box — the box a group's
-  // outline/handle are drawn in before the outer groupRotation transform is applied
+  // outline/handle are drawn in before the outer groupRotation transform is applied.
+  // The pivot comes from the members' bare geometry: with stroke padding in the mix, changing one
+  // member's line width (or arrowheads) would move the pivot and swing the whole rotated group.
   function groupPivot(groupId){
-    const box = unionBoxOwn(itemsInGroup(groupId));
-    return { cx:box.x+box.w/2, cy:box.y+box.h/2, box };
+    const idxs = itemsInGroup(groupId);
+    const box = unionBoxOwn(idxs), g = unionBoxOwn(idxs, false);
+    return { cx:g.x+g.w/2, cy:g.y+g.h/2, box };
   }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
   // (the reverse order of how they're applied when drawing)
@@ -1233,11 +1282,12 @@
   // surviving sub-strokes (0 or more), or null if the ring didn't touch this stroke.
   // Where the segment p->q crosses the circle (c, r): parametric t values in (0,1), each tagged with
   // whether the segment is entering the circle there or leaving it.
+  const NO_CUTS = [];   // shared miss result — this runs for every segment of every stroke per eraser step
   function segCircleCuts(p, q, cx, cy, r){
     const dx=q.x-p.x, dy=q.y-p.y, fx=p.x-cx, fy=p.y-cy;
-    const a = dx*dx+dy*dy; if(!a) return [];
+    const a = dx*dx+dy*dy; if(!a) return NO_CUTS;
     const b = 2*(fx*dx+fy*dy), c = fx*fx+fy*fy-r*r;
-    let disc = b*b-4*a*c; if(disc<=0) return [];
+    let disc = b*b-4*a*c; if(disc<=0) return NO_CUTS;
     disc = Math.sqrt(disc);
     return [{t:(-b-disc)/(2*a), enter:true}, {t:(-b+disc)/(2*a), enter:false}].filter(o=>o.t>0 && o.t<1);
   }
@@ -1250,7 +1300,7 @@
     const cut = ()=>{ if(cur.length) runs.push(cur); cur=[]; changed=true; };
     for(let i=0;i<pts.length;i++){
       const p = pts[i];
-      if(inside(p)) cut(); else cur.push({x:p.x, y:p.y});
+      if(inside(p)) cut(); else cur.push(p);   // the original stroke is replaced by its fragments, so its points can be reused as they are
       if(i===pts.length-1) break;
       // the painted segment to the next vertex can dip through the ring even when neither vertex does
       const q = pts[i+1];
@@ -1281,6 +1331,8 @@
     for(let i=items.length-1;i>=0;i--){
       const it = items[i];
       if(it.type !== 'path') continue;            // eraser only affects freehand strokes
+      const wb = worldBBox(it);                   // cheap reject before walking every vertex (the box already includes the stroke)
+      if(x < wb.x-r || x > wb.x+wb.w+r || y < wb.y-r || y > wb.y+wb.h+r) continue;
       let res = splitPath(it, x, y, r);
       if(res && it.group!=null && it.groupRotation){
         // splitting changes the group's bounding box and so its rotation pivot, which would swing every
@@ -1659,7 +1711,7 @@
 
     if(current.type==='path'){
       const last = current.points[current.points.length-1];
-      if(Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
+      if(current.points.length < MAX_POINTS && Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
     } else if(current.type==='line' || current.type==='arrow'){
       if(e.shiftKey){
         // constrain to 45° steps, keeping the cursor's distance from the start point (no snapping)
@@ -2294,7 +2346,7 @@
         inner = `<line x1="${it.x1}" y1="${it.y1}" x2="${it.x2}" y2="${it.y2}" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round"/>`;
         const head = (fx,fy,tx,ty)=>{   // head at (tx,ty), pointing away from (fx,fy)
           const ang = Math.atan2(ty-fy, tx-fx);
-          const len = Math.max(10, it.size*2.6), a = Math.PI/7;
+          const {len, a} = arrowHeadGeom(it.size);
           const hx1 = tx-len*Math.cos(ang-a), hy1 = ty-len*Math.sin(ang-a);
           const hx2 = tx-len*Math.cos(ang+a), hy2 = ty-len*Math.sin(ang+a);
           return `<path d="M${hx1},${hy1} L${tx},${ty} L${hx2},${hy2}" fill="none" stroke="${escXml(it.color)}" stroke-width="${it.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -2433,7 +2485,7 @@
       }
       if(typeof data.version === 'number' && data.version > FORMAT_VERSION &&
          !confirm('This file was saved by a newer version ('+data.version+'). Open it anyway?')) return;
-      const scene = normalizeScene(data.items, data.assets);   // validated before live state is touched
+      const scene = normalizeScene(data.items, data.assets, data.version);   // validated before live state is touched
       if(!scene.items.length && data.items.length){ toast('No readable objects in that file'); return; }
       if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
       cancelGesture();
@@ -2443,7 +2495,8 @@
       selection = [];
       commitHistory();
       render();
-      toast(scene.dropped ? 'Sketch loaded (' + scene.dropped + ' unreadable object' + (scene.dropped===1?'':'s') + ' skipped)' : 'Sketch loaded');
+      const note = sceneLoadNote(scene);
+      toast(note ? 'Sketch loaded (' + note + ')' : 'Sketch loaded');
     };
     r.onerror = ()=>toast('Could not read that file');
     r.readAsText(file);
@@ -2544,10 +2597,27 @@
       b.addEventListener('click', ()=>onPick(c));
       container.appendChild(b);
     });
+    // any other color, through the browser's own picker. It stays open after a pick: the OS color
+    // panel keeps firing while the user tweaks, and hiding the input underneath it would close it.
+    const custom = document.createElement('label');
+    custom.className = 'cswatch custom'; custom.title = 'Custom color…';
+    const inp = document.createElement('input');
+    inp.type = 'color';
+    inp.addEventListener('input', ()=>onPick(inp.value, true));
+    custom.appendChild(inp);
+    container.appendChild(custom);
   }
-  buildSwatchPopover(strokePicker, true, 'No stroke', 'strokeNoneSwatch', c=>{ applyStrokeColor(c); setStrokePicker(false); });
-  buildSwatchPopover(fillPicker, true, 'No fill', 'fillNoneSwatch', v=>{ applyFillColor(v); setFillPicker(false); });
-  buildSwatchPopover(textColorPicker, false, null, null, c=>{ applyTextColor(c); setTextColorPicker(false); });
+  buildSwatchPopover(strokePicker, true, 'No stroke', 'strokeNoneSwatch', (c,keep)=>{ applyStrokeColor(c); if(!keep) setStrokePicker(false); });
+  buildSwatchPopover(fillPicker, true, 'No fill', 'fillNoneSwatch', (v,keep)=>{ applyFillColor(v); if(!keep) setFillPicker(false); });
+  buildSwatchPopover(textColorPicker, false, null, null, (c,keep)=>{ applyTextColor(c); if(!keep) setTextColorPicker(false); });
+  // the custom swatch shows as active when the current color is none of the presets, and its input
+  // opens on the current color
+  function syncCustomSwatch(picker, c){
+    const el = picker.querySelector('.cswatch.custom');
+    const on = c !== 'none';
+    el.classList.toggle('active', on && PRESETS.indexOf(c) < 0);
+    if(on && /^#[0-9a-f]{6}$/i.test(c)) el.firstChild.value = c;   // a color input only takes #rrggbb
+  }
   const fillNoneSwatch = document.getElementById('fillNoneSwatch');
   const strokeNoneSwatch = document.getElementById('strokeNoneSwatch');
   // "None" is shown as a plain hollow rect (thin border, no fill) — same glyph for both dropdowns
@@ -2588,21 +2658,24 @@
     const fillC = fillOn ? (src.fillColor || ui.fillColor) : 'none';
     if(strokeIsOn){ strokeColorBar.setAttribute('fill', strokeC); strokeColorBar.removeAttribute('stroke'); strokeColorBar.removeAttribute('stroke-width'); }
     else { strokeColorBar.setAttribute('fill', 'none'); strokeColorBar.setAttribute('stroke', '#9ca3af'); strokeColorBar.setAttribute('stroke-width', '15'); }
-    strokePicker.querySelectorAll('.cswatch').forEach(s=>{
+    strokePicker.querySelectorAll('.cswatch[data-c], .cswatch.none').forEach(s=>{
       const isNone = s.classList.contains('none');
       s.classList.toggle('active', isNone ? !strokeIsOn : (strokeIsOn && s.dataset.c===strokeC));
     });
+    syncCustomSwatch(strokePicker, strokeC);
     if(fillOn){ fillColorBar.setAttribute('fill', fillC); fillColorBar.removeAttribute('stroke'); fillColorBar.removeAttribute('stroke-width'); }
     else { fillColorBar.setAttribute('fill', 'none'); fillColorBar.setAttribute('stroke', '#9ca3af'); fillColorBar.setAttribute('stroke-width', '15'); }
-    fillPicker.querySelectorAll('.cswatch').forEach(s=>{
+    fillPicker.querySelectorAll('.cswatch[data-c], .cswatch.none').forEach(s=>{
       const isNone = s.classList.contains('none');
       s.classList.toggle('active', isNone ? fillC==='none' : s.dataset.c===fillC);
     });
+    syncCustomSwatch(fillPicker, fillC);
     // text color: a separate attribute from stroke, only meaningful for text/table
     const textSrc = colorableSelection().find(it=>it.type==='text'||it.type==='table');
     const textC = (textSrc ? textSrc.textColor : null) || ui.textColor;
     textColorBar.setAttribute('fill', textC);
-    textColorPicker.querySelectorAll('.cswatch').forEach(s=>s.classList.toggle('active', s.dataset.c===textC));
+    textColorPicker.querySelectorAll('.cswatch[data-c]').forEach(s=>s.classList.toggle('active', s.dataset.c===textC));
+    syncCustomSwatch(textColorPicker, textC);
   }
   function applyStrokeColor(c){
     const on = c !== 'none';
@@ -2784,10 +2857,16 @@
 
   // ---------- keyboard ----------
   const TOOL_KEYS = {v:'select',p:'pen',m:'marker',b:'brush',e:'eraser',l:'line',a:'arrow',r:'rect',o:'ellipse',g:'polygon',t:'text',y:'table'};
-  // shortcuts belong to the canvas: a focused slider/select/text field keeps its own keys
-  const isEditableTarget = el => !!el && (el.tagName==='INPUT' || el.tagName==='SELECT' || el.tagName==='TEXTAREA' || el.isContentEditable);
+  // Shortcuts belong to the canvas. A focused text field keeps every key; any other focused control
+  // (the size slider, a font select, a color input — they keep focus after use) keeps only the keys it
+  // actually consumes, so Undo, Delete, Escape and the tool letters keep working without a click on the canvas.
+  const isTextTarget = el => !!el && (el.tagName==='TEXTAREA' || el.isContentEditable ||
+    (el.tagName==='INPUT' && !/^(range|checkbox|radio|color|button|submit|file)$/i.test(el.type)));
+  const isControlTarget = el => !!el && (el.tagName==='INPUT' || el.tagName==='SELECT' || el.tagName==='BUTTON');
+  const CONTROL_KEYS = /^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Enter|Tab| )$/;
   window.addEventListener('keydown', e=>{
-    if(textInput.style.display==='block' || isEditableTarget(e.target)) return;
+    if(textInput.style.display==='block' || isTextTarget(e.target)) return;
+    if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
@@ -2816,7 +2895,7 @@
       const step = e.shiftKey ? 10 : 1;
       const dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
       const dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
-      if(!nudging){ beginHistory(); nudging = true; }
+      if(!nudging || historyBefore===null){ beginHistory(); nudging = true; }   // (a lost keyup must not leave the next nudge outside history)
       for(const i of selection) translateItem(items[i], dx, dy);
       render();
       return;
@@ -2842,6 +2921,8 @@
     if(!nudging) return;   // only close the step a nudge opened — never someone else's pending transaction
     if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown'){ nudging = false; commitHistory(); }
   });
+  // Cmd+Tab / a file dialog while an arrow key is down: the keyup never arrives, so close the step here
+  window.addEventListener('blur', ()=>{ if(nudging){ nudging = false; commitHistory(); } });
 
   canvas.addEventListener('dblclick', e=>{
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
