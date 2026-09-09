@@ -582,6 +582,13 @@
   let erasing = null;           // {removed} while an erase gesture is active
   let cursorPt = null;          // eraser cursor position (for the ring)
   let endDrag = null;           // {idx,end:1|2,moved} while dragging one endpoint of a lone line/arrow
+  // ---------- point-edit (curve) mode ----------
+  let pointEditIdx = null;      // index into items[] currently in Point-Edit mode; null = not in this mode
+  let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
+  let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
+  const HANDLE_SUB = 7;         // control-handle hit radius (px) — smaller than HANDLE, so anchor vs handle don't fight
+  const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
+  const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
   let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
   const SNAP_R = 12;            // snap magnet radius (px)
@@ -627,7 +634,13 @@
     const pts = min => {
       if(!Array.isArray(raw.points) || raw.points.length < min) throw new Error('points');
       return raw.points.slice(0, MAX_POINTS).map(q => {   // (the same cap the pen applies while drawing)
-        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point'); return {x:norm(q.x), y:norm(q.y)}; });
+        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point');
+        const out = {x:norm(q.x), y:norm(q.y)};
+        // a garbage handle just degrades that segment back to a straight line — never drops the item
+        if(q.c1 && isNum(q.c1.x) && isNum(q.c1.y)) out.c1 = {x:norm(q.c1.x), y:norm(q.c1.y)};
+        if(q.c2 && isNum(q.c2.x) && isNum(q.c2.y)) out.c2 = {x:norm(q.c2.x), y:norm(q.c2.y)};
+        return out;
+      });
     };
     try{
       switch(it.type){
@@ -637,6 +650,10 @@
           it.closed = raw.closed !== false;
           if(!it.closed && it.points.length < 2) return null;
           if(it.closed && it.points.length < 3) return null;
+          // a plain polygon has no type-implied arrowhead the way 'arrow' does, so unlike line/arrow's
+          // own hs/he validation below, both default to absent/false here — only `=== true` sets them
+          if(raw.hs === true) it.hs = true;
+          if(raw.he === true) it.he = true;
           break;
         case 'line': case 'arrow':
           it.x1 = num('x1'); it.y1 = num('y1'); it.x2 = num('x2'); it.y2 = num('y2');
@@ -840,6 +857,55 @@
     const ang = Math.atan2(ty-fy, tx-fx), {len, a} = arrowHeadGeom(size);
     return [['M', tx-len*Math.cos(ang-a), ty-len*Math.sin(ang-a)], ['L', tx, ty], ['L', tx-len*Math.cos(ang+a), ty-len*Math.sin(ang+a)]];
   }
+  // The cubic-bezier segments a polygon's points describe. A point with no handle contributes its
+  // own coordinate as a degenerate control point — mathematically a straight line, so callers never
+  // need a separate "is this segment straight" branch.
+  function polyCurveSegments(it){
+    const pts = it.points, n = pts.length, closed = it.closed !== false;
+    const segs = [];
+    for(let i=0, last=closed?n:n-1; i<last; i++){
+      const a = pts[i], b = pts[(i+1)%n];
+      segs.push({ a, b, c1:a.c1||a, c2:b.c2||b });
+    }
+    return segs;
+  }
+  // A straight anchor has no stored handle yet — this is where it WOULD sit if dragged out from rest,
+  // so the active anchor always shows two grabbable handles (matching a converted ellipse's real
+  // ones) instead of only ever showing handles once one has already been dragged. Direction is the
+  // tangent implied by the neighboring point(s) — a smooth-point default, like most vector editors
+  // use when a corner is first given a curve. Returns null where that end has no meaningful handle
+  // (the outgoing handle past the last point of an open path, or the incoming one before its first).
+  function defaultHandleOffset(it, pointIndex, which){
+    const pts = it.points, n = pts.length, closed = it.closed !== false;
+    const p = pts[pointIndex];
+    const prevIdx = pointIndex>0 ? pointIndex-1 : (closed ? n-1 : -1);
+    const nextIdx = pointIndex<n-1 ? pointIndex+1 : (closed ? 0 : -1);
+    if(which==='c1' && nextIdx<0) return null;
+    if(which==='c2' && prevIdx<0) return null;
+    const prev = prevIdx>=0 ? pts[prevIdx] : null, next = nextIdx>=0 ? pts[nextIdx] : null;
+    let dx, dy;
+    if(prev && next){ dx = next.x-prev.x; dy = next.y-prev.y; }
+    else if(next){ dx = next.x-p.x; dy = next.y-p.y; }
+    else { dx = p.x-prev.x; dy = p.y-prev.y; }
+    const len = Math.hypot(dx,dy) || 1;
+    const L = Math.min(40, len/3);   // capped so it doesn't dwarf a small shape
+    const ux = dx/len, uy = dy/len;
+    return which==='c1' ? {x:p.x+ux*L, y:p.y+uy*L} : {x:p.x-ux*L, y:p.y-uy*L};
+  }
+  function cubicPoint(p0,p1,p2,p3,t){
+    const mt=1-t;
+    return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+  }
+  // real roots in (0,1) of the derivative B'(t)=0 per axis: A t^2 + B t + C = 0
+  function cubicAxisExtremeTs(p0,p1,p2,p3){
+    const a=p1-p0, b=p2-p1, c=p3-p2, A=a-2*b+c, B=2*(b-a), C=a, ts=[];
+    if(Math.abs(A)<1e-9){ if(Math.abs(B)>1e-9) ts.push(-C/B); }
+    else{
+      const disc=B*B-4*A*C;
+      if(disc>=0){ const sq=Math.sqrt(disc); ts.push((-B+sq)/(2*A), (-B-sq)/(2*A)); }
+    }
+    return ts.filter(t=>t>0 && t<1);
+  }
   // Felt-tip: a chisel nib — a short flat edge held at a fixed angle — swept along the stroke.
   // Strokes across the nib come out at full width, strokes along it thin down to the edge's own
   // thickness, and the width eases off a little where the stroke was drawn fast. The gaps between
@@ -902,9 +968,29 @@
         break;
       case 'polygon': {
         const closed = it.closed !== false;
-        const d = it.points.map((p,i)=>[i ? 'L' : 'M', p.x, p.y]);
+        const pts = it.points, n = pts.length;
+        const segs = polyCurveSegments(it);
+        const d = [['M', pts[0].x, pts[0].y]];
+        for(const s of segs){
+          if(s.a.c1 || s.b.c2) d.push(['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]);
+          else d.push(['L', s.b.x, s.b.y]);
+        }
         if(closed) d.push(['Z']);
-        ops.push({ kind:'path', d, style:{ fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round' } });
+        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round' };
+        ops.push({ kind:'path', d, style });
+        // arrowheads for an open (line/arrow-derived) curve: direction = the LOCAL TANGENT at that
+        // end (that anchor's own handle if set, else the adjacent anchor — identical to a plain
+        // line/arrow's direction when nothing's been dragged yet, and re-derived fresh every render)
+        if(!closed && n>=2){
+          if(it.he){
+            const last = pts[n-1], prev = pts[n-2], from = last.c2 || prev;
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style });
+          }
+          if(it.hs){
+            const first = pts[0], second = pts[1], from = first.c1 || second;
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style });
+          }
+        }
         break;
       }
       case 'text': {
@@ -948,6 +1034,7 @@
       if(s[0]==='M') ctx.moveTo(s[1], s[2]);
       else if(s[0]==='L') ctx.lineTo(s[1], s[2]);
       else if(s[0]==='Q') ctx.quadraticCurveTo(s[1], s[2], s[3], s[4]);
+      else if(s[0]==='C') ctx.bezierCurveTo(s[1], s[2], s[3], s[4], s[5], s[6]);
       else ctx.closePath();
     }
   }
@@ -1064,9 +1151,21 @@
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'polygon':{
-        let xs=it.points.map(p=>p.x), ys=it.points.map(p=>p.y);
-        const pad=padded ? (it.size||2)/2+2 : 0;
-        return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
+        const pts = it.points;
+        if(!pts.length) return {x:0,y:0,w:0,h:0};   // defends against a degenerate item
+        const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+        for(const s of polyCurveSegments(it)){
+          if(!s.a.c1 && !s.b.c2) continue;   // straight segment — endpoints already in xs/ys
+          for(const [arr,axis] of [[xs,'x'],[ys,'y']]){
+            const p0=s.a[axis], p1=s.c1[axis], p2=s.c2[axis], p3=s.b[axis];
+            for(const t of cubicAxisExtremeTs(p0,p1,p2,p3)) arr.push(cubicPoint(p0,p1,p2,p3,t));
+          }
+        }
+        const sz = it.size||2;
+        let pad = padded ? sz/2+2 : 0;
+        if(padded && (it.hs||it.he)){ const g = arrowHeadGeom(sz); pad = Math.max(pad, g.len*Math.sin(g.a) + sz/2 + 2); }
+        const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+        return {x:minX-pad, y:minY-pad, w:maxX-minX+pad*2, h:maxY-minY+pad*2};
       }
     }
     return {x:0,y:0,w:0,h:0};
@@ -1283,7 +1382,11 @@
     switch(it.type){
       case 'rect': case 'ellipse': case 'image': case 'table': case 'text': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
-      case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
+      case 'path': case 'polygon': return {points: it.points.map(p=>({
+        x:p.x, y:p.y,
+        c1: p.c1 ? {x:p.c1.x, y:p.c1.y} : undefined,
+        c2: p.c2 ? {x:p.c2.x, y:p.c2.y} : undefined,
+      }))};
       default: return {};
     }
   }
@@ -1305,7 +1408,12 @@
         break;
       }
       case 'path': case 'polygon':
-        it.points = snap.points.map(p=>scalePt(p, ax,ay,sx,sy));
+        it.points = snap.points.map(p=>{
+          const np = scalePt(p, ax,ay,sx,sy);
+          if(p.c1) np.c1 = scalePt(p.c1, ax,ay,sx,sy);
+          if(p.c2) np.c2 = scalePt(p.c2, ax,ay,sx,sy);
+          return np;
+        });
         break;
     }
   }
@@ -1317,6 +1425,7 @@
     if(!first) return null;
     if(sel.length===1 && first.group==null){
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
+      if(pointEditIdx===sel[0]) return null;   // point-edit mode fully replaces the corner-resize UI
       const b = bbox(first);
       return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
     }
@@ -1329,10 +1438,86 @@
 
   function translateItem(it,dx,dy){
     switch(it.type){
-      case 'path': case 'polygon': it.points.forEach(p=>{p.x=norm(p.x+dx);p.y=norm(p.y+dy);}); break;
+      case 'path': case 'polygon': it.points.forEach(p=>{
+        p.x=norm(p.x+dx); p.y=norm(p.y+dy);
+        if(p.c1){ p.c1.x=norm(p.c1.x+dx); p.c1.y=norm(p.c1.y+dy); }
+        if(p.c2){ p.c2.x=norm(p.c2.x+dx); p.c2.y=norm(p.c2.y+dy); }
+      }); break;
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
       default: it.x=norm(it.x+dx); it.y=norm(it.y+dy);
     }
+  }
+
+  // ---------- Point Edit (convert a shape into an editable bezier curve) ----------
+  // Builds a fresh object rather than mutating in place — the field sets differ too much per source
+  // type (rect/ellipse: x,y,w,h; line/arrow: x1,y1,x2,y2; polygon: points) for selective delete to be
+  // safe or readable. Shared fields (uid/group/rotation/color/size) carry over explicitly below.
+  function convertToCurve(idx){
+    const it = items[idx];
+    if(!it || !CONVERTIBLE_TYPES.has(it.type)) return;
+    let points, closed, hs, he;
+    switch(it.type){
+      case 'rect': {
+        const {x,y,w,h} = it;
+        points = [{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
+        closed = true;
+        break;
+      }
+      case 'ellipse': {
+        const cx=it.x+it.w/2, cy=it.y+it.h/2, rx=Math.abs(it.w)/2, ry=Math.abs(it.h)/2, k=KAPPA;
+        points = [
+          { x:cx,    y:cy-ry, c1:{x:cx+k*rx,y:cy-ry}, c2:{x:cx-k*rx,y:cy-ry} },   // top
+          { x:cx+rx, y:cy,    c1:{x:cx+rx,y:cy+k*ry}, c2:{x:cx+rx,y:cy-k*ry} },   // right
+          { x:cx,    y:cy+ry, c1:{x:cx-k*rx,y:cy+ry}, c2:{x:cx+k*rx,y:cy+ry} },   // bottom
+          { x:cx-rx, y:cy,    c1:{x:cx-rx,y:cy-k*ry}, c2:{x:cx-rx,y:cy+k*ry} },   // left
+        ];
+        closed = true;
+        break;
+      }
+      case 'line': case 'arrow': {
+        points = [{x:it.x1,y:it.y1},{x:it.x2,y:it.y2}];
+        closed = false;
+        const h = headsOf(it);   // {s:false,e:false} for a plain 'line' — headsOf gates on it.type==='arrow'
+        if(h.s) hs = true;
+        if(h.e) he = true;
+        break;
+      }
+      case 'polygon': {
+        points = it.points.map(p=>({
+          x:p.x, y:p.y,
+          ...(p.c1 ? {c1:{x:p.c1.x,y:p.c1.y}} : {}),
+          ...(p.c2 ? {c2:{x:p.c2.x,y:p.c2.y}} : {}),
+        }));
+        closed = it.closed !== false;
+        if(it.hs) hs = true;
+        if(it.he) he = true;
+        break;
+      }
+    }
+    const next = { type:'polygon', points, closed, uid:it.uid, color:it.color, size:it.size };
+    if(it.type==='line' || it.type==='arrow'){ next.strokeOn = true; next.fill = false; }
+    else { next.strokeOn = it.strokeOn !== false; next.fill = !!it.fill; if(it.fillColor) next.fillColor = it.fillColor; }
+    if(it.rotation) next.rotation = it.rotation;
+    if(it.group!=null){ next.group = it.group; next.groupRotation = it.groupRotation||0; }
+    if(hs) next.hs = true;
+    if(he) next.he = true;
+    items[idx] = next;
+  }
+  // Bakes a curve's own rotation into its absolute point/handle coordinates, right before a point or
+  // handle drag begins — same idea as endDrag's endpoint-drag bake ("bake any rotation into the stored
+  // coordinates so the endpoint can be moved in world space"). Without this, toLocal/toWorld derive the
+  // rotation pivot from bbox(it), which itself shifts as the very point being dragged moves — so every
+  // OTHER point visibly drifts too, chasing a moving pivot, for exactly as long as rotation is nonzero.
+  function bakeItemRotation(it){
+    if(!it.rotation) return;
+    const b = bbox(it);
+    const cx = b.x+b.w/2, cy = b.y+b.h/2, rot = it.rotation;
+    for(const p of it.points){
+      const rp = rotatePoint(p.x, p.y, cx, cy, rot); p.x = norm(rp.x); p.y = norm(rp.y);
+      if(p.c1){ const rc = rotatePoint(p.c1.x, p.c1.y, cx, cy, rot); p.c1 = {x:norm(rc.x), y:norm(rc.y)}; }
+      if(p.c2){ const rc = rotatePoint(p.c2.x, p.c2.y, cx, cy, rot); p.c2 = {x:norm(rc.x), y:norm(rc.y)}; }
+    }
+    delete it.rotation;
   }
 
   // ---------- eraser: rubs out freehand strokes, deletes shapes/text/images it touches ----------
@@ -1404,8 +1589,20 @@
     return removed;
   }
 
+  // Point-edit mode is only valid while it's exactly the sole selected item, still a polygon —
+  // every state-changing handler already ends in render(), so checking this once here self-heals
+  // the mode instead of requiring every place selection/items can change to be patched individually.
+  function syncPointEdit(){
+    if(pointEditIdx!=null && !(selection.length===1 && selection[0]===pointEditIdx &&
+       items[pointEditIdx] && items[pointEditIdx].type==='polygon')){
+      pointEditIdx = null; activeAnchor = null;
+    }
+    if(activeAnchor!=null && (pointEditIdx==null || activeAnchor>=items[pointEditIdx].points.length)) activeAnchor = null;
+  }
+
   // ---------- render ----------
   function render(){
+    syncPointEdit();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
     ctx.fillStyle = BG;
@@ -1433,6 +1630,7 @@
       ctx.setLineDash([5,4]);
       for(const i of selection){
         const it = items[i]; if(!it || it.group!=null) continue;
+        if(i===pointEditIdx) continue;   // point-edit overlay replaces the plain dashed outline
         const b = bbox(it);
         const cx=b.x+b.w/2, cy=b.y+b.h/2;
         ctx.save();
@@ -1465,6 +1663,35 @@
           ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
           for(const [hx,hy] of [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]){
             ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill(); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      // point-edit overlay: solid indigo squares mark every anchor (always visible in this mode);
+      // the active anchor gets a hollow highlight plus its two hollow-circle handles on thin stems
+      if(pointEditIdx!=null){
+        const pit = items[pointEditIdx];
+        if(pit && pit.type==='polygon'){
+          ctx.save();
+          ctx.setLineDash([]);
+          for(const p of pit.points){
+            const w = toWorld(pit, p.x, p.y);
+            ctx.fillStyle = '#6366f1';
+            ctx.beginPath(); ctx.rect(w.x-4, w.y-4, 8, 8); ctx.fill();
+          }
+          if(activeAnchor!=null && pit.points[activeAnchor]){
+            const p = pit.points[activeAnchor], aw = toWorld(pit, p.x, p.y);
+            ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1;
+            for(const hk of ['c1','c2']){
+              const target = p[hk] || defaultHandleOffset(pit, activeAnchor, hk);
+              if(!target) continue;
+              const hw = toWorld(pit, target.x, target.y);
+              ctx.beginPath(); ctx.moveTo(aw.x, aw.y); ctx.lineTo(hw.x, hw.y); ctx.stroke();
+              ctx.beginPath(); ctx.arc(hw.x, hw.y, 4, 0, Math.PI*2);
+              ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+            }
+            ctx.beginPath(); ctx.rect(aw.x-4, aw.y-4, 8, 8);
+            ctx.fillStyle = '#fff'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();   // active anchor reads as "selected"
           }
           ctx.restore();
         }
@@ -1558,6 +1785,36 @@
             rotating = { cx:piv.cx, cy:piv.cy, startAngle:Math.atan2(y-piv.cy, x-piv.cx),
                          startRotation:piv.rotation, field: piv.isGroup?'groupRotation':'rotation',
                          members:piv.members, moved:false };
+            return;
+          }
+        }
+      }
+      // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
+      // any anchor square (clicking one makes it active AND starts dragging it)
+      if(pointEditIdx!=null && selection.length===1 && selection[0]===pointEditIdx){
+        const pit = items[pointEditIdx];
+        if(activeAnchor!=null && pit.points[activeAnchor]){
+          const p = pit.points[activeAnchor];
+          for(const hk of ['c1','c2']){
+            const target = p[hk] || defaultHandleOffset(pit, activeAnchor, hk);
+            if(!target) continue;
+            const w = toWorld(pit, target.x, target.y);
+            if(Math.hypot(x-w.x, y-w.y) <= HANDLE_SUB){
+              beginHistory();
+              bakeItemRotation(pit);   // so dragging this handle can't chase a rotation pivot that moves with it
+              editingAnchor = { idx:pointEditIdx, pointIndex:activeAnchor, handle:hk, sx:x, sy:y, moved:false };
+              return;
+            }
+          }
+        }
+        for(let pi=0; pi<pit.points.length; pi++){
+          const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
+          if(Math.hypot(x-w.x, y-w.y) <= HANDLE){
+            activeAnchor = pi;
+            beginHistory();
+            bakeItemRotation(pit);   // so dragging this anchor can't chase a rotation pivot that moves with it
+            editingAnchor = { idx:pointEditIdx, pointIndex:pi, handle:'anchor', sx:x, sy:y, moved:false };
+            render();
             return;
           }
         }
@@ -1676,8 +1933,31 @@
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag) return;
+    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor) return;
     const {x,y} = p;
+
+    if(editingAnchor){
+      if(!editingAnchor.moved && Math.hypot(x-editingAnchor.sx, y-editingAnchor.sy) < 3) return;
+      const it = items[editingAnchor.idx];
+      const pt = it.points[editingAnchor.pointIndex];
+      if(editingAnchor.handle==='anchor'){
+        // plain translation of just this point (anchor + its own handles ride along together) — the
+        // curve's local shape at this point is unchanged, only its position, so this uses the same
+        // incremental-delta convention as the whole-item `drag`, not `resizing`'s fixed-anchor recompute
+        const lp0 = toLocal(it, editingAnchor.sx, editingAnchor.sy), lp1 = toLocal(it, x, y);
+        const dx = lp1.x-lp0.x, dy = lp1.y-lp0.y;
+        pt.x = norm(pt.x+dx); pt.y = norm(pt.y+dy);
+        if(pt.c1){ pt.c1.x=norm(pt.c1.x+dx); pt.c1.y=norm(pt.c1.y+dy); }
+        if(pt.c2){ pt.c2.x=norm(pt.c2.x+dx); pt.c2.y=norm(pt.c2.y+dy); }
+      } else {
+        const lp = toLocal(it, x, y);
+        pt[editingAnchor.handle] = { x:norm(lp.x), y:norm(lp.y) };
+      }
+      editingAnchor.sx=x; editingAnchor.sy=y;
+      editingAnchor.moved = true;
+      render();
+      return;
+    }
 
     if(endDrag){
       if(!endDrag.moved && Math.hypot(x-endDrag.sx, y-endDrag.sy) < 3) return;   // still a click, not a drag
@@ -1824,6 +2104,12 @@
       }
       commitHistory();
       endDrag=null; snapPt=null;
+      render();
+      return;
+    }
+    if(editingAnchor){
+      if(editingAnchor.moved) commitHistory(); else historyBefore=null;
+      editingAnchor=null;
       render();
       return;
     }
@@ -2174,6 +2460,7 @@
   function cancelGesture(){
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; nudging=false;
+    editingAnchor=null; pointEditIdx=null; activeAnchor=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     historyBefore=null;
   }
@@ -3218,6 +3505,10 @@
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
+      if(pointEditIdx!=null){   // one Escape drops the active handles, a second leaves point-edit mode
+        if(activeAnchor!=null){ activeAnchor=null; render(); return; }
+        pointEditIdx=null; render(); return;
+      }
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(!shapePicker.hidden){ setShapePicker(false); return; }
@@ -3309,6 +3600,18 @@
       const lp = toLocal(items[hit], x, y);
       const cell = tableCellAt(items[hit], lp.x, lp.y);
       if(cell) openText(hit, null, null, cell);
+      return;
+    }
+    if(pointEditIdx!=null && hit===pointEditIdx){   // re-double-click on the item being edited: exit
+      pointEditIdx = null; activeAnchor = null; render(); return;
+    }
+    if(hit>=0 && selection.length===1 && hit===selection[0] &&
+       items[hit].group==null && CONVERTIBLE_TYPES.has(items[hit].type)){
+      beginHistory();
+      convertToCurve(hit);
+      commitHistory();
+      pointEditIdx = hit; activeAnchor = null;
+      render();
       return;
     }
     if(selection.length){
