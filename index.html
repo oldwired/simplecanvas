@@ -105,6 +105,15 @@
   .table-grid .cell.hi{background:var(--accent-soft);border-color:var(--accent)}
   .table-picker-label{margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
 
+  /* shape library popover */
+  .shape-picker{min-width:0;max-width:264px;max-height:320px;overflow:auto;padding:10px;flex-direction:column;align-items:stretch}
+  .shape-grid{display:grid;grid-template-columns:repeat(3,64px);gap:8px;margin-top:6px}
+  .shape-grid button{width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;cursor:pointer}
+  .shape-grid button svg{width:100%;height:100%;display:block}
+  .shape-picker-empty{font-size:12px;color:var(--muted);padding:2px}
+  .shape-picker-import{margin-top:8px;background:none;border:none;padding:4px 2px;font:inherit;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;text-align:left}
+  .shape-picker-import:hover{text-decoration:underline}
+
   /* stroke/fill color popovers: swatches only, no text — keeps the toolbar compact */
   .color-picker{min-width:0;padding:8px;flex-direction:row;flex-wrap:wrap;width:132px;gap:6px}
   .color-picker .cswatch{
@@ -250,6 +259,14 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         Open sketch… <span class="sc">⌘O</span>
       </button>
+      <button data-act="saveShape" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 4v6l2-1.5L12 10V4" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        Save as Shape…
+      </button>
+      <button data-act="loadShapeLibrary" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3.9 4.5 9.2 4.5 9.2 2.7 13.5 6.3 9.2 10 9.2 8.2 3.9 8.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M13.5 19.4 17.8 4.9 22 19.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2 17.4 3.9 13.6 8.8 13.6 10.7 17.4 8.8 21.2 3.9 21.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Load Shape Library…
+      </button>
       <div class="menu-sep" role="separator"></div>
       <button data-act="png" role="menuitem">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -328,6 +345,17 @@
       <div class="menu table-picker" id="tablePicker" hidden>
         <div class="table-grid" id="tableGrid"></div>
         <div class="table-picker-label" id="tablePickerLabel">Pick a size</div>
+      </div>
+    </div>
+    <div class="menu-wrap" id="shapeLibWrap" style="display:none">
+      <button class="btn" data-tool="shape" id="shapeLibBtn" title="Shape library — pick a saved shape, then click to place" aria-haspopup="true" aria-expanded="false" aria-controls="shapePicker">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3.9 4.5 9.2 4.5 9.2 2.7 13.5 6.3 9.2 10 9.2 8.2 3.9 8.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M13.5 19.4 17.8 4.9 22 19.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2 17.4 3.9 13.6 8.8 13.6 10.7 17.4 8.8 21.2 3.9 21.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu shape-picker" id="shapePicker" hidden>
+        <div class="table-picker-label" id="shapePickerLabel">Shape library</div>
+        <div class="shape-grid" id="shapeGrid"></div>
+        <button type="button" class="shape-picker-import" id="shapeImportBtn">Import library file…</button>
+        <input type="file" id="shapeLibraryInput" accept="application/json,.json" style="display:none">
       </div>
     </div>
   </div>
@@ -530,7 +558,7 @@
   // ---------- state ----------
   let items = [];               // committed scene objects
   let current = null;           // in-progress preview object
-  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3,
+  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3, pendingShape:null,
              // a text box keeps its own border/fill/width, so plain text stays plain while shapes keep their outline
              text: { color:'#1f2937', size:2, strokeOn:false, fill:false, fillColor:'#ffd166' } };
   // the drawing defaults (color, size, strokeOn, fill, fillColor) that a tool or an item type uses
@@ -1621,6 +1649,7 @@
       return;
     }
     if(ui.tool==='table'){ placeTable(x,y); return; }
+    if(ui.tool==='shape'){ if(ui.pendingShape) placeShapeAt(ui.pendingShape, x, y); return; }
 
     if(ui.tool==='polygon'){ polygonPress(x, y, e.pointerType!=='mouse'); return; }
 
@@ -1990,6 +2019,34 @@
     render();
     toast('Table added — drag a corner to resize');
   }
+  // Places one instance of a cached shape-library template, centered on (x,y). Re-clones from the
+  // pristine tpl.items (validated once, at fetch time) and remaps uids/group ids fresh each time —
+  // same pattern as addClones — so the same shape can be placed repeatedly without cross-contamination.
+  function placeShapeAt(tpl, x, y){
+    if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
+    const box = unionBoxOf(tpl.items, false);   // stroke-free center — matches how it was centered at save time
+    const cx = box.x + box.w/2, cy = box.y + box.h/2;
+    const dx = x - cx, dy = y - cy;
+    beginHistory();
+    const gmap = {};
+    const newSel = [];
+    for(const raw of tpl.items){
+      const copy = clone(raw);
+      copy.uid = newUid();
+      translateItem(copy, dx, dy);
+      if(copy.group != null){
+        if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
+        copy.group = gmap[copy.group];
+      }
+      items.push(copy);
+      newSel.push(items.length - 1);
+    }
+    selection = newSel;
+    commitHistory();
+    setTool('select');
+    render();
+    toast('"' + tpl.name + '" added');
+  }
   function commitText(){
     const val = textInput.value.trim();
     textInput.style.display='none';
@@ -2220,6 +2277,24 @@
       it.groupRotation = 0;
     }
   }
+  // Same math as bakeGroupRotation, but against a standalone list of cloned items (not live `items`
+  // indices) — used by saveSelectionAsShape so exporting a shape never touches the live scene.
+  function bakeGroupRotationLocal(members){
+    if(!members.some(it=>it.groupRotation)) return;
+    const b = unionBoxOf(members, false);
+    const cx = b.x+b.w/2, cy = b.y+b.h/2;
+    for(const it of members){
+      const rot = it.groupRotation || 0;
+      if(rot){
+        const bb = worldBBoxOwn(it);
+        const ownCx = bb.x+bb.w/2, ownCy = bb.y+bb.h/2;
+        const target = rotatePoint(ownCx, ownCy, cx, cy, rot);
+        translateItem(it, target.x-ownCx, target.y-ownCy);
+        it.rotation = (it.rotation||0) + rot;
+      }
+      it.groupRotation = 0;
+    }
+  }
   function groupsIn(sel){
     const gs = new Set();
     for(const i of sel){ if(items[i].group!=null) gs.add(items[i].group); }
@@ -2260,6 +2335,104 @@
     if(!clipboard.length) return false;
     addClones(clipboard, 16);
     return true;
+  }
+
+  // ---------- shape library: save ----------
+  function saveSelectionAsShape(){
+    if(ui.tool!=='select' || !selection.length){ toast('Select something first to save it as a shape'); return; }
+    const sel = expandSelection(selection);
+
+    // Decision: block entirely rather than save-minus-image. A shape that silently drops part of what
+    // the user just saw selected is a worse surprise (discovered only when re-placing it later) than a
+    // clear upfront refusal telling them to remove the image first.
+    if(sel.some(i=>items[i].type==='image')){
+      toast("Shapes can't include images — remove the image from the selection first");
+      return;
+    }
+
+    const list = sel.map(i=>clone(items[i]));
+
+    // bake rotation per original group, against the clone (never the live items)
+    const groups = new Map();
+    for(const it of list){ if(it.group!=null){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); } }
+    for(const members of groups.values()) bakeGroupRotationLocal(members);
+
+    // canonicalize group ids to shape-local placeholders; strip live uids entirely
+    const gmap = {}; let gseq = 0;
+    for(const it of list){
+      delete it.uid;
+      if(it.group!=null){
+        if(!gmap[it.group]) gmap[it.group] = 's' + (++gseq);
+        it.group = gmap[it.group];
+      }
+    }
+
+    // center the saved geometry on (0,0) — stroke-free box, matching groupPivot's own convention
+    const box = unionBoxOf(list, false);
+    const cx = box.x+box.w/2, cy = box.y+box.h/2;
+    for(const it of list) translateItem(it, -cx, -cy);
+
+    // Opened straight from disk (file://), fetch() of a sibling file is blocked by the browser, so a
+    // fetch-based merge is unreliable there. If nothing has been fetched OR manually imported this
+    // session, warn before proceeding — otherwise this save would silently start a brand-new library
+    // and the download would overwrite any existing shapes-library.json the user hasn't loaded yet.
+    if(location.protocol==='file:' && !shapeLibraryCache){
+      const proceed = confirm(
+        'No existing shape library is loaded (this page was opened from disk, so it can\'t fetch '+SHAPE_LIBRARY_FILE+' automatically).\n\n' +
+        'If you already have a '+SHAPE_LIBRARY_FILE+' with other shapes in it, click Cancel and use "Import library file…" in the shape library popover first — otherwise this save will start a brand-new library and overwrite it.\n\n' +
+        'Click OK to start a new library with just this shape.'
+      );
+      if(!proceed) return;
+    }
+
+    let name = prompt('Name this shape:');
+    if(name==null) return;
+    name = name.trim();
+    if(!name){ toast('Shape needs a name'); return; }
+
+    saveShapeToLibrary(name, list);
+  }
+
+  // The whole library lives in ONE file (shapes-library.json, next to index.html) — one download,
+  // one file to FTP/copy around, no browser "allow multiple downloads?" prompt for two files at once.
+  const SHAPE_LIBRARY_FILE = 'shapes-library.json';
+  // The last library successfully fetched or manually imported this session — lets a file:// session
+  // (where fetch() of a sibling file is blocked) still merge saves and re-render the picker without
+  // re-importing every time.
+  let shapeLibraryCache = null;
+  async function fetchShapeLibrary(){
+    const res = await fetch(SHAPE_LIBRARY_FILE, {cache:'no-store'});
+    if(!res.ok) throw new Error('http '+res.status);
+    const data = await res.json();
+    if(!data || !Array.isArray(data.shapes)) throw new Error('bad library file');
+    return data;
+  }
+
+  async function saveShapeToLibrary(name, list){
+    let lib = { app:'SimpleCanvasShapeLibrary', version:1, shapes:[] };
+    try{ lib = await fetchShapeLibrary(); }
+    catch(e){ if(shapeLibraryCache) lib = shapeLibraryCache; /* else: first-ever shape, or nothing imported yet under file:// — start fresh (the caller already warned about this case) */ }
+
+    const existing = lib.shapes.find(s=>s && s.name===name);
+    if(existing && !confirm('A shape named "'+name+'" already exists. Replace it?')) return;
+    lib.shapes = lib.shapes.filter(s=>!(s && s.name===name));
+    lib.shapes.push({ name, savedAt:new Date().toISOString(), items:list });
+
+    shapeLibraryCache = lib;   // so this session's picker/next save sees it without re-importing
+    revealShapeTool();         // saving the first-ever shape means the tool has something to offer now
+    downloadJSON(SHAPE_LIBRARY_FILE, lib);
+    toast(location.protocol==='file:'
+      ? 'Saved "'+name+'" — replace '+SHAPE_LIBRARY_FILE+' next to index.html, then use Import to load it here'
+      : 'Saved "'+name+'" — upload '+SHAPE_LIBRARY_FILE+' via FTP');
+  }
+
+  // shared Blob/<a download> pattern (also usable by exportProject's own inline version)
+  function downloadJSON(filename, data){
+    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
   }
 
   function updateButtons(){
@@ -2466,6 +2639,7 @@
     if(t!=='select'){ selection=[]; marquee=null; }
     if(t!=='eraser') cursorPt=null;
     if(t!=='table') setTablePicker(false);
+    if(t!=='shape') setShapePicker(false);
     const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
     const canFill = FILLABLE(t);                     // fill only makes sense for these (a text box is a rect with words in it)
@@ -2486,7 +2660,7 @@
     render();
   }
   document.querySelectorAll('[data-tool].btn').forEach(b=>{
-    if(b.dataset.tool==='table') return;   // opens the size picker instead — wired separately below
+    if(b.dataset.tool==='table' || b.dataset.tool==='shape') return;   // open their own popover instead — wired separately
     b.addEventListener('click', ()=>setTool(b.dataset.tool));
   });
 
@@ -2562,6 +2736,140 @@
   document.addEventListener('click', e=>{
     if(!tablePicker.hidden && !tablePicker.contains(e.target) && e.target!==tableBtn) setTablePicker(false);
   });
+
+  // ---------- shape library popover: fetch-on-open, click-to-arm, click-canvas-to-place ----------
+  const shapeLibWrap = document.getElementById('shapeLibWrap');
+  const shapeLibBtn = document.getElementById('shapeLibBtn');
+  const shapePicker = document.getElementById('shapePicker');
+  const shapeGrid = document.getElementById('shapeGrid');
+  const shapeImportBtn = document.getElementById('shapeImportBtn');
+  const shapeLibraryInput = document.getElementById('shapeLibraryInput');
+
+  // The tool stays hidden until a library file is actually found (or the user loads/imports one) —
+  // no point offering an empty "shape library" to someone who's never saved a shape.
+  function revealShapeTool(){ shapeLibWrap.style.display = ''; }
+
+  function setShapePicker(open){
+    shapePicker.hidden = !open;
+    shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ fitMenu(shapePicker); refreshShapeLibrary(); }
+  }
+  function activateShapeTool(){ setTool('shape'); setShapePicker(true); }
+  shapeLibBtn.addEventListener('click', e=>{ e.stopPropagation(); activateShapeTool(); });
+  document.addEventListener('click', e=>{
+    if(!shapePicker.hidden && !shapePicker.contains(e.target) && e.target!==shapeLibBtn) setShapePicker(false);
+  });
+  // Manual fallback for when fetch() can't reach shapes-library.json itself (opened via file://,
+  // or any other fetch failure) — same FileReader pattern as the existing project-open flow. Shared
+  // by the in-popover "Import library file…" button AND the "Load Shape Library…" menu command
+  // (which is the only way in once the tool itself is still hidden).
+  shapeImportBtn.addEventListener('click', e=>{ e.stopPropagation(); shapeLibraryInput.click(); });
+  shapeLibraryInput.addEventListener('change', e=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(file) importShapeLibraryFile(file);
+  });
+
+  // "Load Shape Library…" menu command: try the automatic fetch first (works once a file is already
+  // there), fall back to manual file picking (needed under file://, or if nothing's been uploaded to
+  // this exact path yet).
+  async function loadShapeLibraryCommand(){
+    try{
+      const lib = await fetchShapeLibrary();
+      shapeLibraryCache = lib;
+      revealShapeTool();
+      toast('Loaded ' + lib.shapes.length + ' shape(s)');
+    }catch(e){
+      shapeLibraryInput.click();
+    }
+  }
+
+  // validate one shape entry from the library file the same way any external JSON is validated —
+  // normalizeItem, per item (an entry with zero surviving items, or malformed altogether, is dropped)
+  function normalizeShapeEntry(raw){
+    if(!raw || typeof raw !== 'object' || !Array.isArray(raw.items)) return null;
+    const items = [];
+    let dropped = 0;
+    for(const r of raw.items){
+      const it = normalizeItem(r, {});   // assetsIn={} — any image item is dropped here too, defense in depth
+      if(it) items.push(it); else dropped++;
+    }
+    if(!items.length) return null;
+    if(dropped) console.warn('Shape "'+(raw.name||'?')+'": '+dropped+' item(s) failed validation and were skipped');
+    return { name: typeof raw.name==='string' && raw.name.trim() ? raw.name.trim() : '(unnamed)', items };
+  }
+
+  function shapeThumbSVG(items){
+    const box = unionBoxOf(items, true);
+    if(!isFinite(box.w) || !isFinite(box.h) || box.w<=0 || box.h<=0) return null;
+    const inner = items.map(itemToSVG).join('');
+    return `<svg viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  }
+
+  function addShapeButton(tpl){
+    const svg = shapeThumbSVG(tpl.items);
+    if(!svg) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.title = tpl.name;
+    b.innerHTML = svg;
+    b.addEventListener('click', e=>{ e.stopPropagation(); armShapeForPlacement(tpl); });
+    shapeGrid.appendChild(b);
+  }
+
+  function shapeGridMessage(msg){
+    shapeGrid.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'shape-picker-empty'; d.textContent = msg;
+    shapeGrid.appendChild(d);
+  }
+
+  // Renders a fetched-or-imported library object into the grid — shared by refreshShapeLibrary
+  // (automatic fetch) and the manual "Import library file…" fallback (for file:// or a fetch failure).
+  function renderShapeLibrary(lib){
+    shapeGrid.innerHTML = '';
+    const entries = (lib && Array.isArray(lib.shapes)) ? lib.shapes : [];
+    if(!entries.length){ shapeGridMessage('No shapes yet.'); return; }
+    for(const raw of entries){
+      const tpl = normalizeShapeEntry(raw);
+      if(tpl) addShapeButton(tpl);   // one bad entry never blocks the rest
+    }
+  }
+
+  async function refreshShapeLibrary(){
+    shapeGridMessage('Loading…');
+    try{
+      const lib = await fetchShapeLibrary();
+      shapeLibraryCache = lib;
+      renderShapeLibrary(lib);
+    }catch(e){
+      console.warn('Shape library: could not fetch '+SHAPE_LIBRARY_FILE, e);
+      if(shapeLibraryCache){ renderShapeLibrary(shapeLibraryCache); return; }
+      shapeGridMessage(location.protocol==='file:'
+        ? 'Opened from disk, so it can\'t load ' + SHAPE_LIBRARY_FILE + ' automatically — use Import below.'
+        : 'No shapes yet — save one from a selection first.');
+    }
+  }
+
+  function importShapeLibraryFile(file){
+    const r = new FileReader();
+    r.onload = ()=>{
+      let data;
+      try{ data = JSON.parse(r.result); }catch(err){ toast('That file is not valid JSON'); return; }
+      if(!data || !Array.isArray(data.shapes)){ toast('That doesn\'t look like a shape library file'); return; }
+      shapeLibraryCache = data;
+      revealShapeTool();
+      renderShapeLibrary(data);
+      toast('Loaded ' + data.shapes.length + ' shape(s) from file');
+    };
+    r.onerror = ()=>toast('Could not read that file');
+    r.readAsText(file);
+  }
+
+  function armShapeForPlacement(tpl){
+    ui.pendingShape = tpl;
+    setShapePicker(false);
+    toast('Tap the canvas to place "'+tpl.name+'"');
+  }
 
   // Icon buttons (stroke/fill/text-color), each opening a small swatch-only popover — no text labels,
   // no wide controls. Mirrors the existing table-size popover pattern.
@@ -2831,6 +3139,8 @@
   const MENU_ACTIONS = {
     save: exportProject,
     open: ()=>projectInput.click(),
+    saveShape: saveSelectionAsShape,
+    loadShapeLibrary: loadShapeLibraryCommand,
     png: savePng,
     svg: saveSvg,
     print: ()=>window.print(),
@@ -2916,6 +3226,7 @@
       if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
+      if(!shapePicker.hidden){ setShapePicker(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
       return;
     }
@@ -3077,6 +3388,10 @@
   resize();
   updateButtons();
   tidySeps();
+
+  // Silently check for an existing shape library on startup — reveals the tool if one is found,
+  // otherwise it stays hidden until the user loads one via "Load Shape Library…".
+  fetchShapeLibrary().then(lib=>{ shapeLibraryCache = lib; revealShapeTool(); }).catch(()=>{});
 })();
 </script>
 </body>
