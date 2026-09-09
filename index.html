@@ -1955,7 +1955,7 @@
     textInput.style.color = color;
     textInput.value = value;
     render();   // hide the original item (or its edited cell's text) behind the input while editing
-    setTimeout(()=>{ textInput.focus(); textInput.select(); }, 0);
+    textInput.focus(); textInput.select();   // synchronously: iOS shows the keyboard only for a focus made inside the tap itself
   }
   const FONTS = {
     sans:'-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
@@ -2976,16 +2976,20 @@
     const now = performance.now();
     if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
       lastTap = null;
-      onDoubleClick(e);
+      onDoubleClick(e, true);
     } else lastTap = { t:now, x:e.clientX, y:e.clientY };
   }
-  canvas.addEventListener('dblclick', onDoubleClick);
-  function onDoubleClick(e){
+  canvas.addEventListener('dblclick', e=>onDoubleClick(e, false));
+  function onDoubleClick(e, fromTap){
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
-      // the two clicks that make up this dblclick each already added a vertex via onDown — the
-      // second one is essentially an accidental duplicate, so drop it before closing the shape
-      if(polyDraft.points.length>3) polyDraft.points.pop();
+      // Both halves of the double click/tap already added a vertex. With a mouse the first of them is
+      // the intended last corner and only the duplicate goes. A finger double-taps to say "close"
+      // and rarely lands on the last corner, so both go — unless the shape would be left with too
+      // few corners, in which case the tap did mean a corner.
+      const pts = polyDraft.points;
+      if(pts.length>3) pts.pop();
+      if(fromTap && pts.length>3) pts.pop();
       finishPolygon();
       return;
     }
