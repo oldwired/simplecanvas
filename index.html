@@ -1362,6 +1362,9 @@
     const first = items[sel[0]];
     if(!first) return null;
     if(sel.length===1 && first.group==null){
+      if(pointEditIdx===sel[0]) return null;   // point-edit mode hides the rotation handle too — every
+                                                // drag bakes rotation to 0 anyway, so showing a handle
+                                                // that would just reset itself is more confusing than useful
       const b = bbox(first);
       const cx=b.x+b.w/2, cy=b.y+b.h/2;
       return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-33, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
@@ -3579,6 +3582,16 @@
   function onDoubleClick(e, fromTap){
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
+      // a draft that already existed before this gesture always has >=3 points here (1+ pre-existing,
+      // plus the 2 this dblclick's/double-tap's own clicks added) — exactly 2 means both clicks
+      // started the draft from nothing, i.e. a dblclick/double-tap on empty canvas with no polygon
+      // underway, which reads as "switch tools", not "draw a 2-point sliver and get stuck"
+      if(polyDraft.points.length===2){
+        cancelPolygon();
+        const {x,y} = pos(e);
+        if(hitTest(x,y)<0) setTool('select');
+        return;
+      }
       // Both halves of the double click/tap already added a vertex. With a mouse the first of them is
       // the intended last corner and only the duplicate goes. A finger double-taps to say "close"
       // and rarely lands on the last corner, so both go — unless the shape would be left with too
@@ -3589,7 +3602,27 @@
       finishPolygon();
       return;
     }
-    if(ui.tool!=='select') return;
+    if(ui.tool!=='select'){
+      // dblclick on empty canvas while on any other tool → back to select, nothing under the cursor to act on
+      const {x,y} = pos(e);
+      if(ui.tool==='pen' || ui.tool==='marker' || ui.tool==='brush'){
+        // pen/marker/brush already placed a dot for each of this dblclick's two clicks (via onDown/onUp).
+        // A dblclick here means "switch tools", not "draw two dots" — drop them (and the undo entry each
+        // one's onUp already committed) before testing whether anything else was already at this spot.
+        let cut = items.length;
+        while(items.length-cut<2 && cut>0 && items[cut-1].type==='path' && items[cut-1].mode===ui.tool && items[cut-1].points.length===1) cut--;
+        const removed = items.length-cut;
+        if(removed){
+          items.length = cut;
+          undoStack.length = Math.max(0, undoStack.length-removed);
+          save(); updateButtons();
+        }
+        if(hitTest(x,y)<0) setTool('select'); else render();
+        return;
+      }
+      if(hitTest(x,y)<0) setTool('select');
+      return;
+    }
     const {x,y} = pos(e);
     const hit = hitTest(x,y);
     if(hit>=0 && items[hit].type==='text'){
