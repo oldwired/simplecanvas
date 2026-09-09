@@ -100,7 +100,7 @@
 
   /* table size picker */
   .table-picker{min-width:0;padding:10px;flex-direction:column;align-items:center}
-  .table-grid{display:grid;grid-template-columns:repeat(10,16px);grid-auto-rows:16px;gap:3px}
+  .table-grid{display:grid;grid-template-columns:repeat(10,16px);grid-auto-rows:16px;gap:3px;touch-action:none}
   .table-grid .cell{width:16px;height:16px;border:1px solid var(--line);border-radius:2px;background:#fff;cursor:pointer}
   .table-grid .cell.hi{background:var(--accent-soft);border-color:var(--accent)}
   .table-picker-label{margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
@@ -459,7 +459,6 @@
 <div class="stage">
   <div class="wrap" id="wrap">
     <canvas id="canvas"></canvas>
-    <svg id="polyOverlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
     <input id="textInput" type="text" autocomplete="off" spellcheck="false">
     <div class="hint" id="hint">
       Pick a tool and start sketching.<br>
@@ -513,7 +512,6 @@
   const toBackBtn = document.getElementById('toBack');
   const delSelBtn = document.getElementById('delSel');
   const toastEl = document.getElementById('toast');
-  const polyOverlay = document.getElementById('polyOverlay');
   const polySep = document.getElementById('polySep');
   const polyGroup = document.getElementById('polyGroup');
   const polyFinishBtn = document.getElementById('polyFinish');
@@ -524,8 +522,9 @@
   const FORMAT_VERSION = 2;     // bump when the saved-file schema changes (2: group pivots ignore stroke width)
   const BG = '#ffffff';
   const PRESETS = {   // swatch color -> its tooltip, in display order
-    '#1f2937':'Dark', '#ef4444':'Red', '#f97316':'Orange', '#eab308':'Yellow', '#22c55e':'Green', '#3b82f6':'Blue',
-    '#8b5cf6':'Purple', '#ec4899':'Pink', '#ffffff':'White', '#e5e7eb':'Light Grey', '#78828e':'Dark Grey'
+    '#1f2937':'Dark', '#ef4444':'Red', '#f97316':'Orange', '#eab308':'Yellow', '#ffff00':'Neon Yellow', '#22c55e':'Green',
+    '#22d3ee':'Cyan', '#3b82f6':'Blue', '#8b5cf6':'Purple', '#ec4899':'Pink', '#92400e':'Brown',
+    '#ffffff':'White', '#e5e7eb':'Light Grey', '#78828e':'Dark Grey'
   };
 
   // ---------- state ----------
@@ -758,7 +757,6 @@
     canvas.height = Math.floor(cssH*dpr);
     canvas.style.width = cssW+'px';
     canvas.style.height = cssH+'px';
-    polyOverlay.setAttribute('viewBox', '0 0 '+cssW+' '+cssH);
     render();
   }
 
@@ -1521,7 +1519,7 @@
     if(e.button!==undefined && e.button!==0) return;
     if(textInput.style.display==='block'){ commitText(); }
     const {x,y} = pos(e);
-    canvas.setPointerCapture(e.pointerId);
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // a pointer that is already gone (or synthetic) has no capture
 
     if(ui.tool==='select'){
       // rotation handle — of the lone selected item, or of the whole group if a group is selected
@@ -1624,7 +1622,7 @@
     }
     if(ui.tool==='table'){ placeTable(x,y); return; }
 
-    if(ui.tool==='polygon'){ handlePolygonClick(x,y); return; }
+    if(ui.tool==='polygon'){ polygonPress(x, y, e.pointerType!=='mouse'); return; }
 
     if(ui.tool==='eraser'){
       beginHistory();
@@ -1771,8 +1769,7 @@
       current.w = Math.abs(w);
       current.h = Math.abs(h);
     } else if(current.type==='polygon'){
-      current._hover = {x,y};
-      updatePolyOverlay();
+      current._hover = {x,y};   // rubber-band edge to the pointer
     }
     render();
   }
@@ -1857,7 +1854,12 @@
       render();
       return;
     }
-    if(ui.tool==='polygon'){ return; }   // polygon finishes via click-to-close / Enter / the Finish button, not pointerup
+    if(ui.tool==='polygon'){
+      // a mouse vertex landed on the press; a finger's lands here, where it lifts. The polygon itself
+      // finishes via click-to-close / Enter / the Finish button, never on a pointerup.
+      if(polyDraft && polyDraft._touch){ polyDraft._touch = false; const q = pos(e); polygonVertex(q.x, q.y); }
+      return;
+    }
     if(!current){ return; }
 
     let keep = true;
@@ -2023,38 +2025,25 @@
   textInput.addEventListener('blur', commitText);
 
   // ---------- polygon tool: click to add vertices, close on the start point / Enter / the Finish button ----------
-  // The in-progress preview is also drawn with real SVG elements (not just canvas): a stand-alone
-  // tap-to-tap canvas draw can be slow to composite on some mobile browsers, so the SVG overlay
-  // guarantees the draft always shows up immediately.
-  function updatePolyOverlay(){
-    if(!polyDraft || !polyDraft.points.length){ polyOverlay.innerHTML = ''; return; }
-    const pts = polyDraft.points.map(p=>p.x+','+p.y);
-    if(polyDraft._hover) pts.push(polyDraft._hover.x+','+polyDraft._hover.y);
-    let closing = '';
-    if(polyDraft._hover && polyDraft.points.length>=3){
-      const first = polyDraft.points[0];
-      if(Math.hypot(polyDraft._hover.x-first.x, polyDraft._hover.y-first.y)<=10){
-        closing = '<line x1="'+polyDraft._hover.x+'" y1="'+polyDraft._hover.y+'" x2="'+first.x+'" y2="'+first.y+
-                  '" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4,3"/>';
-      }
-    }
-    const dots = polyDraft.points.map(p=>'<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+polyDraft.color+'"/>').join('');
-    polyOverlay.innerHTML =
-      '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+polyDraft.color+'" stroke-width="'+polyDraft.size+
-      '" stroke-linejoin="round" stroke-linecap="round"/>' + closing + dots;
-  }
-  function handlePolygonClick(x,y){
+  // With a mouse a vertex lands on the press, and the rubber-band edge follows the hover. A finger has
+  // no hover: the press only starts the rubber band, a drag previews the edge, and the vertex lands
+  // where the finger lifts — so nothing stale is left dangling between taps.
+  function polygonPress(x, y, touch){
     if(!polyDraft){
       beginHistory();
-      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, points:[{x,y}] };
+      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, points:[] };
       current = polyDraft;
-      render(); updatePolyOverlay();
-      return;
     }
-    const first = polyDraft.points[0];
-    if(polyDraft.points.length>=3 && Math.hypot(x-first.x,y-first.y)<=10){ finishPolygon(); return; }
-    polyDraft.points.push({x,y});
-    render(); updatePolyOverlay();
+    if(touch){ polyDraft._hover = {x,y}; polyDraft._touch = true; }
+    else polygonVertex(x, y);
+    render();
+  }
+  function polygonVertex(x, y){
+    const pts = polyDraft.points;
+    if(pts.length>=3 && Math.hypot(x-pts[0].x, y-pts[0].y)<=10){ finishPolygon(); return; }
+    pts.push({x,y});
+    polyDraft._hover = null;
+    render();
   }
   function finishPolygon(closed){
     if(closed===undefined) closed = true;
@@ -2065,12 +2054,12 @@
                  fillColor:polyDraft.fillColor, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
     polyDraft = null; current = null;
     commitHistory();
-    render(); updatePolyOverlay();
+    render();
   }
   function cancelPolygon(){
     polyDraft = null; current = null;
     historyBefore = null;
-    render(); updatePolyOverlay();
+    render();
   }
   function updatePolyButtons(){
     const active = ui.tool==='polygon' && !!polyDraft;
@@ -2133,7 +2122,6 @@
     endDrag=null; snapPt=null; nudging=false;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     historyBefore=null;
-    updatePolyOverlay();
   }
   // undo/redo keep the selection (so a recolor can be undone and redone while the item stays
   // selected) — by object identity, so a reorder that shuffles array slots still selects the same things
@@ -2515,16 +2503,39 @@
       cell.className = 'cell';
       cell.dataset.r = r; cell.dataset.c = c;
       cell.addEventListener('mouseenter', ()=>highlightTablePicker(r,c));
-      cell.addEventListener('click', e=>{
-        e.stopPropagation();
-        ui.tableRows = r; ui.tableCols = c;
-        setTablePicker(false);
-        toast('Click the canvas to place a ' + c + '×' + r + ' table');
-      });
+      cell.addEventListener('click', e=>{ e.stopPropagation(); if(!tablePicker.hidden) chooseTableSize(r, c); });
       tableGrid.appendChild(cell);
       tableCells.push(cell);
     }
   }
+  function chooseTableSize(r, c){
+    ui.tableRows = r; ui.tableCols = c;
+    setTablePicker(false);
+    toast('Tap the canvas to place a ' + c + '×' + r + ' table');
+  }
+  // A finger gets no hover: while it is down on the grid the highlight follows it (touch events keep
+  // targeting the first cell, so look the cell up by position). Whatever is highlighted IS the chosen
+  // size from that moment on — iOS does not reliably deliver the lift after a slide — and the lift,
+  // or a cancelled touch, just closes the popover.
+  const cellUnder = e => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.classList.contains('cell') && tableGrid.contains(el) ? el : null; };
+  let touchPick = null;
+  function touchOnGrid(e){
+    const cell = cellUnder(e);
+    if(!cell) return;
+    touchPick = { r:+cell.dataset.r, c:+cell.dataset.c };
+    ui.tableRows = touchPick.r; ui.tableCols = touchPick.c;
+    highlightTablePicker(touchPick.r, touchPick.c);
+  }
+  tableGrid.addEventListener('pointerdown', e=>{ if(e.pointerType==='mouse') return; e.preventDefault(); touchPick = null; touchOnGrid(e); });
+  tableGrid.addEventListener('pointermove', e=>{ if(e.pointerType==='mouse' || !e.buttons) return; touchOnGrid(e); });
+  const liftOnGrid = e=>{
+    if(e.pointerType==='mouse') return;
+    touchOnGrid(e);
+    if(touchPick) chooseTableSize(touchPick.r, touchPick.c);
+    touchPick = null;
+  };
+  tableGrid.addEventListener('pointerup', liftOnGrid);
+  tableGrid.addEventListener('pointercancel', liftOnGrid);
   function highlightTablePicker(r,c){
     for(const cell of tableCells){
       const cr = +cell.dataset.r, cc = +cell.dataset.c;
