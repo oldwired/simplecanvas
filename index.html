@@ -2968,7 +2968,19 @@
   // Cmd+Tab / a file dialog while an arrow key is down: the keyup never arrives, so close the step here
   window.addEventListener('blur', ()=>{ if(nudging){ nudging = false; commitHistory(); } });
 
-  canvas.addEventListener('dblclick', e=>{
+  // iOS Safari does not turn two taps into a dblclick, so recognise a double tap ourselves (two lifts
+  // within 300ms and 25px, touch or pen) and hand it to the very same handler the mouse uses
+  let lastTap = null;
+  function onTapUp(e){   // registered after onUp, so the second tap's own vertex/selection has landed first
+    if(e.pointerType==='mouse') return;
+    const now = performance.now();
+    if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
+      lastTap = null;
+      onDoubleClick(e);
+    } else lastTap = { t:now, x:e.clientX, y:e.clientY };
+  }
+  canvas.addEventListener('dblclick', onDoubleClick);
+  function onDoubleClick(e){
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
       // the two clicks that make up this dblclick each already added a vertex via onDown — the
@@ -3002,12 +3014,13 @@
         }
       }
     }
-  });
+  }
 
   // ---------- pointer listeners ----------
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointerup', onTapUp);
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('pointerleave', ()=>{ if(cursorPt){ cursorPt=null; render(); } });
   canvas.addEventListener('contextmenu', e=>{
