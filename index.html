@@ -111,8 +111,6 @@
   .shape-grid button{width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;cursor:pointer}
   .shape-grid button svg{width:100%;height:100%;display:block}
   .shape-picker-empty{font-size:12px;color:var(--muted);padding:2px}
-  .shape-picker-import{margin-top:8px;background:none;border:none;padding:4px 2px;font:inherit;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;text-align:left}
-  .shape-picker-import:hover{text-decoration:underline}
 
   /* stroke/fill color popovers: swatches only, no text — keeps the toolbar compact */
   .color-picker{min-width:0;padding:8px;flex-direction:row;flex-wrap:wrap;width:132px;gap:6px}
@@ -354,7 +352,6 @@
       <div class="menu shape-picker" id="shapePicker" hidden>
         <div class="table-picker-label" id="shapePickerLabel">Shape library</div>
         <div class="shape-grid" id="shapeGrid"></div>
-        <button type="button" class="shape-picker-import" id="shapeImportBtn">Import library file…</button>
         <input type="file" id="shapeLibraryInput" accept="application/json,.json" style="display:none">
       </div>
     </div>
@@ -2379,7 +2376,7 @@
     if(location.protocol==='file:' && !shapeLibraryCache){
       const proceed = confirm(
         'No existing shape library is loaded (this page was opened from disk, so it can\'t fetch '+SHAPE_LIBRARY_FILE+' automatically).\n\n' +
-        'If you already have a '+SHAPE_LIBRARY_FILE+' with other shapes in it, click Cancel and use "Import library file…" in the shape library popover first — otherwise this save will start a brand-new library and overwrite it.\n\n' +
+        'If you already have a '+SHAPE_LIBRARY_FILE+' with other shapes in it, click Cancel and use "Load Shape Library…" in the menu first — otherwise this save will start a brand-new library and overwrite it.\n\n' +
         'Click OK to start a new library with just this shape.'
       );
       if(!proceed) return;
@@ -2742,7 +2739,6 @@
   const shapeLibBtn = document.getElementById('shapeLibBtn');
   const shapePicker = document.getElementById('shapePicker');
   const shapeGrid = document.getElementById('shapeGrid');
-  const shapeImportBtn = document.getElementById('shapeImportBtn');
   const shapeLibraryInput = document.getElementById('shapeLibraryInput');
 
   // The tool stays hidden until a library file is actually found (or the user loads/imports one) —
@@ -2759,11 +2755,9 @@
   document.addEventListener('click', e=>{
     if(!shapePicker.hidden && !shapePicker.contains(e.target) && e.target!==shapeLibBtn) setShapePicker(false);
   });
-  // Manual fallback for when fetch() can't reach shapes-library.json itself (opened via file://,
-  // or any other fetch failure) — same FileReader pattern as the existing project-open flow. Shared
-  // by the in-popover "Import library file…" button AND the "Load Shape Library…" menu command
-  // (which is the only way in once the tool itself is still hidden).
-  shapeImportBtn.addEventListener('click', e=>{ e.stopPropagation(); shapeLibraryInput.click(); });
+  // Manual fallback for when fetch() can't reach shapes-library.json itself (opened via file://, or
+  // any other fetch failure) — same FileReader pattern as the existing project-open flow. Triggered
+  // by the "Load Shape Library…" menu command below; this input itself just does the reading.
   shapeLibraryInput.addEventListener('change', e=>{
     const file = e.target.files[0];
     e.target.value = '';
@@ -2844,9 +2838,9 @@
     }catch(e){
       console.warn('Shape library: could not fetch '+SHAPE_LIBRARY_FILE, e);
       if(shapeLibraryCache){ renderShapeLibrary(shapeLibraryCache); return; }
-      shapeGridMessage(location.protocol==='file:'
-        ? 'Opened from disk, so it can\'t load ' + SHAPE_LIBRARY_FILE + ' automatically — use Import below.'
-        : 'No shapes yet — save one from a selection first.');
+      // shouldn't normally happen — the tool stays hidden until shapeLibraryCache is set — but stay
+      // defensive rather than showing a blank popover if it ever does
+      shapeGridMessage('Could not load ' + SHAPE_LIBRARY_FILE + ' — try "Load Shape Library…" from the menu.');
     }
   }
 
