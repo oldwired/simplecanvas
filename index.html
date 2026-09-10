@@ -60,7 +60,7 @@
   }
   .btn svg{width:24px;height:24px;display:block}
   #sizeBtn{flex-direction:column;gap:3px;padding:3px 9px}
-  #sizeBtn .size-btn-line{display:block;width:20px;height:1.6px;border-radius:1px;background:#1f2937;flex:0 0 auto}
+  #sizeBtn .size-btn-line{display:block;width:20px;height:4px;color:#1f2937;flex:0 0 auto}
   .btn:hover{background:#f3f4f6}
   .btn:active{transform:translateY(1px)}
   .btn.active{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
@@ -174,6 +174,15 @@
   .vslider::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);margin-top:-8px;cursor:pointer}
   .vslider::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--accent);border:none;cursor:pointer}
   .size-picker-label{font-size:12px;color:var(--muted);font-weight:600;min-width:40px;text-align:center}
+  .dash-picker{display:flex;flex-direction:column;gap:4px;width:100%;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .dash-btn{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:7px;
+    background:transparent;color:var(--ink);cursor:pointer;
+  }
+  .dash-btn svg{width:100%;height:6px;display:block}
+  .dash-btn:hover{background:#f3f4f6}
+  .dash-btn.active{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
 
   .select{
     height:38px;border:1px solid var(--line);border-radius:10px;
@@ -401,9 +410,20 @@
     <div class="menu-wrap">
       <button class="btn" id="sizeBtn" title="Stroke width" aria-haspopup="true" aria-expanded="false" aria-controls="sizePicker">
         <span id="sizeBtnLabel">6px</span>
-        <span class="size-btn-line"></span>
+        <svg class="size-btn-line" viewBox="0 0 20 2" preserveAspectRatio="none"><line id="sizeBtnLineEl" x1="0" y1="1" x2="20" y2="1" stroke="currentColor" stroke-width="1.2"/></svg>
       </button>
       <div class="menu size-picker" id="sizePicker" hidden>
+        <div class="dash-picker" id="dashPicker">
+          <button type="button" class="dash-btn" data-dash="solid" title="Solid">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button type="button" class="dash-btn" data-dash="tight" title="Fine dashed">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="4,3"/></svg>
+          </button>
+          <button type="button" class="dash-btn" data-dash="wide" title="Wide dashed">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="9,6"/></svg>
+          </button>
+        </div>
         <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical"></div>
         <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
       </div>
@@ -518,6 +538,8 @@
   const sizePicker = document.getElementById('sizePicker');
   const sizeRange = document.getElementById('sizeRange');
   const sizeRangeLabel = document.getElementById('sizeRangeLabel');
+  const dashPicker = document.getElementById('dashPicker');
+  const sizeBtnLineEl = document.getElementById('sizeBtnLineEl');
   const fontFamilySel = document.getElementById('fontFamily');
   const fontSizeSel = document.getElementById('fontSize');
   const sizeGroup = document.getElementById('sizeGroup');
@@ -590,6 +612,7 @@
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
+  let snapCursorPt = null;      // raw pointer position while placing/dragging a line/arrow endpoint (for hover-highlighting that one target's snap dots)
   let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
   const SNAP_R = 12;            // snap magnet radius (px)
 
@@ -677,6 +700,7 @@
       }
       if(FILLABLE(it.type)) it.strokeOn = raw.strokeOn !== false;   // "no outline" only means something on a shape with an inside
       if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
+      if(DASHABLE(it.type) && (raw.dash==='tight' || raw.dash==='wide')) it.dash = raw.dash;
       if(it.type === 'text' || it.type === 'table'){
         if(isColor(raw.textColor)) it.textColor = raw.textColor;
         const fstr = typeof raw.font === 'string' ? raw.font : '';
@@ -841,7 +865,20 @@
   //   style: {fill, stroke, width, cap, join, opacity}   fill/stroke are a color or 'none'
   const fillOf = it => it.fill ? (it.fillColor || it.color) : 'none';
   const strokeOf = it => strokeOn(it) ? it.color : 'none';
-  const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round' });
+  // line-style: 'tight'/'wide' dashed, or unset/'solid' for a plain line. Dash lengths scale with the
+  // item's own stroke width so the pattern reads the same regardless of how thick the line is.
+  const DASHABLE = t => t==='line' || t==='arrow' || t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
+  function dashArrayFor(kind, size){
+    const w = Math.max(1, size||2);
+    // 'tight' grows with the SQUARE ROOT of width, not linearly — a thicker line would otherwise blow
+    // its dash/gap up proportionally too, and a "fine dashed" line stops reading as fine well before
+    // you'd expect. Sub-linear growth keeps it visually tight at any stroke width.
+    if(kind==='tight'){ const u = Math.sqrt(w)*3; return [u, u*0.75]; }
+    if(kind==='wide') return [w*4.5, w*3];
+    return null;
+  }
+  const dashOf = it => dashArrayFor(it.dash, it.size);
+  const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round', dash:dashOf(it) });
   // text sits 6px in from the left/right edge, or on the center line
   function textAnchorX(x, w, align){ return align==='left' ? x+6 : align==='right' ? x+w-6 : x+w/2; }
   // freehand strokes are smoothed: each vertex becomes the control point of a quadratic curve
@@ -953,18 +990,19 @@
       }
       case 'line': case 'arrow': {
         if(!strokeOn(it)) break;
-        const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round' };
+        const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round', dash:dashOf(it) };
+        const headStyle = style.dash ? { ...style, dash:null } : style;   // arrowheads never dash, even on a dashed shaft
         ops.push({ kind:'path', d:[['M', it.x1, it.y1], ['L', it.x2, it.y2]], style });
         const h = headsOf(it);
-        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style });
-        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style });
+        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style:headStyle });
+        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style:headStyle });
         break;
       }
       case 'rect':
         ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style:boxStyle(it) });
         break;
       case 'ellipse':
-        ops.push({ kind:'ellipse', cx:it.x+it.w/2, cy:it.y+it.h/2, rx:Math.abs(it.w/2), ry:Math.abs(it.h/2), style:{ fill:fillOf(it), stroke:strokeOf(it), width:it.size } });
+        ops.push({ kind:'ellipse', cx:it.x+it.w/2, cy:it.y+it.h/2, rx:Math.abs(it.w/2), ry:Math.abs(it.h/2), style:{ fill:fillOf(it), stroke:strokeOf(it), width:it.size, dash:dashOf(it) } });
         break;
       case 'polygon': {
         const closed = it.closed !== false;
@@ -976,7 +1014,8 @@
           else d.push(['L', s.b.x, s.b.y]);
         }
         if(closed) d.push(['Z']);
-        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round' };
+        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
+        const headStyle = style.dash ? { ...style, dash:null } : style;
         ops.push({ kind:'path', d, style });
         // arrowheads for an open (line/arrow-derived) curve: direction = the LOCAL TANGENT at that
         // end (that anchor's own handle if set, else the adjacent anchor — identical to a plain
@@ -984,11 +1023,11 @@
         if(!closed && n>=2){
           if(it.he){
             const last = pts[n-1], prev = pts[n-2], from = last.c2 || prev;
-            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style });
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style:headStyle });
           }
           if(it.hs){
             const first = pts[0], second = pts[1], from = first.c1 || second;
-            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style });
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style:headStyle });
           }
         }
         break;
@@ -1005,7 +1044,7 @@
           const d = [];
           for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; d.push(['M', it.x, yy], ['L', it.x+it.w, yy]); }
           for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; d.push(['M', xx, it.y], ['L', xx, it.y+it.h]); }
-          if(d.length) ops.push({ kind:'path', d, style:{ fill:'none', stroke:it.color, width:it.size } });
+          if(d.length) ops.push({ kind:'path', d, style:{ fill:'none', stroke:it.color, width:it.size, dash:dashOf(it) } });
         }
         if(it.texts){
           const cw = it.w/it.cols, ch = it.h/it.rows;
@@ -1039,7 +1078,12 @@
     }
   }
   function paintCurrentPath(style){
-    ctx.lineWidth = style.width; ctx.lineCap = style.cap || 'butt'; ctx.lineJoin = style.join || 'miter';
+    ctx.lineWidth = style.width;
+    // round caps extend each dash by half the stroke width on both ends — at any real gap they'd eat
+    // into it and merge adjacent dashes together, so a dash pattern always forces flat (butt) ends
+    ctx.lineCap = style.dash ? 'butt' : (style.cap || 'butt');
+    ctx.lineJoin = style.join || 'miter';
+    ctx.setLineDash(style.dash || []);
     ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
     if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(); }
     if(style.stroke !== 'none'){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
@@ -1321,8 +1365,9 @@
     }
     return b;
   }
-  function hitTest(x,y){
+  function hitTest(x,y,excludeIdx){
     for(let i=items.length-1;i>=0;i--){
+      if(i===excludeIdx) continue;
       const it = items[i];
       const p = toLocal(it,x,y);
       if(inBox(bbox(it),p.x,p.y)) return i;
@@ -1498,6 +1543,7 @@
       }
     }
     const next = { type:'polygon', points, closed, uid:it.uid, color:it.color, size:it.size };
+    if(it.dash) next.dash = it.dash;
     if(it.type==='line' || it.type==='arrow'){ next.strokeOn = true; next.fill = false; }
     else { next.strokeOn = it.strokeOn !== false; next.fill = !!it.fill; if(it.fillColor) next.fillColor = it.fillColor; }
     if(it.rotation) next.rotation = it.rotation;
@@ -1739,6 +1785,25 @@
       ctx.restore();
     }
 
+    // snap targets — small dots at the magnet points of whichever single object the cursor is
+    // currently over, shown only while a line/arrow endpoint is actually being placed or dragged
+    const snappingNow = endDrag || (current && (current.type==='line' || current.type==='arrow'));
+    if(snappingNow && snapCursorPt){
+      const excludeIdx = endDrag ? endDrag.idx : null;
+      const hoverIdx = hitTest(snapCursorPt.x, snapCursorPt.y, excludeIdx);
+      if(hoverIdx>=0){
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = '#9ca3af';
+        ctx.strokeStyle = '#fff';
+        for(const p of snapAnchorsOf(items[hoverIdx])){
+          ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     // snap indicator — ring around the anchor a line/arrow endpoint is magnetized to
     if(snapPt){
       ctx.save();
@@ -1925,10 +1990,10 @@
     } else if(ui.tool==='line' || ui.tool==='arrow'){
       snapPt = e.altKey ? null : nearestSnap(x,y);          // the start point snaps too
       const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
-      current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
+      current = { type:ui.tool, color:ui.color, size:ui.size, dash:ui.dash, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
       const st = drawStyle();
-      current = { type:ui.tool, color:st.color, size:st.size, strokeOn:st.strokeOn, fill:st.fill, fillColor:st.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
+      current = { type:ui.tool, color:st.color, size:st.size, strokeOn:st.strokeOn, fill:st.fill, fillColor:st.fillColor, dash:st.dash, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
       if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; }   // border/fill come from the toolbar, like a rect
     }
     render();
@@ -1968,6 +2033,7 @@
       const it = items[endDrag.idx];
       const fx = endDrag.end===1 ? it.x2 : it.x1, fy = endDrag.end===1 ? it.y2 : it.y1;   // the fixed end
       let nx=x, ny=y;
+      snapCursorPt = {x,y};
       if(e.shiftKey){ ({x:nx,y:ny} = constrainAngle(fx,fy,x,y)); snapPt = null; }
       else { snapPt = e.altKey ? null : nearestSnap(x,y,endDrag.idx); if(snapPt){ nx=snapPt.x; ny=snapPt.y; } }
       if(endDrag.end===1){ it.x1=norm(nx); it.y1=norm(ny); } else { it.x2=norm(nx); it.y2=norm(ny); }
@@ -2058,6 +2124,7 @@
       const last = current.points[current.points.length-1];
       if(current.points.length < MAX_POINTS && Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
     } else if(current.type==='line' || current.type==='arrow'){
+      snapCursorPt = {x,y};
       if(e.shiftKey){
         // constrain to 45° steps, keeping the cursor's distance from the start point (no snapping)
         const c = constrainAngle(current.x1, current.y1, x, y);
@@ -2107,7 +2174,7 @@
         if(endDrag.end===1) setHeads(it, !h.s, h.e); else setHeads(it, h.s, !h.e);
       }
       commitHistory();
-      endDrag=null; snapPt=null;
+      endDrag=null; snapPt=null; snapCursorPt=null;
       render();
       return;
     }
@@ -2196,7 +2263,7 @@
       else clickWithoutDrag = true;
     }
 
-    snapPt = null;
+    snapPt = null; snapCursorPt = null;
     if(textDraftBox){
       const box = {x:textDraftBox.x, y:textDraftBox.y, w:textDraftBox.w, h:textDraftBox.h};
       const draftStyle = {color:textDraftBox.color, fill:textDraftBox.fill, fillColor:textDraftBox.fillColor, strokeOn:textDraftBox.strokeOn, size:textDraftBox.size, textColor:textDraftBox.textColor};
@@ -2297,7 +2364,7 @@
     const w = colW*cols, h = rowH*rows;
     beginHistory();
     items.push({ type:'table', x:norm(x-w/2), y:norm(y-h/2), w:norm(w), h:norm(h), rows, cols,
-                 color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor,
+                 color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, dash:ui.dash,
                  fontFamily:ui.fontFamily, fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize),
                  textColor:ui.textColor, texts:[], aligns:[] });
     selection = [items.length-1];
@@ -2375,7 +2442,7 @@
   function polygonPress(x, y, touch){
     if(!polyDraft){
       beginHistory();
-      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, points:[] };
+      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, dash:ui.dash, points:[] };
       current = polyDraft;
     }
     if(touch){ polyDraft._hover = {x,y}; polyDraft._touch = true; }
@@ -2395,7 +2462,7 @@
     const minPts = closed ? 3 : 2;
     if(polyDraft.points.length<minPts){ toast(closed ? 'Add at least 3 points first' : 'Add at least 2 points first'); return; }
     items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, strokeOn:polyDraft.strokeOn, fill:polyDraft.fill,
-                 fillColor:polyDraft.fillColor, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+                 fillColor:polyDraft.fillColor, dash:polyDraft.dash, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
     selection = [items.length-1];
     polyDraft = null; current = null;
     commitHistory();
@@ -2465,7 +2532,7 @@
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
-    endDrag=null; snapPt=null; nudging=false;
+    endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
     editingAnchor=null; pointEditIdx=null; activeAnchor=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     historyBefore=null;
@@ -2750,12 +2817,15 @@
       setDisp(fillGroup, fillable.length>0);
       setDisp(strokeNoneSwatch, fillable.length>0);
       const sized = sel;   // every shape (including text, for its border) has a stroke width
+      const dashable = sel.filter(it=>DASHABLE(it.type));
       const texts = sel.filter(it=>it.type==='text' || it.type==='table');
       setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
+      setDisp(dashPicker, dashable.length>0);
       setDisp(textOpts, texts.length>0);
       setDisp(textColorGroup, texts.length>0);
       if(sel.length){
         if(sized.length) setSizeVal(sized[0].size);   // so does the size control
+        if(dashable.length) setDashVal(dashable[0].dash);   // and the line-style control
         if(texts.length){ fontFamilySel.value = familyOf(texts[0]); setFontSizeSel(fontPxOf(texts[0])); }   // and the font controls
         refreshColorUI();
       }
@@ -2805,7 +2875,10 @@
     let a = ` fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}"`;
     if(st.stroke !== 'none'){
       a += ` stroke-width="${st.width}"`;
-      if(st.cap) a += ` stroke-linecap="${st.cap}"`;
+      // a dash pattern always forces flat (butt) ends — round caps would extend each dash into the
+      // gap by half the stroke width and merge adjacent dashes together (see paintCurrentPath)
+      if(st.dash) a += ` stroke-linecap="butt" stroke-dasharray="${st.dash.join(',')}"`;
+      else if(st.cap) a += ` stroke-linecap="${st.cap}"`;
       if(st.join) a += ` stroke-linejoin="${st.join}"`;
     }
     if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
@@ -2944,7 +3017,9 @@
     sizeGroup.style.display = usesSize ? '' : 'none';
     sizeSep.style.display = usesSize ? '' : 'none';
     fillGroup.style.display = canFill ? '' : 'none';
+    dashPicker.style.display = (usesSize && DASHABLE(t)) ? '' : 'none';   // pen/marker/brush/eraser never dash
     setSizeVal(drawStyle().size);                    // back to the drawing defaults (select mode mirrors the selection instead)
+    setDashVal(drawStyle().dash);
     fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
@@ -3386,6 +3461,29 @@
     drawStyle().size = v;
   });
   sizeRange.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
+  // reflects the current line style even when nothing is selected yet (mirrors setSizeVal)
+  function setDashVal(kind){
+    dashPicker.querySelectorAll('.dash-btn').forEach(b=>b.classList.toggle('active', b.dataset.dash===(kind||'solid')));
+    // the little preview line under the size button — a small representative pattern, not tied to
+    // the actual stroke width (this bar is a fixed 20-unit decoration, not a rendered line)
+    if(kind==='tight') sizeBtnLineEl.setAttribute('stroke-dasharray', '2,1.33');
+    else if(kind==='wide') sizeBtnLineEl.setAttribute('stroke-dasharray', '4,2.67');
+    else sizeBtnLineEl.removeAttribute('stroke-dasharray');
+  }
+  function applyDash(kind){
+    const val = kind==='solid' ? undefined : kind;
+    const sel = colorableSelection().filter(it=>DASHABLE(it.type));
+    if(sel.length){
+      beginHistory();
+      for(const it of sel){ if(val) it.dash = val; else delete it.dash; }
+      commitHistory(); render();
+    } else {
+      const st = drawStyle();
+      if(val) st.dash = val; else delete st.dash;
+    }
+    setDashVal(kind);
+  }
+  dashPicker.querySelectorAll('.dash-btn').forEach(b=>b.addEventListener('click', ()=>applyDash(b.dataset.dash)));
   // show a size in the dropdown even when it isn't one of the presets (e.g. after a corner-resize)
   function setFontSizeSel(px){
     if(![...fontSizeSel.options].some(o=>+o.value===px)){
@@ -3510,7 +3608,7 @@
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
-      if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
+      if(current){ current=null; snapPt=null; snapCursorPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(pointEditIdx!=null){   // one Escape drops the active handles, a second leaves point-edit mode
         if(activeAnchor!=null){ activeAnchor=null; render(); return; }
         pointEditIdx=null; render(); return;
