@@ -1928,6 +1928,8 @@
               rotation:rp.rotation,
               anchorX:c.ax, anchorY:c.ay,
               anchorWorldX:Aw.x, anchorWorldY:Aw.y,
+              cornerX:c.x, cornerY:c.y,          // dragged corner's own local coords (for the Ctrl/center anchor)
+              centerX:rp.cx, centerY:rp.cy,      // center anchor — valid as local AND world AND rotation pivot
               origW: b.w, origH: b.h,
               origSignedW: c.x-c.ax, origSignedH: c.y-c.ay,
               snapshots: rp.members.map(idx=>({idx, snap:snapshotOf(items[idx])})),
@@ -2070,30 +2072,40 @@
 
     if(resizing){
       const rot = resizing.rotation;
-      const rotd = rot ? rotatePoint(x, y, resizing.anchorWorldX, resizing.anchorWorldY, -rot) : {x,y};
-      let dx = rotd.x - resizing.anchorWorldX, dy = rotd.y - resizing.anchorWorldY;
+      // Ctrl/Cmd anchors the resize at the box's center instead of the opposite corner (read live,
+      // like Shift, so it can be toggled mid-drag) — symmetric grow/shrink on both sides at once.
+      const ctrlMode = e.ctrlKey || e.metaKey;
+      const ax  = ctrlMode ? resizing.centerX : resizing.anchorX;
+      const ay  = ctrlMode ? resizing.centerY : resizing.anchorY;
+      const awx = ctrlMode ? resizing.centerX : resizing.anchorWorldX;
+      const awy = ctrlMode ? resizing.centerY : resizing.anchorWorldY;
+      const origSignedW = ctrlMode ? resizing.cornerX-resizing.centerX : resizing.origSignedW;
+      const origSignedH = ctrlMode ? resizing.cornerY-resizing.centerY : resizing.origSignedH;
+      const rotd = rot ? rotatePoint(x, y, awx, awy, -rot) : {x,y};
+      let dx = rotd.x - awx, dy = rotd.y - awy;
       if(e.shiftKey){
         // proportional: project onto the original diagonal (anchor -> original corner)
-        const dW = resizing.origSignedW, dH = resizing.origSignedH;
+        const dW = origSignedW, dH = origSignedH;
         const len2 = dW*dW + dH*dH;
         const t = len2 ? (dx*dW + dy*dH) / len2 : 1;
         dx = t*dW; dy = t*dH;
       }
-      let sx = resizing.origSignedW ? dx/resizing.origSignedW : 1;
-      let sy = resizing.origSignedH ? dy/resizing.origSignedH : 1;
+      let sx = origSignedW ? dx/origSignedW : 1;
+      let sy = origSignedH ? dy/origSignedH : 1;
       const MIN=0.02;
-      if(Math.abs(sx)<MIN){ sx = sx<0?-MIN:MIN; dx = sx*resizing.origSignedW; }
-      if(Math.abs(sy)<MIN){ sy = sy<0?-MIN:MIN; dy = sy*resizing.origSignedH; }
-      for(const {idx,snap} of resizing.snapshots) applyScaleFromSnapshot(items[idx], snap, resizing.anchorX, resizing.anchorY, sx, sy);
-      if(rot){
+      if(Math.abs(sx)<MIN){ sx = sx<0?-MIN:MIN; dx = sx*origSignedW; }
+      if(Math.abs(sy)<MIN){ sy = sy<0?-MIN:MIN; dy = sy*origSignedH; }
+      for(const {idx,snap} of resizing.snapshots) applyScaleFromSnapshot(items[idx], snap, ax, ay, sx, sy);
+      if(rot && !ctrlMode){
         // resizing moves the box's center, and everything rotates around that center — compensate
-        // with a plain shift so the anchor corner's WORLD position lands exactly back where it was
+        // with a plain shift so the anchor corner's WORLD position lands exactly back where it was.
+        // Not needed in ctrlMode: scaling anchored at the center is a fixed point of the center itself.
         const halfW = dx/2, halfH = dy/2;
         const c = Math.cos(rot), s = Math.sin(rot);
         const Rx = halfW*c - halfH*s, Ry = halfW*s + halfH*c;
-        const targetAnchorX = resizing.anchorWorldX - (halfW - Rx);
-        const targetAnchorY = resizing.anchorWorldY - (halfH - Ry);
-        const shiftX = targetAnchorX - resizing.anchorX, shiftY = targetAnchorY - resizing.anchorY;
+        const targetAnchorX = awx - (halfW - Rx);
+        const targetAnchorY = awy - (halfH - Ry);
+        const shiftX = targetAnchorX - ax, shiftY = targetAnchorY - ay;
         for(const {idx} of resizing.snapshots) translateItem(items[idx], shiftX, shiftY);
       }
       resizing.moved = true;
