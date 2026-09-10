@@ -2395,8 +2395,10 @@
     if(polyDraft.points.length<minPts){ toast(closed ? 'Add at least 3 points first' : 'Add at least 2 points first'); return; }
     items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, strokeOn:polyDraft.strokeOn, fill:polyDraft.fill,
                  fillColor:polyDraft.fillColor, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+    selection = [items.length-1];
     polyDraft = null; current = null;
     commitHistory();
+    setTool('select');   // same as placeTable — land in select, ready to move/adjust what was just drawn
     render();
   }
   function cancelPolygon(){
@@ -3575,11 +3577,11 @@
     const now = performance.now();
     if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
       lastTap = null;
-      onDoubleClick(e, true);
+      onDoubleClick(e);
     } else lastTap = { t:now, x:e.clientX, y:e.clientY };
   }
-  canvas.addEventListener('dblclick', e=>onDoubleClick(e, false));
-  function onDoubleClick(e, fromTap){
+  canvas.addEventListener('dblclick', onDoubleClick);
+  function onDoubleClick(e){
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
       // a draft that already existed before this gesture always has >=3 points here (1+ pre-existing,
@@ -3592,13 +3594,13 @@
         if(hitTest(x,y)<0) setTool('select');
         return;
       }
-      // Both halves of the double click/tap already added a vertex. With a mouse the first of them is
-      // the intended last corner and only the duplicate goes. A finger double-taps to say "close"
-      // and rarely lands on the last corner, so both go — unless the shape would be left with too
-      // few corners, in which case the tap did mean a corner.
+      // Both halves of the double click/tap already added a vertex of their own (via onDown) — neither
+      // was a deliberate corner, just the click/tap that says "close it", so both go, closing from
+      // whatever corner was already placed before this gesture — unless that would leave too few
+      // corners, in which case one of them did mean a corner after all.
       const pts = polyDraft.points;
       if(pts.length>3) pts.pop();
-      if(fromTap && pts.length>3) pts.pop();
+      if(pts.length>3) pts.pop();
       finishPolygon();
       return;
     }
