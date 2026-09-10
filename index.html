@@ -3201,6 +3201,16 @@
     shapeGridMessage('Loading…');
     try{
       const lib = await fetchShapeLibrary();
+      // A save downloads the updated file but can't replace the copy next to index.html itself —
+      // the user has to do that by hand (or re-upload it). Until they do, this fetch would still
+      // return the OLD on-disk file, silently dropping any shape saved earlier this session. Keep
+      // those around by merging in whatever the session cache has that this fetch doesn't.
+      if(shapeLibraryCache){
+        const fetchedNames = new Set(lib.shapes.map(s=>s && s.name));
+        for(const s of shapeLibraryCache.shapes){
+          if(s && !fetchedNames.has(s.name)) lib.shapes.push(s);
+        }
+      }
       shapeLibraryCache = lib;
       renderShapeLibrary(lib);
     }catch(e){
