@@ -1253,7 +1253,7 @@
   function groupPivot(groupId){
     const idxs = itemsInGroup(groupId);
     const box = unionBoxOwn(idxs), g = unionBoxOwn(idxs, false);
-    return { cx:g.x+g.w/2, cy:g.y+g.h/2, box };
+    return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
   // (the reverse order of how they're applied when drawing)
@@ -1475,11 +1475,11 @@
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
       if(pointEditIdx===sel[0]) return null;   // point-edit mode fully replaces the corner-resize UI
       const b = bbox(first);
-      return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
+      return { box:b, ownBox:bbox(first,false), rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
     }
     if(first.group!=null){
       const piv = groupPivot(first.group);
-      return { box:piv.box, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
+      return { box:piv.box, ownBox:piv.ownBox, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
     }
     return null;
   }
@@ -1922,16 +1922,32 @@
           }
           if(hitHandle){
             const c = corners[hitHandle];
+            // The scale anchor must be the item's own (unpadded) opposite corner, not the padded bbox
+            // corner `c.ax,ay` above — the padding (half the stroke width) doesn't scale along with
+            // everything else, so anchoring at the padded corner leaves it sitting at a fixed offset
+            // from a corner that itself just moved, and the visible opposite handle visibly drifts by
+            // pad*(scale-1) — worse at heavier stroke widths. Anchoring at the true corner instead scales
+            // it to itself (a fixed point of the transform), so the constant padding still lines up
+            // exactly with it afterward. (Ctrl/center-anchored resize is unaffected: pad only ever
+            // shifts a corner, never the box's center, so `centerX,centerY` below was already exact.)
+            const ob = rp.ownBox;
+            const ownCorners = {
+              nw:{x:ob.x,      y:ob.y,      ax:ob.x+ob.w, ay:ob.y+ob.h},
+              ne:{x:ob.x+ob.w, y:ob.y,      ax:ob.x,      ay:ob.y+ob.h},
+              sw:{x:ob.x,      y:ob.y+ob.h, ax:ob.x+ob.w, ay:ob.y},
+              se:{x:ob.x+ob.w, y:ob.y+ob.h, ax:ob.x,      ay:ob.y},
+            };
+            const oc = ownCorners[hitHandle];
             beginHistory();
-            const Aw = rp.rotation ? rotatePoint(c.ax, c.ay, rp.cx, rp.cy, rp.rotation) : {x:c.ax, y:c.ay};
+            const Aw = rp.rotation ? rotatePoint(oc.ax, oc.ay, rp.cx, rp.cy, rp.rotation) : {x:oc.ax, y:oc.ay};
             resizing = {
               rotation:rp.rotation,
-              anchorX:c.ax, anchorY:c.ay,
+              anchorX:oc.ax, anchorY:oc.ay,
               anchorWorldX:Aw.x, anchorWorldY:Aw.y,
-              cornerX:c.x, cornerY:c.y,          // dragged corner's own local coords (for the Ctrl/center anchor)
+              cornerX:c.x, cornerY:c.y,          // PADDED dragged corner — feeds the Ctrl/center anchor's own origSignedW/H
               centerX:rp.cx, centerY:rp.cy,      // center anchor — valid as local AND world AND rotation pivot
               origW: b.w, origH: b.h,
-              origSignedW: c.x-c.ax, origSignedH: c.y-c.ay,
+              origSignedW: oc.x-oc.ax, origSignedH: oc.y-oc.ay,
               snapshots: rp.members.map(idx=>({idx, snap:snapshotOf(items[idx])})),
               moved:false
             };
