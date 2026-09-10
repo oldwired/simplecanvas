@@ -1158,14 +1158,13 @@
     ctx.beginPath();
     ctx.moveTo(it.points[0].x, it.points[0].y);
     for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
-    if(it._hover) ctx.lineTo(it._hover.x, it._hover.y);
+    if(it._hover) ctx.lineTo(it._hover.x, it._hover.y);   // already snapped onto the first point when in range — see polygonHoverPoint
     ctx.stroke();
-    if(it._hover && it.points.length>=3){
+    if(it._snapped){
+      // magnet ring on the first point — same visual language as the line/arrow endpoint snap indicator
       const first = it.points[0];
-      if(Math.hypot(it._hover.x-first.x, it._hover.y-first.y) <= 10){
-        ctx.setLineDash([4,3]); ctx.strokeStyle = '#6366f1';
-        ctx.beginPath(); ctx.moveTo(it._hover.x, it._hover.y); ctx.lineTo(first.x, first.y); ctx.stroke();
-      }
+      ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = '#6366f1';
+      ctx.beginPath(); ctx.arc(first.x, first.y, 7, 0, Math.PI*2); ctx.stroke();
     }
     ctx.setLineDash([]); ctx.fillStyle = it.color;
     for(const p of it.points){ ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); }
@@ -2176,7 +2175,8 @@
       current.w = Math.abs(w);
       current.h = Math.abs(h);
     } else if(current.type==='polygon'){
-      current._hover = {x,y};   // rubber-band edge to the pointer
+      const h = snapToPolygonStart(current.points, x, y);   // rubber-band edge to the pointer, snapped to the start point when close enough to close
+      current._hover = {x:h.x, y:h.y}; current._snapped = h.snapped;
     }
     render();
   }
@@ -2469,21 +2469,39 @@
   // With a mouse a vertex lands on the press, and the rubber-band edge follows the hover. A finger has
   // no hover: the press only starts the rubber band, a drag previews the edge, and the vertex lands
   // where the finger lifts — so nothing stale is left dangling between taps.
+  const POLY_CLOSE_R = 10;   // both the "click/tap here closes it" radius and the visual snap-to-start radius
+  // While the rubber-band edge is close enough to the first point to close the polygon there, snap its
+  // endpoint exactly onto that point (a magnet, like the line/arrow endpoint snap) instead of leaving it
+  // sitting at the raw cursor position — makes the about-to-close state visible before you commit to it.
+  function snapToPolygonStart(pts, x, y){
+    if(pts.length>=3){
+      const first = pts[0];
+      if(Math.hypot(x-first.x, y-first.y) <= POLY_CLOSE_R) return {x:first.x, y:first.y, snapped:true};
+    }
+    return {x, y, snapped:false};
+  }
+  let polygonClosedByClickAt = -Infinity;   // timestamp of the last click/tap that closed a polygon by itself — see below
   function polygonPress(x, y, touch){
     if(!polyDraft){
       beginHistory();
       polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, dash:ui.dash, points:[] };
       current = polyDraft;
     }
-    if(touch){ polyDraft._hover = {x,y}; polyDraft._touch = true; }
+    if(touch){
+      const h = snapToPolygonStart(polyDraft.points, x, y);
+      polyDraft._hover = {x:h.x, y:h.y}; polyDraft._snapped = h.snapped; polyDraft._touch = true;
+    }
     else polygonVertex(x, y);
     render();
   }
   function polygonVertex(x, y){
     const pts = polyDraft.points;
-    if(pts.length>=3 && Math.hypot(x-pts[0].x, y-pts[0].y)<=10){ finishPolygon(); return; }
+    const h = snapToPolygonStart(pts, x, y);
+    // Closing on a click/tap here is a distinct user action, not "place a corner" — even a genuine
+    // double-click/double-tap on this same spot must not also place one afterward (see onDoubleClick).
+    if(h.snapped){ polygonClosedByClickAt = performance.now(); finishPolygon(); return; }
     pts.push({x,y});
-    polyDraft._hover = null;
+    polyDraft._hover = null; polyDraft._snapped = false;
     render();
   }
   function finishPolygon(closed){
@@ -3732,6 +3750,14 @@
   }
   canvas.addEventListener('dblclick', onDoubleClick);
   function onDoubleClick(e){
+    if(performance.now() - polygonClosedByClickAt < 500){
+      // the click/tap that started this gesture already closed the polygon by itself (it landed on
+      // the snapped start point — see polygonVertex) and switched to the select tool; without this,
+      // the second click/tap of the same gesture reads as a fresh double-click on the just-finished
+      // polygon and immediately flips it into Point-Edit mode, which nobody asked for here
+      polygonClosedByClickAt = -Infinity;
+      return;
+    }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
       // a draft that already existed before this gesture always has >=3 points here (1+ pre-existing,
@@ -3744,13 +3770,8 @@
         if(hitTest(x,y)<0) setTool('select');
         return;
       }
-      // Both halves of the double click/tap already added a vertex of their own (via onDown) — neither
-      // was a deliberate corner, just the click/tap that says "close it", so both go, closing from
-      // whatever corner was already placed before this gesture — unless that would leave too few
-      // corners, in which case one of them did mean a corner after all.
-      const pts = polyDraft.points;
-      if(pts.length>3) pts.pop();
-      if(pts.length>3) pts.pop();
+      // Each half of the double click/tap already placed its own corner (via onDown) — matches a
+      // plain click, just twice in a row — so both stay, and this simply closes back to the first one.
       finishPolygon();
       return;
     }
