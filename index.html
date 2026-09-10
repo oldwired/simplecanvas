@@ -586,7 +586,7 @@
   let pointEditIdx = null;      // index into items[] currently in Point-Edit mode; null = not in this mode
   let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
   let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
-  const HANDLE_SUB = 7;         // control-handle hit radius (px) — smaller than HANDLE, so anchor vs handle don't fight
+  const HANDLE_SUB = 8;         // control-handle hit radius (px) — slightly smaller than HANDLE, so anchor vs handle don't fight
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
@@ -1671,7 +1671,8 @@
         }
       }
       // point-edit overlay: solid indigo squares mark every anchor (always visible in this mode);
-      // the active anchor gets a hollow highlight plus its two hollow-circle handles on thin stems
+      // the active anchor gets a hollow highlight plus its two hollow-square handles on thin stems
+      // — same 10x10 square as the corner-resize handles, just filled/hollow to tell them apart
       if(pointEditIdx!=null){
         const pit = items[pointEditIdx];
         if(pit && pit.type==='polygon'){
@@ -1680,7 +1681,7 @@
           for(const p of pit.points){
             const w = toWorld(pit, p.x, p.y);
             ctx.fillStyle = '#6366f1';
-            ctx.beginPath(); ctx.rect(w.x-4, w.y-4, 8, 8); ctx.fill();
+            ctx.beginPath(); ctx.rect(w.x-5, w.y-5, 10, 10); ctx.fill();
           }
           if(activeAnchor!=null && pit.points[activeAnchor]){
             const p = pit.points[activeAnchor], aw = toWorld(pit, p.x, p.y);
@@ -1690,10 +1691,10 @@
               if(!target) continue;
               const hw = toWorld(pit, target.x, target.y);
               ctx.beginPath(); ctx.moveTo(aw.x, aw.y); ctx.lineTo(hw.x, hw.y); ctx.stroke();
-              ctx.beginPath(); ctx.arc(hw.x, hw.y, 4, 0, Math.PI*2);
+              ctx.beginPath(); ctx.rect(hw.x-5, hw.y-5, 10, 10);
               ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
             }
-            ctx.beginPath(); ctx.rect(aw.x-4, aw.y-4, 8, 8);
+            ctx.beginPath(); ctx.rect(aw.x-5, aw.y-5, 10, 10);
             ctx.fillStyle = '#fff'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();   // active anchor reads as "selected"
           }
           ctx.restore();
