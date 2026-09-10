@@ -3113,12 +3113,23 @@
   // no point offering an empty "shape library" to someone who's never saved a shape.
   function revealShapeTool(){ shapeLibWrap.style.display = ''; }
 
+  let toolBeforeShapePicker = null;   // so closing the popover without picking a shape can go back to it
   function setShapePicker(open){
     shapePicker.hidden = !open;
     shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ fitMenu(shapePicker); refreshShapeLibrary(); }
+    else if(ui.tool==='shape' && !ui.pendingShape){
+      // the popover opened, but nothing was picked from it — don't strand the user on the armed
+      // "shape" tool with no shape to place and no visible way back; restore whatever was active before
+      setTool(toolBeforeShapePicker || 'select');
+    }
   }
-  function activateShapeTool(){ setTool('shape'); setShapePicker(true); }
+  function activateShapeTool(){
+    if(ui.tool!=='shape') toolBeforeShapePicker = ui.tool;
+    ui.pendingShape = null;   // each opening starts unarmed — a stale pick from a previous session must not fire again
+    setTool('shape');
+    setShapePicker(true);
+  }
   shapeLibBtn.addEventListener('click', e=>{ e.stopPropagation(); activateShapeTool(); });
   document.addEventListener('click', e=>{
     if(!shapePicker.hidden && !shapePicker.contains(e.target) && e.target!==shapeLibBtn) setShapePicker(false);
