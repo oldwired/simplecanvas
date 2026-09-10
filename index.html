@@ -3770,8 +3770,12 @@
         if(hitTest(x,y)<0) setTool('select');
         return;
       }
-      // Each half of the double click/tap already placed its own corner (via onDown) — matches a
-      // plain click, just twice in a row — so both stay, and this simply closes back to the first one.
+      // Each half of the double click/tap already placed its own corner (via onDown), same as two
+      // plain clicks in a row — but a dblclick/double-tap is really ONE action, and its two halves
+      // rarely land on the exact same pixel (touch especially), so keeping both leaves a tiny
+      // duplicate-point kink in the outline right at the closing spot. Drop the second one; the
+      // first still marks the spot as a real corner.
+      polyDraft.points.pop();
       finishPolygon();
       return;
     }
