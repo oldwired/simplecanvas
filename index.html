@@ -1962,14 +1962,18 @@
         const g = hitItem.group;
         const grp = (g!=null) ? itemsInGroup(g) : [hit];         // grouped item → grab the whole group
         const wasAlreadySelected = selection.indexOf(hit) >= 0;
+        // Shift+click on an item already in the selection normally toggles it back out — but if the
+        // press turns into a drag (Shift held for the axis-lock below, not to deselect), the whole
+        // point was to move it, not remove it. Defer the toggle to onUp, only when nothing was dragged.
+        let shiftToggle = null;
         if(e.shiftKey){
-          if(selection.indexOf(hit)>=0){ selection = selection.filter(i=>grp.indexOf(i)<0); render(); return; }
-          for(const i of grp) if(selection.indexOf(i)<0) selection.push(i);
-        } else if(selection.indexOf(hit)<0){
+          if(wasAlreadySelected) shiftToggle = grp;
+          else for(const i of grp) if(selection.indexOf(i)<0) selection.push(i);
+        } else if(!wasAlreadySelected){
           selection = grp.slice();
         }
         beginHistory();
-        drag = {sx:x, sy:y, moved:false, hitIdx:hit, wasAlreadySelected};
+        drag = {x0:x, y0:y, appliedDx:0, appliedDy:0, axisLock:null, moved:false, hitIdx:hit, wasAlreadySelected, shiftToggle};
         if(hitItem.type==='text' || hitItem.type==='table'){
           const textIdx = hit;
           const cellAtDown = hitItem.type==='table' ? tableCellAt(hitItem, toLocal(hitItem,x,y).x, toLocal(hitItem,x,y).y) : null;
@@ -2131,13 +2135,29 @@
     }
 
     if(drag && selection.length){
-      const dx=x-drag.sx, dy=y-drag.sy;
-      if(dx||dy){
+      const rawDx = x-drag.x0, rawDy = y-drag.y0;
+      if(rawDx||rawDy){
         drag.moved = true;
         if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
       }
-      for(const i of selection) translateItem(items[i], dx, dy);
-      drag.sx=x; drag.sy=y;
+      // Shift constrains the drag to a single axis (horizontal or vertical). The axis is decided
+      // ONCE — the first time the total movement since the press clears a small dead zone — and then
+      // held for the rest of the gesture, instead of re-picking "whichever axis currently has more
+      // movement" every frame: near that 50/50 point (e.g. lingering close to the start) the bigger
+      // axis flips back and forth with the smallest jitter, which reads as the object jumping up/down.
+      // Un-locks the moment Shift is released, so it can be toggled live like everything else here.
+      let targetDx = rawDx, targetDy = rawDy;
+      if(e.shiftKey){
+        if(!drag.axisLock && Math.hypot(rawDx, rawDy) >= 3) drag.axisLock = Math.abs(rawDx) >= Math.abs(rawDy) ? 'x' : 'y';
+        if(drag.axisLock==='x') targetDy = 0;
+        else if(drag.axisLock==='y') targetDx = 0;
+        else targetDx = targetDy = 0;   // still inside the dead zone — hold position rather than jump prematurely
+      } else {
+        drag.axisLock = null;
+      }
+      const stepDx = targetDx - drag.appliedDx, stepDy = targetDy - drag.appliedDy;
+      for(const i of selection) translateItem(items[i], stepDx, stepDy);
+      drag.appliedDx = targetDx; drag.appliedDy = targetDy;
       render();
       return;
     }
@@ -2220,7 +2240,10 @@
         commitHistory();
       } else {
         historyBefore=null;
-        if(drag.wasAlreadySelected && drag.hitIdx!=null){
+        if(drag.shiftToggle){
+          selection = selection.filter(i=>drag.shiftToggle.indexOf(i)<0);
+          render();
+        } else if(drag.wasAlreadySelected && drag.hitIdx!=null){
           const it = items[drag.hitIdx];
           if(it && (it.type==='text' || it.type==='table')){
             const {x,y} = pos(e);
