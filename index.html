@@ -60,7 +60,7 @@
   }
   .btn svg{width:24px;height:24px;display:block}
   #sizeBtn{flex-direction:column;gap:3px;padding:3px 9px}
-  #sizeBtn .size-btn-line{display:block;width:20px;height:1.6px;border-radius:1px;background:#1f2937;flex:0 0 auto}
+  #sizeBtn .size-btn-line{display:block;width:20px;height:4px;color:#1f2937;flex:0 0 auto}
   .btn:hover{background:#f3f4f6}
   .btn:active{transform:translateY(1px)}
   .btn.active{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
@@ -104,6 +104,13 @@
   .table-grid .cell{width:16px;height:16px;border:1px solid var(--line);border-radius:2px;background:#fff;cursor:pointer}
   .table-grid .cell.hi{background:var(--accent-soft);border-color:var(--accent)}
   .table-picker-label{margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
+
+  /* shape library popover */
+  .shape-picker{min-width:0;max-width:264px;max-height:320px;overflow:auto;padding:10px;flex-direction:column;align-items:stretch}
+  .shape-grid{display:grid;grid-template-columns:repeat(3,64px);gap:8px;margin-top:6px}
+  .shape-grid button{width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;cursor:pointer}
+  .shape-grid button svg{width:100%;height:100%;display:block}
+  .shape-picker-empty{font-size:12px;color:var(--muted);padding:2px}
 
   /* stroke/fill color popovers: swatches only, no text — keeps the toolbar compact */
   .color-picker{min-width:0;padding:8px;flex-direction:row;flex-wrap:wrap;width:132px;gap:6px}
@@ -167,6 +174,15 @@
   .vslider::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);margin-top:-8px;cursor:pointer}
   .vslider::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--accent);border:none;cursor:pointer}
   .size-picker-label{font-size:12px;color:var(--muted);font-weight:600;min-width:40px;text-align:center}
+  .dash-picker{display:flex;flex-direction:column;gap:4px;width:100%;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .dash-btn{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:7px;
+    background:transparent;color:var(--ink);cursor:pointer;
+  }
+  .dash-btn svg{width:100%;height:6px;display:block}
+  .dash-btn:hover{background:#f3f4f6}
+  .dash-btn.active{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
 
   .select{
     height:38px;border:1px solid var(--line);border-radius:10px;
@@ -192,7 +208,9 @@
   }
   canvas{display:block;position:absolute;inset:0;cursor:crosshair}
   canvas.tool-select{cursor:default}
-  canvas.tool-text{cursor:text}
+  /* I-beam plus a small drag-cross at bottom-right — the text tool is drag-to-create (like rect),
+     and a plain I-beam alone reads as "click to type", not "drag out a box" */
+  canvas.tool-text{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cg stroke='%231f2937' stroke-width='1.6' stroke-linecap='round' fill='none'%3E%3Cpath d='M5 3.5h6M8 3.5v15M5 18.5h6'/%3E%3Cpath d='M21 17.25v7.5M17.25 21h7.5'/%3E%3C/g%3E%3C/svg%3E") 8 11, text}
   canvas.tool-eraser{cursor:none}
 
   /* floating text editor */
@@ -249,6 +267,14 @@
       <button data-act="open" role="menuitem">
         <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         Open sketch… <span class="sc">⌘O</span>
+      </button>
+      <button data-act="saveShape" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 4v6l2-1.5L12 10V4" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        Save as Shape…
+      </button>
+      <button data-act="loadShapeLibrary" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M2.23 3.07C2.23 2.48 3.7 2 5.51 2 7.32 2 8.79 2.48 8.79 3.07L8.79 9.36C8.79 9.95 7.32 10.43 5.51 10.43 3.7 10.43 2.23 9.95 2.23 9.36Z" stroke="currentColor" stroke-width="1.2"/><path d="M8.79 3.07C8.79 3.66 7.32 4.14 5.51 4.14 3.7 4.14 2.23 3.66 2.23 3.07" stroke="currentColor" stroke-width="1.2"/><path d="M2.23 21.01 2.23 16.29 5.16 13 8.09 16.29 8.09 21.01Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.73 15.98 15.1 15.98 15.1 13.61 17.77 13.61 17.77 15.98 20.13 15.98 20.13 18.64 17.77 18.64 17.77 21.01 15.1 21.01 15.1 18.64 12.73 18.64Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.73 9.9 15.49 2 20.89 2 18.13 9.9Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        Load Shape Library…
       </button>
       <div class="menu-sep" role="separator"></div>
       <button data-act="png" role="menuitem">
@@ -318,6 +344,16 @@
     <button class="btn" data-tool="polygon" title="Polygon — click each corner, then finish by tapping the start point, double-clicking, right-clicking, pressing Enter, or tapping Finish (G)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 21 9.5 17.8 20H6.2L3 9.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
+    <div class="menu-wrap" id="shapeLibWrap" style="display:none">
+      <button class="btn" data-tool="shape" id="shapeLibBtn" title="Shape library — pick a saved shape, then click to place" aria-haspopup="true" aria-expanded="false" aria-controls="shapePicker">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M2.23 3.07C2.23 2.48 3.7 2 5.51 2 7.32 2 8.79 2.48 8.79 3.07L8.79 9.36C8.79 9.95 7.32 10.43 5.51 10.43 3.7 10.43 2.23 9.95 2.23 9.36Z" stroke="currentColor" stroke-width="1.2"/><path d="M8.79 3.07C8.79 3.66 7.32 4.14 5.51 4.14 3.7 4.14 2.23 3.66 2.23 3.07" stroke="currentColor" stroke-width="1.2"/><path d="M2.23 21.01 2.23 16.29 5.16 13 8.09 16.29 8.09 21.01Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.73 15.98 15.1 15.98 15.1 13.61 17.77 13.61 17.77 15.98 20.13 15.98 20.13 18.64 17.77 18.64 17.77 21.01 15.1 21.01 15.1 18.64 12.73 18.64Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.73 9.9 15.49 2 20.89 2 18.13 9.9Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu shape-picker" id="shapePicker" hidden>
+        <div class="table-picker-label" id="shapePickerLabel">Shape library</div>
+        <div class="shape-grid" id="shapeGrid"></div>
+        <input type="file" id="shapeLibraryInput" accept="application/json,.json" style="display:none">
+      </div>
+    </div>
     <button class="btn" data-tool="text" title="Text (T)">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M12 6v13M9 19h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
@@ -376,9 +412,20 @@
     <div class="menu-wrap">
       <button class="btn" id="sizeBtn" title="Stroke width" aria-haspopup="true" aria-expanded="false" aria-controls="sizePicker">
         <span id="sizeBtnLabel">6px</span>
-        <span class="size-btn-line"></span>
+        <svg class="size-btn-line" viewBox="0 0 20 2" preserveAspectRatio="none"><line id="sizeBtnLineEl" x1="0" y1="1" x2="20" y2="1" stroke="currentColor" stroke-width="1.2"/></svg>
       </button>
       <div class="menu size-picker" id="sizePicker" hidden>
+        <div class="dash-picker" id="dashPicker">
+          <button type="button" class="dash-btn" data-dash="solid" title="Solid">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button type="button" class="dash-btn" data-dash="tight" title="Fine dashed">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="4,3"/></svg>
+          </button>
+          <button type="button" class="dash-btn" data-dash="wide" title="Wide dashed">
+            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="9,6"/></svg>
+          </button>
+        </div>
         <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical"></div>
         <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
       </div>
@@ -493,6 +540,8 @@
   const sizePicker = document.getElementById('sizePicker');
   const sizeRange = document.getElementById('sizeRange');
   const sizeRangeLabel = document.getElementById('sizeRangeLabel');
+  const dashPicker = document.getElementById('dashPicker');
+  const sizeBtnLineEl = document.getElementById('sizeBtnLineEl');
   const fontFamilySel = document.getElementById('fontFamily');
   const fontSizeSel = document.getElementById('fontSize');
   const sizeGroup = document.getElementById('sizeGroup');
@@ -530,7 +579,7 @@
   // ---------- state ----------
   let items = [];               // committed scene objects
   let current = null;           // in-progress preview object
-  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3,
+  let ui = { tool:'pen', color:'#1f2937', size:6, strokeOn:true, fill:false, fillColor:'#ffd166', textColor:'#1f2937', fontFamily:'sans', fontSize:28, tableRows:3, tableCols:3, pendingShape:null,
              // a text box keeps its own border/fill/width, so plain text stays plain while shapes keep their outline
              text: { color:'#1f2937', size:2, strokeOn:false, fill:false, fillColor:'#ffd166' } };
   // the drawing defaults (color, size, strokeOn, fill, fillColor) that a tool or an item type uses
@@ -557,7 +606,15 @@
   let erasing = null;           // {removed} while an erase gesture is active
   let cursorPt = null;          // eraser cursor position (for the ring)
   let endDrag = null;           // {idx,end:1|2,moved} while dragging one endpoint of a lone line/arrow
+  // ---------- point-edit (curve) mode ----------
+  let pointEditIdx = null;      // index into items[] currently in Point-Edit mode; null = not in this mode
+  let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
+  let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
+  const HANDLE_SUB = 8;         // control-handle hit radius (px) — slightly smaller than HANDLE, so anchor vs handle don't fight
+  const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
+  const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
+  let snapCursorPt = null;      // raw pointer position while placing/dragging a line/arrow endpoint (for hover-highlighting that one target's snap dots)
   let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
   const SNAP_R = 12;            // snap magnet radius (px)
 
@@ -602,7 +659,13 @@
     const pts = min => {
       if(!Array.isArray(raw.points) || raw.points.length < min) throw new Error('points');
       return raw.points.slice(0, MAX_POINTS).map(q => {   // (the same cap the pen applies while drawing)
-        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point'); return {x:norm(q.x), y:norm(q.y)}; });
+        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point');
+        const out = {x:norm(q.x), y:norm(q.y)};
+        // a garbage handle just degrades that segment back to a straight line — never drops the item
+        if(q.c1 && isNum(q.c1.x) && isNum(q.c1.y)) out.c1 = {x:norm(q.c1.x), y:norm(q.c1.y)};
+        if(q.c2 && isNum(q.c2.x) && isNum(q.c2.y)) out.c2 = {x:norm(q.c2.x), y:norm(q.c2.y)};
+        return out;
+      });
     };
     try{
       switch(it.type){
@@ -612,6 +675,10 @@
           it.closed = raw.closed !== false;
           if(!it.closed && it.points.length < 2) return null;
           if(it.closed && it.points.length < 3) return null;
+          // a plain polygon has no type-implied arrowhead the way 'arrow' does, so unlike line/arrow's
+          // own hs/he validation below, both default to absent/false here — only `=== true` sets them
+          if(raw.hs === true) it.hs = true;
+          if(raw.he === true) it.he = true;
           break;
         case 'line': case 'arrow':
           it.x1 = num('x1'); it.y1 = num('y1'); it.x2 = num('x2'); it.y2 = num('y2');
@@ -635,6 +702,7 @@
       }
       if(FILLABLE(it.type)) it.strokeOn = raw.strokeOn !== false;   // "no outline" only means something on a shape with an inside
       if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
+      if(DASHABLE(it.type) && (raw.dash==='tight' || raw.dash==='wide')) it.dash = raw.dash;
       if(it.type === 'text' || it.type === 'table'){
         if(isColor(raw.textColor)) it.textColor = raw.textColor;
         const fstr = typeof raw.font === 'string' ? raw.font : '';
@@ -799,7 +867,20 @@
   //   style: {fill, stroke, width, cap, join, opacity}   fill/stroke are a color or 'none'
   const fillOf = it => it.fill ? (it.fillColor || it.color) : 'none';
   const strokeOf = it => strokeOn(it) ? it.color : 'none';
-  const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round' });
+  // line-style: 'tight'/'wide' dashed, or unset/'solid' for a plain line. Dash lengths scale with the
+  // item's own stroke width so the pattern reads the same regardless of how thick the line is.
+  const DASHABLE = t => t==='line' || t==='arrow' || t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
+  function dashArrayFor(kind, size){
+    const w = Math.max(1, size||2);
+    // 'tight' grows with the SQUARE ROOT of width, not linearly — a thicker line would otherwise blow
+    // its dash/gap up proportionally too, and a "fine dashed" line stops reading as fine well before
+    // you'd expect. Sub-linear growth keeps it visually tight at any stroke width.
+    if(kind==='tight'){ const u = Math.sqrt(w)*3; return [u, u*0.75]; }
+    if(kind==='wide') return [w*4.5, w*3];
+    return null;
+  }
+  const dashOf = it => dashArrayFor(it.dash, it.size);
+  const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round', dash:dashOf(it) });
   // text sits 6px in from the left/right edge, or on the center line
   function textAnchorX(x, w, align){ return align==='left' ? x+6 : align==='right' ? x+w-6 : x+w/2; }
   // freehand strokes are smoothed: each vertex becomes the control point of a quadratic curve
@@ -814,6 +895,55 @@
   function arrowHeadSegments(fx,fy,tx,ty,size){
     const ang = Math.atan2(ty-fy, tx-fx), {len, a} = arrowHeadGeom(size);
     return [['M', tx-len*Math.cos(ang-a), ty-len*Math.sin(ang-a)], ['L', tx, ty], ['L', tx-len*Math.cos(ang+a), ty-len*Math.sin(ang+a)]];
+  }
+  // The cubic-bezier segments a polygon's points describe. A point with no handle contributes its
+  // own coordinate as a degenerate control point — mathematically a straight line, so callers never
+  // need a separate "is this segment straight" branch.
+  function polyCurveSegments(it){
+    const pts = it.points, n = pts.length, closed = it.closed !== false;
+    const segs = [];
+    for(let i=0, last=closed?n:n-1; i<last; i++){
+      const a = pts[i], b = pts[(i+1)%n];
+      segs.push({ a, b, c1:a.c1||a, c2:b.c2||b });
+    }
+    return segs;
+  }
+  // A straight anchor has no stored handle yet — this is where it WOULD sit if dragged out from rest,
+  // so the active anchor always shows two grabbable handles (matching a converted ellipse's real
+  // ones) instead of only ever showing handles once one has already been dragged. Direction is the
+  // tangent implied by the neighboring point(s) — a smooth-point default, like most vector editors
+  // use when a corner is first given a curve. Returns null where that end has no meaningful handle
+  // (the outgoing handle past the last point of an open path, or the incoming one before its first).
+  function defaultHandleOffset(it, pointIndex, which){
+    const pts = it.points, n = pts.length, closed = it.closed !== false;
+    const p = pts[pointIndex];
+    const prevIdx = pointIndex>0 ? pointIndex-1 : (closed ? n-1 : -1);
+    const nextIdx = pointIndex<n-1 ? pointIndex+1 : (closed ? 0 : -1);
+    if(which==='c1' && nextIdx<0) return null;
+    if(which==='c2' && prevIdx<0) return null;
+    const prev = prevIdx>=0 ? pts[prevIdx] : null, next = nextIdx>=0 ? pts[nextIdx] : null;
+    let dx, dy;
+    if(prev && next){ dx = next.x-prev.x; dy = next.y-prev.y; }
+    else if(next){ dx = next.x-p.x; dy = next.y-p.y; }
+    else { dx = p.x-prev.x; dy = p.y-prev.y; }
+    const len = Math.hypot(dx,dy) || 1;
+    const L = Math.min(40, len/3);   // capped so it doesn't dwarf a small shape
+    const ux = dx/len, uy = dy/len;
+    return which==='c1' ? {x:p.x+ux*L, y:p.y+uy*L} : {x:p.x-ux*L, y:p.y-uy*L};
+  }
+  function cubicPoint(p0,p1,p2,p3,t){
+    const mt=1-t;
+    return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+  }
+  // real roots in (0,1) of the derivative B'(t)=0 per axis: A t^2 + B t + C = 0
+  function cubicAxisExtremeTs(p0,p1,p2,p3){
+    const a=p1-p0, b=p2-p1, c=p3-p2, A=a-2*b+c, B=2*(b-a), C=a, ts=[];
+    if(Math.abs(A)<1e-9){ if(Math.abs(B)>1e-9) ts.push(-C/B); }
+    else{
+      const disc=B*B-4*A*C;
+      if(disc>=0){ const sq=Math.sqrt(disc); ts.push((-B+sq)/(2*A), (-B-sq)/(2*A)); }
+    }
+    return ts.filter(t=>t>0 && t<1);
   }
   // Felt-tip: a chisel nib — a short flat edge held at a fixed angle — swept along the stroke.
   // Strokes across the nib come out at full width, strokes along it thin down to the edge's own
@@ -862,24 +992,46 @@
       }
       case 'line': case 'arrow': {
         if(!strokeOn(it)) break;
-        const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round' };
+        const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round', dash:dashOf(it) };
+        const headStyle = style.dash ? { ...style, dash:null } : style;   // arrowheads never dash, even on a dashed shaft
         ops.push({ kind:'path', d:[['M', it.x1, it.y1], ['L', it.x2, it.y2]], style });
         const h = headsOf(it);
-        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style });
-        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style });
+        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style:headStyle });
+        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style:headStyle });
         break;
       }
       case 'rect':
         ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style:boxStyle(it) });
         break;
       case 'ellipse':
-        ops.push({ kind:'ellipse', cx:it.x+it.w/2, cy:it.y+it.h/2, rx:Math.abs(it.w/2), ry:Math.abs(it.h/2), style:{ fill:fillOf(it), stroke:strokeOf(it), width:it.size } });
+        ops.push({ kind:'ellipse', cx:it.x+it.w/2, cy:it.y+it.h/2, rx:Math.abs(it.w/2), ry:Math.abs(it.h/2), style:{ fill:fillOf(it), stroke:strokeOf(it), width:it.size, dash:dashOf(it) } });
         break;
       case 'polygon': {
         const closed = it.closed !== false;
-        const d = it.points.map((p,i)=>[i ? 'L' : 'M', p.x, p.y]);
+        const pts = it.points, n = pts.length;
+        const segs = polyCurveSegments(it);
+        const d = [['M', pts[0].x, pts[0].y]];
+        for(const s of segs){
+          if(s.a.c1 || s.b.c2) d.push(['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]);
+          else d.push(['L', s.b.x, s.b.y]);
+        }
         if(closed) d.push(['Z']);
-        ops.push({ kind:'path', d, style:{ fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round' } });
+        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
+        const headStyle = style.dash ? { ...style, dash:null } : style;
+        ops.push({ kind:'path', d, style });
+        // arrowheads for an open (line/arrow-derived) curve: direction = the LOCAL TANGENT at that
+        // end (that anchor's own handle if set, else the adjacent anchor — identical to a plain
+        // line/arrow's direction when nothing's been dragged yet, and re-derived fresh every render)
+        if(!closed && n>=2){
+          if(it.he){
+            const last = pts[n-1], prev = pts[n-2], from = last.c2 || prev;
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style:headStyle });
+          }
+          if(it.hs){
+            const first = pts[0], second = pts[1], from = first.c1 || second;
+            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style:headStyle });
+          }
+        }
         break;
       }
       case 'text': {
@@ -894,7 +1046,7 @@
           const d = [];
           for(let i=1;i<it.rows;i++){ const yy = it.y + it.h*i/it.rows; d.push(['M', it.x, yy], ['L', it.x+it.w, yy]); }
           for(let j=1;j<it.cols;j++){ const xx = it.x + it.w*j/it.cols; d.push(['M', xx, it.y], ['L', xx, it.y+it.h]); }
-          if(d.length) ops.push({ kind:'path', d, style:{ fill:'none', stroke:it.color, width:it.size } });
+          if(d.length) ops.push({ kind:'path', d, style:{ fill:'none', stroke:it.color, width:it.size, dash:dashOf(it) } });
         }
         if(it.texts){
           const cw = it.w/it.cols, ch = it.h/it.rows;
@@ -923,11 +1075,17 @@
       if(s[0]==='M') ctx.moveTo(s[1], s[2]);
       else if(s[0]==='L') ctx.lineTo(s[1], s[2]);
       else if(s[0]==='Q') ctx.quadraticCurveTo(s[1], s[2], s[3], s[4]);
+      else if(s[0]==='C') ctx.bezierCurveTo(s[1], s[2], s[3], s[4], s[5], s[6]);
       else ctx.closePath();
     }
   }
   function paintCurrentPath(style){
-    ctx.lineWidth = style.width; ctx.lineCap = style.cap || 'butt'; ctx.lineJoin = style.join || 'miter';
+    ctx.lineWidth = style.width;
+    // round caps extend each dash by half the stroke width on both ends — at any real gap they'd eat
+    // into it and merge adjacent dashes together, so a dash pattern always forces flat (butt) ends
+    ctx.lineCap = style.dash ? 'butt' : (style.cap || 'butt');
+    ctx.lineJoin = style.join || 'miter';
+    ctx.setLineDash(style.dash || []);
     ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
     if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(); }
     if(style.stroke !== 'none'){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
@@ -1000,14 +1158,13 @@
     ctx.beginPath();
     ctx.moveTo(it.points[0].x, it.points[0].y);
     for(let i=1;i<it.points.length;i++) ctx.lineTo(it.points[i].x, it.points[i].y);
-    if(it._hover) ctx.lineTo(it._hover.x, it._hover.y);
+    if(it._hover) ctx.lineTo(it._hover.x, it._hover.y);   // already snapped onto the first point when in range — see polygonHoverPoint
     ctx.stroke();
-    if(it._hover && it.points.length>=3){
+    if(it._snapped){
+      // magnet ring on the first point — same visual language as the line/arrow endpoint snap indicator
       const first = it.points[0];
-      if(Math.hypot(it._hover.x-first.x, it._hover.y-first.y) <= 10){
-        ctx.setLineDash([4,3]); ctx.strokeStyle = '#6366f1';
-        ctx.beginPath(); ctx.moveTo(it._hover.x, it._hover.y); ctx.lineTo(first.x, first.y); ctx.stroke();
-      }
+      ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = '#6366f1';
+      ctx.beginPath(); ctx.arc(first.x, first.y, 7, 0, Math.PI*2); ctx.stroke();
     }
     ctx.setLineDash([]); ctx.fillStyle = it.color;
     for(const p of it.points){ ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); }
@@ -1039,9 +1196,21 @@
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'polygon':{
-        let xs=it.points.map(p=>p.x), ys=it.points.map(p=>p.y);
-        const pad=padded ? (it.size||2)/2+2 : 0;
-        return {x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
+        const pts = it.points;
+        if(!pts.length) return {x:0,y:0,w:0,h:0};   // defends against a degenerate item
+        const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+        for(const s of polyCurveSegments(it)){
+          if(!s.a.c1 && !s.b.c2) continue;   // straight segment — endpoints already in xs/ys
+          for(const [arr,axis] of [[xs,'x'],[ys,'y']]){
+            const p0=s.a[axis], p1=s.c1[axis], p2=s.c2[axis], p3=s.b[axis];
+            for(const t of cubicAxisExtremeTs(p0,p1,p2,p3)) arr.push(cubicPoint(p0,p1,p2,p3,t));
+          }
+        }
+        const sz = it.size||2;
+        let pad = padded ? sz/2+2 : 0;
+        if(padded && (it.hs||it.he)){ const g = arrowHeadGeom(sz); pad = Math.max(pad, g.len*Math.sin(g.a) + sz/2 + 2); }
+        const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+        return {x:minX-pad, y:minY-pad, w:maxX-minX+pad*2, h:maxY-minY+pad*2};
       }
     }
     return {x:0,y:0,w:0,h:0};
@@ -1085,7 +1254,7 @@
   function groupPivot(groupId){
     const idxs = itemsInGroup(groupId);
     const box = unionBoxOwn(idxs), g = unionBoxOwn(idxs, false);
-    return { cx:g.x+g.w/2, cy:g.y+g.h/2, box };
+    return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
   // (the reverse order of how they're applied when drawing)
@@ -1197,8 +1366,9 @@
     }
     return b;
   }
-  function hitTest(x,y){
+  function hitTest(x,y,excludeIdx){
     for(let i=items.length-1;i>=0;i--){
+      if(i===excludeIdx) continue;
       const it = items[i];
       const p = toLocal(it,x,y);
       if(inBox(bbox(it),p.x,p.y)) return i;
@@ -1238,6 +1408,9 @@
     const first = items[sel[0]];
     if(!first) return null;
     if(sel.length===1 && first.group==null){
+      if(pointEditIdx===sel[0]) return null;   // point-edit mode hides the rotation handle too — every
+                                                // drag bakes rotation to 0 anyway, so showing a handle
+                                                // that would just reset itself is more confusing than useful
       const b = bbox(first);
       const cx=b.x+b.w/2, cy=b.y+b.h/2;
       return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-33, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
@@ -1258,7 +1431,11 @@
     switch(it.type){
       case 'rect': case 'ellipse': case 'image': case 'table': case 'text': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
-      case 'path': case 'polygon': return {points: it.points.map(p=>({x:p.x,y:p.y}))};
+      case 'path': case 'polygon': return {points: it.points.map(p=>({
+        x:p.x, y:p.y,
+        c1: p.c1 ? {x:p.c1.x, y:p.c1.y} : undefined,
+        c2: p.c2 ? {x:p.c2.x, y:p.c2.y} : undefined,
+      }))};
       default: return {};
     }
   }
@@ -1280,7 +1457,12 @@
         break;
       }
       case 'path': case 'polygon':
-        it.points = snap.points.map(p=>scalePt(p, ax,ay,sx,sy));
+        it.points = snap.points.map(p=>{
+          const np = scalePt(p, ax,ay,sx,sy);
+          if(p.c1) np.c1 = scalePt(p.c1, ax,ay,sx,sy);
+          if(p.c2) np.c2 = scalePt(p.c2, ax,ay,sx,sy);
+          return np;
+        });
         break;
     }
   }
@@ -1292,22 +1474,100 @@
     if(!first) return null;
     if(sel.length===1 && first.group==null){
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
+      if(pointEditIdx===sel[0]) return null;   // point-edit mode fully replaces the corner-resize UI
       const b = bbox(first);
-      return { box:b, rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
+      return { box:b, ownBox:bbox(first,false), rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
     }
     if(first.group!=null){
       const piv = groupPivot(first.group);
-      return { box:piv.box, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
+      return { box:piv.box, ownBox:piv.ownBox, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
     }
     return null;
   }
 
   function translateItem(it,dx,dy){
     switch(it.type){
-      case 'path': case 'polygon': it.points.forEach(p=>{p.x=norm(p.x+dx);p.y=norm(p.y+dy);}); break;
+      case 'path': case 'polygon': it.points.forEach(p=>{
+        p.x=norm(p.x+dx); p.y=norm(p.y+dy);
+        if(p.c1){ p.c1.x=norm(p.c1.x+dx); p.c1.y=norm(p.c1.y+dy); }
+        if(p.c2){ p.c2.x=norm(p.c2.x+dx); p.c2.y=norm(p.c2.y+dy); }
+      }); break;
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
       default: it.x=norm(it.x+dx); it.y=norm(it.y+dy);
     }
+  }
+
+  // ---------- Point Edit (convert a shape into an editable bezier curve) ----------
+  // Builds a fresh object rather than mutating in place — the field sets differ too much per source
+  // type (rect/ellipse: x,y,w,h; line/arrow: x1,y1,x2,y2; polygon: points) for selective delete to be
+  // safe or readable. Shared fields (uid/group/rotation/color/size) carry over explicitly below.
+  function convertToCurve(idx){
+    const it = items[idx];
+    if(!it || !CONVERTIBLE_TYPES.has(it.type)) return;
+    let points, closed, hs, he;
+    switch(it.type){
+      case 'rect': {
+        const {x,y,w,h} = it;
+        points = [{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
+        closed = true;
+        break;
+      }
+      case 'ellipse': {
+        const cx=it.x+it.w/2, cy=it.y+it.h/2, rx=Math.abs(it.w)/2, ry=Math.abs(it.h)/2, k=KAPPA;
+        points = [
+          { x:cx,    y:cy-ry, c1:{x:cx+k*rx,y:cy-ry}, c2:{x:cx-k*rx,y:cy-ry} },   // top
+          { x:cx+rx, y:cy,    c1:{x:cx+rx,y:cy+k*ry}, c2:{x:cx+rx,y:cy-k*ry} },   // right
+          { x:cx,    y:cy+ry, c1:{x:cx-k*rx,y:cy+ry}, c2:{x:cx+k*rx,y:cy+ry} },   // bottom
+          { x:cx-rx, y:cy,    c1:{x:cx-rx,y:cy-k*ry}, c2:{x:cx-rx,y:cy+k*ry} },   // left
+        ];
+        closed = true;
+        break;
+      }
+      case 'line': case 'arrow': {
+        points = [{x:it.x1,y:it.y1},{x:it.x2,y:it.y2}];
+        closed = false;
+        const h = headsOf(it);   // {s:false,e:false} for a plain 'line' — headsOf gates on it.type==='arrow'
+        if(h.s) hs = true;
+        if(h.e) he = true;
+        break;
+      }
+      case 'polygon': {
+        points = it.points.map(p=>({
+          x:p.x, y:p.y,
+          ...(p.c1 ? {c1:{x:p.c1.x,y:p.c1.y}} : {}),
+          ...(p.c2 ? {c2:{x:p.c2.x,y:p.c2.y}} : {}),
+        }));
+        closed = it.closed !== false;
+        if(it.hs) hs = true;
+        if(it.he) he = true;
+        break;
+      }
+    }
+    const next = { type:'polygon', points, closed, uid:it.uid, color:it.color, size:it.size };
+    if(it.dash) next.dash = it.dash;
+    if(it.type==='line' || it.type==='arrow'){ next.strokeOn = true; next.fill = false; }
+    else { next.strokeOn = it.strokeOn !== false; next.fill = !!it.fill; if(it.fillColor) next.fillColor = it.fillColor; }
+    if(it.rotation) next.rotation = it.rotation;
+    if(it.group!=null){ next.group = it.group; next.groupRotation = it.groupRotation||0; }
+    if(hs) next.hs = true;
+    if(he) next.he = true;
+    items[idx] = next;
+  }
+  // Bakes a curve's own rotation into its absolute point/handle coordinates, right before a point or
+  // handle drag begins — same idea as endDrag's endpoint-drag bake ("bake any rotation into the stored
+  // coordinates so the endpoint can be moved in world space"). Without this, toLocal/toWorld derive the
+  // rotation pivot from bbox(it), which itself shifts as the very point being dragged moves — so every
+  // OTHER point visibly drifts too, chasing a moving pivot, for exactly as long as rotation is nonzero.
+  function bakeItemRotation(it){
+    if(!it.rotation) return;
+    const b = bbox(it);
+    const cx = b.x+b.w/2, cy = b.y+b.h/2, rot = it.rotation;
+    for(const p of it.points){
+      const rp = rotatePoint(p.x, p.y, cx, cy, rot); p.x = norm(rp.x); p.y = norm(rp.y);
+      if(p.c1){ const rc = rotatePoint(p.c1.x, p.c1.y, cx, cy, rot); p.c1 = {x:norm(rc.x), y:norm(rc.y)}; }
+      if(p.c2){ const rc = rotatePoint(p.c2.x, p.c2.y, cx, cy, rot); p.c2 = {x:norm(rc.x), y:norm(rc.y)}; }
+    }
+    delete it.rotation;
   }
 
   // ---------- eraser: rubs out freehand strokes, deletes shapes/text/images it touches ----------
@@ -1379,8 +1639,20 @@
     return removed;
   }
 
+  // Point-edit mode is only valid while it's exactly the sole selected item, still a polygon —
+  // every state-changing handler already ends in render(), so checking this once here self-heals
+  // the mode instead of requiring every place selection/items can change to be patched individually.
+  function syncPointEdit(){
+    if(pointEditIdx!=null && !(selection.length===1 && selection[0]===pointEditIdx &&
+       items[pointEditIdx] && items[pointEditIdx].type==='polygon')){
+      pointEditIdx = null; activeAnchor = null;
+    }
+    if(activeAnchor!=null && (pointEditIdx==null || activeAnchor>=items[pointEditIdx].points.length)) activeAnchor = null;
+  }
+
   // ---------- render ----------
   function render(){
+    syncPointEdit();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
     ctx.fillStyle = BG;
@@ -1408,6 +1680,7 @@
       ctx.setLineDash([5,4]);
       for(const i of selection){
         const it = items[i]; if(!it || it.group!=null) continue;
+        if(i===pointEditIdx) continue;   // point-edit overlay replaces the plain dashed outline
         const b = bbox(it);
         const cx=b.x+b.w/2, cy=b.y+b.h/2;
         ctx.save();
@@ -1440,6 +1713,36 @@
           ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
           for(const [hx,hy] of [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]){
             ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill(); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      // point-edit overlay: solid indigo squares mark every anchor (always visible in this mode);
+      // the active anchor gets a hollow highlight plus its two hollow-square handles on thin stems
+      // — same 10x10 square as the corner-resize handles, just filled/hollow to tell them apart
+      if(pointEditIdx!=null){
+        const pit = items[pointEditIdx];
+        if(pit && pit.type==='polygon'){
+          ctx.save();
+          ctx.setLineDash([]);
+          for(const p of pit.points){
+            const w = toWorld(pit, p.x, p.y);
+            ctx.fillStyle = '#6366f1';
+            ctx.beginPath(); ctx.rect(w.x-5, w.y-5, 10, 10); ctx.fill();
+          }
+          if(activeAnchor!=null && pit.points[activeAnchor]){
+            const p = pit.points[activeAnchor], aw = toWorld(pit, p.x, p.y);
+            ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1;
+            for(const hk of ['c1','c2']){
+              const target = p[hk] || defaultHandleOffset(pit, activeAnchor, hk);
+              if(!target) continue;
+              const hw = toWorld(pit, target.x, target.y);
+              ctx.beginPath(); ctx.moveTo(aw.x, aw.y); ctx.lineTo(hw.x, hw.y); ctx.stroke();
+              ctx.beginPath(); ctx.rect(hw.x-5, hw.y-5, 10, 10);
+              ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+            }
+            ctx.beginPath(); ctx.rect(aw.x-5, aw.y-5, 10, 10);
+            ctx.fillStyle = '#fff'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();   // active anchor reads as "selected"
           }
           ctx.restore();
         }
@@ -1481,6 +1784,25 @@
         ctx.strokeRect(r.x, r.y, r.w, r.h);
       }
       ctx.restore();
+    }
+
+    // snap targets — small dots at the magnet points of whichever single object the cursor is
+    // currently over, shown only while a line/arrow endpoint is actually being placed or dragged
+    const snappingNow = endDrag || (current && (current.type==='line' || current.type==='arrow'));
+    if(snappingNow && snapCursorPt){
+      const excludeIdx = endDrag ? endDrag.idx : null;
+      const hoverIdx = hitTest(snapCursorPt.x, snapCursorPt.y, excludeIdx);
+      if(hoverIdx>=0){
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = '#9ca3af';
+        ctx.strokeStyle = '#fff';
+        for(const p of snapAnchorsOf(items[hoverIdx])){
+          ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
 
     // snap indicator — ring around the anchor a line/arrow endpoint is magnetized to
@@ -1537,6 +1859,36 @@
           }
         }
       }
+      // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
+      // any anchor square (clicking one makes it active AND starts dragging it)
+      if(pointEditIdx!=null && selection.length===1 && selection[0]===pointEditIdx){
+        const pit = items[pointEditIdx];
+        if(activeAnchor!=null && pit.points[activeAnchor]){
+          const p = pit.points[activeAnchor];
+          for(const hk of ['c1','c2']){
+            const target = p[hk] || defaultHandleOffset(pit, activeAnchor, hk);
+            if(!target) continue;
+            const w = toWorld(pit, target.x, target.y);
+            if(Math.hypot(x-w.x, y-w.y) <= HANDLE_SUB){
+              beginHistory();
+              bakeItemRotation(pit);   // so dragging this handle can't chase a rotation pivot that moves with it
+              editingAnchor = { idx:pointEditIdx, pointIndex:activeAnchor, handle:hk, sx:x, sy:y, moved:false };
+              return;
+            }
+          }
+        }
+        for(let pi=0; pi<pit.points.length; pi++){
+          const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
+          if(Math.hypot(x-w.x, y-w.y) <= HANDLE){
+            activeAnchor = pi;
+            beginHistory();
+            bakeItemRotation(pit);   // so dragging this anchor can't chase a rotation pivot that moves with it
+            editingAnchor = { idx:pointEditIdx, pointIndex:pi, handle:'anchor', sx:x, sy:y, moved:false };
+            render();
+            return;
+          }
+        }
+      }
       // endpoint handles of a lone line/arrow — drag one end, the other stays put
       const li = loneLineIdx(selection);
       if(li!=null){
@@ -1571,14 +1923,32 @@
           }
           if(hitHandle){
             const c = corners[hitHandle];
+            // The scale anchor must be the item's own (unpadded) opposite corner, not the padded bbox
+            // corner `c.ax,ay` above — the padding (half the stroke width) doesn't scale along with
+            // everything else, so anchoring at the padded corner leaves it sitting at a fixed offset
+            // from a corner that itself just moved, and the visible opposite handle visibly drifts by
+            // pad*(scale-1) — worse at heavier stroke widths. Anchoring at the true corner instead scales
+            // it to itself (a fixed point of the transform), so the constant padding still lines up
+            // exactly with it afterward. (Ctrl/center-anchored resize is unaffected: pad only ever
+            // shifts a corner, never the box's center, so `centerX,centerY` below was already exact.)
+            const ob = rp.ownBox;
+            const ownCorners = {
+              nw:{x:ob.x,      y:ob.y,      ax:ob.x+ob.w, ay:ob.y+ob.h},
+              ne:{x:ob.x+ob.w, y:ob.y,      ax:ob.x,      ay:ob.y+ob.h},
+              sw:{x:ob.x,      y:ob.y+ob.h, ax:ob.x+ob.w, ay:ob.y},
+              se:{x:ob.x+ob.w, y:ob.y+ob.h, ax:ob.x,      ay:ob.y},
+            };
+            const oc = ownCorners[hitHandle];
             beginHistory();
-            const Aw = rp.rotation ? rotatePoint(c.ax, c.ay, rp.cx, rp.cy, rp.rotation) : {x:c.ax, y:c.ay};
+            const Aw = rp.rotation ? rotatePoint(oc.ax, oc.ay, rp.cx, rp.cy, rp.rotation) : {x:oc.ax, y:oc.ay};
             resizing = {
               rotation:rp.rotation,
-              anchorX:c.ax, anchorY:c.ay,
+              anchorX:oc.ax, anchorY:oc.ay,
               anchorWorldX:Aw.x, anchorWorldY:Aw.y,
+              cornerX:c.x, cornerY:c.y,          // PADDED dragged corner — feeds the Ctrl/center anchor's own origSignedW/H
+              centerX:rp.cx, centerY:rp.cy,      // center anchor — valid as local AND world AND rotation pivot
               origW: b.w, origH: b.h,
-              origSignedW: c.x-c.ax, origSignedH: c.y-c.ay,
+              origSignedW: oc.x-oc.ax, origSignedH: oc.y-oc.ay,
               snapshots: rp.members.map(idx=>({idx, snap:snapshotOf(items[idx])})),
               moved:false
             };
@@ -1592,14 +1962,18 @@
         const g = hitItem.group;
         const grp = (g!=null) ? itemsInGroup(g) : [hit];         // grouped item → grab the whole group
         const wasAlreadySelected = selection.indexOf(hit) >= 0;
+        // Shift+click on an item already in the selection normally toggles it back out — but if the
+        // press turns into a drag (Shift held for the axis-lock below, not to deselect), the whole
+        // point was to move it, not remove it. Defer the toggle to onUp, only when nothing was dragged.
+        let shiftToggle = null;
         if(e.shiftKey){
-          if(selection.indexOf(hit)>=0){ selection = selection.filter(i=>grp.indexOf(i)<0); render(); return; }
-          for(const i of grp) if(selection.indexOf(i)<0) selection.push(i);
-        } else if(selection.indexOf(hit)<0){
+          if(wasAlreadySelected) shiftToggle = grp;
+          else for(const i of grp) if(selection.indexOf(i)<0) selection.push(i);
+        } else if(!wasAlreadySelected){
           selection = grp.slice();
         }
         beginHistory();
-        drag = {sx:x, sy:y, moved:false, hitIdx:hit, wasAlreadySelected};
+        drag = {x0:x, y0:y, appliedDx:0, appliedDy:0, axisLock:null, moved:false, hitIdx:hit, wasAlreadySelected, shiftToggle};
         if(hitItem.type==='text' || hitItem.type==='table'){
           const textIdx = hit;
           const cellAtDown = hitItem.type==='table' ? tableCellAt(hitItem, toLocal(hitItem,x,y).x, toLocal(hitItem,x,y).y) : null;
@@ -1621,6 +1995,7 @@
       return;
     }
     if(ui.tool==='table'){ placeTable(x,y); return; }
+    if(ui.tool==='shape'){ if(ui.pendingShape) placeShapeAt(ui.pendingShape, x, y); return; }
 
     if(ui.tool==='polygon'){ polygonPress(x, y, e.pointerType!=='mouse'); return; }
 
@@ -1638,10 +2013,10 @@
     } else if(ui.tool==='line' || ui.tool==='arrow'){
       snapPt = e.altKey ? null : nearestSnap(x,y);          // the start point snaps too
       const sx = snapPt ? snapPt.x : x, sy = snapPt ? snapPt.y : y;
-      current = { type:ui.tool, color:ui.color, size:ui.size, x1:sx,y1:sy,x2:sx,y2:sy };
+      current = { type:ui.tool, color:ui.color, size:ui.size, dash:ui.dash, x1:sx,y1:sy,x2:sx,y2:sy };
     } else if(ui.tool==='rect' || ui.tool==='ellipse' || ui.tool==='text'){
       const st = drawStyle();
-      current = { type:ui.tool, color:st.color, size:st.size, strokeOn:st.strokeOn, fill:st.fill, fillColor:st.fillColor, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
+      current = { type:ui.tool, color:st.color, size:st.size, strokeOn:st.strokeOn, fill:st.fill, fillColor:st.fillColor, dash:st.dash, _x0:x,_y0:y, x:x,y:y,w:0,h:0 };
       if(ui.tool==='text'){ current.text = ''; current.font = fontStr(ui.fontFamily, ui.fontSize); current.textColor = ui.textColor; }   // border/fill come from the toolbar, like a rect
     }
     render();
@@ -1650,14 +2025,38 @@
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag) return;
+    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor) return;
     const {x,y} = p;
+
+    if(editingAnchor){
+      if(!editingAnchor.moved && Math.hypot(x-editingAnchor.sx, y-editingAnchor.sy) < 3) return;
+      const it = items[editingAnchor.idx];
+      const pt = it.points[editingAnchor.pointIndex];
+      if(editingAnchor.handle==='anchor'){
+        // plain translation of just this point (anchor + its own handles ride along together) — the
+        // curve's local shape at this point is unchanged, only its position, so this uses the same
+        // incremental-delta convention as the whole-item `drag`, not `resizing`'s fixed-anchor recompute
+        const lp0 = toLocal(it, editingAnchor.sx, editingAnchor.sy), lp1 = toLocal(it, x, y);
+        const dx = lp1.x-lp0.x, dy = lp1.y-lp0.y;
+        pt.x = norm(pt.x+dx); pt.y = norm(pt.y+dy);
+        if(pt.c1){ pt.c1.x=norm(pt.c1.x+dx); pt.c1.y=norm(pt.c1.y+dy); }
+        if(pt.c2){ pt.c2.x=norm(pt.c2.x+dx); pt.c2.y=norm(pt.c2.y+dy); }
+      } else {
+        const lp = toLocal(it, x, y);
+        pt[editingAnchor.handle] = { x:norm(lp.x), y:norm(lp.y) };
+      }
+      editingAnchor.sx=x; editingAnchor.sy=y;
+      editingAnchor.moved = true;
+      render();
+      return;
+    }
 
     if(endDrag){
       if(!endDrag.moved && Math.hypot(x-endDrag.sx, y-endDrag.sy) < 3) return;   // still a click, not a drag
       const it = items[endDrag.idx];
       const fx = endDrag.end===1 ? it.x2 : it.x1, fy = endDrag.end===1 ? it.y2 : it.y1;   // the fixed end
       let nx=x, ny=y;
+      snapCursorPt = {x,y};
       if(e.shiftKey){ ({x:nx,y:ny} = constrainAngle(fx,fy,x,y)); snapPt = null; }
       else { snapPt = e.altKey ? null : nearestSnap(x,y,endDrag.idx); if(snapPt){ nx=snapPt.x; ny=snapPt.y; } }
       if(endDrag.end===1){ it.x1=norm(nx); it.y1=norm(ny); } else { it.x2=norm(nx); it.y2=norm(ny); }
@@ -1694,30 +2093,40 @@
 
     if(resizing){
       const rot = resizing.rotation;
-      const rotd = rot ? rotatePoint(x, y, resizing.anchorWorldX, resizing.anchorWorldY, -rot) : {x,y};
-      let dx = rotd.x - resizing.anchorWorldX, dy = rotd.y - resizing.anchorWorldY;
+      // Ctrl/Cmd anchors the resize at the box's center instead of the opposite corner (read live,
+      // like Shift, so it can be toggled mid-drag) — symmetric grow/shrink on both sides at once.
+      const ctrlMode = e.ctrlKey || e.metaKey;
+      const ax  = ctrlMode ? resizing.centerX : resizing.anchorX;
+      const ay  = ctrlMode ? resizing.centerY : resizing.anchorY;
+      const awx = ctrlMode ? resizing.centerX : resizing.anchorWorldX;
+      const awy = ctrlMode ? resizing.centerY : resizing.anchorWorldY;
+      const origSignedW = ctrlMode ? resizing.cornerX-resizing.centerX : resizing.origSignedW;
+      const origSignedH = ctrlMode ? resizing.cornerY-resizing.centerY : resizing.origSignedH;
+      const rotd = rot ? rotatePoint(x, y, awx, awy, -rot) : {x,y};
+      let dx = rotd.x - awx, dy = rotd.y - awy;
       if(e.shiftKey){
         // proportional: project onto the original diagonal (anchor -> original corner)
-        const dW = resizing.origSignedW, dH = resizing.origSignedH;
+        const dW = origSignedW, dH = origSignedH;
         const len2 = dW*dW + dH*dH;
         const t = len2 ? (dx*dW + dy*dH) / len2 : 1;
         dx = t*dW; dy = t*dH;
       }
-      let sx = resizing.origSignedW ? dx/resizing.origSignedW : 1;
-      let sy = resizing.origSignedH ? dy/resizing.origSignedH : 1;
+      let sx = origSignedW ? dx/origSignedW : 1;
+      let sy = origSignedH ? dy/origSignedH : 1;
       const MIN=0.02;
-      if(Math.abs(sx)<MIN){ sx = sx<0?-MIN:MIN; dx = sx*resizing.origSignedW; }
-      if(Math.abs(sy)<MIN){ sy = sy<0?-MIN:MIN; dy = sy*resizing.origSignedH; }
-      for(const {idx,snap} of resizing.snapshots) applyScaleFromSnapshot(items[idx], snap, resizing.anchorX, resizing.anchorY, sx, sy);
-      if(rot){
+      if(Math.abs(sx)<MIN){ sx = sx<0?-MIN:MIN; dx = sx*origSignedW; }
+      if(Math.abs(sy)<MIN){ sy = sy<0?-MIN:MIN; dy = sy*origSignedH; }
+      for(const {idx,snap} of resizing.snapshots) applyScaleFromSnapshot(items[idx], snap, ax, ay, sx, sy);
+      if(rot && !ctrlMode){
         // resizing moves the box's center, and everything rotates around that center — compensate
-        // with a plain shift so the anchor corner's WORLD position lands exactly back where it was
+        // with a plain shift so the anchor corner's WORLD position lands exactly back where it was.
+        // Not needed in ctrlMode: scaling anchored at the center is a fixed point of the center itself.
         const halfW = dx/2, halfH = dy/2;
         const c = Math.cos(rot), s = Math.sin(rot);
         const Rx = halfW*c - halfH*s, Ry = halfW*s + halfH*c;
-        const targetAnchorX = resizing.anchorWorldX - (halfW - Rx);
-        const targetAnchorY = resizing.anchorWorldY - (halfH - Ry);
-        const shiftX = targetAnchorX - resizing.anchorX, shiftY = targetAnchorY - resizing.anchorY;
+        const targetAnchorX = awx - (halfW - Rx);
+        const targetAnchorY = awy - (halfH - Ry);
+        const shiftX = targetAnchorX - ax, shiftY = targetAnchorY - ay;
         for(const {idx} of resizing.snapshots) translateItem(items[idx], shiftX, shiftY);
       }
       resizing.moved = true;
@@ -1726,13 +2135,29 @@
     }
 
     if(drag && selection.length){
-      const dx=x-drag.sx, dy=y-drag.sy;
-      if(dx||dy){
+      const rawDx = x-drag.x0, rawDy = y-drag.y0;
+      if(rawDx||rawDy){
         drag.moved = true;
         if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
       }
-      for(const i of selection) translateItem(items[i], dx, dy);
-      drag.sx=x; drag.sy=y;
+      // Shift constrains the drag to a single axis (horizontal or vertical). The axis is decided
+      // ONCE — the first time the total movement since the press clears a small dead zone — and then
+      // held for the rest of the gesture, instead of re-picking "whichever axis currently has more
+      // movement" every frame: near that 50/50 point (e.g. lingering close to the start) the bigger
+      // axis flips back and forth with the smallest jitter, which reads as the object jumping up/down.
+      // Un-locks the moment Shift is released, so it can be toggled live like everything else here.
+      let targetDx = rawDx, targetDy = rawDy;
+      if(e.shiftKey){
+        if(!drag.axisLock && Math.hypot(rawDx, rawDy) >= 3) drag.axisLock = Math.abs(rawDx) >= Math.abs(rawDy) ? 'x' : 'y';
+        if(drag.axisLock==='x') targetDy = 0;
+        else if(drag.axisLock==='y') targetDx = 0;
+        else targetDx = targetDy = 0;   // still inside the dead zone — hold position rather than jump prematurely
+      } else {
+        drag.axisLock = null;
+      }
+      const stepDx = targetDx - drag.appliedDx, stepDy = targetDy - drag.appliedDy;
+      for(const i of selection) translateItem(items[i], stepDx, stepDy);
+      drag.appliedDx = targetDx; drag.appliedDy = targetDy;
       render();
       return;
     }
@@ -1748,6 +2173,7 @@
       const last = current.points[current.points.length-1];
       if(current.points.length < MAX_POINTS && Math.hypot(x-last.x, y-last.y) >= 1.5) current.points.push({x,y});
     } else if(current.type==='line' || current.type==='arrow'){
+      snapCursorPt = {x,y};
       if(e.shiftKey){
         // constrain to 45° steps, keeping the cursor's distance from the start point (no snapping)
         const c = constrainAngle(current.x1, current.y1, x, y);
@@ -1769,7 +2195,8 @@
       current.w = Math.abs(w);
       current.h = Math.abs(h);
     } else if(current.type==='polygon'){
-      current._hover = {x,y};   // rubber-band edge to the pointer
+      const h = snapToPolygonStart(current.points, x, y);   // rubber-band edge to the pointer, snapped to the start point when close enough to close
+      current._hover = {x:h.x, y:h.y}; current._snapped = h.snapped;
     }
     render();
   }
@@ -1797,7 +2224,13 @@
         if(endDrag.end===1) setHeads(it, !h.s, h.e); else setHeads(it, h.s, !h.e);
       }
       commitHistory();
-      endDrag=null; snapPt=null;
+      endDrag=null; snapPt=null; snapCursorPt=null;
+      render();
+      return;
+    }
+    if(editingAnchor){
+      if(editingAnchor.moved) commitHistory(); else historyBefore=null;
+      editingAnchor=null;
       render();
       return;
     }
@@ -1807,7 +2240,10 @@
         commitHistory();
       } else {
         historyBefore=null;
-        if(drag.wasAlreadySelected && drag.hitIdx!=null){
+        if(drag.shiftToggle){
+          selection = selection.filter(i=>drag.shiftToggle.indexOf(i)<0);
+          render();
+        } else if(drag.wasAlreadySelected && drag.hitIdx!=null){
           const it = items[drag.hitIdx];
           if(it && (it.type==='text' || it.type==='table')){
             const {x,y} = pos(e);
@@ -1880,7 +2316,7 @@
       else clickWithoutDrag = true;
     }
 
-    snapPt = null;
+    snapPt = null; snapCursorPt = null;
     if(textDraftBox){
       const box = {x:textDraftBox.x, y:textDraftBox.y, w:textDraftBox.w, h:textDraftBox.h};
       const draftStyle = {color:textDraftBox.color, fill:textDraftBox.fill, fillColor:textDraftBox.fillColor, strokeOn:textDraftBox.strokeOn, size:textDraftBox.size, textColor:textDraftBox.textColor};
@@ -1981,7 +2417,7 @@
     const w = colW*cols, h = rowH*rows;
     beginHistory();
     items.push({ type:'table', x:norm(x-w/2), y:norm(y-h/2), w:norm(w), h:norm(h), rows, cols,
-                 color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor,
+                 color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, dash:ui.dash,
                  fontFamily:ui.fontFamily, fontSize:ui.fontSize, font:fontStr(ui.fontFamily, ui.fontSize),
                  textColor:ui.textColor, texts:[], aligns:[] });
     selection = [items.length-1];
@@ -1989,6 +2425,34 @@
     setTool('select');
     render();
     toast('Table added — drag a corner to resize');
+  }
+  // Places one instance of a cached shape-library template, centered on (x,y). Re-clones from the
+  // pristine tpl.items (validated once, at fetch time) and remaps uids/group ids fresh each time —
+  // same pattern as addClones — so the same shape can be placed repeatedly without cross-contamination.
+  function placeShapeAt(tpl, x, y){
+    if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
+    const box = unionBoxOf(tpl.items, false);   // stroke-free center — matches how it was centered at save time
+    const cx = box.x + box.w/2, cy = box.y + box.h/2;
+    const dx = x - cx, dy = y - cy;
+    beginHistory();
+    const gmap = {};
+    const newSel = [];
+    for(const raw of tpl.items){
+      const copy = clone(raw);
+      copy.uid = newUid();
+      translateItem(copy, dx, dy);
+      if(copy.group != null){
+        if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
+        copy.group = gmap[copy.group];
+      }
+      items.push(copy);
+      newSel.push(items.length - 1);
+    }
+    selection = newSel;
+    commitHistory();
+    setTool('select');
+    render();
+    toast('"' + tpl.name + '" added');
   }
   function commitText(){
     const val = textInput.value.trim();
@@ -2028,21 +2492,39 @@
   // With a mouse a vertex lands on the press, and the rubber-band edge follows the hover. A finger has
   // no hover: the press only starts the rubber band, a drag previews the edge, and the vertex lands
   // where the finger lifts — so nothing stale is left dangling between taps.
+  const POLY_CLOSE_R = 10;   // both the "click/tap here closes it" radius and the visual snap-to-start radius
+  // While the rubber-band edge is close enough to the first point to close the polygon there, snap its
+  // endpoint exactly onto that point (a magnet, like the line/arrow endpoint snap) instead of leaving it
+  // sitting at the raw cursor position — makes the about-to-close state visible before you commit to it.
+  function snapToPolygonStart(pts, x, y){
+    if(pts.length>=3){
+      const first = pts[0];
+      if(Math.hypot(x-first.x, y-first.y) <= POLY_CLOSE_R) return {x:first.x, y:first.y, snapped:true};
+    }
+    return {x, y, snapped:false};
+  }
+  let polygonClosedByClickAt = -Infinity;   // timestamp of the last click/tap that closed a polygon by itself — see below
   function polygonPress(x, y, touch){
     if(!polyDraft){
       beginHistory();
-      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, points:[] };
+      polyDraft = { type:'polygon', color:ui.color, size:ui.size, strokeOn:ui.strokeOn, fill:ui.fill, fillColor:ui.fillColor, dash:ui.dash, points:[] };
       current = polyDraft;
     }
-    if(touch){ polyDraft._hover = {x,y}; polyDraft._touch = true; }
+    if(touch){
+      const h = snapToPolygonStart(polyDraft.points, x, y);
+      polyDraft._hover = {x:h.x, y:h.y}; polyDraft._snapped = h.snapped; polyDraft._touch = true;
+    }
     else polygonVertex(x, y);
     render();
   }
   function polygonVertex(x, y){
     const pts = polyDraft.points;
-    if(pts.length>=3 && Math.hypot(x-pts[0].x, y-pts[0].y)<=10){ finishPolygon(); return; }
+    const h = snapToPolygonStart(pts, x, y);
+    // Closing on a click/tap here is a distinct user action, not "place a corner" — even a genuine
+    // double-click/double-tap on this same spot must not also place one afterward (see onDoubleClick).
+    if(h.snapped){ polygonClosedByClickAt = performance.now(); finishPolygon(); return; }
     pts.push({x,y});
-    polyDraft._hover = null;
+    polyDraft._hover = null; polyDraft._snapped = false;
     render();
   }
   function finishPolygon(closed){
@@ -2051,9 +2533,11 @@
     const minPts = closed ? 3 : 2;
     if(polyDraft.points.length<minPts){ toast(closed ? 'Add at least 3 points first' : 'Add at least 2 points first'); return; }
     items.push({ type:'polygon', color:polyDraft.color, size:polyDraft.size, strokeOn:polyDraft.strokeOn, fill:polyDraft.fill,
-                 fillColor:polyDraft.fillColor, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+                 fillColor:polyDraft.fillColor, dash:polyDraft.dash, closed, points:polyDraft.points.map(p=>({x:p.x,y:p.y})) });
+    selection = [items.length-1];
     polyDraft = null; current = null;
     commitHistory();
+    setTool('select');   // same as placeTable — land in select, ready to move/adjust what was just drawn
     render();
   }
   function cancelPolygon(){
@@ -2119,7 +2603,8 @@
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
-    endDrag=null; snapPt=null; nudging=false;
+    endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
+    editingAnchor=null; pointEditIdx=null; activeAnchor=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     historyBefore=null;
   }
@@ -2220,6 +2705,24 @@
       it.groupRotation = 0;
     }
   }
+  // Same math as bakeGroupRotation, but against a standalone list of cloned items (not live `items`
+  // indices) — used by saveSelectionAsShape so exporting a shape never touches the live scene.
+  function bakeGroupRotationLocal(members){
+    if(!members.some(it=>it.groupRotation)) return;
+    const b = unionBoxOf(members, false);
+    const cx = b.x+b.w/2, cy = b.y+b.h/2;
+    for(const it of members){
+      const rot = it.groupRotation || 0;
+      if(rot){
+        const bb = worldBBoxOwn(it);
+        const ownCx = bb.x+bb.w/2, ownCy = bb.y+bb.h/2;
+        const target = rotatePoint(ownCx, ownCy, cx, cy, rot);
+        translateItem(it, target.x-ownCx, target.y-ownCy);
+        it.rotation = (it.rotation||0) + rot;
+      }
+      it.groupRotation = 0;
+    }
+  }
   function groupsIn(sel){
     const gs = new Set();
     for(const i of sel){ if(items[i].group!=null) gs.add(items[i].group); }
@@ -2262,6 +2765,104 @@
     return true;
   }
 
+  // ---------- shape library: save ----------
+  function saveSelectionAsShape(){
+    if(ui.tool!=='select' || !selection.length){ toast('Select something first to save it as a shape'); return; }
+    const sel = expandSelection(selection);
+
+    // Decision: block entirely rather than save-minus-image. A shape that silently drops part of what
+    // the user just saw selected is a worse surprise (discovered only when re-placing it later) than a
+    // clear upfront refusal telling them to remove the image first.
+    if(sel.some(i=>items[i].type==='image')){
+      toast("Shapes can't include images — remove the image from the selection first");
+      return;
+    }
+
+    const list = sel.map(i=>clone(items[i]));
+
+    // bake rotation per original group, against the clone (never the live items)
+    const groups = new Map();
+    for(const it of list){ if(it.group!=null){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); } }
+    for(const members of groups.values()) bakeGroupRotationLocal(members);
+
+    // canonicalize group ids to shape-local placeholders; strip live uids entirely
+    const gmap = {}; let gseq = 0;
+    for(const it of list){
+      delete it.uid;
+      if(it.group!=null){
+        if(!gmap[it.group]) gmap[it.group] = 's' + (++gseq);
+        it.group = gmap[it.group];
+      }
+    }
+
+    // center the saved geometry on (0,0) — stroke-free box, matching groupPivot's own convention
+    const box = unionBoxOf(list, false);
+    const cx = box.x+box.w/2, cy = box.y+box.h/2;
+    for(const it of list) translateItem(it, -cx, -cy);
+
+    // Opened straight from disk (file://), fetch() of a sibling file is blocked by the browser, so a
+    // fetch-based merge is unreliable there. If nothing has been fetched OR manually imported this
+    // session, warn before proceeding — otherwise this save would silently start a brand-new library
+    // and the download would overwrite any existing shapes-library.json the user hasn't loaded yet.
+    if(location.protocol==='file:' && !shapeLibraryCache){
+      const proceed = confirm(
+        'No existing shape library is loaded (this page was opened from disk, so it can\'t fetch '+SHAPE_LIBRARY_FILE+' automatically).\n\n' +
+        'If you already have a '+SHAPE_LIBRARY_FILE+' with other shapes in it, click Cancel and use "Load Shape Library…" in the menu first — otherwise this save will start a brand-new library and overwrite it.\n\n' +
+        'Click OK to start a new library with just this shape.'
+      );
+      if(!proceed) return;
+    }
+
+    let name = prompt('Name this shape:');
+    if(name==null) return;
+    name = name.trim();
+    if(!name){ toast('Shape needs a name'); return; }
+
+    saveShapeToLibrary(name, list);
+  }
+
+  // The whole library lives in ONE file (shapes-library.json, next to index.html) — one download,
+  // one file to FTP/copy around, no browser "allow multiple downloads?" prompt for two files at once.
+  const SHAPE_LIBRARY_FILE = 'shapes-library.json';
+  // The last library successfully fetched or manually imported this session — lets a file:// session
+  // (where fetch() of a sibling file is blocked) still merge saves and re-render the picker without
+  // re-importing every time.
+  let shapeLibraryCache = null;
+  async function fetchShapeLibrary(){
+    const res = await fetch(SHAPE_LIBRARY_FILE, {cache:'no-store'});
+    if(!res.ok) throw new Error('http '+res.status);
+    const data = await res.json();
+    if(!data || !Array.isArray(data.shapes)) throw new Error('bad library file');
+    return data;
+  }
+
+  async function saveShapeToLibrary(name, list){
+    let lib = { app:'SimpleCanvasShapeLibrary', version:1, shapes:[] };
+    try{ lib = await fetchShapeLibrary(); }
+    catch(e){ if(shapeLibraryCache) lib = shapeLibraryCache; /* else: first-ever shape, or nothing imported yet under file:// — start fresh (the caller already warned about this case) */ }
+
+    const existing = lib.shapes.find(s=>s && s.name===name);
+    if(existing && !confirm('A shape named "'+name+'" already exists. Replace it?')) return;
+    lib.shapes = lib.shapes.filter(s=>!(s && s.name===name));
+    lib.shapes.push({ name, savedAt:new Date().toISOString(), items:list });
+
+    shapeLibraryCache = lib;   // so this session's picker/next save sees it without re-importing
+    revealShapeTool();         // saving the first-ever shape means the tool has something to offer now
+    downloadJSON(SHAPE_LIBRARY_FILE, lib);
+    toast(location.protocol==='file:'
+      ? 'Saved "'+name+'" — replace '+SHAPE_LIBRARY_FILE+' next to index.html, then use Import to load it here'
+      : 'Saved "'+name+'" — upload '+SHAPE_LIBRARY_FILE+' via FTP');
+  }
+
+  // shared Blob/<a download> pattern (also usable by exportProject's own inline version)
+  function downloadJSON(filename, data){
+    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function updateButtons(){
     document.getElementById('undo').disabled = undoStack.length===0;
     document.getElementById('redo').disabled = redoStack.length===0;
@@ -2287,12 +2888,15 @@
       setDisp(fillGroup, fillable.length>0);
       setDisp(strokeNoneSwatch, fillable.length>0);
       const sized = sel;   // every shape (including text, for its border) has a stroke width
+      const dashable = sel.filter(it=>DASHABLE(it.type));
       const texts = sel.filter(it=>it.type==='text' || it.type==='table');
       setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
+      setDisp(dashPicker, dashable.length>0);
       setDisp(textOpts, texts.length>0);
       setDisp(textColorGroup, texts.length>0);
       if(sel.length){
         if(sized.length) setSizeVal(sized[0].size);   // so does the size control
+        if(dashable.length) setDashVal(dashable[0].dash);   // and the line-style control
         if(texts.length){ fontFamilySel.value = familyOf(texts[0]); setFontSizeSel(fontPxOf(texts[0])); }   // and the font controls
         refreshColorUI();
       }
@@ -2342,7 +2946,10 @@
     let a = ` fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}"`;
     if(st.stroke !== 'none'){
       a += ` stroke-width="${st.width}"`;
-      if(st.cap) a += ` stroke-linecap="${st.cap}"`;
+      // a dash pattern always forces flat (butt) ends — round caps would extend each dash into the
+      // gap by half the stroke width and merge adjacent dashes together (see paintCurrentPath)
+      if(st.dash) a += ` stroke-linecap="butt" stroke-dasharray="${st.dash.join(',')}"`;
+      else if(st.cap) a += ` stroke-linecap="${st.cap}"`;
       if(st.join) a += ` stroke-linejoin="${st.join}"`;
     }
     if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
@@ -2466,6 +3073,7 @@
     if(t!=='select'){ selection=[]; marquee=null; }
     if(t!=='eraser') cursorPt=null;
     if(t!=='table') setTablePicker(false);
+    if(t!=='shape') setShapePicker(false);
     const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
     const canFill = FILLABLE(t);                     // fill only makes sense for these (a text box is a rect with words in it)
@@ -2480,13 +3088,15 @@
     sizeGroup.style.display = usesSize ? '' : 'none';
     sizeSep.style.display = usesSize ? '' : 'none';
     fillGroup.style.display = canFill ? '' : 'none';
+    dashPicker.style.display = (usesSize && DASHABLE(t)) ? '' : 'none';   // pen/marker/brush/eraser never dash
     setSizeVal(drawStyle().size);                    // back to the drawing defaults (select mode mirrors the selection instead)
+    setDashVal(drawStyle().dash);
     fontFamilySel.value = ui.fontFamily; setFontSizeSel(ui.fontSize);
     refreshColorUI();
     render();
   }
   document.querySelectorAll('[data-tool].btn').forEach(b=>{
-    if(b.dataset.tool==='table') return;   // opens the size picker instead — wired separately below
+    if(b.dataset.tool==='table' || b.dataset.tool==='shape') return;   // open their own popover instead — wired separately
     b.addEventListener('click', ()=>setTool(b.dataset.tool));
   });
 
@@ -2562,6 +3172,158 @@
   document.addEventListener('click', e=>{
     if(!tablePicker.hidden && !tablePicker.contains(e.target) && e.target!==tableBtn) setTablePicker(false);
   });
+
+  // ---------- shape library popover: fetch-on-open, click-to-arm, click-canvas-to-place ----------
+  const shapeLibWrap = document.getElementById('shapeLibWrap');
+  const shapeLibBtn = document.getElementById('shapeLibBtn');
+  const shapePicker = document.getElementById('shapePicker');
+  const shapeGrid = document.getElementById('shapeGrid');
+  const shapeLibraryInput = document.getElementById('shapeLibraryInput');
+
+  // The tool stays hidden until a library file is actually found (or the user loads/imports one) —
+  // no point offering an empty "shape library" to someone who's never saved a shape.
+  function revealShapeTool(){ shapeLibWrap.style.display = ''; }
+
+  let toolBeforeShapePicker = null;   // so closing the popover without picking a shape can go back to it
+  function setShapePicker(open){
+    shapePicker.hidden = !open;
+    shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ fitMenu(shapePicker); refreshShapeLibrary(); }
+    else if(ui.tool==='shape' && !ui.pendingShape){
+      // the popover opened, but nothing was picked from it — don't strand the user on the armed
+      // "shape" tool with no shape to place and no visible way back; restore whatever was active before
+      setTool(toolBeforeShapePicker || 'select');
+    }
+  }
+  function activateShapeTool(){
+    if(ui.tool!=='shape') toolBeforeShapePicker = ui.tool;
+    ui.pendingShape = null;   // each opening starts unarmed — a stale pick from a previous session must not fire again
+    setTool('shape');
+    setShapePicker(true);
+  }
+  shapeLibBtn.addEventListener('click', e=>{ e.stopPropagation(); activateShapeTool(); });
+  document.addEventListener('click', e=>{
+    if(!shapePicker.hidden && !shapePicker.contains(e.target) && e.target!==shapeLibBtn) setShapePicker(false);
+  });
+  // Manual fallback for when fetch() can't reach shapes-library.json itself (opened via file://, or
+  // any other fetch failure) — same FileReader pattern as the existing project-open flow. Triggered
+  // by the "Load Shape Library…" menu command below; this input itself just does the reading.
+  shapeLibraryInput.addEventListener('change', e=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(file) importShapeLibraryFile(file);
+  });
+
+  // "Load Shape Library…" menu command: try the automatic fetch first (works once a file is already
+  // there), fall back to manual file picking (needed under file://, or if nothing's been uploaded to
+  // this exact path yet).
+  async function loadShapeLibraryCommand(){
+    try{
+      const lib = await fetchShapeLibrary();
+      shapeLibraryCache = lib;
+      revealShapeTool();
+      toast('Loaded ' + lib.shapes.length + ' shape(s)');
+    }catch(e){
+      shapeLibraryInput.click();
+    }
+  }
+
+  // validate one shape entry from the library file the same way any external JSON is validated —
+  // normalizeItem, per item (an entry with zero surviving items, or malformed altogether, is dropped)
+  function normalizeShapeEntry(raw){
+    if(!raw || typeof raw !== 'object' || !Array.isArray(raw.items)) return null;
+    const items = [];
+    let dropped = 0;
+    for(const r of raw.items){
+      const it = normalizeItem(r, {});   // assetsIn={} — any image item is dropped here too, defense in depth
+      if(it) items.push(it); else dropped++;
+    }
+    if(!items.length) return null;
+    if(dropped) console.warn('Shape "'+(raw.name||'?')+'": '+dropped+' item(s) failed validation and were skipped');
+    return { name: typeof raw.name==='string' && raw.name.trim() ? raw.name.trim() : '(unnamed)', items };
+  }
+
+  function shapeThumbSVG(items){
+    const box = unionBoxOf(items, true);
+    if(!isFinite(box.w) || !isFinite(box.h) || box.w<=0 || box.h<=0) return null;
+    const inner = items.map(itemToSVG).join('');
+    return `<svg viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  }
+
+  function addShapeButton(tpl){
+    const svg = shapeThumbSVG(tpl.items);
+    if(!svg) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.title = tpl.name;
+    b.innerHTML = svg;
+    b.addEventListener('click', e=>{ e.stopPropagation(); armShapeForPlacement(tpl); });
+    shapeGrid.appendChild(b);
+  }
+
+  function shapeGridMessage(msg){
+    shapeGrid.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'shape-picker-empty'; d.textContent = msg;
+    shapeGrid.appendChild(d);
+  }
+
+  // Renders a fetched-or-imported library object into the grid — shared by refreshShapeLibrary
+  // (automatic fetch) and the manual "Import library file…" fallback (for file:// or a fetch failure).
+  function renderShapeLibrary(lib){
+    shapeGrid.innerHTML = '';
+    const entries = (lib && Array.isArray(lib.shapes)) ? lib.shapes : [];
+    if(!entries.length){ shapeGridMessage('No shapes yet.'); return; }
+    for(const raw of entries){
+      const tpl = normalizeShapeEntry(raw);
+      if(tpl) addShapeButton(tpl);   // one bad entry never blocks the rest
+    }
+  }
+
+  async function refreshShapeLibrary(){
+    shapeGridMessage('Loading…');
+    try{
+      const lib = await fetchShapeLibrary();
+      // A save downloads the updated file but can't replace the copy next to index.html itself —
+      // the user has to do that by hand (or re-upload it). Until they do, this fetch would still
+      // return the OLD on-disk file, silently dropping any shape saved earlier this session. Keep
+      // those around by merging in whatever the session cache has that this fetch doesn't.
+      if(shapeLibraryCache){
+        const fetchedNames = new Set(lib.shapes.map(s=>s && s.name));
+        for(const s of shapeLibraryCache.shapes){
+          if(s && !fetchedNames.has(s.name)) lib.shapes.push(s);
+        }
+      }
+      shapeLibraryCache = lib;
+      renderShapeLibrary(lib);
+    }catch(e){
+      console.warn('Shape library: could not fetch '+SHAPE_LIBRARY_FILE, e);
+      if(shapeLibraryCache){ renderShapeLibrary(shapeLibraryCache); return; }
+      // shouldn't normally happen — the tool stays hidden until shapeLibraryCache is set — but stay
+      // defensive rather than showing a blank popover if it ever does
+      shapeGridMessage('Could not load ' + SHAPE_LIBRARY_FILE + ' — try "Load Shape Library…" from the menu.');
+    }
+  }
+
+  function importShapeLibraryFile(file){
+    const r = new FileReader();
+    r.onload = ()=>{
+      let data;
+      try{ data = JSON.parse(r.result); }catch(err){ toast('That file is not valid JSON'); return; }
+      if(!data || !Array.isArray(data.shapes)){ toast('That doesn\'t look like a shape library file'); return; }
+      shapeLibraryCache = data;
+      revealShapeTool();
+      renderShapeLibrary(data);
+      toast('Loaded ' + data.shapes.length + ' shape(s) from file');
+    };
+    r.onerror = ()=>toast('Could not read that file');
+    r.readAsText(file);
+  }
+
+  function armShapeForPlacement(tpl){
+    ui.pendingShape = tpl;
+    setShapePicker(false);
+    toast('Tap the canvas to place "'+tpl.name+'"');
+  }
 
   // Icon buttons (stroke/fill/text-color), each opening a small swatch-only popover — no text labels,
   // no wide controls. Mirrors the existing table-size popover pattern.
@@ -2791,6 +3553,29 @@
     drawStyle().size = v;
   });
   sizeRange.addEventListener('change', ()=>{ if(colorableSelection().length) commitHistory(); });
+  // reflects the current line style even when nothing is selected yet (mirrors setSizeVal)
+  function setDashVal(kind){
+    dashPicker.querySelectorAll('.dash-btn').forEach(b=>b.classList.toggle('active', b.dataset.dash===(kind||'solid')));
+    // the little preview line under the size button — a small representative pattern, not tied to
+    // the actual stroke width (this bar is a fixed 20-unit decoration, not a rendered line)
+    if(kind==='tight') sizeBtnLineEl.setAttribute('stroke-dasharray', '2,1.33');
+    else if(kind==='wide') sizeBtnLineEl.setAttribute('stroke-dasharray', '4,2.67');
+    else sizeBtnLineEl.removeAttribute('stroke-dasharray');
+  }
+  function applyDash(kind){
+    const val = kind==='solid' ? undefined : kind;
+    const sel = colorableSelection().filter(it=>DASHABLE(it.type));
+    if(sel.length){
+      beginHistory();
+      for(const it of sel){ if(val) it.dash = val; else delete it.dash; }
+      commitHistory(); render();
+    } else {
+      const st = drawStyle();
+      if(val) st.dash = val; else delete st.dash;
+    }
+    setDashVal(kind);
+  }
+  dashPicker.querySelectorAll('.dash-btn').forEach(b=>b.addEventListener('click', ()=>applyDash(b.dataset.dash)));
   // show a size in the dropdown even when it isn't one of the presets (e.g. after a corner-resize)
   function setFontSizeSel(px){
     if(![...fontSizeSel.options].some(o=>+o.value===px)){
@@ -2831,6 +3616,8 @@
   const MENU_ACTIONS = {
     save: exportProject,
     open: ()=>projectInput.click(),
+    saveShape: saveSelectionAsShape,
+    loadShapeLibrary: loadShapeLibraryCommand,
     png: savePng,
     svg: saveSvg,
     print: ()=>window.print(),
@@ -2913,9 +3700,14 @@
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
-      if(current){ current=null; snapPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
+      if(current){ current=null; snapPt=null; snapCursorPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
+      if(pointEditIdx!=null){   // one Escape drops the active handles, a second leaves point-edit mode
+        if(activeAnchor!=null){ activeAnchor=null; render(); return; }
+        pointEditIdx=null; render(); return;
+      }
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
+      if(!shapePicker.hidden){ setShapePicker(false); return; }
       if(selection.length){ selection=[]; render(); }      // Esc also deselects
       return;
     }
@@ -2976,24 +3768,61 @@
     const now = performance.now();
     if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
       lastTap = null;
-      onDoubleClick(e, true);
+      onDoubleClick(e);
     } else lastTap = { t:now, x:e.clientX, y:e.clientY };
   }
-  canvas.addEventListener('dblclick', e=>onDoubleClick(e, false));
-  function onDoubleClick(e, fromTap){
+  canvas.addEventListener('dblclick', onDoubleClick);
+  function onDoubleClick(e){
+    if(performance.now() - polygonClosedByClickAt < 500){
+      // the click/tap that started this gesture already closed the polygon by itself (it landed on
+      // the snapped start point — see polygonVertex) and switched to the select tool; without this,
+      // the second click/tap of the same gesture reads as a fresh double-click on the just-finished
+      // polygon and immediately flips it into Point-Edit mode, which nobody asked for here
+      polygonClosedByClickAt = -Infinity;
+      return;
+    }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     if(ui.tool==='polygon' && polyDraft){
-      // Both halves of the double click/tap already added a vertex. With a mouse the first of them is
-      // the intended last corner and only the duplicate goes. A finger double-taps to say "close"
-      // and rarely lands on the last corner, so both go — unless the shape would be left with too
-      // few corners, in which case the tap did mean a corner.
-      const pts = polyDraft.points;
-      if(pts.length>3) pts.pop();
-      if(fromTap && pts.length>3) pts.pop();
+      // a draft that already existed before this gesture always has >=3 points here (1+ pre-existing,
+      // plus the 2 this dblclick's/double-tap's own clicks added) — exactly 2 means both clicks
+      // started the draft from nothing, i.e. a dblclick/double-tap on empty canvas with no polygon
+      // underway, which reads as "switch tools", not "draw a 2-point sliver and get stuck"
+      if(polyDraft.points.length===2){
+        cancelPolygon();
+        const {x,y} = pos(e);
+        if(hitTest(x,y)<0) setTool('select');
+        return;
+      }
+      // Each half of the double click/tap already placed its own corner (via onDown), same as two
+      // plain clicks in a row — but a dblclick/double-tap is really ONE action, and its two halves
+      // rarely land on the exact same pixel (touch especially), so keeping both leaves a tiny
+      // duplicate-point kink in the outline right at the closing spot. Drop the second one; the
+      // first still marks the spot as a real corner.
+      polyDraft.points.pop();
       finishPolygon();
       return;
     }
-    if(ui.tool!=='select') return;
+    if(ui.tool!=='select'){
+      // dblclick on empty canvas while on any other tool → back to select, nothing under the cursor to act on
+      const {x,y} = pos(e);
+      if(ui.tool==='pen' || ui.tool==='marker' || ui.tool==='brush'){
+        // pen/marker/brush already placed a dot for each of this dblclick's two clicks (via onDown/onUp).
+        // A dblclick here means "switch tools", not "draw two dots" — drop them (and the undo entry each
+        // one's onUp already committed) before testing whether anything else was already at this spot.
+        let cut = items.length;
+        while(items.length-cut<2 && cut>0 && items[cut-1].type==='path' && items[cut-1].mode===ui.tool && items[cut-1].points.length===1) cut--;
+        const removed = items.length-cut;
+        if(removed){
+          items.length = cut;
+          undoStack.length = Math.max(0, undoStack.length-removed);
+          save(); updateButtons();
+        }
+        if(hitTest(x,y)<0) setTool('select'); else render();
+        return;
+      }
+      if(hitTest(x,y)<0) setTool('select');
+      return;
+    }
     const {x,y} = pos(e);
     const hit = hitTest(x,y);
     if(hit>=0 && items[hit].type==='text'){
@@ -3004,6 +3833,18 @@
       const lp = toLocal(items[hit], x, y);
       const cell = tableCellAt(items[hit], lp.x, lp.y);
       if(cell) openText(hit, null, null, cell);
+      return;
+    }
+    if(pointEditIdx!=null && hit===pointEditIdx){   // re-double-click on the item being edited: exit
+      pointEditIdx = null; activeAnchor = null; render(); return;
+    }
+    if(hit>=0 && selection.length===1 && hit===selection[0] &&
+       items[hit].group==null && CONVERTIBLE_TYPES.has(items[hit].type)){
+      beginHistory();
+      convertToCurve(hit);
+      commitHistory();
+      pointEditIdx = hit; activeAnchor = null;
+      render();
       return;
     }
     if(selection.length){
@@ -3077,6 +3918,10 @@
   resize();
   updateButtons();
   tidySeps();
+
+  // Silently check for an existing shape library on startup — reveals the tool if one is found,
+  // otherwise it stays hidden until the user loads one via "Load Shape Library…".
+  fetchShapeLibrary().then(lib=>{ shapeLibraryCache = lib; revealShapeTool(); }).catch(()=>{});
 })();
 </script>
 </body>
