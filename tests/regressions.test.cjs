@@ -25,11 +25,12 @@ async function app(fn, options={}){
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     page.on('dialog', d => d.accept());
-    await page.route('http://simplecanvas.test/**', route => route.fulfill({
+    const origin=options.origin || 'http://simplecanvas.test';
+    await page.route(origin+'/**', route => route.fulfill({
       status:route.request().url().endsWith('index.html') ? 200 : 404,
       contentType:'text/html', body:html
     }));
-    await page.goto('http://simplecanvas.test/index.html');
+    await page.goto(origin+'/index.html');
     const run = code => page.evaluate(code => window.__test.run(code), code);
     await fn({page, run, context});
     assert.deepEqual(errors, [], 'no uncaught application errors');
@@ -42,6 +43,138 @@ async function downloadedJSON(page, run, expression){
   await run(expression);
   return JSON.parse(fs.readFileSync(await (await download).path(), 'utf8'));
 }
+async function downloadedHTML(page, run){
+  const download=page.waitForEvent('download');await run('exportHtml()');
+  return fs.readFileSync(await (await download).path(),'utf8');
+}
+
+test('HTML export embeds active images and commits text being edited', async () => app(async ({page,run,context}) => {
+  await insertImage(page,run);
+  const source=await run('assets[items[0].id]');
+  const text={...wrappedText,text:'previous'};
+  await run(`items.push(${JSON.stringify(text)});openText(1);textInput.value='latest edit';`);
+  const exported=await downloadedHTML(page,run);
+  const preview=await context.newPage();await preview.setContent(exported);
+  assert.equal(await preview.locator('image').count(),1);
+  assert.equal(await preview.locator('image').getAttribute('href'),source);
+  assert.equal(await preview.locator('.tabbar').count(),0);
+  assert.equal((await preview.locator('tspan').allTextContents()).join(' '),'latest edit');
+  assert.equal(await run('assets[items[0].id]'),source);
+  assert.equal(await run('items[1].text'),'latest edit');
+}));
+
+test('HTML tabs retain their own images and group pivots without changing live state', async () => app(async ({page,run,context}) => {
+  const fixture=await run(`
+    const c=document.createElement('canvas');c.width=c.height=30;const cx=c.getContext('2d');
+    cx.fillStyle='red';cx.fillRect(0,0,30,30);const red=c.toDataURL();
+    cx.fillStyle='blue';cx.fillRect(0,0,30,30);const blue=c.toDataURL();
+    const scene=x=>[{type:'image',uid:'image',id:'shared',x,y:100,w:30,h:30},
+      {...${JSON.stringify(rectangle('a'))},x,group:'shared-group',groupRotation:.5},
+      {...${JSON.stringify(rectangle('b'))},x:x+200,group:'shared-group',groupRotation:.5}];
+    applySketchToActiveTab(scene(100),{shared:red});const first=activeTabId;
+    newTab();applySketchToActiveTab(scene(500),{shared:blue});
+    ({red,blue,first,second:activeTabId,width:cssW,height:cssH});
+  `);
+  const preview=await context.newPage();
+  for(const active of [fixture.second,fixture.first]){
+    await run(`activateTab(${JSON.stringify(active)});selection=[1,2];render();
+      window.liveRefs={items,assets,docs:tabs.map(t=>tabDocument(t.id))};`);
+    const before=await run('JSON.stringify({items,assets,selection,activeTabId,docs:tabs.map(t=>documentForFile(tabDocument(t.id)))})');
+    const exported=await downloadedHTML(page,run);
+    assert.equal(await run('JSON.stringify({items,assets,selection,activeTabId,docs:tabs.map(t=>documentForFile(tabDocument(t.id)))})'),before);
+    assert.equal(await run('items===liveRefs.items && assets===liveRefs.assets && tabs.every((t,i)=>tabDocument(t.id).assets===liveRefs.docs[i].assets)'),true);
+    await preview.setContent(exported);
+    const panels=preview.locator('.tab-panel');assert.equal(await panels.count(),2);
+    for(let i=0;i<2;i++){
+      await preview.locator('.tab-select').nth(i).click();
+      assert.equal(await panels.nth(i).isVisible(),true);
+      assert.equal(await panels.nth(i).locator('image').getAttribute('href'),i===0?fixture.red:fixture.blue);
+      assert.equal(Number(await panels.nth(i).locator('svg').getAttribute('width')),fixture.width);
+      assert.equal(Number(await panels.nth(i).locator('svg').getAttribute('height')),fixture.height);
+      const rotations=await panels.nth(i).locator('g[transform^="rotate"]').evaluateAll(groups=>groups.map(g=>({text:g.getAttribute('transform'),matrix:{a:g.getCTM().a,b:g.getCTM().b}})));
+      assert.equal(rotations.length,2);
+      for(const rotation of rotations){
+        assert.match(rotation.text,new RegExp(' '+(i===0?280:680)+' 150\\)'));
+        assert.ok(Math.abs(rotation.matrix.a-Math.cos(.5))<1e-6 && Math.abs(rotation.matrix.b-Math.sin(.5))<1e-6);
+      }
+    }
+  }
+}));
+
+test('HTML export preserves all working tabs when storage writes fail', async () => app(async ({page,run,context}) => {
+  await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
+  await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Full','QuotaExceededError');};});
+  await run(`beginHistory();items.push(${JSON.stringify(rectangle('after'))});commitHistory();newTab();
+    beginHistory();items=[${JSON.stringify(rectangle('never-saved'))}];commitHistory();newTab();`);
+  assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
+  const exported=await downloadedHTML(page,run);
+  const preview=await context.newPage();await preview.setContent(exported);
+  assert.deepEqual(await preview.locator('.tab-panel').evaluateAll(panels=>panels.map(p=>p.querySelectorAll('svg > g > rect').length)),[2,1,0]);
+}));
+
+test('copy/paste keeps editable objects before the PNG fallback without internal clipboard state', async () => app(async ({page,run}) => {
+  // Capture ClipboardItems without touching the OS clipboard; replay their actual MIME payloads.
+  await page.evaluate(()=>{
+    window.clipboardWrites=[];
+    Object.defineProperty(navigator.clipboard,'write',{value:async entries=>{clipboardWrites.push(entries);}});
+  });
+  await run(`items=[{...${JSON.stringify(rectangle('a'))},group:'copied',groupRotation:.3},
+    {...${JSON.stringify(line)},group:'copied',groupRotation:.3}];setTool('select');selection=[0,1];render();`);
+  await page.keyboard.press('Control+c');
+  const captured=await page.evaluate(async()=>{
+    const entry=clipboardWrites.at(-1)[0], text=await(await entry.getType('text/plain')).text(), png=await entry.getType('image/png');
+    const bytes=Array.from(new Uint8Array(await png.arrayBuffer()));
+    const dt=new DataTransfer();dt.setData('text/plain',text);dt.items.add(new File([png],'copy.png',{type:'image/png'}));
+    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
+    return {text,bytes};
+  });
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect','line','rect','line']);
+  assert.equal(await run('items[2].group===items[3].group && items[2].group!==items[0].group'),true);
+  assert.equal(await run('items[2].groupRotation'),.3);
+  await run('undo()');assert.equal(await run('items.length'),2);
+  await run('redo()');assert.equal(await run('items.length'),4);
+  await page.reload();assert.equal(await run('clipboard.length'),0);
+  await page.evaluate(({text,bytes})=>{
+    const dt=new DataTransfer();dt.setData('text/plain',text);
+    dt.items.add(new File([new Uint8Array(bytes)],'copy.png',{type:'image/png'}));
+    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
+  },captured);
+  assert.deepEqual(await run('items.slice(-2).map(it=>it.type)'),['rect','line']);
+  assert.equal(await run('items.length'),6);
+}, {origin:'http://localhost:8874'}));
+
+test('structured clipboard validates objects and preserves conflicting image assets through undo', async () => app(async ({page,run}) => {
+  const fixture=await run(`
+    const c=document.createElement('canvas');c.width=c.height=20;const cx=c.getContext('2d');
+    cx.fillStyle='red';cx.fillRect(0,0,20,20);const red=c.toDataURL();
+    cx.fillStyle='blue';cx.fillRect(0,0,20,20);const blue=c.toDataURL();
+    const image={type:'image',uid:'same',id:'shared',x:100,y:100,w:20,h:20};
+    applySketchToActiveTab([image],{shared:blue});
+    ({red,blue,payload:{app:'SimpleCanvas',kind:'objects',version:2,assets:{shared:red},items:[image,{type:'nonsense'}]}});
+  `);
+  await page.evaluate(payload=>{
+    const dt=new DataTransfer();dt.setData('text/plain',JSON.stringify(payload));
+    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
+  },fixture.payload);
+  assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue,fixture.red]);
+  assert.equal(await run('items[0].id!==items[1].id && items[0].uid!==items[1].uid'),true);
+  await run('undo()');assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue]);
+  await run('redo()');await page.reload();
+  assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue,fixture.red]);
+}));
+
+test('external PNG paste still wins over the internal clipboard when JSON is invalid', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];copySelection();`);
+  await page.evaluate(async()=>{
+    const c=document.createElement('canvas');c.width=c.height=20;
+    const blob=await new Promise(resolve=>c.toBlob(resolve));
+    const dt=new DataTransfer();dt.setData('text/plain','{"app":"SimpleCanvas","kind":"objects","version":2,"items":[{"type":"broken"}]}');
+    dt.items.add(new File([blob],'external.png',{type:'image/png'}));
+    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
+  });
+  await page.waitForFunction(()=>__test.run('items.length')===2);
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect','image']);
+}));
 
 test('quota failures preserve tab contents, history, recovery export, and retry', async () => app(async ({page,run}) => {
   await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
@@ -217,6 +350,69 @@ test('drawing and text dash defaults survive switching, reload, and workspace im
 
 const wrappedText={type:'text',uid:'text',x:100,y:320,w:110,h:40,size:2,color:'#000000',
   textColor:'#000000',strokeOn:false,text:'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen',font:'28px Arial',fontSize:28};
+const markdownText={...wrappedText,uid:'markdown',y:120,w:140,text:'---\n# Wide heading\none **two** three *four* five six seven eight nine ten eleven twelve\n- thirteen fourteen fifteen sixteen\n---\n[Last link](example.com)'};
+
+test('Markdown PNG, SVG, and clipboard exports contain the full painted block', async () => app(async ({page,run,context}) => {
+  await run(`items=[${JSON.stringify(markdownText)}];setTool('select');selection=[];render();`);
+  const before=await run('bbox(items[0])');
+  const svgDownload=page.waitForEvent('download');await run('saveSvg()');
+  const svg=fs.readFileSync(await(await svgDownload).path(),'utf8');
+  const preview=await context.newPage();await preview.setContent(svg);
+  const bounds=await preview.locator('svg').evaluate(el=>{
+    const outer=el.getBoundingClientRect();
+    return [...el.querySelectorAll('text,line')].map(child=>{
+      const r=child.getBoundingClientRect();return {x:r.x-outer.x,y:r.y-outer.y,right:r.right-outer.x,bottom:r.bottom-outer.y,width:outer.width,height:outer.height};
+    });
+  });
+  for(const b of bounds) assert.ok(b.x>=0 && b.y>=0 && b.right<=b.width && b.bottom<=b.height,'all Markdown text and rules fit the export');
+  assert.equal(await preview.locator('a').first().getAttribute('href'),'https://example.com');
+  const height=Number(await preview.locator('svg').getAttribute('height'));
+  assert.ok(height>400);
+  const pngDownload=page.waitForEvent('download');await run('savePng()');
+  const png=fs.readFileSync(await(await pngDownload).path());
+  assert.ok(png.readUInt32BE(20)>=height*2-2);
+  const bluePixels=await page.evaluate(async source=>{
+    const image=new Image();image.src=source;await image.decode();
+    const c=document.createElement('canvas');c.width=image.width;c.height=image.height;
+    const cx=c.getContext('2d');cx.drawImage(image,0,0);const data=cx.getImageData(0,0,c.width,c.height).data;
+    let blue=0;for(let i=0;i<data.length;i+=4)if(data[i]<160 && data[i+1]<180 && data[i+2]>200)blue++;
+    return blue;
+  },'data:image/png;base64,'+png.toString('base64'));
+  assert.ok(bluePixels>10,'the final linked text remains visible in PNG');
+  const clipboardSize=await run('itemsToPngBlob(items,{background:false}).then(createImageBitmap).then(im=>({width:im.width,height:im.height}))');
+  assert.equal(clipboardSize.height,png.readUInt32BE(20));
+  assert.deepEqual(await run('bbox(items[0])'),before,'painted extents do not change geometry');
+}));
+
+test('rotated Markdown bounds use the exported document and leave pivots unchanged', async () => app(async ({run}) => {
+  const fixture=await run(`
+    items=[{...${JSON.stringify(markdownText)},rotation:.3,group:'same',groupRotation:.5},
+      {...${JSON.stringify(rectangle())},x:500,group:'same',groupRotation:.5}];
+    const id=activeTabId,pivot=groupPivot('same'),painted=paintedWorldBBox(items[0]),geometry=worldBBox(items[0]);
+    const svg=itemsToSVGMarkup(items);const after=groupPivot('same');
+    save();newTab();items=[{...${JSON.stringify(rectangle())},x:900,group:'same',groupRotation:.1}];
+    const doc=tabDocument(id);
+    ({pivot,after,painted,geometry,foreign:paintedWorldBBox(doc.items[0],doc.items),sameSVG:svg===itemsToSVGMarkup(doc.items,{assets:doc.assets})});
+  `);
+  assert.deepEqual(fixture.pivot,fixture.after);
+  assert.deepEqual(fixture.painted,fixture.foreign);
+  assert.equal(fixture.sameSVG,true);
+  assert.ok(fixture.painted.w>fixture.geometry.w || fixture.painted.h>fixture.geometry.h);
+}));
+
+test('Markdown editor detection matches exact markers and excludes table cells', async () => app(async ({page,run}) => {
+  await run(`items=[{...${JSON.stringify(wrappedText)},x:100,y:100,w:240,h:160,text:'--- not Markdown'}];openText(0);`);
+  const editor=page.locator('#textInput');
+  const state=()=>run('({align:textInput.style.textAlign,padding:parseFloat(textInput.style.paddingTop),kind:shapeOps(items[0]).at(-1).kind})');
+  assert.equal((await state()).align,'center');assert.ok((await state()).padding>0);
+  await editor.fill('---\n# Heading');
+  assert.equal((await state()).align,'left');assert.equal((await state()).padding,0);
+  await editor.fill('--- ordinary text');
+  assert.equal((await state()).align,'center');
+  await run(`commitText();items=[{type:'table',uid:'table',x:100,y:100,w:240,h:160,rows:1,cols:1,size:2,color:'#000000',fontFamily:'sans',fontSize:24,texts:[['---\\nplain cell']]}];openText(0,null,null,{r:0,c:0});`);
+  assert.deepEqual((await state()).kind,'text');
+  assert.equal((await state()).align,'center');assert.ok((await state()).padding>0);
+}));
 
 test('actual PNG and SVG exports include the full wrapped text height', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(wrappedText)}];setTool('select');render();`);

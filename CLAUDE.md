@@ -3,6 +3,22 @@
 Single-file HTML/CSS/JS canvas drawing app. Everything lives in `index.html` —
 no build step, no dependencies.
 
+## Current implementation
+
+The branch/provenance notes below describe earlier development. The current app includes the merged
+PR #2 changes: complete working documents and image/history state live in `tabDocuments`, independently
+of browser storage. Failed autosave shows a persistent warning with a workspace-download action.
+
+PR #3 adds structured JSON plus PNG clipboard output, whole-workspace HTML export, and Markdown.
+Paste validates SimpleCanvas JSON before using the PNG fallback. HTML export reads working documents
+and passes each document's items/assets to SVG serialization; do not clear or swap the live asset pool.
+Painted export bounds cover plain text and Markdown separately from geometry/pivot bounds. Markdown
+requires an exact `---` first line in a text item; table cells are excluded in both renderer and editor.
+
+Automated Playwright regressions are checked in under `tests/`; see `tests/README.md` for Chromium
+and WebKit commands and the remaining manual Office/iPad checks. They are development dependencies
+only; opening `index.html` still requires no build step or runtime dependency.
+
 ## Provenance
 
 - Upstream: https://github.com/oldwired/simplecanvas (maintainer: oldwired)
@@ -136,13 +152,13 @@ not this branch.
   even when neither endpoint is near the eraser. Don't regress this to a
   naive vertex-only check.
 - Autosave writes the whole scene (incl. base64 images) to `localStorage` on
-  every change — has a hard ~5-10MB browser quota, shows a toast on failure.
+  every change. Quota/storage failures retain all working tabs in memory and show a persistent warning.
   Discussed but not yet implemented: moving to IndexedDB (much higher quota)
   and/or JPEG compression for photos would fix this properly.
 
-## Testing approach used this session
+## Historical testing approach
 
-No formal test suite — verified interactively via a Node + jsdom harness
+Early development, before the checked-in Playwright suite, was verified via a Node + jsdom harness
 (`npm install jsdom` in a scratch dir, load `index.html` with
 `runScripts:'dangerously'`, dispatch synthetic `PointerEvent`/`MouseEvent`s,
 read back canvas pixels via `getImageData` or inspect `localStorage`). Useful
@@ -162,5 +178,3 @@ gotchas hit repeatedly:
 
 - IndexedDB storage / JPEG compression for the localStorage-quota issue
   (discussed, not implemented).
-- No formal automated test suite checked into the repo — the jsdom checks
-  above were ad hoc, run in a scratch dir outside the project.

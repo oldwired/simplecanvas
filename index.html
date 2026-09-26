@@ -1736,9 +1736,9 @@
   // outline/handle are drawn in before the outer groupRotation transform is applied.
   // The pivot comes from the members' bare geometry: with stroke padding in the mix, changing one
   // member's line width (or arrowheads) would move the pivot and swing the whole rotated group.
-  function groupPivot(groupId){
-    const idxs = itemsInGroup(groupId);
-    const box = unionBoxOwn(idxs), g = unionBoxOwn(idxs, false);
+  function groupPivot(groupId, sceneItems=items){
+    const members = sceneItems.filter(it=>it.group===groupId);
+    const box = unionBoxOf(members), g = unionBoxOf(members, false);
     return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
@@ -1755,10 +1755,10 @@
     return rotatePoint(px,py, b.x+b.w/2, b.y+b.h/2, -it.rotation);
   }
   // item's local frame -> world point (the inverse of toLocal: own rotation first, then groupRotation)
-  function toWorld(it,x,y){
+  function toWorld(it,x,y,sceneItems=items){
     let p = {x,y};
     if(it.rotation){ const b = bbox(it); p = rotatePoint(p.x,p.y, b.x+b.w/2, b.y+b.h/2, it.rotation); }
-    if(it.group!=null && it.groupRotation){ const piv = groupPivot(it.group); p = rotatePoint(p.x,p.y,piv.cx,piv.cy,it.groupRotation); }
+    if(it.group!=null && it.groupRotation){ const piv = groupPivot(it.group,sceneItems); p = rotatePoint(p.x,p.y,piv.cx,piv.cy,it.groupRotation); }
     return p;
   }
 
@@ -1843,10 +1843,10 @@
 
   // axis-aligned box that fully contains the item as actually rendered (own rotation AND
   // groupRotation) — used wherever we compare against world-space rectangles (marquee, PNG export)
-  function worldBBox(it){
+  function worldBBox(it, sceneItems=items){
     let b = worldBBoxOwn(it);
     if(it.group!=null && it.groupRotation){
-      const piv = groupPivot(it.group);
+      const piv = groupPivot(it.group,sceneItems);
       const corners = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]
         .map(([x,y])=>rotatePoint(x,y,piv.cx,piv.cy,it.groupRotation));
       const xs=corners.map(c=>c.x), ys=corners.map(c=>c.y);
@@ -3039,10 +3039,8 @@
     const h = Math.max(textBox.h, neededH);
     textInput.style.height = h+'px';
 
-    // Markdown (starts with "---") always renders left-aligned and top-anchored in the committed
-    // render, regardless of the item's own chosen alignment -- switch the live editor to match
-    // immediately, the moment the first 3 typed characters make it so (and back the moment they don't).
-    const isMarkdown = textInput.value.slice(0,3) === '---';
+    // Match the committed renderer: an exact first-line marker enables Markdown only in text items.
+    const isMarkdown = !editingCell && markdownBodyOf(textInput.value)!=null;
     textInput.style.textAlign = isMarkdown ? 'left' : textInputChosenAlign;
     if(isMarkdown){
       textInput.style.top = (textBox.y - 1)+'px';   // fixed at the box's own top edge, grows downward only
@@ -3491,6 +3489,20 @@
     addClones(adoptImageAssets(clipboard, clipboardAssets), 16);
     return true;
   }
+  // Our structured clipboard format takes precedence over its PNG fallback. Validate it through
+  // the same loader as files, then remap image IDs and groups just like an internal paste.
+  function pasteObjectPayload(text){
+    let data;
+    try{ data=JSON.parse(text); }catch(_){ return false; }
+    if(!data || data.app!=='SimpleCanvas' || data.kind!=='objects' || !Array.isArray(data.items) ||
+       !Number.isInteger(data.version) || data.version<1 || data.version>FORMAT_VERSION) return false;
+    const scene=normalizeScene(data.items,data.assets,data.version);
+    if(!scene.items.length) return false;
+    addClones(adoptImageAssets(scene.items,scene.assets),16);
+    const note=sceneLoadNote(scene);
+    if(note) toast('Pasted objects: '+note);
+    return true;
+  }
   // Imported files and another tab's clipboard may reuse an id for different pixels.
   // Remap such ids instead of overwriting assets still referenced by this tab's undo history.
   function adoptImageAssets(list, pool){
@@ -3676,27 +3688,39 @@
   // ---------- export ----------
   // Painted text may overflow its box. Include the measured glyphs for export without changing
   // the geometry bounds used for handles, hit testing, or item/group rotation pivots.
-  function paintedWorldBBox(it){
-    const box = worldBBox(it);
+  function paintedWorldBBox(it, sceneItems=items){
+    const box = worldBBox(it,sceneItems);
     if(it.type!=='text' && it.type!=='table') return box;
     let minX=box.x, minY=box.y, maxX=box.x+box.w, maxY=box.y+box.h;
+    const includeRect = (left,top,right,bottom)=>{
+      for(const [x,y] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
+        const p=toWorld(it,x,y,sceneItems);
+        minX=Math.min(minX,p.x); minY=Math.min(minY,p.y);
+        maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y);
+      }
+    };
+    const includeText = (text,x,y)=>{
+      if(!text) return;
+      const m=ctx.measureText(text);
+      includeRect(x-m.actualBoundingBoxLeft-1,y-m.actualBoundingBoxAscent-1,
+                  x+m.actualBoundingBoxRight+1,y+m.actualBoundingBoxDescent+1);
+    };
     ctx.save();
     try{
+      ctx.textBaseline='alphabetic';
       for(const op of shapeOps(it)){
-        if(op.kind!=='text' || !op.text) continue;
-        ctx.font = op.font;
-        ctx.textAlign = op.align || 'center';
-        ctx.textBaseline = 'alphabetic';
-        const tx = textAnchorX(op.x, op.w, op.align);
-        for(const {line,y} of layoutWrappedText(op.text, op.y, op.w, op.h)){
-          if(!line) continue;
-          const m = ctx.measureText(line);
-          const left=tx-m.actualBoundingBoxLeft-1, right=tx+m.actualBoundingBoxRight+1;
-          const top=y-m.actualBoundingBoxAscent-1, bottom=y+m.actualBoundingBoxDescent+1;
-          for(const [x,yy] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
-            const p = toWorld(it,x,yy);
-            minX=Math.min(minX,p.x); minY=Math.min(minY,p.y);
-            maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y);
+        if(op.kind==='text' && op.text){
+          ctx.font=op.font; ctx.textAlign=op.align || 'center';
+          const tx=textAnchorX(op.x,op.w,op.align);
+          for(const {line,y} of layoutWrappedText(op.text,op.y,op.w,op.h)) includeText(line,tx,y);
+        } else if(op.kind==='markdown'){
+          ctx.textAlign='left';
+          for(const w of layoutMarkdownBlocks(op.blocks,op.x,op.y,op.w,op.h,op.fontFamily,op.baseFontPx)){
+            if(w.hr){ includeRect(w.x1-1,w.y-1,w.x2+1,w.y+1); continue; }
+            ctx.font=mdFontString(op.fontFamily,w.fontPx,{bold:w.bold,italic:w.italic});
+            includeText(w.text,w.x,w.y);
+            // Canvas underlines sit at y+2; SVG's font-based decoration may sit slightly lower.
+            if(w.link) includeRect(w.x-1,w.y+1,w.x+ctx.measureText(w.text).width+1,w.y+Math.max(3,w.fontPx*.2));
           }
         }
       }
@@ -3750,10 +3774,10 @@
     if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
     return a;
   }
-  function opToSVG(op){
+  function opToSVG(op, assetPool=assets){
     switch(op.kind){
       case 'image': {
-        const src = assets[op.id];
+        const src = assetPool[op.id];
         return src ? `<image href="${escXml(src)}" x="${op.x}" y="${op.y}" width="${op.w}" height="${op.h}" preserveAspectRatio="none"/>` : '';
       }
       case 'dot': return `<circle cx="${op.cx}" cy="${op.cy}" r="${op.r}" fill="${escXml(op.color)}"${op.opacity !== 1 ? ` opacity="${op.opacity}"` : ''}/>`;
@@ -3796,12 +3820,12 @@
     }
     return '';
   }
-  function itemToSVG(it){
-    const inner = shapeOps(it).map(opToSVG).join('');
+  function itemToSVG(it, sceneItems=items, assetPool=assets){
+    const inner = shapeOps(it).map(op=>opToSVG(op,assetPool)).join('');
     // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
     let transform = '';
     if(it.group!=null && it.groupRotation){
-      const piv = groupPivot(it.group);
+      const piv = groupPivot(it.group,sceneItems);
       transform += `rotate(${it.groupRotation*180/Math.PI} ${piv.cx} ${piv.cy}) `;
     }
     if(it.rotation){
@@ -3828,7 +3852,7 @@
       const m = 24;
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       for(const it of itemList){
-        const b = paintedWorldBBox(it);
+        const b = paintedWorldBBox(it,itemList);
         minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
         maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
       }
@@ -3836,7 +3860,7 @@
       ox = -minX + m; oy = -minY + m;
     }
     let body = '';
-    for(const it of itemList) body += itemToSVG(it);
+    for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets);
     const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
       + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
@@ -3886,30 +3910,17 @@
   // Exports the WHOLE workspace, not just the active tab -- every tab, each as its own full-canvas
   // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
   // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
-  // Only the active tab's items/assets live in memory (see enterTab()/flushActiveTab()); every other
-  // tab's data sits in localStorage under docKey(t.id) -- same gather-all-tabs shape exportWorkspace()
-  // already uses. cssW/cssH are a single shared viewport size, not per-tab, so one size fits every tab.
+  // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
+  // Pass its own items/assets through serialization without modifying the active document's state.
+  // cssW/cssH are a single shared viewport size, not per-tab, so one size fits every tab.
   function exportHtml(){
-    save();   // flush the active tab's current in-memory state, same as exportWorkspace()
-    const savedAssets = Object.assign({}, assets);
+    if(textInput.style.display==='block') commitText();
+    rememberActiveTab();
     const tabData = tabs.map(t=>{
-      let tItems, tAssets;
-      if(t.id === activeTabId){ tItems = items; tAssets = assets; }
-      else {
-        let raw = null;
-        try{ raw = JSON.parse(localStorage.getItem(docKey(t.id))); }catch(e){}
-        tItems = (raw && raw.items) || []; tAssets = (raw && raw.assets) || {};
-      }
-      // opToSVG's 'image' case reads the module-level `assets` global directly, not a parameter --
-      // must swap it in before generating a NON-active tab's SVG, exactly like enterTab() already does
-      // when switching tabs, or that tab's images would silently fail to embed.
-      for(const k in assets) delete assets[k];
-      Object.assign(assets, tAssets);
-      const svg = itemsToSVGMarkup(tItems, {width: cssW, height: cssH});
-      return { id: t.id, name: t.name, items: tItems, svg };
+      const doc = tabDocument(t.id);
+      const svg = itemsToSVGMarkup(doc.items, {width:cssW, height:cssH, assets:doc.assets});
+      return { id:t.id, name:t.name, items:doc.items, svg };
     });
-    for(const k in assets) delete assets[k];
-    Object.assign(assets, savedAssets);   // restore exactly what was live before, untouched by the export
 
     if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
 
@@ -4382,7 +4393,7 @@
 
   function shapeThumbSVG(list){
     const box = unionBoxOf(list, true);
-    const inner = list.map(itemToSVG).join('');
+    const inner = list.map(it=>itemToSVG(it,list,{})).join('');
     return `<svg viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
   }
 
@@ -4902,6 +4913,8 @@
 
   window.addEventListener('paste', e=>{
     if(textInput.style.display==='block') return;     // let the text editor handle pastes
+    const text=e.clipboardData && e.clipboardData.getData('text/plain');
+    if(text && pasteObjectPayload(text)){ e.preventDefault(); return; }
     const list = e.clipboardData && e.clipboardData.items;
     if(list){
       for(const it of list){
