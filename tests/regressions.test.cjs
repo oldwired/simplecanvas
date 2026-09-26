@@ -135,3 +135,55 @@ test('workspace replacement retains old storage until new documents and index su
   assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
   await page.reload();assert.equal(await run('items[0].uid'),'b');
 }));
+
+async function insertImage(page,run){
+  await run(`const c=document.createElement('canvas');c.width=c.height=40;c.getContext('2d').fillRect(0,0,40,40);importImage(c.toDataURL());`);
+  await page.waitForFunction(()=>__test.run('items.length')===1);
+}
+test('undo and redo retain image assets after tab switches', async () => app(async ({page,run}) => {
+  await insertImage(page,run);
+  const source=await run('assets[items[0].id]'), original=await run('activeTabId');
+  await run(`deleteSelected();newTab();activateTab(${JSON.stringify(original)});undo();`);
+  assert.equal(await run('assets[items[0].id]'),source);
+  assert.match(await run('itemToSVG(items[0])'),/<image href="data:image\/png/);
+  await run('redo()');assert.equal(await run('items.length'),0);
+  await run('undo()');await page.reload();
+  assert.equal(await run('assets[items[0].id]'),source);
+}));
+
+test('cross-tab image paste survives source closure and destination reload', async () => app(async ({page,run}) => {
+  await insertImage(page,run);
+  const original=await run('activeTabId'), source=await run('assets[items[0].id]');
+  await run(`copySelection();newTab();closeTab(${JSON.stringify(original)});pasteClipboard();`);
+  const exported=await downloadedJSON(page,run,'exportWorkspace()');
+  assert.equal(exported.tabs[0].assets[exported.tabs[0].items[0].id],source);
+  await page.reload();assert.equal(await run('items.length'),1);
+  assert.equal(await run('assets[items[0].id]'),source);
+}));
+
+test('importing reused image ids preserves previous image pixels for undo and clipboard', async () => app(async ({run}) => {
+  const result=await run(`
+    const c=document.createElement('canvas');c.width=c.height=20;const cx=c.getContext('2d');
+    cx.fillStyle='red';cx.fillRect(0,0,20,20);const red=c.toDataURL();
+    cx.fillStyle='blue';cx.fillRect(0,0,20,20);const blue=c.toDataURL();
+    const image={type:'image',id:'shared',x:100,y:100,w:20,h:20};
+    applySketchToActiveTab([image],{shared:red});setTool('select');selection=[0];copySelection();
+    applySketchToActiveTab([image],{shared:blue});const second=assets[items[0].id];
+    undo();const restored=assets[items[0].id];redo();pasteClipboard();
+    ({secondIsBlue:second===blue,restoredIsRed:restored===red,
+      pastedIsRed:assets[items[1].id]===red,firstStillBlue:assets[items[0].id]===blue,
+      distinctIds:items[0].id!==items[1].id});
+  `);
+  assert.deepEqual(result,{secondIsBlue:true,restoredIsRed:true,pastedIsRed:true,firstStillBlue:true,distinctIds:true});
+}));
+
+test('image decoding completes in its original tab', async () => app(async ({page,run}) => {
+  // Both calls run in one JS task, before the image load event can fire.
+  const original=await run('activeTabId');
+  await run(`const c=document.createElement('canvas');c.width=c.height=20;importImage(c.toDataURL());newTab();`);
+  await page.waitForFunction(id=>__test.run(`tabDocument(${JSON.stringify(id)}).items.length`)===1,original);
+  assert.equal(await run('items.length'),0);
+  await run(`activateTab(${JSON.stringify(original)})`);
+  assert.equal(await run('items.length'),1);
+  await run('undo()');assert.equal(await run('items.length'),0);
+}));

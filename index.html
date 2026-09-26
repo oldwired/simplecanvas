@@ -701,6 +701,7 @@
   let drag = null;              // {sx,sy,moved} drag bookkeeping
   let marquee = null;           // {x0,y0,x,y,add} rubber-band selection in progress
   let clipboard = [];           // deep-cloned items for internal copy/paste
+  let clipboardAssets = {};     // copy carries its own image data across tabs and document replacement
   let groupSeq = 0;             // counter for minting fresh group ids
   let resizing = null;          // {rotation,anchor*,snapshots,moved} while dragging a corner handle
   let rotating = null;          // {cx,cy,startAngle,startRotation,field,members,moved} while dragging the rotation handle
@@ -2926,9 +2927,10 @@
   polyCancelBtn.addEventListener('click', cancelPolygon);
 
   // ---------- images (insert / paste / drop) ----------
-  function importImage(srcURL, place){
+  function importImage(srcURL, place, tabId=activeTabId){
     const probe = new Image();
     probe.onload = ()=>{
+      if(!tabs.some(t=>t.id===tabId)) return;   // the destination may have been closed during decoding
       const maxDim = 1800;                       // cap stored resolution to keep storage sane
       let nw = probe.naturalWidth, nh = probe.naturalHeight, src = srcURL;
       if(Math.max(nw,nh) > maxDim){
@@ -2944,9 +2946,22 @@
       const x = place ? place.x - w/2 : (cssW - w)/2;
       const y = place ? place.y - h/2 : (cssH - h)/2;
       const id = 'img-' + Date.now() + '-' + (assetSeq++);
+      const item = { type:'image', id, x:norm(x), y:norm(y), w:norm(w), h:norm(h) };
+      if(tabId!==activeTabId){
+        const doc = tabDocument(tabId);
+        doc.undoStack.push(JSON.stringify(ensureUids(doc.items)));
+        if(doc.undoStack.length>80) doc.undoStack.shift();
+        doc.redoStack = [];
+        doc.assets[id] = src;
+        doc.items.push(item);
+        ensureUids(doc.items);
+        unsavedTabs.add(tabId);
+        persistWorkspace();
+        return;
+      }
       assets[id] = src;
       beginHistory();
-      items.push({ type:'image', id, x:norm(x), y:norm(y), w:norm(w), h:norm(h) });
+      items.push(item);
       selection = [items.length-1];
       commitHistory();
       setTool('select');
@@ -2959,7 +2974,8 @@
   function readFile(file, place){
     if(!file || file.type.indexOf('image')!==0){ toast('That file is not an image'); return; }
     const r = new FileReader();
-    r.onload = ()=>importImage(r.result, place);
+    const tabId = activeTabId;
+    r.onload = ()=>importImage(r.result, place, tabId);
     r.onerror = ()=>toast('Could not read that file');
     r.readAsDataURL(file);
   }
@@ -3144,12 +3160,31 @@
   function copySelection(){
     if(ui.tool!=='select' || !selection.length) return;
     clipboard = selection.slice().sort((a,b)=>a-b).map(i=>clone(items[i]));
+    clipboardAssets = assetsUsedBy(clipboard, assets);
     toast(clipboard.length + (clipboard.length===1?' item copied':' items copied'));
   }
   function pasteClipboard(){
     if(!clipboard.length) return false;
-    addClones(clipboard, 16);
+    addClones(adoptImageAssets(clipboard, clipboardAssets), 16);
     return true;
+  }
+  // Imported files and another tab's clipboard may reuse an id for different pixels.
+  // Remap such ids instead of overwriting assets still referenced by this tab's undo history.
+  function adoptImageAssets(list, pool){
+    const copies = clone(list), ids = new Map();
+    for(const it of copies){
+      if(it.type!=='image' || !pool[it.id]) continue;
+      if(!ids.has(it.id)){
+        let id = it.id;
+        if(assets[id] && assets[id]!==pool[id]){
+          do { id = 'img-' + Date.now() + '-' + (assetSeq++); } while(assets[id]);
+        }
+        assets[id] = pool[it.id];
+        ids.set(it.id, id);
+      }
+      it.id = ids.get(it.id);
+    }
+    return copies;
   }
 
   // ---------- optional shape library: one active, in-memory collection ----------
@@ -3561,8 +3596,7 @@
     if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
     cancelGesture();
     beginHistory();
-    items = newItems;
-    Object.assign(assets, newAssets);
+    items = adoptImageAssets(newItems, newAssets);
     selection = [];
     commitHistory();
     render();
