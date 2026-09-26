@@ -221,6 +221,11 @@
   .path-controls[hidden],.path-controls [hidden]{display:none}
   .path-controls button{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;justify-content:center;white-space:normal}
   .path-controls button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
+  .head-options{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+  .head-options button{font-size:12px;padding:6px}
+  .head-toggle{width:100%;gap:6px}
+  .head-toggle svg{width:30px;height:24px;flex-shrink:0}
+  .path-controls button:disabled{opacity:.4;cursor:default}
   .path-controls #editPointsBtn{margin-top:4px}
   @media(pointer:coarse){.size-picker .dash-btn{min-height:44px}}
   .vslider-wrap{width:42px;height:240px;position:relative}
@@ -511,8 +516,20 @@
           <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
         </div>
         <div class="path-controls" id="pathControls" hidden>
-          <button type="button" id="startHeadBtn" aria-pressed="false">Start arrowhead</button>
-          <button type="button" id="endHeadBtn" aria-pressed="false">End arrowhead</button>
+          <div id="startHeadControls" role="group" aria-label="Start arrowhead">
+            <button type="button" class="head-toggle" id="startHeadBtn" aria-pressed="false">Start arrowhead</button>
+            <div class="head-options">
+              <button type="button" id="startHeadFilledBtn" aria-label="Filled start arrowhead" aria-pressed="false">Filled</button>
+              <button type="button" id="startHeadInvertedBtn" aria-label="Inverted start arrowhead" aria-pressed="false">Inverted</button>
+            </div>
+          </div>
+          <div id="endHeadControls" role="group" aria-label="End arrowhead">
+            <button type="button" class="head-toggle" id="endHeadBtn" aria-pressed="false">End arrowhead</button>
+            <div class="head-options">
+              <button type="button" id="endHeadFilledBtn" aria-label="Filled end arrowhead" aria-pressed="false">Filled</button>
+              <button type="button" id="endHeadInvertedBtn" aria-label="Inverted end arrowhead" aria-pressed="false">Inverted</button>
+            </div>
+          </div>
           <button type="button" id="editPointsBtn">Edit points</button>
         </div>
       </div>
@@ -842,6 +859,9 @@
       if(FILLABLE(it.type)) it.strokeOn = raw.strokeOn !== false;   // "no outline" only means something on a shape with an inside
       if(FILLABLE(it.type)){ it.fill = !!raw.fill; if(isColor(raw.fillColor)) it.fillColor = raw.fillColor; }
       if(DASHABLE(it.type) && (raw.dash==='tight' || raw.dash==='wide')) it.dash = raw.dash;
+      if(isOpenPath(it)){
+        for(const key of ['hsStyle','heStyle']) if(HEAD_STYLES.has(raw[key]) && raw[key]!=='open') it[key]=raw[key];
+      }
       if(it.type === 'text' || it.type === 'table'){
         if(isColor(raw.textColor)) it.textColor = raw.textColor;
         const fstr = typeof raw.font === 'string' ? raw.font : '';
@@ -1039,6 +1059,18 @@
     if(it.type==='polygon') return {s:it.closed===false && !!it.hs, e:it.closed===false && !!it.he};
     return { s: it.type==='arrow' && !!it.hs, e: it.type==='arrow' && it.he!==false };
   }
+  const HEAD_STYLES = new Set(['open','filled','open-inverted','filled-inverted']);
+  function headVariantOf(it, end){
+    const value = it[end==='start' ? 'hsStyle' : 'heStyle'];
+    return HEAD_STYLES.has(value) ? value : 'open';
+  }
+  // Inverted heads extend beyond the endpoint; include their full length in selection/export bounds.
+  function headPadding(it, size){
+    const h=headsOf(it), g=arrowHeadGeom(size);
+    const inverted=(h.s && headVariantOf(it,'start').endsWith('-inverted')) ||
+      (h.e && headVariantOf(it,'end').endsWith('-inverted'));
+    return (inverted ? g.len : g.len*Math.sin(g.a)) + size/2 + 2;
+  }
   function setHeads(it, s, e){
     delete it.hs; delete it.he;
     if(it.type==='polygon'){
@@ -1145,10 +1177,17 @@
     d.push(['L', p[p.length-1].x, p[p.length-1].y]);
     return d;
   }
-  // arrowhead at (tx,ty) pointing away from (fx,fy): barb - tip - barb
-  function arrowHeadSegments(fx,fy,tx,ty,size){
-    const ang = Math.atan2(ty-fy, tx-fx), {len, a} = arrowHeadGeom(size);
+  // Arrowhead at (tx,ty): barb - tip - barb. Inversion reverses direction around the same tip.
+  function arrowHeadSegments(fx,fy,tx,ty,size,inverted=false){
+    const ang = Math.atan2(ty-fy, tx-fx) + (inverted ? Math.PI : 0), {len, a} = arrowHeadGeom(size);
     return [['M', tx-len*Math.cos(ang-a), ty-len*Math.sin(ang-a)], ['L', tx, ty], ['L', tx-len*Math.cos(ang+a), ty-len*Math.sin(ang+a)]];
+  }
+  function arrowHeadOp(it, from, tip, end){
+    const variant=headVariantOf(it,end), filled=variant.startsWith('filled');
+    const d=arrowHeadSegments(from.x,from.y,tip.x,tip.y,it.size,variant.endsWith('-inverted'));
+    if(filled) d.push(['Z']);
+    // Heads always use a continuous outline, even when the shaft is dashed.
+    return {kind:'path',d,style:{fill:filled ? strokeOf(it) : 'none',stroke:strokeOf(it),width:it.size,cap:'round',join:'round'}};
   }
   // The cubic-bezier segments a polygon's points describe. A point with no handle contributes its
   // own coordinate as a degenerate control point — mathematically a straight line, so callers never
@@ -1259,11 +1298,10 @@
       case 'line': case 'arrow': {
         if(!strokeOn(it)) break;
         const style = { fill:'none', stroke:it.color, width:it.size, cap:'round', join:'round', dash:dashOf(it) };
-        const headStyle = style.dash ? { ...style, dash:null } : style;   // arrowheads never dash, even on a dashed shaft
         ops.push({ kind:'path', d:[['M', it.x1, it.y1], ['L', it.x2, it.y2]], style });
         const h = headsOf(it);
-        if(h.e) ops.push({ kind:'path', d:arrowHeadSegments(it.x1,it.y1,it.x2,it.y2,it.size), style:headStyle });
-        if(h.s) ops.push({ kind:'path', d:arrowHeadSegments(it.x2,it.y2,it.x1,it.y1,it.size), style:headStyle });
+        if(h.e) ops.push(arrowHeadOp(it,{x:it.x1,y:it.y1},{x:it.x2,y:it.y2},'end'));
+        if(h.s) ops.push(arrowHeadOp(it,{x:it.x2,y:it.y2},{x:it.x1,y:it.y1},'start'));
         break;
       }
       case 'rect':
@@ -1283,17 +1321,16 @@
         }
         if(closed) d.push(['Z']);
         const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
-        const headStyle = style.dash ? { ...style, dash:null } : style;
         ops.push({ kind:'path', d, style });
         // Both renderers use the actual endpoint tangent, including degenerate controls.
         if(!closed && n>=2){
           if(it.he){
             const last = pts[n-1], from = curveEndFrom(segs, false);
-            if(from) ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style:headStyle });
+            if(from) ops.push(arrowHeadOp(it,from,last,'end'));
           }
           if(it.hs){
             const first = pts[0], from = curveEndFrom(segs, true);
-            if(from) ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style:headStyle });
+            if(from) ops.push(arrowHeadOp(it,from,first,'start'));
           }
         }
         break;
@@ -1448,7 +1485,7 @@
         const sz = it.size||2, h = headsOf(it);
         let pad = padded ? sz/2+4 : 0;
         // an arrowhead's barbs stick out sideways from the tip by len*sin(a), plus half the stroke
-        if(padded && (h.s||h.e)){ const g = arrowHeadGeom(sz); pad = Math.max(pad, g.len*Math.sin(g.a) + sz/2 + 2); }
+        if(padded && (h.s||h.e)) pad = Math.max(pad, headPadding(it,sz));
         const x=Math.min(it.x1,it.x2), y=Math.min(it.y1,it.y2);
         return {x:x-pad,y:y-pad,w:Math.abs(it.x2-it.x1)+pad*2,h:Math.abs(it.y2-it.y1)+pad*2};
       }
@@ -1472,7 +1509,7 @@
         }
         const sz = it.size||2;
         let pad = padded ? sz/2+2 : 0;
-        if(padded && (it.hs||it.he)){ const g = arrowHeadGeom(sz); pad = Math.max(pad, g.len*Math.sin(g.a) + sz/2 + 2); }
+        if(padded && (it.hs||it.he)) pad = Math.max(pad, headPadding(it,sz));
         const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
         return {x:minX-pad, y:minY-pad, w:maxX-minX+pad*2, h:maxY-minY+pad*2};
       }
@@ -1879,6 +1916,7 @@
     if(it.group!=null){ next.group = it.group; next.groupRotation = it.groupRotation||0; }
     if(hs) next.hs = true;
     if(he) next.he = true;
+    for(const key of ['hsStyle','heStyle']) if(HEAD_STYLES.has(it[key]) && it[key]!=='open') next[key]=it[key];
     items[idx] = next;
   }
   // Bakes a curve's own rotation into its absolute point/handle coordinates, right before a point or
@@ -4305,10 +4343,24 @@
     pathControls.hidden = !it;
     sizePicker.classList.toggle('has-path-controls',!!it);
     const openPath=isOpenPath(it);
-    startHeadBtn.hidden=endHeadBtn.hidden=!openPath;
     const h=openPath ? headsOf(it) : {s:false,e:false};
-    startHeadBtn.setAttribute('aria-pressed',String(h.s));
-    endHeadBtn.setAttribute('aria-pressed',String(h.e));
+    for(const end of ['start','end']){
+      document.getElementById(end+'HeadControls').hidden=!openPath;
+      const enabled=end==='start' ? h.s : h.e, variant=it ? headVariantOf(it,end) : 'open';
+      const button=end==='start' ? startHeadBtn : endHeadBtn;
+      button.setAttribute('aria-pressed',String(enabled));
+      if(button.dataset.variant!==variant){
+        const previewItem={size:2,color:'currentColor',hsStyle:variant,heStyle:variant};
+        const head=arrowHeadOp(previewItem,{x:end==='start' ? 30 : 6,y:12},{x:18,y:12},end);
+        button.innerHTML=`<svg viewBox="0 0 36 24" aria-hidden="true"><path d="M${end==='start'?32:4},12 L18,12" fill="none" stroke="currentColor" stroke-width="2"/>${opToSVG(head)}</svg>${end==='start'?'Start':'End'} arrowhead`;
+        button.dataset.variant=variant;
+      }
+      for(const option of ['Filled','Inverted']){
+        const control=document.getElementById(end+'Head'+option+'Btn');
+        control.disabled=!enabled;
+        control.setAttribute('aria-pressed',String(option==='Filled' ? variant.startsWith('filled') : variant.endsWith('-inverted')));
+      }
+    }
     const editing=idx!=null && pointEditIdx===idx;
     editPointsBtn.textContent=editing ? 'Done' : 'Edit points';
     sizeBtn.classList.toggle('active',editing);
@@ -4336,6 +4388,20 @@
   }
   startHeadBtn.addEventListener('click',()=>toggleSelectedHead('start'));
   endHeadBtn.addEventListener('click',()=>toggleSelectedHead('end'));
+  for(const end of ['start','end']) for(const option of ['Filled','Inverted']){
+    document.getElementById(end+'Head'+option+'Btn').addEventListener('click',()=>{
+      const idx=pointEditableIdx();
+      if(idx==null || !isOpenPath(items[idx])) return;
+      const it=items[idx], variant=headVariantOf(it,end);
+      let filled=variant.startsWith('filled'), inverted=variant.endsWith('-inverted');
+      if(option==='Filled') filled=!filled; else inverted=!inverted;
+      beginHistory();
+      const key=end==='start' ? 'hsStyle' : 'heStyle';
+      if(!filled && !inverted) delete it[key];
+      else it[key]=(filled ? 'filled' : 'open')+(inverted ? '-inverted' : '');
+      commitHistory(); render();
+    });
+  }
   editPointsBtn.addEventListener('click',()=>{togglePointEdit();sizeBtn.focus({preventScroll:true});});
   sizePicker.addEventListener('keydown',e=>{
     if(e.key==='Escape'){setSizePicker(false);sizeBtn.focus({preventScroll:true});}

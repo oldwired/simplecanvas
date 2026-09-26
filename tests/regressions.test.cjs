@@ -252,23 +252,28 @@ const line={type:'line',uid:'line',x1:80,y1:200,x2:320,y2:200,size:6,color:'#000
 // Capture commands actually stroked by the canvas renderer, then compare the SVG paths.
 async function renderedCurveHeads(run){
   const result=await run(`
-    const paths=[], originals={}, commands={moveTo:'M',lineTo:'L',bezierCurveTo:'C'};
+    const paths=[], fills=[], originals={}, commands={moveTo:'M',lineTo:'L',bezierCurveTo:'C',closePath:'Z'};
     let current=[];
-    for(const name of ['beginPath','stroke',...Object.keys(commands)]){
+    for(const name of ['beginPath','stroke','fill',...Object.keys(commands)]){
       originals[name]=ctx[name];
       ctx[name]=function(...args){
         if(name==='beginPath') current=[];
         else if(name==='stroke') paths.push(current.slice());
+        else if(name==='fill') fills.push(current.slice());
         else current.push([commands[name],...args]);
         return originals[name].apply(this,args);
       };
     }
     try{drawItem(items[0]);}finally{for(const name in originals)ctx[name]=originals[name];}
-    ({paths,svg:itemToSVG(items[0])});
+    ({paths,fills,svg:itemToSVG(items[0])});
   `);
-  const svgPaths=[...result.svg.matchAll(/<path d="([^"]*)"/g)].map(m=>
-    m[1].split(' ').map(command=>[command[0],...command.slice(1).split(',').map(Number)]));
+  const svgElements=[...result.svg.matchAll(/<path d="([^"]*)"([^>]*)/g)];
+  const parsePath=d=>d.split(' ').map(command=>command==='Z' ? ['Z'] :
+    [command[0],...command.slice(1).split(',').map(Number)]);
+  const svgPaths=svgElements.map(m=>parsePath(m[1]));
   assert.deepEqual(result.paths,svgPaths,'canvas and SVG stroke identical geometry');
+  assert.deepEqual(result.fills,svgElements.filter(m=>!m[2].includes('fill="none"')).map(m=>parsePath(m[1])),
+    'canvas and SVG fill identical geometry');
   return result.paths.slice(1); // shaft first, followed by end and start heads
 }
 function assertHeadDirection(head, expected, message){
@@ -355,6 +360,80 @@ test('closed shapes offer point editing without arrowhead controls', async () =>
   assert.equal(await run('items[0].points.length'),4);
 }));
 
+test('arrowhead variants survive conversion, undo, toggling, reload, and workspace import', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
+  await page.locator('#sizeBtn').click();
+  assert.equal(await page.locator('#startHeadFilledBtn').isDisabled(),true);
+  await page.locator('#startHeadBtn').click();await page.locator('#endHeadBtn').click();
+  await page.locator('#startHeadFilledBtn').click();await page.locator('#startHeadInvertedBtn').click();
+  await page.locator('#endHeadFilledBtn').click();
+  const variants=()=>run(`[headVariantOf(items[0],'start'),headVariantOf(items[0],'end')]`);
+  assert.deepEqual(await variants(),['filled-inverted','filled']);
+  await run('undo()');assert.deepEqual(await variants(),['filled-inverted','open']);
+  await run('redo()');
+  await page.locator('#editPointsBtn').click();
+  assert.equal(await run('items[0].type'),'polygon');
+  assert.deepEqual(await variants(),['filled-inverted','filled']);
+  await run('togglePointEdit()');
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+80,box.y+200);
+  assert.equal(await run('headsOf(items[0]).s'),false);
+  await page.mouse.click(box.x+80,box.y+200);
+  assert.equal(await run('headsOf(items[0]).s'),true);
+  assert.deepEqual(await variants(),['filled-inverted','filled']);
+  const workspace=await downloadedJSON(page,run,'exportWorkspace()');
+  await page.reload();assert.deepEqual(await variants(),['filled-inverted','filled']);
+  const original=await run('activeTabId');
+  await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'variants.json'))`);
+  await page.waitForFunction(id=>__test.run('activeTabId')!==id,original);
+  assert.deepEqual(await variants(),['filled-inverted','filled']);
+}));
+
+test('all arrowhead variants share canvas/SVG fill and tangent geometry', async () => app(async ({run}) => {
+  for(const curved of [false,true]) for(const variant of ['open','filled','open-inverted','filled-inverted']){
+    const item=curved ? {type:'polygon',closed:false,points:[{x:100,y:200},{x:400,y:200,c2:{x:250,y:100}}]} :
+      {type:'arrow',x1:100,y1:200,x2:400,y2:200};
+    await run(`items=[{...${JSON.stringify(item)},size:6,color:'#000000',dash:'wide',hs:true,he:true,hsStyle:'${variant}',heStyle:'${variant}'}];`);
+    const heads=await renderedCurveHeads(run), sign=variant.endsWith('-inverted') ? -1 : 1;
+    assert.equal(heads.length,2);
+    assertHeadDirection(heads[0],[sign*(curved?150:300),sign*(curved?100:0)],variant+' end tangent');
+    assertHeadDirection(heads[1],[sign*(curved?-150:-300),sign*(curved?100:0)],variant+' start tangent');
+    for(const head of heads) assert.equal(head.at(-1)[0]==='Z',variant.startsWith('filled'));
+    const svg=await run('itemToSVG(items[0])');
+    assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'only the shaft is dashed');
+  }
+}));
+
+test('legacy arrows retain open heads and invalid style fields are ignored', async () => app(async ({run}) => {
+  const result=await run(`
+    const old={type:'arrow',x1:100,y1:200,x2:400,y2:200,size:6,color:'#000000'};
+    const legacy=normalizeItem(old,{}), invalid=normalizeItem({...old,hsStyle:'unknown',heStyle:42},{});
+    ({heads:headsOf(legacy),styles:[headVariantOf(legacy,'start'),headVariantOf(legacy,'end')],
+      unchanged:itemToSVG(legacy)===itemToSVG(invalid),keys:Object.keys(invalid)});
+  `);
+  assert.deepEqual(result.heads,{s:false,e:true});
+  assert.deepEqual(result.styles,['open','open']);
+  assert.equal(result.unchanged,true);
+  assert.ok(!result.keys.includes('hsStyle') && !result.keys.includes('heStyle'));
+}));
+
+test('large inverted arrowheads fit selection bounds and actual PNG/SVG exports', async () => app(async ({page,run}) => {
+  await run(`items=[{type:'arrow',x1:200,y1:250,x2:400,y2:250,size:60,color:'#000000',hs:true,he:true,hsStyle:'filled-inverted',heStyle:'filled-inverted'}];setTool('select');render();`);
+  const geometry=await run(`({box:bbox(items[0]),points:shapeOps(items[0]).slice(1).flatMap(op=>op.d.filter(s=>s.length>1).map(s=>({x:s[1],y:s[2]})))})`);
+  for(const p of geometry.points){
+    assert.ok(p.x-30>=geometry.box.x && p.x+30<=geometry.box.x+geometry.box.w);
+    assert.ok(p.y-30>=geometry.box.y && p.y+30<=geometry.box.y+geometry.box.h);
+  }
+  const download=page.waitForEvent('download');await run('saveSvg()');
+  const svg=fs.readFileSync(await (await download).path(),'utf8');
+  const width=Number(/<svg[^>]+width="([^"]+)"/.exec(svg)[1]);
+  const height=Number(/<svg[^>]+height="([^"]+)"/.exec(svg)[1]);
+  assert.ok(width>=geometry.box.w+48 && height>=geometry.box.h+48);
+  const pngDownload=page.waitForEvent('download');await run('savePng()');
+  const png=fs.readFileSync(await (await pngDownload).path());
+  assert.ok(png.readUInt32BE(16)>=width*2-2 && png.readUInt32BE(20)>=height*2-2);
+}));
+
 test('double-click body shortcut still works immediately after an endpoint toggle', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
   const box=await page.locator('#canvas').boundingBox();
@@ -407,10 +486,14 @@ for(const viewport of [{width:1024,height:768},{width:768,height:1024},{width:37
     const popup=await page.locator('#sizePicker').boundingBox();
     assert.ok(popup.x>=4 && popup.x+popup.width<=viewport.width-4);
     assert.ok(popup.y+popup.height<=viewport.height);
-    for(const id of ['startHeadBtn','endHeadBtn','editPointsBtn']){
-      assert.ok((await page.locator('#'+id).boundingBox()).height>=44);
+    for(const id of ['startHeadBtn','endHeadBtn','editPointsBtn','startHeadFilledBtn','startHeadInvertedBtn','endHeadFilledBtn','endHeadInvertedBtn']){
+      const target=await page.locator('#'+id).boundingBox();
+      assert.ok(target.height>=44 && target.width>=44);
     }
-    await page.locator('#endHeadBtn').tap();await page.locator('#editPointsBtn').tap();
+    await page.locator('#endHeadBtn').tap();
+    await page.locator('#endHeadFilledBtn').tap();await page.locator('#endHeadInvertedBtn').tap();
+    assert.equal(await run("headVariantOf(items[0],'end')"),'filled-inverted');
+    await page.locator('#editPointsBtn').tap();
     assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
     await page.touchscreen.tap(before.x+endX,before.y+200);
     await page.touchscreen.tap(before.x+endX,before.y+200);

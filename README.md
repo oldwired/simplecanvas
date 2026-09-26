@@ -13,6 +13,8 @@ offers **Save workspace…** if automatic saving fails; save the file before lea
 Select a line or curve and open the **line-style** button (the stroke-width value) to toggle its
 start/end arrowheads or choose **Edit points / Done**. The popover works with mouse or touch and
 does not move the canvas. In normal Select mode, clicking an endpoint also toggles its arrowhead.
+Each end also has **Filled** and **Inverted** options, which can be combined. Inverted heads point
+back along the line; turning a head off and on remembers its style.
 Double-clicking or double-tapping the shape remains a shortcut for point editing.
 
 Developer checks are described in [tests/README.md](tests/README.md).
