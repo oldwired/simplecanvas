@@ -187,3 +187,60 @@ test('image decoding completes in its original tab', async () => app(async ({pag
   assert.equal(await run('items.length'),1);
   await run('undo()');assert.equal(await run('items.length'),0);
 }));
+
+test('click cycling survives deletion and layer reordering', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify([rectangle('lower'),rectangle('upper')])};setTool('select');`);
+  const box=await page.locator('#canvas').boundingBox();
+  const click=()=>page.mouse.click(box.x+170,box.y+145);
+  await click();assert.deepEqual(await run('selectedUids()'),['upper']);
+  await page.keyboard.press('Delete');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower']);
+  await run('undo()');await click();
+  assert.deepEqual(await run('selectedUids()'),['upper']);
+  await click();assert.deepEqual(await run('selectedUids()'),['lower']);
+  await run('bringToFront()');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower']);
+}));
+
+test('drawing and text dash defaults survive switching, reload, and workspace import', async () => app(async ({page,run}) => {
+  const original=await run('activeTabId');
+  await run(`setTool('rect');applyDash('wide');setTool('text');applyDash('tight');newTab();activateTab(${JSON.stringify(original)});`);
+  assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
+  const workspace=await downloadedJSON(page,run,'exportWorkspace()');
+  await page.reload();assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
+  await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'workspace.json'))`);
+  await page.waitForFunction(id=>__test.run('activeTabId')!==id,original);
+  assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
+}));
+
+const wrappedText={type:'text',uid:'text',x:100,y:320,w:110,h:40,size:2,color:'#000000',
+  textColor:'#000000',strokeOn:false,text:'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen',font:'28px Arial',fontSize:28};
+
+test('actual PNG and SVG exports include the full wrapped text height', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(wrappedText)}];setTool('select');render();`);
+  const before=await run('bbox(items[0])');
+  const svgDownload=page.waitForEvent('download');await run('saveSvg()');
+  const svg=fs.readFileSync(await (await svgDownload).path(),'utf8');
+  const height=Number(/<svg[^>]+height="([^"]+)"/.exec(svg)[1]);
+  const baselines=[...svg.matchAll(/<tspan x="[^"]+" y="([^"]+)"/g)].map(m=>Number(m[1]));
+  const translateY=Number(/<g transform="translate\([^ ]+ ([^)]+)\)/.exec(svg)[1]);
+  assert.ok(baselines.length>10);
+  assert.ok(Math.min(...baselines)+translateY>20);
+  assert.ok(Math.max(...baselines)+translateY<height-20);
+  const pngDownload=page.waitForEvent('download');await run('savePng()');
+  const png=fs.readFileSync(await (await pngDownload).path());
+  assert.ok(png.readUInt32BE(20)>=height*2-2,'PNG uses the same painted bounds');
+  assert.deepEqual(await run('bbox(items[0])'),before,'export leaves geometry bounds unchanged');
+}));
+
+test('rotated grouped table text is included without moving group pivots', async () => app(async ({run}) => {
+  const result=await run(`
+    items=[{type:'table',uid:'table',x:100,y:200,w:90,h:30,rows:1,cols:1,texts:[['one two three four five six seven']],fontFamily:'sans',fontSize:28,size:2,color:'#000000',group:'g',rotation:.3,groupRotation:.5},
+      {...${JSON.stringify(rectangle())},x:400,group:'g',groupRotation:.5}];
+    const pivot=groupPivot('g'), geometry=worldBBox(items[0]);
+    const painted=paintedWorldBBox(items[0]);
+    ({pivotBefore:pivot,pivotAfter:groupPivot('g'),geometry,painted});
+  `);
+  assert.deepEqual(result.pivotBefore,result.pivotAfter);
+  assert.ok(result.painted.w>result.geometry.w || result.painted.h>result.geometry.h);
+}));

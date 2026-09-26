@@ -749,6 +749,7 @@
     if(undoStack.length > 80) undoStack.shift();
     redoStack = [];
     historyBefore = null;
+    clickCycle = null;   // a scene mutation can invalidate both the hit stack and its array indices
     save(); updateButtons();
   }
 
@@ -907,6 +908,7 @@
     if(VALID_TOOLS.has(raw.tool)) out.tool = raw.tool;
     if(isColor(raw.color)) out.color = raw.color;
     if(isNum(raw.size)) out.size = Math.min(60, Math.max(1, raw.size));
+    if(raw.dash==='tight' || raw.dash==='wide') out.dash = raw.dash;
     if(typeof raw.strokeOn === 'boolean') out.strokeOn = raw.strokeOn;
     if(typeof raw.fill === 'boolean') out.fill = raw.fill;
     if(isColor(raw.fillColor)) out.fillColor = raw.fillColor;
@@ -919,6 +921,7 @@
     if(raw.text && typeof raw.text === 'object'){
       if(isColor(raw.text.color)) out.text.color = raw.text.color;
       if(isNum(raw.text.size)) out.text.size = Math.min(60, Math.max(1, raw.text.size));
+      if(raw.text.dash==='tight' || raw.text.dash==='wide') out.text.dash = raw.text.dash;
       if(typeof raw.text.strokeOn === 'boolean') out.text.strokeOn = raw.text.strokeOn;
       if(typeof raw.text.fill === 'boolean') out.text.fill = raw.text.fill;
       if(isColor(raw.text.fillColor)) out.text.fillColor = raw.text.fillColor;
@@ -1634,7 +1637,9 @@
   function pickWithClickCycle(x,y,tol){
     const stack = hitStack(x,y);
     if(!stack.length){ clickCycle = null; return {hit:-1, pendingCycleHit:null}; }
-    const continuing = clickCycle && Math.hypot(x-clickCycle.x, y-clickCycle.y)<=tol &&
+    const continuing = clickCycle && items[clickCycle.stack[clickCycle.depth]] &&
+                        stack.length===clickCycle.stack.length && stack.every((idx,i)=>idx===clickCycle.stack[i]) &&
+                        Math.hypot(x-clickCycle.x, y-clickCycle.y)<=tol &&
                         sameSelection(selection, selectionFor(clickCycle.stack[clickCycle.depth]));
     if(continuing && stack.length>1){
       const hit = clickCycle.stack[clickCycle.depth];
@@ -3350,12 +3355,41 @@
   }
 
   // ---------- export ----------
+  // Painted text may overflow its box. Include the measured glyphs for export without changing
+  // the geometry bounds used for handles, hit testing, or item/group rotation pivots.
+  function paintedWorldBBox(it){
+    const box = worldBBox(it);
+    if(it.type!=='text' && it.type!=='table') return box;
+    let minX=box.x, minY=box.y, maxX=box.x+box.w, maxY=box.y+box.h;
+    ctx.save();
+    try{
+      for(const op of shapeOps(it)){
+        if(op.kind!=='text' || !op.text) continue;
+        ctx.font = op.font;
+        ctx.textAlign = op.align || 'center';
+        ctx.textBaseline = 'alphabetic';
+        const tx = textAnchorX(op.x, op.w, op.align);
+        for(const {line,y} of layoutWrappedText(op.text, op.y, op.w, op.h)){
+          if(!line) continue;
+          const m = ctx.measureText(line);
+          const left=tx-m.actualBoundingBoxLeft-1, right=tx+m.actualBoundingBoxRight+1;
+          const top=y-m.actualBoundingBoxAscent-1, bottom=y+m.actualBoundingBoxDescent+1;
+          for(const [x,yy] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
+            const p = toWorld(it,x,yy);
+            minX=Math.min(minX,p.x); minY=Math.min(minY,p.y);
+            maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y);
+          }
+        }
+      }
+    }finally{ ctx.restore(); }
+    return {x:minX,y:minY,w:maxX-minX,h:maxY-minY};
+  }
   function savePng(){
     if(!items.length){ toast('Nothing to export yet'); return; }
     const m = 24, scale = 2;                              // margin (px) and export supersampling
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
     for(const it of items){
-      const b = worldBBox(it);   // rotation-aware, so rotated items aren't clipped
+      const b = paintedWorldBBox(it);
       minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
       maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
     }
@@ -3439,7 +3473,7 @@
     const m = 24;
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
     for(const it of items){
-      const b = worldBBox(it);
+      const b = paintedWorldBBox(it);
       minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
       maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
     }
