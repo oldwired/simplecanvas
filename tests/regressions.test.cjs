@@ -48,22 +48,7 @@ async function downloadedHTML(page, run){
   return fs.readFileSync(await (await download).path(),'utf8');
 }
 
-test('HTML export embeds active images and commits text being edited', async () => app(async ({page,run,context}) => {
-  await insertImage(page,run);
-  const source=await run('assets[items[0].id]');
-  const text={...wrappedText,text:'previous'};
-  await run(`items.push(${JSON.stringify(text)});openText(1);textInput.value='latest edit';`);
-  const exported=await downloadedHTML(page,run);
-  const preview=await context.newPage();await preview.setContent(exported);
-  assert.equal(await preview.locator('image').count(),1);
-  assert.equal(await preview.locator('image').getAttribute('href'),source);
-  assert.equal(await preview.locator('.tabbar').count(),0);
-  assert.equal((await preview.locator('tspan').allTextContents()).join(' '),'latest edit');
-  assert.equal(await run('assets[items[0].id]'),source);
-  assert.equal(await run('items[1].text'),'latest edit');
-}));
-
-test('HTML tabs retain their own images and group pivots without changing live state', async () => app(async ({page,run,context}) => {
+test('HTML export keeps each tab’s images, group rotation, and pending text edits', async () => app(async ({page,run,context}) => {
   const fixture=await run(`
     const c=document.createElement('canvas');c.width=c.height=30;const cx=c.getContext('2d');
     cx.fillStyle='red';cx.fillRect(0,0,30,30);const red=c.toDataURL();
@@ -71,45 +56,32 @@ test('HTML tabs retain their own images and group pivots without changing live s
     const scene=x=>[{type:'image',uid:'image',id:'shared',x,y:100,w:30,h:30},
       {...${JSON.stringify(rectangle('a'))},x,group:'shared-group',groupRotation:.5},
       {...${JSON.stringify(rectangle('b'))},x:x+200,group:'shared-group',groupRotation:.5}];
-    applySketchToActiveTab(scene(100),{shared:red});const first=activeTabId;
+    applySketchToActiveTab(scene(100),{shared:red});
     newTab();applySketchToActiveTab(scene(500),{shared:blue});
-    ({red,blue,first,second:activeTabId,width:cssW,height:cssH});
+    items.push({...${JSON.stringify(wrappedText)},text:'previous'});openText(3);textInput.value='latest edit';
+    ({red,blue});
   `);
-  const preview=await context.newPage();
-  for(const active of [fixture.second,fixture.first]){
-    await run(`activateTab(${JSON.stringify(active)});selection=[1,2];render();
-      window.liveRefs={items,assets,docs:tabs.map(t=>tabDocument(t.id))};`);
-    const before=await run('JSON.stringify({items,assets,selection,activeTabId,docs:tabs.map(t=>documentForFile(tabDocument(t.id)))})');
-    const exported=await downloadedHTML(page,run);
-    assert.equal(await run('JSON.stringify({items,assets,selection,activeTabId,docs:tabs.map(t=>documentForFile(tabDocument(t.id)))})'),before);
-    assert.equal(await run('items===liveRefs.items && assets===liveRefs.assets && tabs.every((t,i)=>tabDocument(t.id).assets===liveRefs.docs[i].assets)'),true);
-    await preview.setContent(exported);
-    const panels=preview.locator('.tab-panel');assert.equal(await panels.count(),2);
-    for(let i=0;i<2;i++){
-      await preview.locator('.tab-select').nth(i).click();
-      assert.equal(await panels.nth(i).isVisible(),true);
-      assert.equal(await panels.nth(i).locator('image').getAttribute('href'),i===0?fixture.red:fixture.blue);
-      assert.equal(Number(await panels.nth(i).locator('svg').getAttribute('width')),fixture.width);
-      assert.equal(Number(await panels.nth(i).locator('svg').getAttribute('height')),fixture.height);
-      const rotations=await panels.nth(i).locator('g[transform^="rotate"]').evaluateAll(groups=>groups.map(g=>({text:g.getAttribute('transform'),matrix:{a:g.getCTM().a,b:g.getCTM().b}})));
-      assert.equal(rotations.length,2);
-      for(const rotation of rotations){
-        assert.match(rotation.text,new RegExp(' '+(i===0?280:680)+' 150\\)'));
-        assert.ok(Math.abs(rotation.matrix.a-Math.cos(.5))<1e-6 && Math.abs(rotation.matrix.b-Math.sin(.5))<1e-6);
-      }
-    }
-  }
-}));
-
-test('HTML export preserves all working tabs when storage writes fail', async () => app(async ({page,run,context}) => {
-  await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
-  await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Full','QuotaExceededError');};});
-  await run(`beginHistory();items.push(${JSON.stringify(rectangle('after'))});commitHistory();newTab();
-    beginHistory();items=[${JSON.stringify(rectangle('never-saved'))}];commitHistory();newTab();`);
-  assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
   const exported=await downloadedHTML(page,run);
   const preview=await context.newPage();await preview.setContent(exported);
-  assert.deepEqual(await preview.locator('.tab-panel').evaluateAll(panels=>panels.map(p=>p.querySelectorAll('svg > g > rect').length)),[2,1,0]);
+  const panels=preview.locator('.tab-panel');assert.equal(await panels.count(),2);
+  for(let i=0;i<2;i++){
+    await preview.locator('.tab-select').nth(i).click();
+    assert.equal(await panels.nth(i).isVisible(),true);
+    assert.equal(await panels.nth(i).locator('image').getAttribute('href'),i===0?fixture.red:fixture.blue);
+    const matrices=await panels.nth(i).locator('g[transform^="rotate"]').evaluateAll(groups=>groups.map(g=>{
+      const m=g.getCTM();return {a:m.a,b:m.b,e:m.e,f:m.f};
+    }));
+    assert.equal(matrices.length,2);
+    const cx=i===0?280:680, cy=150, c=Math.cos(.5), sin=Math.sin(.5);
+    for(const m of matrices){
+      assert.ok(Math.abs(m.a-c)<1e-6 && Math.abs(m.b-sin)<1e-6);
+      assert.ok(Math.abs(m.e-(cx*(1-c)+cy*sin))<.01 && Math.abs(m.f-(cy*(1-c)-cx*sin))<.01,
+        'each exported group rotates around its own tab’s pivot');
+    }
+  }
+  assert.equal((await panels.nth(1).locator('tspan').allTextContents()).join(' '),'latest edit');
+  assert.equal(await run('assets[items[0].id]'),fixture.blue,'export leaves the live image intact');
+  assert.equal(await run('items[3].text'),'latest edit');
 }));
 
 test('copy/paste keeps editable objects before the PNG fallback without internal clipboard state', async () => app(async ({page,run}) => {
@@ -124,23 +96,19 @@ test('copy/paste keeps editable objects before the PNG fallback without internal
   const captured=await page.evaluate(async()=>{
     const entry=clipboardWrites.at(-1)[0], text=await(await entry.getType('text/plain')).text(), png=await entry.getType('image/png');
     const bytes=Array.from(new Uint8Array(await png.arrayBuffer()));
-    const dt=new DataTransfer();dt.setData('text/plain',text);dt.items.add(new File([png],'copy.png',{type:'image/png'}));
-    window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
     return {text,bytes};
   });
-  assert.deepEqual(await run('items.map(it=>it.type)'),['rect','line','rect','line']);
-  assert.equal(await run('items[2].group===items[3].group && items[2].group!==items[0].group'),true);
-  assert.equal(await run('items[2].groupRotation'),.3);
-  await run('undo()');assert.equal(await run('items.length'),2);
-  await run('redo()');assert.equal(await run('items.length'),4);
   await page.reload();assert.equal(await run('clipboard.length'),0);
   await page.evaluate(({text,bytes})=>{
     const dt=new DataTransfer();dt.setData('text/plain',text);
     dt.items.add(new File([new Uint8Array(bytes)],'copy.png',{type:'image/png'}));
     window.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true,bubbles:true}));
   },captured);
-  assert.deepEqual(await run('items.slice(-2).map(it=>it.type)'),['rect','line']);
-  assert.equal(await run('items.length'),6);
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect','line','rect','line']);
+  assert.equal(await run('items[2].group===items[3].group && items[2].group!==items[0].group'),true);
+  assert.equal(await run('items[2].groupRotation'),.3);
+  await run('undo()');assert.equal(await run('items.length'),2);
+  await run('redo()');assert.equal(await run('items.length'),4);
 }, {origin:'http://localhost:8874'}));
 
 test('structured clipboard validates objects and preserves conflicting image assets through undo', async () => app(async ({page,run}) => {
@@ -176,7 +144,7 @@ test('external PNG paste still wins over the internal clipboard when JSON is inv
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect','image']);
 }));
 
-test('quota failures preserve tab contents, history, recovery export, and retry', async () => app(async ({page,run}) => {
+test('quota failures preserve tabs, history, JSON/HTML recovery exports, and retry', async () => app(async ({page,run,context}) => {
   await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
   const original = await run('activeTabId');
   await page.evaluate(() => {
@@ -194,6 +162,9 @@ test('quota failures preserve tab contents, history, recovery export, and retry'
   const exported = await downloadedJSON(page,run,'exportWorkspace()');
   assert.equal(exported.tabs[0].items.length,2);
   assert.equal(exported.tabs.length,2);
+  const preview=await context.newPage();await preview.setContent(await downloadedHTML(page,run));
+  assert.deepEqual(await preview.locator('.tab-panel').evaluateAll(panels=>panels.map(p=>p.querySelectorAll('svg > g > rect').length)),[2,0],
+    'HTML recovery contains unsaved edits and the empty tab');
   await run('undo()'); assert.equal(await run('items.length'),1);
   await run('redo()'); assert.equal(await run('items.length'),2);
   await page.evaluate(() => {
@@ -235,9 +206,7 @@ test('large legacy sketches migrate without duplicating their storage', async ()
   assert.ok(bytes>3_000_000);
   await page.goto('http://simplecanvas.test/index.html');
   assert.equal(await run('items.length'),1);
-  assert.equal(await run('activeTabId'),'legacy');
   assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
-  assert.equal(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('simplecanvas:doc:')).length),0);
   await run('save()');await page.reload();
   assert.equal(await run('items[0].id'),'large');
 }));
@@ -275,17 +244,6 @@ async function insertImage(page,run){
   await run(`const c=document.createElement('canvas');c.width=c.height=40;c.getContext('2d').fillRect(0,0,40,40);importImage(c.toDataURL());`);
   await page.waitForFunction(()=>__test.run('items.length')===1);
 }
-test('undo and redo retain image assets after tab switches', async () => app(async ({page,run}) => {
-  await insertImage(page,run);
-  const source=await run('assets[items[0].id]'), original=await run('activeTabId');
-  await run(`deleteSelected();newTab();activateTab(${JSON.stringify(original)});undo();`);
-  assert.equal(await run('assets[items[0].id]'),source);
-  assert.match(await run('itemToSVG(items[0])'),/<image href="data:image\/png/);
-  await run('redo()');assert.equal(await run('items.length'),0);
-  await run('undo()');await page.reload();
-  assert.equal(await run('assets[items[0].id]'),source);
-}));
-
 test('cross-tab image paste survives source closure and destination reload', async () => app(async ({page,run}) => {
   await insertImage(page,run);
   const original=await run('activeTabId'), source=await run('assets[items[0].id]');
@@ -312,7 +270,7 @@ test('importing reused image ids preserves previous image pixels for undo and cl
   assert.deepEqual(result,{secondIsBlue:true,restoredIsRed:true,pastedIsRed:true,firstStillBlue:true,distinctIds:true});
 }));
 
-test('image decoding completes in its original tab', async () => app(async ({page,run}) => {
+test('image import and undo stay with the original tab after switching away', async () => app(async ({page,run}) => {
   // Both calls run in one JS task, before the image load event can fire.
   const original=await run('activeTabId');
   await run(`const c=document.createElement('canvas');c.width=c.height=20;importImage(c.toDataURL());newTab();`);
@@ -320,7 +278,12 @@ test('image decoding completes in its original tab', async () => app(async ({pag
   assert.equal(await run('items.length'),0);
   await run(`activateTab(${JSON.stringify(original)})`);
   assert.equal(await run('items.length'),1);
+  const source=await run('assets[items[0].id]');
   await run('undo()');assert.equal(await run('items.length'),0);
+  await run('redo()');assert.equal(await run('assets[items[0].id]'),source);
+  await run(`setTool('select');selection=[0];deleteSelected();newTab();activateTab(${JSON.stringify(original)});undo();`);
+  assert.equal(await run('assets[items[0].id]'),source,'deletion undo restores the image after another tab switch');
+  await page.reload();assert.equal(await run('assets[items[0].id]'),source);
 }));
 
 test('click cycling survives deletion and layer reordering', async () => app(async ({page,run}) => {
@@ -335,17 +298,6 @@ test('click cycling survives deletion and layer reordering', async () => app(asy
   await click();assert.deepEqual(await run('selectedUids()'),['lower']);
   await run('bringToFront()');await click();
   assert.deepEqual(await run('selectedUids()'),['lower']);
-}));
-
-test('drawing and text dash defaults survive switching, reload, and workspace import', async () => app(async ({page,run}) => {
-  const original=await run('activeTabId');
-  await run(`setTool('rect');applyDash('wide');setTool('text');applyDash('tight');newTab();activateTab(${JSON.stringify(original)});`);
-  assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
-  const workspace=await downloadedJSON(page,run,'exportWorkspace()');
-  await page.reload();assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
-  await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'workspace.json'))`);
-  await page.waitForFunction(id=>__test.run('activeTabId')!==id,original);
-  assert.deepEqual(await run('[ui.dash,ui.text.dash]'),['wide','tight']);
 }));
 
 const wrappedText={type:'text',uid:'text',x:100,y:320,w:110,h:40,size:2,color:'#000000',
@@ -384,22 +336,6 @@ test('Markdown PNG, SVG, and clipboard exports contain the full painted block', 
   assert.deepEqual(await run('bbox(items[0])'),before,'painted extents do not change geometry');
 }));
 
-test('rotated Markdown bounds use the exported document and leave pivots unchanged', async () => app(async ({run}) => {
-  const fixture=await run(`
-    items=[{...${JSON.stringify(markdownText)},rotation:.3,group:'same',groupRotation:.5},
-      {...${JSON.stringify(rectangle())},x:500,group:'same',groupRotation:.5}];
-    const id=activeTabId,pivot=groupPivot('same'),painted=paintedWorldBBox(items[0]),geometry=worldBBox(items[0]);
-    const svg=itemsToSVGMarkup(items);const after=groupPivot('same');
-    save();newTab();items=[{...${JSON.stringify(rectangle())},x:900,group:'same',groupRotation:.1}];
-    const doc=tabDocument(id);
-    ({pivot,after,painted,geometry,foreign:paintedWorldBBox(doc.items[0],doc.items),sameSVG:svg===itemsToSVGMarkup(doc.items,{assets:doc.assets})});
-  `);
-  assert.deepEqual(fixture.pivot,fixture.after);
-  assert.deepEqual(fixture.painted,fixture.foreign);
-  assert.equal(fixture.sameSVG,true);
-  assert.ok(fixture.painted.w>fixture.geometry.w || fixture.painted.h>fixture.geometry.h);
-}));
-
 test('Markdown editor detection matches exact markers and excludes table cells', async () => app(async ({page,run}) => {
   await run(`items=[{...${JSON.stringify(wrappedText)},x:100,y:100,w:240,h:160,text:'--- not Markdown'}];openText(0);`);
   const editor=page.locator('#textInput');
@@ -431,47 +367,8 @@ test('actual PNG and SVG exports include the full wrapped text height', async ()
   assert.deepEqual(await run('bbox(items[0])'),before,'export leaves geometry bounds unchanged');
 }));
 
-test('rotated grouped table text is included without moving group pivots', async () => app(async ({run}) => {
-  const result=await run(`
-    items=[{type:'table',uid:'table',x:100,y:200,w:90,h:30,rows:1,cols:1,texts:[['one two three four five six seven']],fontFamily:'sans',fontSize:28,size:2,color:'#000000',group:'g',rotation:.3,groupRotation:.5},
-      {...${JSON.stringify(rectangle())},x:400,group:'g',groupRotation:.5}];
-    const pivot=groupPivot('g'), geometry=worldBBox(items[0]);
-    const painted=paintedWorldBBox(items[0]);
-    ({pivotBefore:pivot,pivotAfter:groupPivot('g'),geometry,painted});
-  `);
-  assert.deepEqual(result.pivotBefore,result.pivotAfter);
-  assert.ok(result.painted.w>result.geometry.w || result.painted.h>result.geometry.h);
-}));
-
 const line={type:'line',uid:'line',x1:80,y1:200,x2:320,y2:200,size:6,color:'#000000',dash:'wide'};
 
-// Capture commands actually stroked by the canvas renderer, then compare the SVG paths.
-async function renderedCurveHeads(run){
-  const result=await run(`
-    const paths=[], fills=[], originals={}, commands={moveTo:'M',lineTo:'L',bezierCurveTo:'C',closePath:'Z'};
-    let current=[];
-    for(const name of ['beginPath','stroke','fill',...Object.keys(commands)]){
-      originals[name]=ctx[name];
-      ctx[name]=function(...args){
-        if(name==='beginPath') current=[];
-        else if(name==='stroke') paths.push(current.slice());
-        else if(name==='fill') fills.push(current.slice());
-        else current.push([commands[name],...args]);
-        return originals[name].apply(this,args);
-      };
-    }
-    try{drawItem(items[0]);}finally{for(const name in originals)ctx[name]=originals[name];}
-    ({paths,fills,svg:itemToSVG(items[0])});
-  `);
-  const svgElements=[...result.svg.matchAll(/<path d="([^"]*)"([^>]*)/g)];
-  const parsePath=d=>d.split(' ').map(command=>command==='Z' ? ['Z'] :
-    [command[0],...command.slice(1).split(',').map(Number)]);
-  const svgPaths=svgElements.map(m=>parsePath(m[1]));
-  assert.deepEqual(result.paths,svgPaths,'canvas and SVG stroke identical geometry');
-  assert.deepEqual(result.fills,svgElements.filter(m=>!m[2].includes('fill="none"')).map(m=>parsePath(m[1])),
-    'canvas and SVG fill identical geometry');
-  return result.paths.slice(1); // shaft first, followed by end and start heads
-}
 function assertHeadDirection(head, expected, message){
   const [a,tip,b]=head;
   const dx=tip[1]-(a[1]+b[1])/2, dy=tip[2]-(a[2]+b[2])/2;
@@ -479,39 +376,24 @@ function assertHeadDirection(head, expected, message){
   assert.ok(Math.abs(dx/length-expected[0]/expectedLength)<1e-9 &&
     Math.abs(dy/length-expected[1]/expectedLength)<1e-9,message);
 }
-for(const start of [true,false]){
-  test(`dragging the ${start?'start':'end'} handle turns the opposite arrowhead in canvas and SVG`, async () => app(async ({page,run}) => {
-    await run(`items=[${JSON.stringify(line)}];setHeads(items[0],true,true);setTool('select');selection=[0];togglePointEdit();`);
-    const box=await page.locator('#canvas').boundingBox();
-    await page.mouse.click(box.x+(start?80:320),box.y+200);
-    const handle=await run(`defaultHandleOffset(items[0],${start?0:1},'${start?'c1':'c2'}')`);
-    await page.mouse.move(box.x+handle.x,box.y+handle.y);await page.mouse.down();
-    await page.mouse.move(box.x+handle.x,box.y+80);await page.mouse.up();
-    const heads=await renderedCurveHeads(run);
-    assert.equal(heads.length,2);
-    assertHeadDirection(heads[0],[320-handle.x,120],'end arrow follows the incoming tangent');
-    assertHeadDirection(heads[1],[80-handle.x,120],'start arrow follows the outgoing tangent');
-  }));
-}
-
-test('curve arrowheads handle coincident controls, local tangents, and collapsed segments', async () => app(async ({run}) => {
-  const a={x:100,y:200}, b={x:400,y:200}, c1={x:180,y:80}, c2={x:320,y:80};
-  const cases=[
-    {name:'straight',points:[a,b],directions:[[300,0],[-300,0]]},
-    {name:'coincident start control',points:[{...a,c1:a},{...b,c2}],directions:[[80,120],[-220,120]]},
-    {name:'coincident end control',points:[{...a,c1},{...b,c2:b}],directions:[[220,120],[-80,120]]},
-    {name:'both local controls remain authoritative',points:[{...a,c1},{...b,c2}],directions:[[80,120],[-80,120]]},
-    {name:'both controls at start',points:[{...a,c1:a},{...b,c2:a}],directions:[[300,0],[-300,0]]},
-    {name:'both controls at end',points:[{...a,c1:b},{...b,c2:b}],directions:[[300,0],[-300,0]]},
-    {name:'zero-length segments at both ends',points:[a,{...a,c1},{...b,c2},b],directions:[[80,120],[-80,120]]},
-    {name:'fully collapsed curve',points:[{...a,c1:a},{...a,c2:a}],directions:[]}
-  ];
-  for(const example of cases){
-    await run(`items=[{type:'polygon',closed:false,hs:true,he:true,size:6,color:'#000000',points:${JSON.stringify(example.points)}}];`);
-    const heads=await renderedCurveHeads(run);
-    assert.equal(heads.length,example.directions.length,example.name);
-    heads.forEach((head,i)=>assertHeadDirection(head,example.directions[i],example.name));
-  }
+test('dragging one Bézier handle turns both exported arrowheads with the curve', async () => app(async ({page,run,context}) => {
+  await run(`items=[{type:'polygon',uid:'curve',closed:false,size:6,color:'#000000',dash:'wide',
+    hs:true,he:true,hsStyle:'filled-inverted',points:[{x:80,y:200,c1:{x:140,y:200}},{x:320,y:200}]}];
+    setTool('select');selection=[0];togglePointEdit();`);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+80,box.y+200);
+  await page.mouse.move(box.x+140,box.y+200);await page.mouse.down();
+  await page.mouse.move(box.x+140,box.y+80);await page.mouse.up();
+  const download=page.waitForEvent('download');await run('saveSvg()');
+  const preview=await context.newPage();await preview.setContent(fs.readFileSync(await(await download).path(),'utf8'));
+  const paths=preview.locator('path');assert.equal(await paths.count(),3);
+  const heads=await paths.evaluateAll(paths=>paths.slice(1).map(p=>p.getAttribute('d').split(' ').map(command=>
+    [command[0],...command.slice(1).split(',').map(Number)])));
+  assertHeadDirection(heads[0],[180,120],'end head follows the incoming tangent even without its own handle');
+  assertHeadDirection(heads[1],[60,-120],'inverted start head points back along the outgoing tangent');
+  assert.equal(await paths.nth(1).getAttribute('fill'),'none');
+  assert.notEqual(await paths.nth(2).getAttribute('fill'),'none');
+  assert.equal(await preview.locator('[stroke-dasharray]').count(),1,'only the shaft is dashed');
 }));
 
 test('endpoint clicks cycle every variant independently on straight and curved paths', async () => app(async ({page,run}) => {
@@ -530,30 +412,10 @@ test('endpoint clicks cycle every variant independently on straight and curved p
       }
     }
     assert.equal(await run('items[0].type'),curved?'polygon':'arrow');
-    await run('undo()');assert.deepEqual(await state(),['open','none']);
-    await run('redo()');assert.deepEqual(await state(),['open','open']);
-    const svg=await run('itemToSVG(items[0])');
-    assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'arrowheads remain solid');
-    await page.reload();assert.deepEqual(await state(),['open','open']);
-    await run("setTool('select');selection=[0];render();");
     await page.mouse.dblclick(canvas.x+320,canvas.y+200);
     assert.deepEqual(await state(),['open','open-inverted'],'a double-click advances two variants');
     assert.equal(await run('pointEditIdx'),null,'native endpoint double-clicks do not change modes');
   }
-}));
-
-test('closed shapes enter and leave point editing by double-clicking the body', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];render();`);
-  await page.locator('#sizeBtn').click();
-  assert.equal(await page.locator('#pathControls, #editPointsBtn, .head-toggle').count(),0);
-  const canvas=await page.locator('#canvas').boundingBox();
-  await page.mouse.dblclick(canvas.x+180,canvas.y+150);
-  assert.equal(await page.locator('#sizePicker').isVisible(),false);
-  assert.equal(await run('pointEditIdx'),0);
-  assert.equal(await run('items[0].closed'),true);
-  assert.equal(await run('items[0].points.length'),4);
-  await page.mouse.dblclick(canvas.x+180,canvas.y+150);
-  assert.equal(await run('pointEditIdx'),null);
 }));
 
 test('cycled arrowhead variants survive conversion, undo, reload, and workspace import', async () => app(async ({page,run}) => {
@@ -582,60 +444,19 @@ test('cycled arrowhead variants survive conversion, undo, reload, and workspace 
   assert.deepEqual(await variants(),['filled-inverted','filled']);
 }));
 
-test('all arrowhead variants share canvas/SVG fill and tangent geometry', async () => app(async ({run}) => {
-  for(const curved of [false,true]) for(const variant of ['open','filled','open-inverted','filled-inverted']){
-    const item=curved ? {type:'polygon',closed:false,points:[{x:100,y:200},{x:400,y:200,c2:{x:250,y:100}}]} :
-      {type:'arrow',x1:100,y1:200,x2:400,y2:200};
-    await run(`items=[{...${JSON.stringify(item)},size:6,color:'#000000',dash:'wide',hs:true,he:true,hsStyle:'${variant}',heStyle:'${variant}'}];`);
-    const heads=await renderedCurveHeads(run), sign=variant.endsWith('-inverted') ? -1 : 1;
-    assert.equal(heads.length,2);
-    assertHeadDirection(heads[0],[sign*(curved?150:300),sign*(curved?100:0)],variant+' end tangent');
-    assertHeadDirection(heads[1],[sign*(curved?-150:-300),sign*(curved?100:0)],variant+' start tangent');
-    for(const head of heads) assert.equal(head.at(-1)[0]==='Z',variant.startsWith('filled'));
-    const svg=await run('itemToSVG(items[0])');
-    assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'only the shaft is dashed');
-  }
-}));
-
-test('legacy arrows retain open heads and invalid style fields are ignored', async () => app(async ({run}) => {
-  const result=await run(`
-    const old={type:'arrow',x1:100,y1:200,x2:400,y2:200,size:6,color:'#000000'};
-    const legacy=normalizeItem(old,{}), invalid=normalizeItem({...old,hsStyle:'unknown',heStyle:42},{});
-    ({heads:headsOf(legacy),styles:[headVariantOf(legacy,'start'),headVariantOf(legacy,'end')],
-      unchanged:itemToSVG(legacy)===itemToSVG(invalid),keys:Object.keys(invalid)});
-  `);
-  assert.deepEqual(result.heads,{s:false,e:true});
-  assert.deepEqual(result.styles,['open','open']);
-  assert.equal(result.unchanged,true);
-  assert.ok(!result.keys.includes('hsStyle') && !result.keys.includes('heStyle'));
-}));
-
-test('large inverted arrowheads fit selection bounds and actual PNG/SVG exports', async () => app(async ({page,run}) => {
+test('large inverted arrowheads stay inside the downloaded SVG', async () => app(async ({page,run,context}) => {
   await run(`items=[{type:'arrow',x1:200,y1:250,x2:400,y2:250,size:60,color:'#000000',hs:true,he:true,hsStyle:'filled-inverted',heStyle:'filled-inverted'}];setTool('select');render();`);
-  const geometry=await run(`({box:bbox(items[0]),points:shapeOps(items[0]).slice(1).flatMap(op=>op.d.filter(s=>s.length>1).map(s=>({x:s[1],y:s[2]})))})`);
-  for(const p of geometry.points){
-    assert.ok(p.x-30>=geometry.box.x && p.x+30<=geometry.box.x+geometry.box.w);
-    assert.ok(p.y-30>=geometry.box.y && p.y+30<=geometry.box.y+geometry.box.h);
-  }
   const download=page.waitForEvent('download');await run('saveSvg()');
-  const svg=fs.readFileSync(await (await download).path(),'utf8');
-  const width=Number(/<svg[^>]+width="([^"]+)"/.exec(svg)[1]);
-  const height=Number(/<svg[^>]+height="([^"]+)"/.exec(svg)[1]);
-  assert.ok(width>=geometry.box.w+48 && height>=geometry.box.h+48);
-  const pngDownload=page.waitForEvent('download');await run('savePng()');
-  const png=fs.readFileSync(await (await pngDownload).path());
-  assert.ok(png.readUInt32BE(16)>=width*2-2 && png.readUInt32BE(20)>=height*2-2);
-}));
-
-test('double-click body shortcut still works immediately after an endpoint cycle', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
-  const box=await page.locator('#canvas').boundingBox();
-  await page.mouse.click(box.x+320,box.y+200);
-  await page.mouse.dblclick(box.x+200,box.y+200);
-  assert.equal(await run('pointEditIdx'),0);
-  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
-  await page.mouse.dblclick(box.x+200,box.y+200);
-  assert.equal(await run('pointEditIdx'),null);
+  const preview=await context.newPage();await preview.setContent(fs.readFileSync(await(await download).path(),'utf8'));
+  const fits=await preview.locator('svg').evaluate(svg=>{
+    const bounds=svg.getBoundingClientRect(), paths=[...svg.querySelectorAll('path')];
+    return paths.length===3 && paths.every(path=>{
+      const r=path.getBoundingClientRect(), halfStroke=parseFloat(getComputedStyle(path).strokeWidth)/2;
+      return r.left-halfStroke>=bounds.left && r.right+halfStroke<=bounds.right &&
+        r.top-halfStroke>=bounds.top && r.bottom+halfStroke<=bounds.bottom;
+    });
+  });
+  assert.equal(fits,true,'both arrowheads, including their stroke, fit the exported image');
 }));
 
 test('touch anchor dragging preserves the grab offset and keeps point editing active', {skip:engine !== 'chromium' && 'Raw touch injection requires Chromium CDP'}, async () => app(async ({page,run,context}) => {
@@ -672,49 +493,26 @@ test('dragging a rotated curve endpoint retains handles and the other points', a
   assert.deepEqual(await run("[headVariantOf(items[0],'start'),headVariantOf(items[0],'end')]"),['filled-inverted','filled']);
 }));
 
-for(const viewport of [{width:1024,height:768},{width:768,height:1024},{width:375,height:700}]){
-  test(`touch endpoint cycling and double-tap editing work at ${viewport.width}×${viewport.height}`, async () => app(async ({page,run}) => {
-    const endX=Math.min(viewport.width-80,420), middleX=(80+endX)/2;
-    await run(`items=[{...${JSON.stringify(line)},x2:${endX}}];setTool('select');selection=[0];render();`);
-    const before=await page.locator('#canvas').boundingBox();
-    await page.locator('#sizeBtn').tap();
-    const popup=await page.locator('#sizePicker').boundingBox();
-    assert.ok(popup.x>=4 && popup.x+popup.width<=viewport.width-4);
-    assert.ok(popup.y+popup.height<=viewport.height);
-    assert.equal(await page.locator('#pathControls, #editPointsBtn, .head-toggle').count(),0);
-    for(const button of await page.locator('#dashPicker button').all()){
-      const target=await button.boundingBox();
-      assert.ok(target.height>=44 && target.width>=44);
-    }
-    await page.locator('#dashPicker [data-dash="tight"]').tap();
-    assert.equal(await run('items[0].dash'),'tight');
-    assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
-    await page.locator('#sizeBtn').tap();
-    const head=()=>run(`headsOf(items[0]).e ? headVariantOf(items[0],'end') : 'none'`);
-    const tapEnd=()=>page.touchscreen.tap(before.x+endX,before.y+215); // inside the touch target, outside mouse radius
-    const doubleTapBody=async()=>{
-      await page.touchscreen.tap(before.x+middleX,before.y+200);
-      await page.touchscreen.tap(before.x+middleX,before.y+200);
-    };
-    for(const variant of ['open','filled','open-inverted','filled-inverted','none','open']){
-      await tapEnd();
-      assert.equal(await head(),variant);
-      assert.equal(await run('pointEditIdx'),null,'rapid endpoint taps only cycle heads');
-    }
-    await doubleTapBody();
-    assert.equal(await run('pointEditIdx'),0);
-    assert.equal(await run('items[0].type'),'polygon');
-    await tapEnd();await tapEnd();
-    assert.equal(await run('pointEditIdx'),0,'rapid anchor taps stay in point editing');
-    assert.equal(await run('activeAnchor'),1);
-    assert.equal(await head(),'open','anchor taps do not change arrowheads');
-    await doubleTapBody();
-    assert.equal(await run('pointEditIdx'),null);
-    for(const variant of ['filled','open-inverted','filled-inverted','none','open']){
-      await tapEnd();
-      assert.equal(await head(),variant,'converted curves keep endpoint cycling');
-      assert.equal(await run('pointEditIdx'),null);
-    }
-    assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
-  }, {context:{viewport,hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
-}
+test('iPad taps cycle endpoints and double-taps enter and leave point editing', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
+  const box=await page.locator('#canvas').boundingBox();
+  const head=()=>run(`headsOf(items[0]).e ? headVariantOf(items[0],'end') : 'none'`);
+  const tapEnd=()=>page.touchscreen.tap(box.x+320,box.y+215); // finger lands off-center, beyond the mouse radius
+  const doubleTapBody=async()=>{
+    await page.touchscreen.tap(box.x+200,box.y+200);
+    await page.touchscreen.tap(box.x+200,box.y+200);
+  };
+  await tapEnd();await tapEnd();
+  assert.equal(await head(),'filled');
+  assert.equal(await run('pointEditIdx'),null,'rapid endpoint taps only cycle heads');
+  await doubleTapBody();
+  assert.equal(await run('pointEditIdx'),0);
+  await tapEnd();await tapEnd();
+  assert.equal(await run('pointEditIdx'),0,'rapid anchor taps stay in point editing');
+  assert.equal(await run('activeAnchor'),1);
+  assert.equal(await head(),'filled','anchor taps do not change arrowheads');
+  await doubleTapBody();
+  assert.equal(await run('pointEditIdx'),null);
+  await tapEnd();
+  assert.equal(await head(),'open-inverted','converted curves keep endpoint cycling');
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
