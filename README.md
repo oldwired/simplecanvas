@@ -10,6 +10,11 @@ Use **Add tab** for independent drawings and **Save workspace…** to download a
 Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
 offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
 
+Select a line or curve and open the **line-style** button (the stroke-width value) to toggle its
+start/end arrowheads or choose **Edit points / Done**. The popover works with mouse or touch and
+does not move the canvas. In normal Select mode, clicking an endpoint also toggles its arrowhead.
+Double-clicking or double-tapping the shape remains a shortcut for point editing.
+
 Developer checks are described in [tests/README.md](tests/README.md).
 
 The shape library is optional. Select canvas objects and choose **Add selection to library…**

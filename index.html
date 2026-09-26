@@ -214,6 +214,15 @@
   /* stroke-width popover: a real vertical slider (rotated horizontal input), continuous 1–60px —
      doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
   .size-picker{min-width:0;padding:12px 10px;flex-direction:column;align-items:center;gap:8px}
+  .size-width-controls{display:flex;flex-direction:column;align-items:center;gap:8px;width:64px}
+  .size-picker.has-path-controls{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:start;gap:12px;width:268px;box-sizing:border-box;max-width:calc(100vw - 24px)}
+  .size-picker[hidden]{display:none}
+  .path-controls{display:flex;flex-direction:column;gap:8px;border-left:1px solid var(--line);padding-left:12px}
+  .path-controls[hidden],.path-controls [hidden]{display:none}
+  .path-controls button{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;justify-content:center;white-space:normal}
+  .path-controls button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
+  .path-controls #editPointsBtn{margin-top:4px}
+  @media(pointer:coarse){.size-picker .dash-btn{min-height:44px}}
   .vslider-wrap{width:42px;height:240px;position:relative}
   .vslider{
     -webkit-appearance:none;appearance:none;
@@ -481,24 +490,31 @@
        a compact dropdown only offered fixed presets) -->
   <div class="group" id="sizeGroup">
     <div class="menu-wrap">
-      <button class="btn" id="sizeBtn" title="Stroke width" aria-haspopup="true" aria-expanded="false" aria-controls="sizePicker">
+      <button class="btn" id="sizeBtn" title="Stroke width and line style" aria-label="Stroke width and line style" aria-haspopup="dialog" aria-expanded="false" aria-controls="sizePicker">
         <span id="sizeBtnLabel">6px</span>
         <svg class="size-btn-line" viewBox="0 0 20 2" preserveAspectRatio="none"><line id="sizeBtnLineEl" x1="0" y1="1" x2="20" y2="1" stroke="currentColor" stroke-width="1.2"/></svg>
       </button>
-      <div class="menu size-picker" id="sizePicker" hidden>
-        <div class="dash-picker" id="dashPicker">
-          <button type="button" class="dash-btn" data-dash="solid" title="Solid">
-            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2"/></svg>
-          </button>
-          <button type="button" class="dash-btn" data-dash="tight" title="Fine dashed">
-            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="4,3"/></svg>
-          </button>
-          <button type="button" class="dash-btn" data-dash="wide" title="Wide dashed">
-            <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="9,6"/></svg>
-          </button>
+      <div class="menu size-picker" id="sizePicker" role="dialog" aria-label="Line style" hidden>
+        <div class="size-width-controls">
+          <div class="dash-picker" id="dashPicker">
+            <button type="button" class="dash-btn" data-dash="solid" title="Solid">
+              <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+            <button type="button" class="dash-btn" data-dash="tight" title="Fine dashed">
+              <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="4,3"/></svg>
+            </button>
+            <button type="button" class="dash-btn" data-dash="wide" title="Wide dashed">
+              <svg viewBox="0 0 40 6"><line x1="1" y1="3" x2="39" y2="3" stroke="currentColor" stroke-width="2" stroke-dasharray="9,6"/></svg>
+            </button>
+          </div>
+          <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical" aria-label="Stroke width"></div>
+          <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
         </div>
-        <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical"></div>
-        <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
+        <div class="path-controls" id="pathControls" hidden>
+          <button type="button" id="startHeadBtn" aria-pressed="false">Start arrowhead</button>
+          <button type="button" id="endHeadBtn" aria-pressed="false">End arrowhead</button>
+          <button type="button" id="editPointsBtn">Edit points</button>
+        </div>
       </div>
     </div>
   </div>
@@ -633,6 +649,10 @@
   const sizeRangeLabel = document.getElementById('sizeRangeLabel');
   const dashPicker = document.getElementById('dashPicker');
   const sizeBtnLineEl = document.getElementById('sizeBtnLineEl');
+  const pathControls = document.getElementById('pathControls');
+  const startHeadBtn = document.getElementById('startHeadBtn');
+  const endHeadBtn = document.getElementById('endHeadBtn');
+  const editPointsBtn = document.getElementById('editPointsBtn');
   const fontFamilySel = document.getElementById('fontFamily');
   const fontSizeSel = document.getElementById('fontSize');
   const sizeGroup = document.getElementById('sizeGroup');
@@ -719,6 +739,7 @@
   let pointEditIdx = null;      // index into items[] currently in Point-Edit mode; null = not in this mode
   let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
   let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
+  let handledPointerUp = false; // a handle gesture must not also become a double-tap tool change
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
@@ -1011,12 +1032,20 @@
 
   // ---------- drawing primitives ----------
   function strokeWidthOf(it){ return it.mode === 'brush' ? it.size*1.6 : it.size; }
-  // Arrowheads live on lines and arrows alike: a 'line' has none, an 'arrow' has one at its end
-  // unless told otherwise (he:false), and optionally one at its start (hs:true). Toggling heads
-  // flips the type so old files and every existing `case 'arrow'` keep working.
-  function headsOf(it){ return { s: it.type==='arrow' && !!it.hs, e: it.type==='arrow' && it.he!==false }; }
+  // A 'line' has no heads; an 'arrow' has an end head unless he:false, and may have hs:true.
+  // Open curves store both heads explicitly. Only straight paths flip their line/arrow type.
+  function isOpenPath(it){ return !!it && (it.type==='line' || it.type==='arrow' || (it.type==='polygon' && it.closed===false)); }
+  function headsOf(it){
+    if(it.type==='polygon') return {s:it.closed===false && !!it.hs, e:it.closed===false && !!it.he};
+    return { s: it.type==='arrow' && !!it.hs, e: it.type==='arrow' && it.he!==false };
+  }
   function setHeads(it, s, e){
     delete it.hs; delete it.he;
+    if(it.type==='polygon'){
+      if(s) it.hs = true;
+      if(e) it.he = true;
+      return;   // changing tips must never replace a curve's points with a straight-line type
+    }
     if(!s && !e){ it.type='line'; return; }
     it.type='arrow';
     if(s) it.hs = true;
@@ -1564,13 +1593,16 @@
     }
     return best;
   }
-  // a lone, ungrouped line/arrow gets endpoint handles instead of corner handles
-  function loneLineIdx(sel){
+  // Endpoint knobs also work on an open curve outside point editing.
+  function loneOpenPathIdx(sel){
     if(!sel || sel.length!==1) return null;
     const it = items[sel[0]];
-    return it && it.group==null && (it.type==='line' || it.type==='arrow') ? sel[0] : null;
+    return it && it.group==null && pointEditIdx!==sel[0] && isOpenPath(it) ? sel[0] : null;
   }
-  function lineEnds(it){ return [toWorld(it,it.x1,it.y1), toWorld(it,it.x2,it.y2)]; }
+  function pathEnds(it){
+    if(it.type==='polygon') return [it.points[0],it.points[it.points.length-1]].map(p=>toWorld(it,p.x,p.y));
+    return [toWorld(it,it.x1,it.y1), toWorld(it,it.x2,it.y2)];
+  }
   // 45° constraint of (x,y) around a fixed point, keeping the cursor's distance
   function constrainAngle(fx,fy,x,y){
     const dx=x-fx, dy=y-fy, dist=Math.hypot(dx,dy);
@@ -1855,6 +1887,23 @@
     }
     delete it.rotation;
   }
+  function pointEditableIdx(){
+    if(ui.tool!=='select' || selection.length!==1) return null;
+    const idx=selection[0], it=items[idx];
+    return it && it.group==null && CONVERTIBLE_TYPES.has(it.type) ? idx : null;
+  }
+  function togglePointEdit(){
+    const idx=pointEditableIdx();
+    if(idx==null) return;
+    if(pointEditIdx===idx){ pointEditIdx=null; activeAnchor=null; }
+    else {
+      if(items[idx].type!=='polygon'){ beginHistory(); convertToCurve(idx); commitHistory(); }
+      pointEditIdx=idx; activeAnchor=null;
+    }
+    lastTap=null; clickCycle=null;
+    setSizePicker(false);
+    render();
+  }
 
   // ---------- eraser: rubs out freehand strokes, deletes shapes/text/images it touches ----------
   function eraserR(){ return Math.max(6, ui.size); }
@@ -2033,14 +2082,14 @@
           ctx.restore();
         }
       }
-      // endpoint handles — round knobs on both ends of a lone line/arrow
-      const li = loneLineIdx(selection);
+      // endpoint handles — round knobs on both ends of a lone open path
+      const li = loneOpenPathIdx(selection);
       if(li!=null){
         ctx.setLineDash([]);
         // filled knob = arrowhead at that end; a plain click on a knob toggles it
         ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
         const h = headsOf(items[li]);
-        lineEnds(items[li]).forEach((p,k)=>{
+        pathEnds(items[li]).forEach((p,k)=>{
           ctx.fillStyle = (k===0 ? h.s : h.e) ? '#6366f1' : '#fff';
           ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
         });
@@ -2125,6 +2174,7 @@
 
   function onDown(e){
     if(e.button!==undefined && e.button!==0) return;
+    handledPointerUp = false;
     if(textInput.style.display==='block'){ commitText(); }
     const {x,y} = pos(e);
     try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // a pointer that is already gone (or synthetic) has no capture
@@ -2145,36 +2195,33 @@
           }
         }
       }
-      // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
-      // any anchor square (clicking one makes it active AND starts dragging it)
+      // Choose the closest point/handle within the hit radius. Larger touch targets must not let
+      // a nearby handle steal a tap that landed directly on an anchor.
       if(pointEditIdx!=null && selection.length===1 && selection[0]===pointEditIdx){
         const pit = items[pointEditIdx];
+        const candidates=[];
         if(activeAnchor!=null && pit.points[activeAnchor]){
           const p = pit.points[activeAnchor];
           for(const hk of ['c1','c2']){
             const target = p[hk] || defaultHandleOffset(pit, activeAnchor, hk);
             if(!target) continue;
             const w = toWorld(pit, target.x, target.y);
-            if(Math.hypot(x-w.x, y-w.y) <= HANDLE_SUB){
-              beginHistory();
-              bakeItemRotation(pit);   // so dragging this handle can't chase a rotation pivot that moves with it
-              editingAnchor = { idx:pointEditIdx, pointIndex:activeAnchor, handle:hk, sx:x, sy:y, moved:false };
-              return;
-            }
+            candidates.push({pointIndex:activeAnchor,handle:hk,w,radius:HANDLE_SUB,d:Math.hypot(x-w.x,y-w.y)});
           }
         }
         for(let pi=0; pi<pit.points.length; pi++){
           const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
-          if(Math.hypot(x-w.x, y-w.y) <= HANDLE){
-            activeAnchor = pi;
-            beginHistory();
-            bakeItemRotation(pit);   // so dragging this anchor can't chase a rotation pivot that moves with it
-            const p0 = pit.points[pi];
-            editingAnchor = { idx:pointEditIdx, pointIndex:pi, handle:'anchor', sx:x, sy:y, moved:false,
-                               startX:p0.x, startY:p0.y, appliedDx:0, appliedDy:0, axisLock:null };
-            render();
-            return;
-          }
+          candidates.push({pointIndex:pi,handle:'anchor',w,radius:HANDLE,d:Math.hypot(x-w.x,y-w.y)});
+        }
+        const target=candidates.filter(c=>c.d<=(e.pointerType==='mouse' ? c.radius : 22)).sort((a,b)=>a.d-b.d)[0];
+        if(target){
+          activeAnchor=target.pointIndex;
+          beginHistory();
+          bakeItemRotation(pit);
+          editingAnchor = {idx:pointEditIdx,pointIndex:target.pointIndex,handle:target.handle,sx:x,sy:y,moved:false,
+            grabX:x-target.w.x,grabY:y-target.w.y,startX:x,startY:y,appliedDx:0,appliedDy:0,axisLock:null};
+          render();
+          return;
         }
         // Missed every handle — in Point-Edit mode a press must only ever move a handle, never the
         // whole curve (handles are small and easy to miss, especially by touch; falling through to a
@@ -2186,18 +2233,18 @@
         const missHit = hitTest(x,y);
         if(missHit===pointEditIdx) return;
       }
-      // endpoint handles of a lone line/arrow — drag one end, the other stays put
-      const li = loneLineIdx(selection);
+      // endpoint handles of a lone open path — drag one end, the other stays put
+      const li = loneOpenPathIdx(selection);
       if(li!=null){
-        const it = items[li], ends = lineEnds(it);
-        for(let k=0;k<2;k++){
-          if(Math.hypot(x-ends[k].x, y-ends[k].y) <= HANDLE){
-            beginHistory();
-            // bake any rotation into the stored coordinates so the endpoint can be moved in world space
-            it.x1=norm(ends[0].x); it.y1=norm(ends[0].y); it.x2=norm(ends[1].x); it.y2=norm(ends[1].y); delete it.rotation;
-            endDrag = { idx:li, end:k+1, sx:x, sy:y, moved:false };   // a click without a drag toggles the head instead
-            return;
-          }
+        const it = items[li], ends = pathEnds(it);
+        const k = Math.hypot(x-ends[0].x,y-ends[0].y)<=Math.hypot(x-ends[1].x,y-ends[1].y) ? 0 : 1;
+        if(Math.hypot(x-ends[k].x, y-ends[k].y) <= (e.pointerType==='mouse' ? HANDLE : 22)){
+          beginHistory();
+          // bake any rotation into the stored coordinates so the endpoint can be moved in world space
+          if(it.type==='polygon') bakeItemRotation(it);
+          else { it.x1=norm(ends[0].x); it.y1=norm(ends[0].y); it.x2=norm(ends[1].x); it.y2=norm(ends[1].y); delete it.rotation; }
+          endDrag = { idx:li, end:k+1, sx:x, sy:y, grabX:x-ends[k].x, grabY:y-ends[k].y, moved:false };
+          return;
         }
       }
       // resize handles — 4 corners of the lone item's box, or of the whole group's box
@@ -2364,7 +2411,7 @@
         if(pt.c2){ pt.c2.x=norm(pt.c2.x+stepDx); pt.c2.y=norm(pt.c2.y+stepDy); }
         editingAnchor.appliedDx = targetDx; editingAnchor.appliedDy = targetDy;
       } else {
-        const lp = toLocal(it, x, y);
+        const lp = toLocal(it, x-editingAnchor.grabX, y-editingAnchor.grabY);
         pt[editingAnchor.handle] = { x:norm(lp.x), y:norm(lp.y) };
       }
       editingAnchor.sx=x; editingAnchor.sy=y;
@@ -2376,12 +2423,20 @@
     if(endDrag){
       if(!endDrag.moved && Math.hypot(x-endDrag.sx, y-endDrag.sy) < 3) return;   // still a click, not a drag
       const it = items[endDrag.idx];
-      const fx = endDrag.end===1 ? it.x2 : it.x1, fy = endDrag.end===1 ? it.y2 : it.y1;   // the fixed end
-      let nx=x, ny=y;
+      const curved = it.type==='polygon';
+      const moving = curved ? it.points[endDrag.end===1 ? 0 : it.points.length-1] : null;
+      const fixed = curved ? it.points[endDrag.end===1 ? it.points.length-1 : 0] : null;
+      const fx = curved ? fixed.x : endDrag.end===1 ? it.x2 : it.x1;
+      const fy = curved ? fixed.y : endDrag.end===1 ? it.y2 : it.y1;
+      let nx=x-endDrag.grabX, ny=y-endDrag.grabY;
       snapCursorPt = {x,y};
-      if(e.shiftKey){ ({x:nx,y:ny} = constrainAngle(fx,fy,x,y)); snapPt = null; }
-      else { snapPt = e.altKey ? null : nearestSnap(x,y,endDrag.idx); if(snapPt){ nx=snapPt.x; ny=snapPt.y; } }
-      if(endDrag.end===1){ it.x1=norm(nx); it.y1=norm(ny); } else { it.x2=norm(nx); it.y2=norm(ny); }
+      if(e.shiftKey){ ({x:nx,y:ny} = constrainAngle(fx,fy,nx,ny)); snapPt = null; }
+      else { snapPt = e.altKey ? null : nearestSnap(nx,ny,endDrag.idx); if(snapPt){ nx=snapPt.x; ny=snapPt.y; } }
+      if(curved){
+        const dx=nx-moving.x, dy=ny-moving.y;
+        moving.x=norm(nx); moving.y=norm(ny);
+        for(const key of ['c1','c2']) if(moving[key]){ moving[key].x=norm(moving[key].x+dx); moving[key].y=norm(moving[key].y+dy); }
+      } else if(endDrag.end===1){ it.x1=norm(nx); it.y1=norm(ny); } else { it.x2=norm(nx); it.y2=norm(ny); }
       endDrag.moved = true;
       render();
       return;
@@ -2549,6 +2604,7 @@
       return;
     }
     if(endDrag){
+      handledPointerUp = true;
       if(!endDrag.moved){
         // plain click on an endpoint knob: toggle the arrowhead at that end
         const it = items[endDrag.idx], h = headsOf(it);
@@ -2560,6 +2616,7 @@
       return;
     }
     if(editingAnchor){
+      handledPointerUp = true;
       if(editingAnchor.moved) commitHistory(); else historyBefore=null;
       editingAnchor=null;
       render();
@@ -3329,7 +3386,7 @@
     if(ui.tool==='select'){
       // the icon buttons double as the recolor/resize tool for whatever is selected
       const sel = colorableSelection();
-      const fillable = sel.filter(it=>FILLABLE(it.type));
+      const fillable = sel.filter(it=>FILLABLE(it.type) && !(it.type==='polygon' && it.closed===false));
       const setDisp = (el,on)=>{ const d = on ? '' : 'none'; if(el.style.display !== d) el.style.display = d; };
       setDisp(colorGroup, sel.length>0); setDisp(colorSep, sel.length>0);
       setDisp(fillGroup, fillable.length>0);
@@ -3348,6 +3405,7 @@
         refreshColorUI();
       }
     }
+    updatePathControls();
     if(!active) return;
     toDupBtn.disabled = toFrontBtn.disabled = toBackBtn.disabled = delSelBtn.disabled = false;
     groupBtn.disabled = selection.length<2;
@@ -4232,15 +4290,57 @@
     refreshColorUI();
   }
 
+  function updatePathControls(){
+    const idx=pointEditableIdx(), it=idx==null ? null : items[idx];
+    pathControls.hidden = !it;
+    sizePicker.classList.toggle('has-path-controls',!!it);
+    const openPath=isOpenPath(it);
+    startHeadBtn.hidden=endHeadBtn.hidden=!openPath;
+    const h=openPath ? headsOf(it) : {s:false,e:false};
+    startHeadBtn.setAttribute('aria-pressed',String(h.s));
+    endHeadBtn.setAttribute('aria-pressed',String(h.e));
+    const editing=idx!=null && pointEditIdx===idx;
+    editPointsBtn.textContent=editing ? 'Done' : 'Edit points';
+    sizeBtn.classList.toggle('active',editing);
+    sizeBtn.title=editing ? 'Line style — editing points' : it ? 'Line style and point editing' : 'Stroke width and line style';
+    sizeBtn.setAttribute('aria-label',sizeBtn.title);
+    if(!sizePicker.hidden) fitSizePicker();
+  }
+  function fitSizePicker(){
+    fitMenu(sizePicker);
+    const r=sizePicker.getBoundingClientRect();
+    if(r.left<12){
+      sizePicker.style.right='auto';
+      sizePicker.style.left=(12-sizePicker.parentElement.getBoundingClientRect().left)+'px';
+    }
+    sizePicker.style.maxHeight=Math.max(100,window.innerHeight-r.top-12)+'px';
+    sizePicker.style.overflowY='auto';
+  }
+  function toggleSelectedHead(end){
+    const idx=pointEditableIdx();
+    if(idx==null || !isOpenPath(items[idx])) return;
+    const it=items[idx], h=headsOf(it);
+    beginHistory();
+    setHeads(it,end==='start' ? !h.s : h.s,end==='end' ? !h.e : h.e);
+    commitHistory(); render();
+  }
+  startHeadBtn.addEventListener('click',()=>toggleSelectedHead('start'));
+  endHeadBtn.addEventListener('click',()=>toggleSelectedHead('end'));
+  editPointsBtn.addEventListener('click',()=>{togglePointEdit();sizeBtn.focus({preventScroll:true});});
+  sizePicker.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){setSizePicker(false);sizeBtn.focus({preventScroll:true});}
+    if(!e.metaKey && !e.ctrlKey) e.stopPropagation();
+  });
+  window.addEventListener('resize',()=>{if(!sizePicker.hidden)fitSizePicker();});
   function setSizePicker(open){
     sizePicker.hidden = !open;
-    if(open) fitMenu(sizePicker);
+    if(open) updatePathControls();
     sizeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ setStrokePicker(false); setFillPicker(false); setTablePicker(false); setShapePicker(false); }
+    if(open){ setStrokePicker(false); setFillPicker(false); setTextColorPicker(false); setTablePicker(false); setShapePicker(false); setMenu(false); }
   }
   sizeBtn.addEventListener('click', e=>{ e.stopPropagation(); setSizePicker(sizePicker.hidden); });
   document.addEventListener('click', e=>{
-    if(!sizePicker.hidden && !sizePicker.contains(e.target) && e.target!==sizeBtn) setSizePicker(false);
+    if(!sizePicker.hidden && !sizePicker.contains(e.target) && !sizeBtn.contains(e.target)) setSizePicker(false);
   });
   // reflects a size even when nothing is selected yet, and after a corner-resize picks an odd value
   function setSizeVal(px){
@@ -4483,6 +4583,7 @@
   function onTapUp(e){   // registered after onUp, so the second tap's own vertex/selection has landed first
     if(e.pointerType==='mouse') return;
     const now = performance.now();
+    if(handledPointerUp){lastTap=null;return;}
     if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
       lastTap = null;
       onDoubleClick(e);
@@ -4510,6 +4611,7 @@
   canvas.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   function onDoubleClick(e){
+    if(handledPointerUp) return;
     if(performance.now() - polygonClosedByClickAt < 500){
       // the click/tap that started this gesture already closed the polygon by itself (it landed on
       // the snapped start point — see polygonVertex) and switched to the select tool; without this,
@@ -4575,16 +4677,9 @@
       if(cell) openText(hit, null, null, cell);
       return;
     }
-    if(pointEditIdx!=null && hit===pointEditIdx){   // re-double-click on the item being edited: exit
-      pointEditIdx = null; activeAnchor = null; render(); return;
-    }
     if(hit>=0 && selection.length===1 && hit===selection[0] &&
        items[hit].group==null && CONVERTIBLE_TYPES.has(items[hit].type)){
-      beginHistory();
-      convertToCurve(hit);
-      commitHistory();
-      pointEditIdx = hit; activeAnchor = null;
-      render();
+      togglePointEdit();
       return;
     }
     if(selection.length){

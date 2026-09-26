@@ -2,7 +2,9 @@ const {test, before, after} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require('playwright');
+const {chromium, webkit} = require('playwright');
+const engine = process.env.BROWSER_ENGINE || 'chromium';
+assert.ok(['chromium','webkit'].includes(engine), 'BROWSER_ENGINE must be chromium or webkit');
 
 // Exercise the real single-file app. Expose its closure in the served test copy only;
 // geometry, persistence, event handlers, and rendering all remain production code.
@@ -10,7 +12,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')
   .replace('\n})();', '\nwindow.__test = {run: source => eval(source)};\n})();');
 let browser;
 before(async () => {
-  browser = await chromium.launch({headless:true,
+  browser = await ({chromium,webkit}[engine]).launch({headless:true,
     ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})});
 });
 after(async () => { if(browser) await browser.close(); });
@@ -244,3 +246,118 @@ test('rotated grouped table text is included without moving group pivots', async
   assert.deepEqual(result.pivotBefore,result.pivotAfter);
   assert.ok(result.painted.w>result.geometry.w || result.painted.h>result.geometry.h);
 }));
+
+const line={type:'line',uid:'line',x1:80,y1:200,x2:320,y2:200,size:6,color:'#000000',dash:'wide'};
+test('popover edits arrowheads before and after curve conversion without moving the canvas', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.locator('#sizeBtn').click();
+  assert.equal(await page.locator('#pathControls').isVisible(),true);
+  await page.locator('#endHeadBtn').click();
+  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+  await page.locator('#editPointsBtn').click();
+  assert.equal(await page.locator('#sizePicker').isVisible(),false);
+  assert.equal(await run('pointEditIdx'),0);
+  assert.equal(await run('items[0].type'),'polygon');
+  assert.deepEqual(await page.locator('#canvas').boundingBox(),canvas);
+  await page.mouse.click(canvas.x+320,canvas.y+200);
+  assert.equal(await run('activeAnchor'),1);
+  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+  await page.locator('#sizeBtn').click();
+  assert.equal(await page.locator('#editPointsBtn').textContent(),'Done');
+  await page.locator('#endHeadBtn').click();await page.locator('#startHeadBtn').click();
+  assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:false});
+  assert.equal(await run('pointEditIdx'),0);
+  await page.locator('#editPointsBtn').click();
+  assert.equal(await run('pointEditIdx'),null);
+  await page.mouse.click(canvas.x+320,canvas.y+200);
+  assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:true});
+  assert.equal(await run('items[0].type'),'polygon');
+  await run('undo()');assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:false});
+  await run('redo()');
+  const svg=await run('itemToSVG(items[0])');
+  assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'arrowheads remain solid');
+  await page.reload();assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:true});
+}));
+
+test('closed shapes offer point editing without arrowhead controls', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];render();`);
+  await page.locator('#sizeBtn').click();
+  assert.equal(await page.locator('#startHeadBtn').isVisible(),false);
+  assert.equal(await page.locator('#editPointsBtn').isVisible(),true);
+  await page.locator('#editPointsBtn').click();
+  assert.equal(await run('items[0].closed'),true);
+  assert.equal(await run('items[0].points.length'),4);
+}));
+
+test('double-click body shortcut still works immediately after an endpoint toggle', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+320,box.y+200);
+  await page.mouse.dblclick(box.x+200,box.y+200);
+  assert.equal(await run('pointEditIdx'),0);
+  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+  await page.mouse.dblclick(box.x+200,box.y+200);
+  assert.equal(await run('pointEditIdx'),null);
+}));
+
+test('touch anchor dragging preserves the grab offset and keeps point editing active', {skip:engine !== 'chromium' && 'Raw touch injection requires Chromium CDP'}, async () => app(async ({page,run,context}) => {
+  await run(`items=[{type:'polygon',closed:false,uid:'curve',size:6,color:'#000000',points:[{x:100,y:200,c1:{x:140,y:160}},{x:350,y:200}]}];setTool('select');selection=[0];togglePointEdit();`);
+  const box=await page.locator('#canvas').boundingBox();
+  const session=await context.newCDPSession(page);
+  await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+100,y:box.y+215}]});
+  await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+120,y:box.y+240}]});
+  await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.deepEqual(await run('items[0].points[0]'),{x:120,y:225,c1:{x:160,y:185}});
+  assert.equal(await run('pointEditIdx'),0);
+  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
+  await session.detach();
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+
+test('dragging a rotated curve endpoint retains handles and the other points', async () => app(async ({page,run}) => {
+  await run(`items=[{type:'polygon',uid:'curve',closed:false,color:'#000000',size:6,rotation:.3,
+    points:[{x:100,y:150,c1:{x:150,y:70}},{x:250,y:190},{x:400,y:150,c2:{x:350,y:230}}]}];setTool('select');selection=[0];render();`);
+  const before=await run('items[0].points.map(p=>({anchor:toWorld(items[0],p.x,p.y),handle:p.c2&&toWorld(items[0],p.c2.x,p.c2.y)}))');
+  const canvas=await page.locator('#canvas').boundingBox(), end=before[2].anchor;
+  await page.mouse.move(canvas.x+end.x+4,canvas.y+end.y+2);await page.mouse.down();
+  await page.mouse.move(canvas.x+end.x+24,canvas.y+end.y+17);await page.mouse.up();
+  const after=await run('items[0].points');
+  for(let i=0;i<2;i++){
+    assert.ok(Math.abs(after[i].x-before[i].anchor.x)<.02);
+    assert.ok(Math.abs(after[i].y-before[i].anchor.y)<.02);
+  }
+  assert.ok(Math.abs(after[2].x-before[2].anchor.x-20)<.02);
+  assert.ok(Math.abs(after[2].y-before[2].anchor.y-15)<.02);
+  assert.ok(Math.abs(after[2].c2.x-before[2].handle.x-20)<.02);
+  assert.ok(Math.abs(after[2].c2.y-before[2].handle.y-15)<.02);
+  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
+}));
+
+for(const viewport of [{width:1024,height:768},{width:768,height:1024},{width:375,height:700}]){
+  test(`touch popover fits ${viewport.width}×${viewport.height} and keeps canvas stationary`, async () => app(async ({page,run}) => {
+    const endX=Math.min(viewport.width-80,420);
+    await run(`items=[{...${JSON.stringify(line)},x2:${endX}}];setTool('select');selection=[0];render();`);
+    const before=await page.locator('#canvas').boundingBox();
+    await page.locator('#sizeBtn').tap();
+    const popup=await page.locator('#sizePicker').boundingBox();
+    assert.ok(popup.x>=4 && popup.x+popup.width<=viewport.width-4);
+    assert.ok(popup.y+popup.height<=viewport.height);
+    for(const id of ['startHeadBtn','endHeadBtn','editPointsBtn']){
+      assert.ok((await page.locator('#'+id).boundingBox()).height>=44);
+    }
+    await page.locator('#endHeadBtn').tap();await page.locator('#editPointsBtn').tap();
+    assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
+    await page.touchscreen.tap(before.x+endX,before.y+200);
+    await page.touchscreen.tap(before.x+endX,before.y+200);
+    assert.equal(await run('pointEditIdx'),0,'rapid anchor taps stay in point editing');
+    assert.equal(await run('activeAnchor'),1);
+    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+    await page.locator('#sizeBtn').tap();await page.locator('#endHeadBtn').tap();
+    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
+    await page.locator('#editPointsBtn').tap();
+    await page.touchscreen.tap(before.x+endX,before.y+200);
+    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+    assert.equal(await run('pointEditIdx'),null);
+    assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
+  }, {context:{viewport,hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
+}
