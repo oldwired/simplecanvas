@@ -1225,6 +1225,16 @@
   const MD_LINK_COLOR = '#6366f1';   // same literal hex as CSS --accent -- SVG export is a standalone
                                       // document with no access to the stylesheet, so this must be
                                       // duplicated; if --accent is ever re-themed, update this too
+  // A markdown link's URL is arbitrary user/loaded text -- most people just type "example.com" with
+  // no scheme at all (very common, and should still become a real clickable link, same as a browser's
+  // own address bar treats it), so a bare domain is treated as implicitly https. An EXPLICIT scheme
+  // that isn't http(s)/mailto (javascript:, data:, ...) is rejected outright rather than guessed at.
+  // Returns a safe href, or null if the link should render as plain unlinked text.
+  function safeHref(url){
+    if(/^(https?:|mailto:)/i.test(url)) return url;
+    if(!/^[a-z][a-z0-9+.-]*:/i.test(url)) return 'https://' + url;
+    return null;
+  }
   function mdBlockFontPx(block, baseFontPx){ return Math.round(baseFontPx * (MD_HEADING_SCALE[block.type] || 1)); }
   // Matches fontStr()'s own convention (hardcoded 600 for every other text item in this app) -- 400
   // would look visibly thinner than everything else, including a non-bold word next to a bold one.
@@ -3767,7 +3777,19 @@
         const tspans = entries.filter(w=>!w.hr).map(w => {
           const attrs = `font-weight="${w.bold?700:600}" font-style="${w.italic?'italic':'normal'}" font-size="${w.fontPx}px"`
             + (w.link ? ` fill="${MD_LINK_COLOR}" text-decoration="underline"` : '');
-          return `<tspan x="${w.x}" y="${w.y}" ${attrs}>${escXml(w.text)}</tspan>`;
+          const tspan = `<tspan x="${w.x}" y="${w.y}" ${attrs}>${escXml(w.text)}</tspan>`;
+          // SVG natively supports <a href>, so an exported/copied file gets a real clickable link with
+          // zero extra plumbing -- unlike the live canvas, which has no hit-testing for a sub-region of
+          // an item at all. xlink:href alongside href: some browsers' SVG anchor click-navigation only
+          // looks at the older, namespaced xlink:href when the SVG is embedded inline in an HTML
+          // document (as opposed to loaded as a standalone .svg file) -- href alone parses fine and the
+          // tspan's own presentation attributes (fill/underline) render correctly either way, but the
+          // link can silently fail to navigate without this. See MDN's SVG <a> reference, which calls
+          // xlink:href out explicitly as needed "for backwards compatibility."
+          const href = w.link ? safeHref(w.link) : null;
+          return href
+            ? `<a href="${escXml(href)}" xlink:href="${escXml(href)}" target="_blank" rel="noopener">${tspan}</a>`
+            : tspan;
         }).join('');
         return lines + `<text fill="${escXml(op.color)}" font-family="${escXml(FONTS[op.fontFamily]||FONTS.sans)}">${tspans}</text>`;
       }
@@ -3816,7 +3838,7 @@
     let body = '';
     for(const it of itemList) body += itemToSVG(it);
     const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
       + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
   }
   // Renders a list of items to an offscreen PNG canvas, as a Promise<Blob> -- reuses drawItem()
@@ -3861,12 +3883,61 @@
     URL.revokeObjectURL(url);
     toast('Saved SVG');
   }
+  // Exports the WHOLE workspace, not just the active tab -- every tab, each as its own full-canvas
+  // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
+  // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
+  // Only the active tab's items/assets live in memory (see enterTab()/flushActiveTab()); every other
+  // tab's data sits in localStorage under docKey(t.id) -- same gather-all-tabs shape exportWorkspace()
+  // already uses. cssW/cssH are a single shared viewport size, not per-tab, so one size fits every tab.
   function exportHtml(){
-    if(!items.length){ toast('Nothing to export yet'); return; }
-    // Full canvas dimensions, not the tight auto-crop saveSvg() uses -- an HTML export is meant to
-    // reproduce the live canvas 1:1, empty space and all, not just "the objects" as a standalone asset.
-    const svg = itemsToSVGMarkup(items, {width: cssW, height: cssH});
-    const html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${svg}</body></html>`;
+    save();   // flush the active tab's current in-memory state, same as exportWorkspace()
+    const savedAssets = Object.assign({}, assets);
+    const tabData = tabs.map(t=>{
+      let tItems, tAssets;
+      if(t.id === activeTabId){ tItems = items; tAssets = assets; }
+      else {
+        let raw = null;
+        try{ raw = JSON.parse(localStorage.getItem(docKey(t.id))); }catch(e){}
+        tItems = (raw && raw.items) || []; tAssets = (raw && raw.assets) || {};
+      }
+      // opToSVG's 'image' case reads the module-level `assets` global directly, not a parameter --
+      // must swap it in before generating a NON-active tab's SVG, exactly like enterTab() already does
+      // when switching tabs, or that tab's images would silently fail to embed.
+      for(const k in assets) delete assets[k];
+      Object.assign(assets, tAssets);
+      const svg = itemsToSVGMarkup(tItems, {width: cssW, height: cssH});
+      return { id: t.id, name: t.name, items: tItems, svg };
+    });
+    for(const k in assets) delete assets[k];
+    Object.assign(assets, savedAssets);   // restore exactly what was live before, untouched by the export
+
+    if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
+
+    let html;
+    if(tabData.length < 2){
+      // Unchanged from before this feature -- a single plain SVG, no tab bar, no extra markup.
+      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${tabData[0].svg}</body></html>`;
+    } else {
+      const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+      .tabbar{display:flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border-bottom:1px solid #e5e7eb;overflow-x:auto}
+      .tab-select{appearance:none;border:1px solid transparent;background:transparent;height:28px;padding:0 10px;border-radius:6px;font-size:14px;font-weight:550;color:#1f2937;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+      .tab-select:hover{background:#f3f4f6}
+      .tab-select.active{background:#eef2ff;color:#6366f1}`;
+      const bar = `<div class="tabbar">${tabData.map((t,i)=>
+        `<button type="button" class="tab-select${i===0?' active':''}" data-tab-id="${escXml(t.id)}">${escXml(t.name)}</button>`
+      ).join('')}</div>`;
+      const panels = tabData.map((t,i)=>
+        `<div class="tab-panel" data-tab-id="${escXml(t.id)}"${i===0?'':' style="display:none"'}>${t.svg}</div>`
+      ).join('');
+      const script = `document.querySelectorAll('.tab-select').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var id = btn.dataset.tabId;
+          document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display = (p.dataset.tabId===id ? '' : 'none'); });
+          document.querySelectorAll('.tab-select').forEach(function(b){ b.classList.toggle('active', b===btn); });
+        });
+      });`;
+      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
+    }
     const blob = new Blob([html], {type:'text/html'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
