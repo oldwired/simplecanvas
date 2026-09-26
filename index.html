@@ -298,10 +298,13 @@
     box-shadow:var(--shadow);
   }
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #autosaveWarning{position:absolute;right:12px;bottom:12px;z-index:6;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;border:1px solid #d97706;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px;box-shadow:var(--shadow)}
+  #autosaveWarning[hidden]{display:none}
+  #autosaveWarning button{font:inherit;min-height:44px;padding:8px 12px;background:#fff;border:1px solid #d97706;border-radius:7px;color:inherit;cursor:pointer}
 
   @media print{
     body{background:#fff}
-    .toolbar,.tabbar,.hint,#toast{display:none !important}
+    .toolbar,.tabbar,.hint,#toast,#autosaveWarning{display:none !important}
     .stage{padding:0}
     .wrap{box-shadow:none;border-radius:0;background:#fff}
   }
@@ -579,6 +582,7 @@
   <div class="wrap" id="wrap">
     <canvas id="canvas"></canvas>
     <textarea id="textInput" autocomplete="off" spellcheck="false"></textarea>
+    <div id="autosaveWarning" role="status" hidden><span>Changes aren't being saved automatically. Save a workspace file before leaving.</span><button type="button" id="saveRecoveryWorkspace">Save workspace…</button></div>
     <div class="hint" id="hint">
       Pick a tool and start sketching.<br>
       <span style="font-size:13px">Saved automatically · paste or drop an image · <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> to undo</span>
@@ -654,9 +658,10 @@
   const polyFinishOpenBtn = document.getElementById('polyFinishOpen');
   const polyCancelBtn = document.getElementById('polyCancel');
 
-  const LEGACY_STORE_KEY = 'simplecanvas:v1';   // pre-tabs single document — migrated into a tab once, then unused
+  const LEGACY_STORE_KEY = 'simplecanvas:v1';
   const TABS_KEY = 'simplecanvas:tabs:v1';
-  const docKey = id => 'simplecanvas:doc:' + id;
+  // The migrated tab keeps its original key: migration never needs a second copy of a large sketch.
+  const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 2;     // bump when the saved-file schema changes (2: group pivots ignore stroke width)
   const BG = '#ffffff';
   const PRESETS = {   // swatch color -> its tooltip, in display order
@@ -683,7 +688,10 @@
   // ---------- tabs (multiple independent documents) ----------
   let tabs = [];                 // [{id, name}, ...] — mirrors the tabbar UI and the TABS_KEY localStorage entry
   let activeTabId = null;
-  let tabHistories = new Map();  // tabId -> {undoStack, redoStack}, kept only for this page's lifetime (not persisted)
+  const tabDocuments = new Map(); // complete working documents, independent of whether autosave succeeds
+  const unsavedTabs = new Set();
+  const retiredDocKeys = new Set(); // delete only after the replacement tab list is durable
+  let tabListDirty = false;
   let tabSeq = 0;
   const newTabId = () => 'tab-' + Date.now().toString(36) + '-' + (tabSeq++).toString(36);
 
@@ -700,8 +708,8 @@
   let longPressTimer = null;    // pending "open text for editing" timer while a click sits still on a text item
   let alignClickTimer = null;   // pending "set alignment" timer — cancelled if a dblclick follows (which only edits)
   let assetSeq = 0;
-  const assets = {};            // id -> image data URL (kept out of history snapshots)
-  const imgCache = new Map();   // id -> HTMLImageElement
+  let assets = {};              // current tab's image data, including images retained by its history
+  let imgCache = new Map();     // current tab's decoded images
   const HANDLE = 9;             // resize-handle hit radius (px)
   let erasing = null;           // {removed} while an erase gesture is active
   let cursorPt = null;          // eraser cursor position (for the ring)
@@ -916,29 +924,58 @@
     }
     return out;
   }
+  function makeDocument(list=[], pool={}, settings=null){
+    const defaults = settings ? normalizeUi(settings) : defaultUi();
+    if(!settings) defaults.tool = list.length ? 'select' : 'pen';
+    return {items:list, assets:pool, ui:defaults, undoStack:[], redoStack:[], imgCache:new Map()};
+  }
+  function tabDocument(id){
+    if(!tabDocuments.has(id)){
+      let doc = makeDocument();
+      try{
+        const raw = localStorage.getItem(docKey(id));
+        if(raw){
+          const d = JSON.parse(raw);
+          const scene = normalizeScene(Array.isArray(d) ? d : d && d.items, d && d.assets, d && d.version);
+          doc = makeDocument(scene.items, scene.assets, d && d.ui);
+          const note = sceneLoadNote(scene);
+          if(note) setTimeout(()=>toast('Restored sketch: ' + note), 300);
+        }
+      }catch(e){ console.warn('Could not load sketch:', e); }
+      tabDocuments.set(id, doc);
+    }
+    return tabDocuments.get(id);
+  }
+  function rememberActiveTab(){
+    if(activeTabId) tabDocuments.set(activeTabId, {items, assets, ui, undoStack, redoStack, imgCache});
+  }
+  function documentForFile(doc){
+    return {version:FORMAT_VERSION, items:doc.items, assets:assetsUsedBy(doc.items, doc.assets),
+            ui:{...doc.ui, tool:doc.ui.tool==='shape' ? 'select' : doc.ui.tool, pendingShape:null}};
+  }
+  function updateAutosaveWarning(){
+    document.getElementById('autosaveWarning').hidden = !unsavedTabs.size && !tabListDirty;
+  }
+  function persistWorkspace(){
+    try{
+      for(const id of unsavedTabs){
+        localStorage.setItem(docKey(id), JSON.stringify(documentForFile(tabDocument(id))));
+        unsavedTabs.delete(id);
+      }
+      if(tabListDirty){
+        localStorage.setItem(TABS_KEY, JSON.stringify({version:1, tabs, activeId:activeTabId}));
+        tabListDirty = false;
+      }
+      // Until the new index succeeds, the old workspace and legacy data remain recoverable.
+      for(const key of retiredDocKeys){ localStorage.removeItem(key); retiredDocKeys.delete(key); }
+    }catch(e){ console.warn('Could not auto-save workspace:', e); }
+    updateAutosaveWarning();
+  }
   function save(){
     if(!activeTabId) return;
-    try{ localStorage.setItem(docKey(activeTabId), JSON.stringify({version:FORMAT_VERSION, items, assets:referencedAssets(), ui})); }
-    catch(e){
-      console.warn('Could not save sketch:', e);
-      toast('Sketch too large to auto-save (try fewer/smaller images)');
-    }
-  }
-  function load(){
-    ui = defaultUi();
-    for(const k in assets) delete assets[k];
-    try{
-      const raw = localStorage.getItem(docKey(activeTabId));
-      if(!raw) return;
-      const d = JSON.parse(raw);
-      const scene = normalizeScene(Array.isArray(d) ? d : (d && d.items), d && d.assets, d && d.version);   // legacy format = items only
-      items = scene.items;
-      Object.assign(assets, scene.assets);
-      if(d && d.ui && typeof d.ui === 'object') ui = normalizeUi(d.ui);
-      else ui.tool = items.length ? 'select' : 'pen';   // no persisted ui at all — same heuristic the old boot sequence used
-      const note = sceneLoadNote(scene);
-      if(note) setTimeout(()=>toast('Restored sketch: ' + note), 300);
-    }catch(e){ console.warn('Could not load sketch:', e); }
+    rememberActiveTab();
+    unsavedTabs.add(activeTabId);
+    persistWorkspace();
   }
 
   // what a load had to leave out, as a short phrase ('' when nothing was)
@@ -3407,22 +3444,11 @@
     URL.revokeObjectURL(url);
     toast('Sketch saved to file');
   }
-  // Every open tab into one file — the active tab's live state plus every other (backgrounded) tab's
-  // own already-current localStorage doc (a backgrounded tab can never go stale: you can't edit two
-  // tabs at once, and flushActiveTab() persists the outgoing tab on every switch).
+  // Export working memory, including changes that could not be auto-saved.
   function exportWorkspace(){
-    save();
-    const tabEntries = tabs.map(t=>{
-      if(t.id === activeTabId) return { name: t.name, items, assets: referencedAssets(), ui };
-      try{
-        const raw = localStorage.getItem(docKey(t.id));
-        const d = raw ? JSON.parse(raw) : null;
-        return { name: t.name, items: (d && d.items) || [], assets: (d && d.assets) || {}, ui: (d && d.ui) || null };
-      }catch(e){
-        console.warn('Could not read tab for export:', t.id, e);
-        return { name: t.name, items: [], assets: {}, ui: null };   // one bad doc shouldn't abort the whole export
-      }
-    });
+    if(textInput.style.display==='block') commitText();
+    rememberActiveTab();
+    const tabEntries = tabs.map(t=>({name:t.name, ...documentForFile(tabDocument(t.id))}));
     const data = {
       app: 'SimpleCanvasWorkspace',
       version: FORMAT_VERSION,
@@ -3435,7 +3461,7 @@
   }
   // Reads either file shape (a single sketch, or a whole workspace) into one normalized list of
   // {name, items, assets, ui} entries — shared by "Open Workspace…" (replaces every open tab) and
-  // "Import Sketch…" (adds new tabs), which differ only in what they DO with this list, not in how
+  // "Open sketch…" (replaces the active tab), which differ only in what they DO with this list, not in how
   // a file is parsed. `ui` is left null for a plain single-sketch entry (that file shape never has
   // one), so load()'s own existing "select vs pen" fallback applies exactly as it already does today.
   function parseFileAsTabs(data){
@@ -3463,24 +3489,25 @@
       let data;
       try { data = JSON.parse(r.result); }
       catch(e){ toast('Not a valid sketch file'); return; }
-      if(typeof data.version === 'number' && data.version > FORMAT_VERSION &&
+      if(data && typeof data.version === 'number' && data.version > FORMAT_VERSION &&
          !confirm('This file was saved by a newer version ('+data.version+'). Open it anyway?')) return;
       const parsed = parseFileAsTabs(data);
       if(!parsed || !parsed.entries.length){ toast(parsed ? 'No readable tabs in that file' : 'That is not a SimpleCanvas file'); return; }
 
-      const hasExistingContent = items.length > 0 ||
-        tabs.some(t => t.id !== activeTabId && !!localStorage.getItem(docKey(t.id)));
+      if(textInput.style.display==='block') commitText();
+      rememberActiveTab();
+      const hasExistingContent = tabs.some(t => tabDocument(t.id).items.length);
       if(hasExistingContent && !confirm('Replace all ' + tabs.length + ' open tab' + (tabs.length===1?'':'s') + ' with this file?')) return;
 
-      if(textInput.style.display==='block') commitText();
       cancelGesture();
-      for(const t of tabs) localStorage.removeItem(docKey(t.id));
-      tabHistories.clear();   // every old undo/redo stack belongs to a tab id about to stop existing
+      for(const t of tabs) retiredDocKeys.add(docKey(t.id));
+      tabDocuments.clear();
+      unsavedTabs.clear();
 
       const newTabs = parsed.entries.map(nt=>{
         const id = newTabId();   // always mint fresh ids -- never trust ids from the file
-        try{ localStorage.setItem(docKey(id), JSON.stringify({version:FORMAT_VERSION, items:nt.items, assets:nt.assets, ui:nt.ui})); }
-        catch(e){ console.warn('Could not persist imported tab:', id, e); }
+        tabDocuments.set(id, makeDocument(nt.items, nt.assets, nt.ui));
+        unsavedTabs.add(id);
         return {id, name: nt.name || 'Sketch 1'};
       });
 
@@ -3503,7 +3530,7 @@
       let data;
       try { data = JSON.parse(r.result); }
       catch(e){ toast('Not a valid sketch file'); return; }
-      if(typeof data.version === 'number' && data.version > FORMAT_VERSION &&
+      if(data && typeof data.version === 'number' && data.version > FORMAT_VERSION &&
          !confirm('This file was saved by a newer version ('+data.version+'). Open it anyway?')) return;
 
       if(data && data.app === 'SimpleCanvasWorkspace' && Array.isArray(data.tabs)){
@@ -3931,11 +3958,12 @@
   }
 
   function warnUnexportedLibrary(e){
-    if(!shapeLibraryDirty) return;
+    if(!shapeLibraryDirty && !unsavedTabs.size && !tabListDirty) return;
     e.preventDefault();
     e.returnValue = '';   // browsers supply their own leave-page warning text
   }
   window.addEventListener('beforeunload', warnUnexportedLibrary);
+  document.getElementById('saveRecoveryWorkspace').addEventListener('click', exportWorkspace);
 
   // Icon buttons (stroke/fill/text-color), each opening a small swatch-only popover — no text labels,
   // no wide controls. Mirrors the existing table-size popover pattern.
@@ -4546,8 +4574,8 @@
   const tabbarScroll = document.getElementById('tabbarScroll');
 
   function saveTabList(){
-    try{ localStorage.setItem(TABS_KEY, JSON.stringify({version:1, tabs, activeId:activeTabId})); }
-    catch(e){ console.warn('Could not save tab list:', e); }
+    tabListDirty = true;
+    persistWorkspace();
   }
   function loadTabList(){
     try{
@@ -4565,14 +4593,12 @@
       }
     }catch(e){ console.warn('Could not load tab list:', e); }
     // no (valid) tab list yet — start with exactly one tab, migrating the old single-document save if any
-    const id = newTabId();
+    let legacyRaw = null;
+    try{ legacyRaw = localStorage.getItem(LEGACY_STORE_KEY); }
+    catch(e){ console.warn('Could not read legacy sketch:', e); }
+    const id = legacyRaw ? 'legacy' : newTabId();
     tabs = [{id, name:'Sketch 1'}];
     activeTabId = id;
-    const legacyRaw = localStorage.getItem(LEGACY_STORE_KEY);
-    if(legacyRaw){
-      try{ localStorage.setItem(docKey(id), legacyRaw); localStorage.removeItem(LEGACY_STORE_KEY); }
-      catch(e){ console.warn('Could not migrate legacy sketch:', e); }
-    }
     saveTabList();
   }
 
@@ -4581,26 +4607,22 @@
   // just parameterized by tab instead of by history entry / opened file.
   function enterTab(tabId){
     activeTabId = tabId;
-    items = [];
-    for(const k in assets) delete assets[k];
-    const h = tabHistories.get(tabId);
-    undoStack = h ? h.undoStack : [];
-    redoStack = h ? h.redoStack : [];
+    const doc = tabDocument(tabId);
+    ({items, assets, ui, undoStack, redoStack, imgCache} = doc);
+    ui.pendingShape = null;
+    if(ui.tool==='shape') ui.tool = 'select';
     historyBefore = null;
     selection = [];
-    load();
     setTool(ui.tool);
     refreshColorUI();
     updateButtons();
     renderTabs();
   }
 
-  // persists the currently-active tab (content to localStorage, history into the in-memory cache)
-  // before something else replaces it as the active document
+  // save() captures the full live state before attempting browser persistence.
   function flushActiveTab(){
     if(!activeTabId) return;
     save();
-    tabHistories.set(activeTabId, {undoStack, redoStack});
   }
 
   function activateTab(tabId){
@@ -4618,6 +4640,8 @@
     flushActiveTab();
     const id = newTabId();
     tabs.push({id, name:'Sketch ' + (tabs.length+1)});
+    tabDocuments.set(id, makeDocument());
+    unsavedTabs.add(id);
     enterTab(id);
     saveTabList();
     save();
@@ -4630,11 +4654,12 @@
     // commit any in-progress text on the tab being closed BEFORE judging whether it has content —
     // otherwise a just-finished text box could be silently deleted without ever asking to confirm
     if(tabId===activeTabId && textInput.style.display==='block') commitText();
-    const hasContent = tabId===activeTabId ? items.length>0 : !!localStorage.getItem(docKey(tabId));
+    const hasContent = tabId===activeTabId ? items.length>0 : tabDocument(tabId).items.length>0;
     if(hasContent && !confirm('Close "'+tabs[idx].name+'"? Its content will be deleted.')) return;
     cancelGesture();
-    localStorage.removeItem(docKey(tabId));
-    tabHistories.delete(tabId);
+    retiredDocKeys.add(docKey(tabId));
+    tabDocuments.delete(tabId);
+    unsavedTabs.delete(tabId);
     tabs.splice(idx,1);
     if(tabId===activeTabId){
       activeTabId = null;   // the closed tab is gone, not backgrounded — nothing to save() for it

@@ -6,6 +6,12 @@ Demo: https://oldwired.github.io/simplecanvas/
 
 Open `index.html` in a browser to draw, add shapes or text, and save or load sketches as JSON.
 
+Use **Add tab** for independent drawings and **Save workspace…** to download all open tabs.
+Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
+offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
+
+Developer checks are described in [tests/README.md](tests/README.md).
+
 The shape library is optional. Select canvas objects and choose **Add selection to library…**
 from the menu, or choose **Import library…** to open your own library file. The library button
 appears once a library is available. Click a shape to place it; **Manage** lets you rename,
