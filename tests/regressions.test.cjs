@@ -248,6 +248,71 @@ test('rotated grouped table text is included without moving group pivots', async
 }));
 
 const line={type:'line',uid:'line',x1:80,y1:200,x2:320,y2:200,size:6,color:'#000000',dash:'wide'};
+
+// Capture commands actually stroked by the canvas renderer, then compare the SVG paths.
+async function renderedCurveHeads(run){
+  const result=await run(`
+    const paths=[], originals={}, commands={moveTo:'M',lineTo:'L',bezierCurveTo:'C'};
+    let current=[];
+    for(const name of ['beginPath','stroke',...Object.keys(commands)]){
+      originals[name]=ctx[name];
+      ctx[name]=function(...args){
+        if(name==='beginPath') current=[];
+        else if(name==='stroke') paths.push(current.slice());
+        else current.push([commands[name],...args]);
+        return originals[name].apply(this,args);
+      };
+    }
+    try{drawItem(items[0]);}finally{for(const name in originals)ctx[name]=originals[name];}
+    ({paths,svg:itemToSVG(items[0])});
+  `);
+  const svgPaths=[...result.svg.matchAll(/<path d="([^"]*)"/g)].map(m=>
+    m[1].split(' ').map(command=>[command[0],...command.slice(1).split(',').map(Number)]));
+  assert.deepEqual(result.paths,svgPaths,'canvas and SVG stroke identical geometry');
+  return result.paths.slice(1); // shaft first, followed by end and start heads
+}
+function assertHeadDirection(head, expected, message){
+  const [a,tip,b]=head;
+  const dx=tip[1]-(a[1]+b[1])/2, dy=tip[2]-(a[2]+b[2])/2;
+  const length=Math.hypot(dx,dy), expectedLength=Math.hypot(...expected);
+  assert.ok(Math.abs(dx/length-expected[0]/expectedLength)<1e-9 &&
+    Math.abs(dy/length-expected[1]/expectedLength)<1e-9,message);
+}
+for(const start of [true,false]){
+  test(`dragging the ${start?'start':'end'} handle turns the opposite arrowhead in canvas and SVG`, async () => app(async ({page,run}) => {
+    await run(`items=[${JSON.stringify(line)}];setHeads(items[0],true,true);setTool('select');selection=[0];togglePointEdit();`);
+    const box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+(start?80:320),box.y+200);
+    const handle=await run(`defaultHandleOffset(items[0],${start?0:1},'${start?'c1':'c2'}')`);
+    await page.mouse.move(box.x+handle.x,box.y+handle.y);await page.mouse.down();
+    await page.mouse.move(box.x+handle.x,box.y+80);await page.mouse.up();
+    const heads=await renderedCurveHeads(run);
+    assert.equal(heads.length,2);
+    assertHeadDirection(heads[0],[320-handle.x,120],'end arrow follows the incoming tangent');
+    assertHeadDirection(heads[1],[80-handle.x,120],'start arrow follows the outgoing tangent');
+  }));
+}
+
+test('curve arrowheads handle coincident controls, local tangents, and collapsed segments', async () => app(async ({run}) => {
+  const a={x:100,y:200}, b={x:400,y:200}, c1={x:180,y:80}, c2={x:320,y:80};
+  const cases=[
+    {name:'straight',points:[a,b],directions:[[300,0],[-300,0]]},
+    {name:'coincident start control',points:[{...a,c1:a},{...b,c2}],directions:[[80,120],[-220,120]]},
+    {name:'coincident end control',points:[{...a,c1},{...b,c2:b}],directions:[[220,120],[-80,120]]},
+    {name:'both local controls remain authoritative',points:[{...a,c1},{...b,c2}],directions:[[80,120],[-80,120]]},
+    {name:'both controls at start',points:[{...a,c1:a},{...b,c2:a}],directions:[[300,0],[-300,0]]},
+    {name:'both controls at end',points:[{...a,c1:b},{...b,c2:b}],directions:[[300,0],[-300,0]]},
+    {name:'zero-length segments at both ends',points:[a,{...a,c1},{...b,c2},b],directions:[[80,120],[-80,120]]},
+    {name:'fully collapsed curve',points:[{...a,c1:a},{...a,c2:a}],directions:[]}
+  ];
+  for(const example of cases){
+    await run(`items=[{type:'polygon',closed:false,hs:true,he:true,size:6,color:'#000000',points:${JSON.stringify(example.points)}}];`);
+    const heads=await renderedCurveHeads(run);
+    assert.equal(heads.length,example.directions.length,example.name);
+    heads.forEach((head,i)=>assertHeadDirection(head,example.directions[i],example.name));
+  }
+}));
+
 test('popover edits arrowheads before and after curve conversion without moving the canvas', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
   const canvas=await page.locator('#canvas').boundingBox();

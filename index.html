@@ -1162,6 +1162,18 @@
     }
     return segs;
   }
+  // The first noncoincident control determines the limiting endpoint tangent. If the local
+  // control coincides with the tip, the next derivative uses the other control, then the other
+  // anchor. Skip collapsed segments; an entirely collapsed curve has no arrowhead direction.
+  function curveEndFrom(segs, atStart){
+    const tip = atStart ? segs[0].a : segs[segs.length-1].b;
+    for(let i=atStart ? 0 : segs.length-1; i>=0 && i<segs.length; i+=atStart ? 1 : -1){
+      const s = segs[i], candidates = atStart ? [s.c1,s.c2,s.b] : [s.c2,s.c1,s.a];
+      const from = candidates.find(p=>p.x!==tip.x || p.y!==tip.y);
+      if(from) return from;
+    }
+    return null;
+  }
   // A straight anchor has no stored handle yet — this is where it WOULD sit if dragged out from rest,
   // so the active anchor always shows two grabbable handles (matching a converted ellipse's real
   // ones) instead of only ever showing handles once one has already been dragged. Direction is the
@@ -1273,17 +1285,15 @@
         const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
         const headStyle = style.dash ? { ...style, dash:null } : style;
         ops.push({ kind:'path', d, style });
-        // arrowheads for an open (line/arrow-derived) curve: direction = the LOCAL TANGENT at that
-        // end (that anchor's own handle if set, else the adjacent anchor — identical to a plain
-        // line/arrow's direction when nothing's been dragged yet, and re-derived fresh every render)
+        // Both renderers use the actual endpoint tangent, including degenerate controls.
         if(!closed && n>=2){
           if(it.he){
-            const last = pts[n-1], prev = pts[n-2], from = last.c2 || prev;
-            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style:headStyle });
+            const last = pts[n-1], from = curveEndFrom(segs, false);
+            if(from) ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, last.x, last.y, it.size), style:headStyle });
           }
           if(it.hs){
-            const first = pts[0], second = pts[1], from = first.c1 || second;
-            ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style:headStyle });
+            const first = pts[0], from = curveEndFrom(segs, true);
+            if(from) ops.push({ kind:'path', d:arrowHeadSegments(from.x, from.y, first.x, first.y, it.size), style:headStyle });
           }
         }
         break;
