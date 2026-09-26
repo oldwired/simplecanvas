@@ -363,6 +363,10 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M4 17c2-9 5-9 8 0s6 9 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="1.6" fill="currentColor"/></svg>
         Export SVG
       </button>
+      <button data-act="html" role="menuitem">
+        <svg viewBox="0 0 24 24" fill="none"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Export HTML
+      </button>
       <button data-act="print" role="menuitem">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1M6 14h12v7H6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Print
@@ -1169,6 +1173,161 @@
     let y = boxY + boxH/2 - blockHeight/2 + asc;
     return lines.map(line => { const ly = y; y += lineHeight; return {line, y:ly}; });
   }
+
+  // ---------- Markdown-in-text-box ----------
+  // Recognized only when the item's text starts with a bare "---" first line (like YAML
+  // front-matter); everything after that line is the Markdown body. Purely derived from the
+  // item's own text at render time -- no stored field, no normalizeItem change needed at all.
+  // Tolerant of a trailing \r: normalizeItem's JSON-load path doesn't run the \r\n-normalization
+  // the live editor already does before commit, so a loaded file could still carry one here.
+  function markdownBodyOf(text){
+    const nl = text.indexOf('\n');
+    const first = (nl===-1 ? text : text.slice(0, nl)).replace(/\r$/, '');
+    if(first !== '---') return null;
+    return nl===-1 ? '' : text.slice(nl+1);
+  }
+  // Single non-overlapping inline scan for **bold**, *italic*/_italic_, and [label](url) links.
+  // v1 limitation (falls out for free from being a single pass, nothing enforces it): one style per
+  // run, so **[label](url)** renders as literal bold text, not a bold link.
+  const MD_INLINE_RE = /\*\*(\S(?:.*?\S)?|\S)\*\*|(?<![A-Za-z0-9])_(\S(?:.*?\S)?|\S)_(?![A-Za-z0-9])|\*(\S(?:.*?\S)?|\S)\*|\[(.+?)\]\((.+?)\)/g;
+  function parseInline(text){
+    const runs = [];
+    let last = 0, m;
+    MD_INLINE_RE.lastIndex = 0;
+    while((m = MD_INLINE_RE.exec(text))){
+      if(m.index > last) runs.push({text: text.slice(last, m.index)});
+      if(m[1]!=null) runs.push({text:m[1], bold:true});
+      else if(m[2]!=null) runs.push({text:m[2], italic:true});
+      else if(m[3]!=null) runs.push({text:m[3], italic:true});
+      else if(m[4]!=null) runs.push({text:m[4], link:m[5]});
+      last = MD_INLINE_RE.lastIndex;
+    }
+    if(last < text.length) runs.push({text:text.slice(last)});
+    return runs.length ? runs : [{text:''}];
+  }
+  // One block per source line -- no automatic paragraph-flow merging, matching how this app's own
+  // hard-line-break feature already treats every \n as a deliberate break. The required space after
+  // #/-/* is what disambiguates "* hello" (list item) from "*hello*" (italic paragraph).
+  function parseMarkdownBlocks(body){
+    const blocks = [];
+    for(const line of body.split('\n')){
+      let m;
+      if(m = /^(#{1,3})\s+(.*)$/.exec(line)) blocks.push({type:'h'+m[1].length, runs:parseInline(m[2])});
+      else if(m = /^[-*]\s+(.*)$/.exec(line)) blocks.push({type:'li', runs:parseInline(m[1])});
+      // 3+ dashes alone on a line -- unambiguous with the "---" front-matter marker, which is only
+      // ever checked against physical line 1 of the raw text (markdownBodyOf), never a body line.
+      else if(/^-{3,}$/.test(line.trim())) blocks.push({type:'hr'});
+      else blocks.push({type:'p', runs:parseInline(line)});
+    }
+    return blocks;
+  }
+  const MD_HEADING_SCALE = { h1:1.6, h2:1.3, h3:1.15 };   // h1/h2/h3 relative to the item's own base font size
+  const MD_LINK_COLOR = '#6366f1';   // same literal hex as CSS --accent -- SVG export is a standalone
+                                      // document with no access to the stylesheet, so this must be
+                                      // duplicated; if --accent is ever re-themed, update this too
+  // A markdown link's URL is arbitrary user/loaded text -- most people just type "example.com" with
+  // no scheme at all (very common, and should still become a real clickable link, same as a browser's
+  // own address bar treats it), so a bare domain is treated as implicitly https. An EXPLICIT scheme
+  // that isn't http(s)/mailto (javascript:, data:, ...) is rejected outright rather than guessed at.
+  // Returns a safe href, or null if the link should render as plain unlinked text.
+  function safeHref(url){
+    if(/^(https?:|mailto:)/i.test(url)) return url;
+    if(!/^[a-z][a-z0-9+.-]*:/i.test(url)) return 'https://' + url;
+    return null;
+  }
+  function mdBlockFontPx(block, baseFontPx){ return Math.round(baseFontPx * (MD_HEADING_SCALE[block.type] || 1)); }
+  // Matches fontStr()'s own convention (hardcoded 600 for every other text item in this app) -- 400
+  // would look visibly thinner than everything else, including a non-bold word next to a bold one.
+  function mdFontString(family, sizePx, opts){
+    opts = opts || {};
+    return (opts.italic?'italic ':'') + (opts.bold?'700 ':'600 ') + sizePx + 'px ' + (FONTS[family]||FONTS.sans);
+  }
+  // Run boundaries land wherever **/*/_ markers literally sit in the source, often mid-word or
+  // touching adjacent text with no space (un*believable*, 10x**faster**, Hello,**world**!). Splitting
+  // each run on spaces in isolation and always inserting a gap between word entries would corrupt
+  // text that must render flush. Fix: tokenize with whitespace as its own explicit token, then group
+  // consecutive NON-whitespace tokens (same run or touching across a run boundary) into one
+  // unbreakable wrap unit -- a line break is only ever legal at an actual whitespace token.
+  function tokenizeRuns(runs){
+    const units = []; let cur = null;
+    for(const run of runs){
+      for(const part of (run.text.match(/\S+|\s+/g) || [])){
+        if(/^\s+$/.test(part)){ units.push({ws:true}); cur = null; }
+        else { if(!cur){ cur = {ws:false, parts:[]}; units.push(cur); } cur.parts.push({text:part, bold:run.bold, italic:run.italic, link:run.link}); }
+      }
+    }
+    return units;
+  }
+  const MD_TOP_PAD = 4;
+  // Returns a flat list of {x, y, text, bold, italic, link, fontPx} per word/token (plus one
+  // {hr:true, x1, x2, y} entry per horizontal-rule block), ready to draw (canvas) or emit as an SVG
+  // <tspan>/<line> -- neither consumer needs a "whole line" grouping, since wrapping is already fully
+  // resolved here. Font size is uniform PER BLOCK (bold/italic vary
+  // weight/style only, never size), but varies BETWEEN blocks (headings), so this sets ctx.font
+  // itself throughout -- unlike layoutWrappedText's contract of "caller pre-sets ctx.font once",
+  // callers here must not assume ctx.font is unchanged after calling this.
+  function layoutMarkdownBlocks(blocks, boxX, boxY, boxW, boxH, fontFamily, baseFontPx){
+    const maxWidth = Math.max(1, boxW - 12);
+    const indentLi = 18;
+    const out = [];
+    let y = boxY + MD_TOP_PAD;
+    for(const block of blocks){
+      const fontPx = mdBlockFontPx(block, baseFontPx);
+      const lineHeight = fontPx * 1.2;
+      if(block.type === 'hr'){
+        // Sized to the font's own cap-height (not the full line-height, which also carries descent +
+        // leading a real text line needs but a rule doesn't) -- so the rule reads as sitting centered
+        // on a text line, not floating in an oversized gap above and below it. Positioned closer to
+        // the TOP of that footprint rather than dead-center: whatever block precedes the rule already
+        // carries its own trailing line-height slack (baseline down to where the next line would
+        // start), which adds extra space above the rule that a block *following* it doesn't get (the
+        // next block's text sits flush at its own line's top) -- dead-centering the rule on top of
+        // that pre-existing imbalance reads as too much gap above and too little below.
+        ctx.font = mdFontString(fontFamily, fontPx, {});
+        const capH = ctx.measureText('M').actualBoundingBoxAscent || fontPx*0.8;
+        out.push({ hr:true, x1: boxX+6, x2: boxX+6+maxWidth, y: y + capH*0.15 });
+        y += capH;
+        continue;
+      }
+      // Headings are bold by default (the universal Markdown/HTML convention) regardless of any
+      // explicit **bold** markup inside them -- without this they only differ from body text by
+      // size, not weight, which reads as much less distinct than a real heading should.
+      const isHeading = block.type[0] === 'h';
+      ctx.font = mdFontString(fontFamily, fontPx, {bold:isHeading});
+      const asc = ctx.measureText('M').actualBoundingBoxAscent || fontPx*0.8;
+      const leftPad = block.type==='li' ? indentLi : 0;
+      const avail = Math.max(1, maxWidth - leftPad);
+      const measure = (bold, italic, text) => { ctx.font = mdFontString(fontFamily, fontPx, {bold: bold||isHeading, italic}); return ctx.measureText(text).width; };
+      const units = tokenizeRuns(block.runs).filter(u=>!u.ws);
+      let line = [], lineWidth = 0, firstLineOfBlock = true;
+      const flushLine = () => {
+        let x = boxX + 6 + leftPad;
+        // only the FIRST visual line of a list item gets the bullet -- wrapped continuation lines
+        // share the same left indent but don't repeat the glyph
+        if(block.type==='li' && firstLineOfBlock) out.push({x: boxX+6, y: y+asc, text:'•', bold:false, italic:false, link:null, fontPx});
+        for(const u of line){
+          for(const p of u.parts){
+            out.push({x, y: y+asc, text:p.text, bold: !!p.bold||isHeading, italic:!!p.italic, link:p.link||null, fontPx});
+            x += measure(p.bold, p.italic, p.text);
+          }
+          x += measure(false, false, ' ');
+        }
+        y += lineHeight;
+        firstLineOfBlock = false;
+        line = []; lineWidth = 0;
+      };
+      for(const u of units){
+        const w = u.parts.reduce((acc,p)=>acc+measure(p.bold,p.italic,p.text), 0);
+        if(line.length===0){ line.push(u); lineWidth = w; continue; }
+        const sep = measure(false,false,' ');
+        if(lineWidth + sep + w <= avail){ line.push(u); lineWidth += sep + w; }
+        else { flushLine(); line.push(u); lineWidth = w; }
+      }
+      flushLine();   // always at least one line per block -- also what advances Y for a blank line
+    }
+    return out;
+  }
+
   // freehand strokes are smoothed: each vertex becomes the control point of a quadratic curve
   // ending at the midpoint to the next vertex
   function smoothSegments(p){
@@ -1338,7 +1497,13 @@
       case 'text': {
         const style = boxStyle(it);
         if(style.fill!=='none' || style.stroke!=='none') ops.push({ kind:'rect', x:it.x, y:it.y, w:it.w, h:it.h, style });
-        ops.push({ kind:'text', text:it.text, x:it.x, y:it.y, w:it.w, h:it.h, align:it.align||'center', font:it.font, color:it.textColor||it.color });
+        const mdBody = markdownBodyOf(it.text);
+        if(mdBody != null){
+          ops.push({ kind:'markdown', blocks: parseMarkdownBlocks(mdBody), x:it.x, y:it.y, w:it.w, h:it.h,
+                     fontFamily: familyOf(it), baseFontPx: fontPxOf(it), color: it.textColor||it.color });
+        } else {
+          ops.push({ kind:'text', text:it.text, x:it.x, y:it.y, w:it.w, h:it.h, align:it.align||'center', font:it.font, color:it.textColor||it.color });
+        }
         break;
       }
       case 'table': {
@@ -1409,6 +1574,25 @@
         ctx.globalAlpha = 1; ctx.fillStyle = op.color; ctx.font = op.font;
         drawAlignedText(op.text, op.x, op.y, op.w, op.h, op.align);
         break;
+      case 'markdown': {
+        ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        for(const w of layoutMarkdownBlocks(op.blocks, op.x, op.y, op.w, op.h, op.fontFamily, op.baseFontPx)){
+          if(w.hr){
+            ctx.beginPath(); ctx.moveTo(w.x1, w.y); ctx.lineTo(w.x2, w.y);
+            ctx.lineWidth = 1; ctx.strokeStyle = op.color; ctx.setLineDash([]); ctx.stroke();
+            continue;
+          }
+          ctx.font = mdFontString(op.fontFamily, w.fontPx, {bold:w.bold, italic:w.italic});
+          ctx.fillStyle = w.link ? MD_LINK_COLOR : op.color;
+          ctx.fillText(w.text, w.x, w.y);
+          if(w.link){
+            const wordW = ctx.measureText(w.text).width;
+            ctx.beginPath(); ctx.moveTo(w.x, w.y+2); ctx.lineTo(w.x+wordW, w.y+2);
+            ctx.lineWidth = 1; ctx.strokeStyle = MD_LINK_COLOR; ctx.setLineDash([]); ctx.stroke();
+          }
+        }
+        break;
+      }
     }
   }
   function drawItem(it, skipCell){
@@ -1552,9 +1736,9 @@
   // outline/handle are drawn in before the outer groupRotation transform is applied.
   // The pivot comes from the members' bare geometry: with stroke padding in the mix, changing one
   // member's line width (or arrowheads) would move the pivot and swing the whole rotated group.
-  function groupPivot(groupId){
-    const idxs = itemsInGroup(groupId);
-    const box = unionBoxOwn(idxs), g = unionBoxOwn(idxs, false);
+  function groupPivot(groupId, sceneItems=items){
+    const members = sceneItems.filter(it=>it.group===groupId);
+    const box = unionBoxOf(members), g = unionBoxOf(members, false);
     return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
@@ -1571,10 +1755,10 @@
     return rotatePoint(px,py, b.x+b.w/2, b.y+b.h/2, -it.rotation);
   }
   // item's local frame -> world point (the inverse of toLocal: own rotation first, then groupRotation)
-  function toWorld(it,x,y){
+  function toWorld(it,x,y,sceneItems=items){
     let p = {x,y};
     if(it.rotation){ const b = bbox(it); p = rotatePoint(p.x,p.y, b.x+b.w/2, b.y+b.h/2, it.rotation); }
-    if(it.group!=null && it.groupRotation){ const piv = groupPivot(it.group); p = rotatePoint(p.x,p.y,piv.cx,piv.cy,it.groupRotation); }
+    if(it.group!=null && it.groupRotation){ const piv = groupPivot(it.group,sceneItems); p = rotatePoint(p.x,p.y,piv.cx,piv.cy,it.groupRotation); }
     return p;
   }
 
@@ -1659,10 +1843,10 @@
 
   // axis-aligned box that fully contains the item as actually rendered (own rotation AND
   // groupRotation) — used wherever we compare against world-space rectangles (marquee, PNG export)
-  function worldBBox(it){
+  function worldBBox(it, sceneItems=items){
     let b = worldBBoxOwn(it);
     if(it.group!=null && it.groupRotation){
-      const piv = groupPivot(it.group);
+      const piv = groupPivot(it.group,sceneItems);
       const corners = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]
         .map(([x,y])=>rotatePoint(x,y,piv.cx,piv.cy,it.groupRotation));
       const xs=corners.map(c=>c.x), ys=corners.map(c=>c.y);
@@ -2785,6 +2969,9 @@
   let textBox = null;       // {x,y,w,h} of the box currently being created or edited
   let textDraft = null;     // {color,fill,fillColor,strokeOn,size} for a NEW text; null while editing an existing item
   let editingTextIdx = null;   // set while editing an existing text item or table cell (vs. creating a new text)
+  let textInputChosenAlign = 'center';   // the item's own alignment -- fitTextInputSize() overrides
+                                          // this live to left/top the moment the value starts with
+                                          // "---" (Markdown), and reverts the moment it no longer does
   let editingCell = null;      // {r,c} when editing one cell of a table, else null
   function tableCellAt(it, lx, ly){
     if(lx<it.x || lx>it.x+it.w || ly<it.y || ly>it.y+it.h) return null;
@@ -2817,7 +3004,7 @@
       align = 'center';
     }
     textInput.style.display='block';
-    textInput.style.textAlign = align;
+    textInputChosenAlign = align;   // fitTextInputSize() applies this, or overrides to left/top for Markdown
     textInput.style.font = fontStr(family, fontSize);
     // line-height must be set AFTER `font` above — the font shorthand resets it to 'normal' otherwise.
     // A fixed multi-line value (not the old single-line "= box height" trick) matches how the
@@ -2850,14 +3037,23 @@
     const lineHeightPx = parseFloat(textInput.style.lineHeight);
     const neededH = lineHeightPx*lineCount;
     const h = Math.max(textBox.h, neededH);
-    const cy = textBox.y + textBox.h/2;
     textInput.style.height = h+'px';
-    textInput.style.top = (cy - h/2 - 1)+'px';   // -1 = the input's own border width
-    // A <textarea> always top-anchors its own content, unlike the old single-line <input> (which
-    // relied on line-height alone to look centered) -- so whenever the box is taller than the text
-    // actually needs, push the text down with padding to keep it visually centered instead of stuck
-    // at the top.
-    textInput.style.paddingTop = Math.max(0, (h - neededH)/2)+'px';
+
+    // Match the committed renderer: an exact first-line marker enables Markdown only in text items.
+    const isMarkdown = !editingCell && markdownBodyOf(textInput.value)!=null;
+    textInput.style.textAlign = isMarkdown ? 'left' : textInputChosenAlign;
+    if(isMarkdown){
+      textInput.style.top = (textBox.y - 1)+'px';   // fixed at the box's own top edge, grows downward only
+      textInput.style.paddingTop = '0px';
+    } else {
+      const cy = textBox.y + textBox.h/2;
+      textInput.style.top = (cy - h/2 - 1)+'px';   // -1 = the input's own border width
+      // A <textarea> always top-anchors its own content, unlike the old single-line <input> (which
+      // relied on line-height alone to look centered) -- so whenever the box is taller than the text
+      // actually needs, push the text down with padding to keep it visually centered instead of stuck
+      // at the top.
+      textInput.style.paddingTop = Math.max(0, (h - neededH)/2)+'px';
+    }
   }
   const FONTS = {
     sans:'-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
@@ -3271,11 +3467,40 @@
     if(ui.tool!=='select' || !selection.length) return;
     clipboard = selection.slice().sort((a,b)=>a-b).map(i=>clone(items[i]));
     clipboardAssets = assetsUsedBy(clipboard, assets);
+    // Best-effort: also put the selection on the real OS clipboard, so pasting into another program
+    // gets a usable representation instead of nothing. text/plain carries our own JSON (what our own
+    // paste handler looks for first); image/png is a universally-supported clipboard image format,
+    // so it renders correctly everywhere (Office included) instead of the empty box a raw <svg> under
+    // text/html would produce in apps that don't render inline SVG from pasted HTML.
+    if(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined'){
+      const jsonPayload = { app:'SimpleCanvas', kind:'objects', version:FORMAT_VERSION,
+                             items:clipboard, assets:clipboardAssets };
+      navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': new Blob([JSON.stringify(jsonPayload)], {type:'text/plain'}),
+          'image/png': itemsToPngBlob(clipboard, {background:false}),   // ClipboardItem accepts a Promise<Blob>
+        })
+      ]).catch(()=>{});
+    }
     toast(clipboard.length + (clipboard.length===1?' item copied':' items copied'));
   }
   function pasteClipboard(){
     if(!clipboard.length) return false;
     addClones(adoptImageAssets(clipboard, clipboardAssets), 16);
+    return true;
+  }
+  // Our structured clipboard format takes precedence over its PNG fallback. Validate it through
+  // the same loader as files, then remap image IDs and groups just like an internal paste.
+  function pasteObjectPayload(text){
+    let data;
+    try{ data=JSON.parse(text); }catch(_){ return false; }
+    if(!data || data.app!=='SimpleCanvas' || data.kind!=='objects' || !Array.isArray(data.items) ||
+       !Number.isInteger(data.version) || data.version<1 || data.version>FORMAT_VERSION) return false;
+    const scene=normalizeScene(data.items,data.assets,data.version);
+    if(!scene.items.length) return false;
+    addClones(adoptImageAssets(scene.items,scene.assets),16);
+    const note=sceneLoadNote(scene);
+    if(note) toast('Pasted objects: '+note);
     return true;
   }
   // Imported files and another tab's clipboard may reuse an id for different pixels.
@@ -3463,27 +3688,39 @@
   // ---------- export ----------
   // Painted text may overflow its box. Include the measured glyphs for export without changing
   // the geometry bounds used for handles, hit testing, or item/group rotation pivots.
-  function paintedWorldBBox(it){
-    const box = worldBBox(it);
+  function paintedWorldBBox(it, sceneItems=items){
+    const box = worldBBox(it,sceneItems);
     if(it.type!=='text' && it.type!=='table') return box;
     let minX=box.x, minY=box.y, maxX=box.x+box.w, maxY=box.y+box.h;
+    const includeRect = (left,top,right,bottom)=>{
+      for(const [x,y] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
+        const p=toWorld(it,x,y,sceneItems);
+        minX=Math.min(minX,p.x); minY=Math.min(minY,p.y);
+        maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y);
+      }
+    };
+    const includeText = (text,x,y)=>{
+      if(!text) return;
+      const m=ctx.measureText(text);
+      includeRect(x-m.actualBoundingBoxLeft-1,y-m.actualBoundingBoxAscent-1,
+                  x+m.actualBoundingBoxRight+1,y+m.actualBoundingBoxDescent+1);
+    };
     ctx.save();
     try{
+      ctx.textBaseline='alphabetic';
       for(const op of shapeOps(it)){
-        if(op.kind!=='text' || !op.text) continue;
-        ctx.font = op.font;
-        ctx.textAlign = op.align || 'center';
-        ctx.textBaseline = 'alphabetic';
-        const tx = textAnchorX(op.x, op.w, op.align);
-        for(const {line,y} of layoutWrappedText(op.text, op.y, op.w, op.h)){
-          if(!line) continue;
-          const m = ctx.measureText(line);
-          const left=tx-m.actualBoundingBoxLeft-1, right=tx+m.actualBoundingBoxRight+1;
-          const top=y-m.actualBoundingBoxAscent-1, bottom=y+m.actualBoundingBoxDescent+1;
-          for(const [x,yy] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
-            const p = toWorld(it,x,yy);
-            minX=Math.min(minX,p.x); minY=Math.min(minY,p.y);
-            maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y);
+        if(op.kind==='text' && op.text){
+          ctx.font=op.font; ctx.textAlign=op.align || 'center';
+          const tx=textAnchorX(op.x,op.w,op.align);
+          for(const {line,y} of layoutWrappedText(op.text,op.y,op.w,op.h)) includeText(line,tx,y);
+        } else if(op.kind==='markdown'){
+          ctx.textAlign='left';
+          for(const w of layoutMarkdownBlocks(op.blocks,op.x,op.y,op.w,op.h,op.fontFamily,op.baseFontPx)){
+            if(w.hr){ includeRect(w.x1-1,w.y-1,w.x2+1,w.y+1); continue; }
+            ctx.font=mdFontString(op.fontFamily,w.fontPx,{bold:w.bold,italic:w.italic});
+            includeText(w.text,w.x,w.y);
+            // Canvas underlines sit at y+2; SVG's font-based decoration may sit slightly lower.
+            if(w.link) includeRect(w.x-1,w.y+1,w.x+ctx.measureText(w.text).width+1,w.y+Math.max(3,w.fontPx*.2));
           }
         }
       }
@@ -3537,10 +3774,10 @@
     if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
     return a;
   }
-  function opToSVG(op){
+  function opToSVG(op, assetPool=assets){
     switch(op.kind){
       case 'image': {
-        const src = assets[op.id];
+        const src = assetPool[op.id];
         return src ? `<image href="${escXml(src)}" x="${op.x}" y="${op.y}" width="${op.w}" height="${op.h}" preserveAspectRatio="none"/>` : '';
       }
       case 'dot': return `<circle cx="${op.cx}" cy="${op.cy}" r="${op.r}" fill="${escXml(op.color)}"${op.opacity !== 1 ? ` opacity="${op.opacity}"` : ''}/>`;
@@ -3556,15 +3793,39 @@
           .map(({line, y}) => `<tspan x="${tx}" y="${y}">${escXml(line)}</tspan>`).join('');
         return `<text fill="${escXml(op.color)}" text-anchor="${anchor}" style="font:${escXml(op.font)}">${tspans}</text>`;
       }
+      case 'markdown': {
+        const entries = layoutMarkdownBlocks(op.blocks, op.x, op.y, op.w, op.h, op.fontFamily, op.baseFontPx);
+        const lines = entries.filter(w=>w.hr).map(w =>
+          `<line x1="${w.x1}" y1="${w.y}" x2="${w.x2}" y2="${w.y}" stroke="${escXml(op.color)}" stroke-width="1"/>`
+        ).join('');
+        const tspans = entries.filter(w=>!w.hr).map(w => {
+          const attrs = `font-weight="${w.bold?700:600}" font-style="${w.italic?'italic':'normal'}" font-size="${w.fontPx}px"`
+            + (w.link ? ` fill="${MD_LINK_COLOR}" text-decoration="underline"` : '');
+          const tspan = `<tspan x="${w.x}" y="${w.y}" ${attrs}>${escXml(w.text)}</tspan>`;
+          // SVG natively supports <a href>, so an exported/copied file gets a real clickable link with
+          // zero extra plumbing -- unlike the live canvas, which has no hit-testing for a sub-region of
+          // an item at all. xlink:href alongside href: some browsers' SVG anchor click-navigation only
+          // looks at the older, namespaced xlink:href when the SVG is embedded inline in an HTML
+          // document (as opposed to loaded as a standalone .svg file) -- href alone parses fine and the
+          // tspan's own presentation attributes (fill/underline) render correctly either way, but the
+          // link can silently fail to navigate without this. See MDN's SVG <a> reference, which calls
+          // xlink:href out explicitly as needed "for backwards compatibility."
+          const href = w.link ? safeHref(w.link) : null;
+          return href
+            ? `<a href="${escXml(href)}" xlink:href="${escXml(href)}" target="_blank" rel="noopener">${tspan}</a>`
+            : tspan;
+        }).join('');
+        return lines + `<text fill="${escXml(op.color)}" font-family="${escXml(FONTS[op.fontFamily]||FONTS.sans)}">${tspans}</text>`;
+      }
     }
     return '';
   }
-  function itemToSVG(it){
-    const inner = shapeOps(it).map(opToSVG).join('');
+  function itemToSVG(it, sceneItems=items, assetPool=assets){
+    const inner = shapeOps(it).map(op=>opToSVG(op,assetPool)).join('');
     // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
     let transform = '';
     if(it.group!=null && it.groupRotation){
-      const piv = groupPivot(it.group);
+      const piv = groupPivot(it.group,sceneItems);
       transform += `rotate(${it.groupRotation*180/Math.PI} ${piv.cx} ${piv.cy}) `;
     }
     if(it.rotation){
@@ -3574,23 +3835,69 @@
     transform = transform.trim();
     return transform ? `<g transform="${transform}">${inner}</g>` : inner;
   }
+  // Self-contained SVG markup for any list of items -- shared by the whole-canvas SVG/HTML
+  // exports (background on, matching how they've always looked) and the copy-to-clipboard feature
+  // (background off, so pasting a selection into another app's canvas doesn't carry an opaque backdrop).
+  function itemsToSVGMarkup(itemList, opts){
+    opts = opts || {};
+    let w, h, ox, oy;
+    if(opts.width != null && opts.height != null){
+      // Exact canvas dimensions, no auto-crop -- items keep their own on-screen x/y as-is, so the
+      // result matches the live canvas 1:1 (including any empty space around the actual objects).
+      w = opts.width; h = opts.height; ox = 0; oy = 0;
+    } else {
+      // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
+      // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
+      // of surrounding empty canvas that happened to be visible at the time.
+      const m = 24;
+      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      for(const it of itemList){
+        const b = paintedWorldBBox(it,itemList);
+        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+      }
+      w = (maxX-minX) + m*2; h = (maxY-minY) + m*2;
+      ox = -minX + m; oy = -minY + m;
+    }
+    let body = '';
+    for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets);
+    const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
+      + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
+  }
+  // Renders a list of items to an offscreen PNG canvas, as a Promise<Blob> -- reuses drawItem()
+  // itself (same technique as savePng(), just parameterized over an arbitrary item list instead of
+  // the whole canvas, and producing an in-memory Blob instead of triggering a download). This is the
+  // copy-to-clipboard PNG fallback: many apps (PowerPoint, Word, ...) don't render inline SVG from a
+  // pasted text/html clipboard entry at all (shows an empty box) but handle image/png perfectly.
+  function itemsToPngBlob(itemList, opts){
+    opts = opts || {};
+    const m = opts.margin!=null ? opts.margin : 24, scale = opts.scale!=null ? opts.scale : 2;
+    return new Promise(resolve=>{
+      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      for(const it of itemList){
+        const b = paintedWorldBBox(it);
+        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+      }
+      const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
+      const off = document.createElement('canvas');
+      off.width = Math.max(1, Math.round(w*scale));
+      off.height = Math.max(1, Math.round(h*scale));
+      const octx = off.getContext('2d');
+      octx.setTransform(scale,0,0,scale,0,0);
+      octx.translate(-minX + m, -minY + m);
+      if(opts.background !== false){ octx.fillStyle = BG; octx.fillRect(minX - m, minY - m, w, h); }
+      const real = ctx;
+      ctx = octx;
+      try { for(const it of itemList) drawItem(it); }
+      finally { ctx = real; }
+      off.toBlob(blob=>resolve(blob), 'image/png');
+    });
+  }
   function saveSvg(){
     if(!items.length){ toast('Nothing to export yet'); return; }
-    const m = 24;
-    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-    for(const it of items){
-      const b = paintedWorldBBox(it);
-      minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
-      maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
-    }
-    const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
-    const ox = -minX + m, oy = -minY + m;
-    let body = '';
-    for(const it of items) body += itemToSVG(it);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
-      + `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`
-      + `<g transform="translate(${ox} ${oy})">${body}</g>`
-      + `</svg>`;
+    const svg = itemsToSVGMarkup(items);
     const blob = new Blob([svg], {type:'image/svg+xml'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3600,7 +3907,57 @@
     URL.revokeObjectURL(url);
     toast('Saved SVG');
   }
+  // Exports the WHOLE workspace, not just the active tab -- every tab, each as its own full-canvas
+  // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
+  // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
+  // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
+  // Pass its own items/assets through serialization without modifying the active document's state.
+  // cssW/cssH are a single shared viewport size, not per-tab, so one size fits every tab.
+  function exportHtml(){
+    if(textInput.style.display==='block') commitText();
+    rememberActiveTab();
+    const tabData = tabs.map(t=>{
+      const doc = tabDocument(t.id);
+      const svg = itemsToSVGMarkup(doc.items, {width:cssW, height:cssH, assets:doc.assets});
+      return { id:t.id, name:t.name, items:doc.items, svg };
+    });
 
+    if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
+
+    let html;
+    if(tabData.length < 2){
+      // Unchanged from before this feature -- a single plain SVG, no tab bar, no extra markup.
+      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${tabData[0].svg}</body></html>`;
+    } else {
+      const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+      .tabbar{display:flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border-bottom:1px solid #e5e7eb;overflow-x:auto}
+      .tab-select{appearance:none;border:1px solid transparent;background:transparent;height:28px;padding:0 10px;border-radius:6px;font-size:14px;font-weight:550;color:#1f2937;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+      .tab-select:hover{background:#f3f4f6}
+      .tab-select.active{background:#eef2ff;color:#6366f1}`;
+      const bar = `<div class="tabbar">${tabData.map((t,i)=>
+        `<button type="button" class="tab-select${i===0?' active':''}" data-tab-id="${escXml(t.id)}">${escXml(t.name)}</button>`
+      ).join('')}</div>`;
+      const panels = tabData.map((t,i)=>
+        `<div class="tab-panel" data-tab-id="${escXml(t.id)}"${i===0?'':' style="display:none"'}>${t.svg}</div>`
+      ).join('');
+      const script = `document.querySelectorAll('.tab-select').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var id = btn.dataset.tabId;
+          document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display = (p.dataset.tabId===id ? '' : 'none'); });
+          document.querySelectorAll('.tab-select').forEach(function(b){ b.classList.toggle('active', b===btn); });
+        });
+      });`;
+      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
+    }
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Saved HTML');
+  }
   // ---------- save / open the sketch as a file (our own JSON format) ----------
   function exportProject(){
     const data = {
@@ -4036,7 +4393,7 @@
 
   function shapeThumbSVG(list){
     const box = unionBoxOf(list, true);
-    const inner = list.map(itemToSVG).join('');
+    const inner = list.map(it=>itemToSVG(it,list,{})).join('');
     return `<svg viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
   }
 
@@ -4506,6 +4863,7 @@
     newTab: newTab,
     png: savePng,
     svg: saveSvg,
+    html: exportHtml,
     print: ()=>window.print(),
     clear: clearAll,
   };
@@ -4555,6 +4913,8 @@
 
   window.addEventListener('paste', e=>{
     if(textInput.style.display==='block') return;     // let the text editor handle pastes
+    const text=e.clipboardData && e.clipboardData.getData('text/plain');
+    if(text && pasteObjectPayload(text)){ e.preventDefault(); return; }
     const list = e.clipboardData && e.clipboardData.items;
     if(list){
       for(const it of list){

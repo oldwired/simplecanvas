@@ -10,6 +10,15 @@ Use **Add tab** for independent drawings and **Save workspace…** to download a
 Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
 offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
 
+**Export HTML** creates a self-contained, view-only copy of all working tabs at the current canvas
+size. Images are embedded in the file, and each tab retains its own content and group rotations,
+including changes that could not be saved automatically.
+
+Copying a selection provides editable objects when pasted into SimpleCanvas and a PNG fallback for
+other applications. A text item whose first line is exactly `---` supports Markdown headings,
+emphasis, lists, links, and rules. Markdown stays left/top-aligned; cropped PNG/SVG exports include
+the full rendered content. Table cells remain plain text.
+
 Select a line or curve and open the **line-style** button (the stroke-width value) to toggle its
 start/end arrowheads or choose **Edit points / Done**. The popover works with mouse or touch and
 does not move the canvas. In normal Select mode, clicking an endpoint also toggles its arrowhead.
