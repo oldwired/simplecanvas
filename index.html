@@ -215,18 +215,7 @@
      doesn't fit the toolbar's own row height, so it lives in a popover like the color pickers */
   .size-picker{min-width:0;padding:12px 10px;flex-direction:column;align-items:center;gap:8px}
   .size-width-controls{display:flex;flex-direction:column;align-items:center;gap:8px;width:64px}
-  .size-picker.has-path-controls{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:start;gap:12px;width:268px;box-sizing:border-box;max-width:calc(100vw - 24px)}
   .size-picker[hidden]{display:none}
-  .path-controls{display:flex;flex-direction:column;gap:8px;border-left:1px solid var(--line);padding-left:12px}
-  .path-controls[hidden],.path-controls [hidden]{display:none}
-  .path-controls button{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;justify-content:center;white-space:normal}
-  .path-controls button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:#c7cdfb}
-  .head-options{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
-  .head-options button{font-size:12px;padding:6px}
-  .head-toggle{width:100%;gap:6px}
-  .head-toggle svg{width:30px;height:24px;flex-shrink:0}
-  .path-controls button:disabled{opacity:.4;cursor:default}
-  .path-controls #editPointsBtn{margin-top:4px}
   @media(pointer:coarse){.size-picker .dash-btn{min-height:44px}}
   .vslider-wrap{width:42px;height:240px;position:relative}
   .vslider{
@@ -519,23 +508,6 @@
           <div class="vslider-wrap"><input type="range" id="sizeRange" class="vslider" min="1" max="60" value="6" orient="vertical" aria-label="Stroke width"></div>
           <div class="size-picker-label" id="sizeRangeLabel">6 px</div>
         </div>
-        <div class="path-controls" id="pathControls" hidden>
-          <div id="startHeadControls" role="group" aria-label="Start arrowhead">
-            <button type="button" class="head-toggle" id="startHeadBtn" aria-pressed="false">Start arrowhead</button>
-            <div class="head-options">
-              <button type="button" id="startHeadFilledBtn" aria-label="Filled start arrowhead" aria-pressed="false">Filled</button>
-              <button type="button" id="startHeadInvertedBtn" aria-label="Inverted start arrowhead" aria-pressed="false">Inverted</button>
-            </div>
-          </div>
-          <div id="endHeadControls" role="group" aria-label="End arrowhead">
-            <button type="button" class="head-toggle" id="endHeadBtn" aria-pressed="false">End arrowhead</button>
-            <div class="head-options">
-              <button type="button" id="endHeadFilledBtn" aria-label="Filled end arrowhead" aria-pressed="false">Filled</button>
-              <button type="button" id="endHeadInvertedBtn" aria-label="Inverted end arrowhead" aria-pressed="false">Inverted</button>
-            </div>
-          </div>
-          <button type="button" id="editPointsBtn">Edit points</button>
-        </div>
       </div>
     </div>
   </div>
@@ -670,10 +642,6 @@
   const sizeRangeLabel = document.getElementById('sizeRangeLabel');
   const dashPicker = document.getElementById('dashPicker');
   const sizeBtnLineEl = document.getElementById('sizeBtnLineEl');
-  const pathControls = document.getElementById('pathControls');
-  const startHeadBtn = document.getElementById('startHeadBtn');
-  const endHeadBtn = document.getElementById('endHeadBtn');
-  const editPointsBtn = document.getElementById('editPointsBtn');
   const fontFamilySel = document.getElementById('fontFamily');
   const fontSizeSel = document.getElementById('fontSize');
   const sizeGroup = document.getElementById('sizeGroup');
@@ -1086,6 +1054,16 @@
     it.type='arrow';
     if(s) it.hs = true;
     if(!e) it.he = false;
+  }
+  const HEAD_CYCLE = ['none','open','filled','open-inverted','filled-inverted'];
+  function cycleHead(it, end){
+    const h=headsOf(it), enabled=end==='start' ? h.s : h.e;
+    const current=enabled ? headVariantOf(it,end) : 'none';
+    const next=HEAD_CYCLE[(HEAD_CYCLE.indexOf(current)+1)%HEAD_CYCLE.length];
+    setHeads(it,end==='start' ? next!=='none' : h.s,end==='end' ? next!=='none' : h.e);
+    const key=end==='start' ? 'hsStyle' : 'heStyle';
+    if(next==='none' || next==='open') delete it[key];
+    else it[key]=next;
   }
   // one arrowhead shape for canvas, SVG export and hit boxes: barb length and half-angle for a stroke width
   function arrowHeadGeom(size){ return { len: Math.max(10, size*2.6), a: Math.PI/7 }; }
@@ -2318,7 +2296,7 @@
       const li = loneOpenPathIdx(selection);
       if(li!=null){
         ctx.setLineDash([]);
-        // filled knob = arrowhead at that end; a plain click on a knob toggles it
+        // filled knob = arrowhead at that end; a plain click cycles its variant
         ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
         const h = headsOf(items[li]);
         pathEnds(items[li]).forEach((p,k)=>{
@@ -2838,9 +2816,8 @@
     if(endDrag){
       handledPointerUp = true;
       if(!endDrag.moved){
-        // plain click on an endpoint knob: toggle the arrowhead at that end
-        const it = items[endDrag.idx], h = headsOf(it);
-        if(endDrag.end===1) setHeads(it, !h.s, h.e); else setHeads(it, h.s, !h.e);
+        // Plain click/tap cycles heads; dragging only moves the endpoint.
+        cycleHead(items[endDrag.idx],endDrag.end===1 ? 'start' : 'end');
       }
       commitHistory();
       endDrag=null; snapPt=null; snapCursorPt=null;
@@ -3678,7 +3655,7 @@
         refreshColorUI();
       }
     }
-    updatePathControls();
+    if(!sizePicker.hidden) fitSizePicker();
     if(!active) return;
     toDupBtn.disabled = toFrontBtn.disabled = toBackBtn.disabled = delSelBtn.disabled = false;
     groupBtn.disabled = selection.length<2;
@@ -4695,36 +4672,6 @@
     refreshColorUI();
   }
 
-  function updatePathControls(){
-    const idx=pointEditableIdx(), it=idx==null ? null : items[idx];
-    pathControls.hidden = !it;
-    sizePicker.classList.toggle('has-path-controls',!!it);
-    const openPath=isOpenPath(it);
-    const h=openPath ? headsOf(it) : {s:false,e:false};
-    for(const end of ['start','end']){
-      document.getElementById(end+'HeadControls').hidden=!openPath;
-      const enabled=end==='start' ? h.s : h.e, variant=it ? headVariantOf(it,end) : 'open';
-      const button=end==='start' ? startHeadBtn : endHeadBtn;
-      button.setAttribute('aria-pressed',String(enabled));
-      if(button.dataset.variant!==variant){
-        const previewItem={size:2,color:'currentColor',hsStyle:variant,heStyle:variant};
-        const head=arrowHeadOp(previewItem,{x:end==='start' ? 30 : 6,y:12},{x:18,y:12},end);
-        button.innerHTML=`<svg viewBox="0 0 36 24" aria-hidden="true"><path d="M${end==='start'?32:4},12 L18,12" fill="none" stroke="currentColor" stroke-width="2"/>${opToSVG(head)}</svg>${end==='start'?'Start':'End'} arrowhead`;
-        button.dataset.variant=variant;
-      }
-      for(const option of ['Filled','Inverted']){
-        const control=document.getElementById(end+'Head'+option+'Btn');
-        control.disabled=!enabled;
-        control.setAttribute('aria-pressed',String(option==='Filled' ? variant.startsWith('filled') : variant.endsWith('-inverted')));
-      }
-    }
-    const editing=idx!=null && pointEditIdx===idx;
-    editPointsBtn.textContent=editing ? 'Done' : 'Edit points';
-    sizeBtn.classList.toggle('active',editing);
-    sizeBtn.title=editing ? 'Line style — editing points' : it ? 'Line style and point editing' : 'Stroke width and line style';
-    sizeBtn.setAttribute('aria-label',sizeBtn.title);
-    if(!sizePicker.hidden) fitSizePicker();
-  }
   function fitSizePicker(){
     fitMenu(sizePicker);
     const r=sizePicker.getBoundingClientRect();
@@ -4735,31 +4682,6 @@
     sizePicker.style.maxHeight=Math.max(100,window.innerHeight-r.top-12)+'px';
     sizePicker.style.overflowY='auto';
   }
-  function toggleSelectedHead(end){
-    const idx=pointEditableIdx();
-    if(idx==null || !isOpenPath(items[idx])) return;
-    const it=items[idx], h=headsOf(it);
-    beginHistory();
-    setHeads(it,end==='start' ? !h.s : h.s,end==='end' ? !h.e : h.e);
-    commitHistory(); render();
-  }
-  startHeadBtn.addEventListener('click',()=>toggleSelectedHead('start'));
-  endHeadBtn.addEventListener('click',()=>toggleSelectedHead('end'));
-  for(const end of ['start','end']) for(const option of ['Filled','Inverted']){
-    document.getElementById(end+'Head'+option+'Btn').addEventListener('click',()=>{
-      const idx=pointEditableIdx();
-      if(idx==null || !isOpenPath(items[idx])) return;
-      const it=items[idx], variant=headVariantOf(it,end);
-      let filled=variant.startsWith('filled'), inverted=variant.endsWith('-inverted');
-      if(option==='Filled') filled=!filled; else inverted=!inverted;
-      beginHistory();
-      const key=end==='start' ? 'hsStyle' : 'heStyle';
-      if(!filled && !inverted) delete it[key];
-      else it[key]=(filled ? 'filled' : 'open')+(inverted ? '-inverted' : '');
-      commitHistory(); render();
-    });
-  }
-  editPointsBtn.addEventListener('click',()=>{togglePointEdit();sizeBtn.focus({preventScroll:true});});
   sizePicker.addEventListener('keydown',e=>{
     if(e.key==='Escape'){setSizePicker(false);sizeBtn.focus({preventScroll:true});}
     if(!e.metaKey && !e.ctrlKey) e.stopPropagation();
@@ -4767,7 +4689,7 @@
   window.addEventListener('resize',()=>{if(!sizePicker.hidden)fitSizePicker();});
   function setSizePicker(open){
     sizePicker.hidden = !open;
-    if(open) updatePathControls();
+    if(open) fitSizePicker();
     sizeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){ setStrokePicker(false); setFillPicker(false); setTextColorPicker(false); setTablePicker(false); setShapePicker(false); setMenu(false); }
   }

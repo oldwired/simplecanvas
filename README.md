@@ -19,12 +19,12 @@ other applications. A text item whose first line is exactly `---` supports Markd
 emphasis, lists, links, and rules. Markdown stays left/top-aligned; cropped PNG/SVG exports include
 the full rendered content. Table cells remain plain text.
 
-Select a line or curve and open the **line-style** button (the stroke-width value) to toggle its
-start/end arrowheads or choose **Edit points / Done**. The popover works with mouse or touch and
-does not move the canvas. In normal Select mode, clicking an endpoint also toggles its arrowhead.
-Each end also has **Filled** and **Inverted** options, which can be combined. Inverted heads point
-back along the line; turning a head off and on remembers its style.
-Double-clicking or double-tapping the shape remains a shortcut for point editing.
+Select a line or open curve, then click or tap either endpoint to cycle its arrowhead:
+**None → Open → Filled → Open inverted → Filled inverted → None**. Each end cycles independently;
+inverted heads point back along the line. Dragging an endpoint moves it without changing its style.
+Double-click or double-tap the shape's body to enter or leave point editing. While editing points,
+endpoint taps select anchors. The **line-style** popover (the stroke-width value) controls stroke
+width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
 

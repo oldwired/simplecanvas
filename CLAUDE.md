@@ -15,6 +15,11 @@ and passes each document's items/assets to SVG serialization; do not clear or sw
 Painted export bounds cover plain text and Markdown separately from geometry/pivot bounds. Markdown
 requires an exact `---` first line in a text item; table cells are excluded in both renderer and editor.
 
+In Select mode, endpoint clicks/taps cycle each line or open curve head through None, Open, Filled,
+Open inverted, Filled inverted, then None. Endpoint drags retain the head style. Double-click/tap
+the shape body to enter/leave point editing; anchor taps select points in that mode. Keep rapid
+endpoint/anchor taps out of double-tap detection. The line-style popover only controls width/dashes.
+
 Automated Playwright regressions are checked in under `tests/`; see `tests/README.md` for Chromium
 and WebKit commands and the remaining manual Office/iPad checks. They are development dependencies
 only; opening `index.html` still requires no build step or runtime dependency.

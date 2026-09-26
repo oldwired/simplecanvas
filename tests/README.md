@@ -16,6 +16,7 @@ embedded assets, tab switching, group transforms, and current document data afte
 Markdown checks cover cropped PNG/SVG/clipboard output and editor alignment. Native Office paste
 still requires a manual integration check.
 
-Tablet tests exercise touch events and viewport sizes in Chromium and WebKit. The raw touch-drag
-test uses Chromium's CDP interface and is skipped in WebKit. A physical iPad Safari pass is still
-needed before release to check native touch behavior and the on-screen keyboard.
+Tablet tests exercise endpoint variant cycling, double-tap point editing, and viewport sizes in
+Chromium and WebKit. Mouse checks also cover undo/reload/import and preserving heads during drags.
+The raw touch-drag test uses Chromium's CDP interface and is skipped in WebKit. A physical iPad
+Safari pass is still needed before release to check native touch behavior and the on-screen keyboard.

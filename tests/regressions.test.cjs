@@ -514,69 +514,66 @@ test('curve arrowheads handle coincident controls, local tangents, and collapsed
   }
 }));
 
-test('popover edits arrowheads before and after curve conversion without moving the canvas', async () => app(async ({page,run}) => {
-  await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
-  const canvas=await page.locator('#canvas').boundingBox();
-  await page.locator('#sizeBtn').click();
-  assert.equal(await page.locator('#pathControls').isVisible(),true);
-  await page.locator('#endHeadBtn').click();
-  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
-  await page.locator('#editPointsBtn').click();
-  assert.equal(await page.locator('#sizePicker').isVisible(),false);
-  assert.equal(await run('pointEditIdx'),0);
-  assert.equal(await run('items[0].type'),'polygon');
-  assert.deepEqual(await page.locator('#canvas').boundingBox(),canvas);
-  await page.mouse.click(canvas.x+320,canvas.y+200);
-  assert.equal(await run('activeAnchor'),1);
-  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
-  await page.locator('#sizeBtn').click();
-  assert.equal(await page.locator('#editPointsBtn').textContent(),'Done');
-  await page.locator('#endHeadBtn').click();await page.locator('#startHeadBtn').click();
-  assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:false});
-  assert.equal(await run('pointEditIdx'),0);
-  await page.locator('#editPointsBtn').click();
-  assert.equal(await run('pointEditIdx'),null);
-  await page.mouse.click(canvas.x+320,canvas.y+200);
-  assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:true});
-  assert.equal(await run('items[0].type'),'polygon');
-  await run('undo()');assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:false});
-  await run('redo()');
-  const svg=await run('itemToSVG(items[0])');
-  assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'arrowheads remain solid');
-  await page.reload();assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:true});
+test('endpoint clicks cycle every variant independently on straight and curved paths', async () => app(async ({page,run}) => {
+  for(const curved of [false,true]){
+    await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];pointEditIdx=null;
+      if(${curved}){convertToCurve(0);items[0].points[0].c1={x:140,y:120};items[0].points[1].c2={x:260,y:120};}render();`);
+    const canvas=await page.locator('#canvas').boundingBox();
+    const before=await run('pathEnds(items[0])');
+    const state=()=>run(`[headsOf(items[0]).s ? headVariantOf(items[0],'start') : 'none',headsOf(items[0]).e ? headVariantOf(items[0],'end') : 'none']`);
+    for(const end of ['start','end']){
+      for(const variant of ['open','filled','open-inverted','filled-inverted','none','open']){
+        await page.mouse.click(canvas.x+(end==='start'?80:320),canvas.y+200);
+        assert.deepEqual(await state(),end==='start' ? [variant,'none'] : ['open',variant]);
+        assert.equal(await run('pointEditIdx'),null,'rapid endpoint clicks do not enter point editing');
+        assert.deepEqual(await run('pathEnds(items[0])'),before,'cycling keeps the path endpoints in place');
+      }
+    }
+    assert.equal(await run('items[0].type'),curved?'polygon':'arrow');
+    await run('undo()');assert.deepEqual(await state(),['open','none']);
+    await run('redo()');assert.deepEqual(await state(),['open','open']);
+    const svg=await run('itemToSVG(items[0])');
+    assert.equal((svg.match(/stroke-dasharray=/g)||[]).length,1,'arrowheads remain solid');
+    await page.reload();assert.deepEqual(await state(),['open','open']);
+    await run("setTool('select');selection=[0];render();");
+    await page.mouse.dblclick(canvas.x+320,canvas.y+200);
+    assert.deepEqual(await state(),['open','open-inverted'],'a double-click advances two variants');
+    assert.equal(await run('pointEditIdx'),null,'native endpoint double-clicks do not change modes');
+  }
 }));
 
-test('closed shapes offer point editing without arrowhead controls', async () => app(async ({page,run}) => {
+test('closed shapes enter and leave point editing by double-clicking the body', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];render();`);
   await page.locator('#sizeBtn').click();
-  assert.equal(await page.locator('#startHeadBtn').isVisible(),false);
-  assert.equal(await page.locator('#editPointsBtn').isVisible(),true);
-  await page.locator('#editPointsBtn').click();
+  assert.equal(await page.locator('#pathControls, #editPointsBtn, .head-toggle').count(),0);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+180,canvas.y+150);
+  assert.equal(await page.locator('#sizePicker').isVisible(),false);
+  assert.equal(await run('pointEditIdx'),0);
   assert.equal(await run('items[0].closed'),true);
   assert.equal(await run('items[0].points.length'),4);
+  await page.mouse.dblclick(canvas.x+180,canvas.y+150);
+  assert.equal(await run('pointEditIdx'),null);
 }));
 
-test('arrowhead variants survive conversion, undo, toggling, reload, and workspace import', async () => app(async ({page,run}) => {
+test('cycled arrowhead variants survive conversion, undo, reload, and workspace import', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
-  await page.locator('#sizeBtn').click();
-  assert.equal(await page.locator('#startHeadFilledBtn').isDisabled(),true);
-  await page.locator('#startHeadBtn').click();await page.locator('#endHeadBtn').click();
-  await page.locator('#startHeadFilledBtn').click();await page.locator('#startHeadInvertedBtn').click();
-  await page.locator('#endHeadFilledBtn').click();
+  const box=await page.locator('#canvas').boundingBox();
+  for(let i=0;i<4;i++) await page.mouse.click(box.x+80,box.y+200);
+  for(let i=0;i<2;i++) await page.mouse.click(box.x+320,box.y+200);
   const variants=()=>run(`[headVariantOf(items[0],'start'),headVariantOf(items[0],'end')]`);
   assert.deepEqual(await variants(),['filled-inverted','filled']);
   await run('undo()');assert.deepEqual(await variants(),['filled-inverted','open']);
   await run('redo()');
-  await page.locator('#editPointsBtn').click();
+  await page.mouse.dblclick(box.x+200,box.y+200);
   assert.equal(await run('items[0].type'),'polygon');
+  assert.equal(await run('pointEditIdx'),0);
   assert.deepEqual(await variants(),['filled-inverted','filled']);
-  await run('togglePointEdit()');
-  const box=await page.locator('#canvas').boundingBox();
   await page.mouse.click(box.x+80,box.y+200);
-  assert.equal(await run('headsOf(items[0]).s'),false);
-  await page.mouse.click(box.x+80,box.y+200);
-  assert.equal(await run('headsOf(items[0]).s'),true);
-  assert.deepEqual(await variants(),['filled-inverted','filled']);
+  assert.equal(await run('activeAnchor'),0);
+  assert.deepEqual(await variants(),['filled-inverted','filled'],'anchor selection does not cycle heads');
+  await page.mouse.dblclick(box.x+200,box.y+200);
+  assert.equal(await run('pointEditIdx'),null);
   const workspace=await downloadedJSON(page,run,'exportWorkspace()');
   await page.reload();assert.deepEqual(await variants(),['filled-inverted','filled']);
   const original=await run('activeTabId');
@@ -630,7 +627,7 @@ test('large inverted arrowheads fit selection bounds and actual PNG/SVG exports'
   assert.ok(png.readUInt32BE(16)>=width*2-2 && png.readUInt32BE(20)>=height*2-2);
 }));
 
-test('double-click body shortcut still works immediately after an endpoint toggle', async () => app(async ({page,run}) => {
+test('double-click body shortcut still works immediately after an endpoint cycle', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(line)}];setTool('select');selection=[0];render();`);
   const box=await page.locator('#canvas').boundingBox();
   await page.mouse.click(box.x+320,box.y+200);
@@ -656,6 +653,7 @@ test('touch anchor dragging preserves the grab offset and keeps point editing ac
 
 test('dragging a rotated curve endpoint retains handles and the other points', async () => app(async ({page,run}) => {
   await run(`items=[{type:'polygon',uid:'curve',closed:false,color:'#000000',size:6,rotation:.3,
+    hs:true,he:true,hsStyle:'filled-inverted',heStyle:'filled',
     points:[{x:100,y:150,c1:{x:150,y:70}},{x:250,y:190},{x:400,y:150,c2:{x:350,y:230}}]}];setTool('select');selection=[0];render();`);
   const before=await run('items[0].points.map(p=>({anchor:toWorld(items[0],p.x,p.y),handle:p.c2&&toWorld(items[0],p.c2.x,p.c2.y)}))');
   const canvas=await page.locator('#canvas').boundingBox(), end=before[2].anchor;
@@ -670,38 +668,53 @@ test('dragging a rotated curve endpoint retains handles and the other points', a
   assert.ok(Math.abs(after[2].y-before[2].anchor.y-15)<.02);
   assert.ok(Math.abs(after[2].c2.x-before[2].handle.x-20)<.02);
   assert.ok(Math.abs(after[2].c2.y-before[2].handle.y-15)<.02);
-  assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
+  assert.deepEqual(await run('headsOf(items[0])'),{s:true,e:true});
+  assert.deepEqual(await run("[headVariantOf(items[0],'start'),headVariantOf(items[0],'end')]"),['filled-inverted','filled']);
 }));
 
 for(const viewport of [{width:1024,height:768},{width:768,height:1024},{width:375,height:700}]){
-  test(`touch popover fits ${viewport.width}×${viewport.height} and keeps canvas stationary`, async () => app(async ({page,run}) => {
-    const endX=Math.min(viewport.width-80,420);
+  test(`touch endpoint cycling and double-tap editing work at ${viewport.width}×${viewport.height}`, async () => app(async ({page,run}) => {
+    const endX=Math.min(viewport.width-80,420), middleX=(80+endX)/2;
     await run(`items=[{...${JSON.stringify(line)},x2:${endX}}];setTool('select');selection=[0];render();`);
     const before=await page.locator('#canvas').boundingBox();
     await page.locator('#sizeBtn').tap();
     const popup=await page.locator('#sizePicker').boundingBox();
     assert.ok(popup.x>=4 && popup.x+popup.width<=viewport.width-4);
     assert.ok(popup.y+popup.height<=viewport.height);
-    for(const id of ['startHeadBtn','endHeadBtn','editPointsBtn','startHeadFilledBtn','startHeadInvertedBtn','endHeadFilledBtn','endHeadInvertedBtn']){
-      const target=await page.locator('#'+id).boundingBox();
+    assert.equal(await page.locator('#pathControls, #editPointsBtn, .head-toggle').count(),0);
+    for(const button of await page.locator('#dashPicker button').all()){
+      const target=await button.boundingBox();
       assert.ok(target.height>=44 && target.width>=44);
     }
-    await page.locator('#endHeadBtn').tap();
-    await page.locator('#endHeadFilledBtn').tap();await page.locator('#endHeadInvertedBtn').tap();
-    assert.equal(await run("headVariantOf(items[0],'end')"),'filled-inverted');
-    await page.locator('#editPointsBtn').tap();
+    await page.locator('#dashPicker [data-dash="tight"]').tap();
+    assert.equal(await run('items[0].dash'),'tight');
     assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
-    await page.touchscreen.tap(before.x+endX,before.y+200);
-    await page.touchscreen.tap(before.x+endX,before.y+200);
+    await page.locator('#sizeBtn').tap();
+    const head=()=>run(`headsOf(items[0]).e ? headVariantOf(items[0],'end') : 'none'`);
+    const tapEnd=()=>page.touchscreen.tap(before.x+endX,before.y+215); // inside the touch target, outside mouse radius
+    const doubleTapBody=async()=>{
+      await page.touchscreen.tap(before.x+middleX,before.y+200);
+      await page.touchscreen.tap(before.x+middleX,before.y+200);
+    };
+    for(const variant of ['open','filled','open-inverted','filled-inverted','none','open']){
+      await tapEnd();
+      assert.equal(await head(),variant);
+      assert.equal(await run('pointEditIdx'),null,'rapid endpoint taps only cycle heads');
+    }
+    await doubleTapBody();
+    assert.equal(await run('pointEditIdx'),0);
+    assert.equal(await run('items[0].type'),'polygon');
+    await tapEnd();await tapEnd();
     assert.equal(await run('pointEditIdx'),0,'rapid anchor taps stay in point editing');
     assert.equal(await run('activeAnchor'),1);
-    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
-    await page.locator('#sizeBtn').tap();await page.locator('#endHeadBtn').tap();
-    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
-    await page.locator('#editPointsBtn').tap();
-    await page.touchscreen.tap(before.x+endX,before.y+200);
-    assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:true});
+    assert.equal(await head(),'open','anchor taps do not change arrowheads');
+    await doubleTapBody();
     assert.equal(await run('pointEditIdx'),null);
+    for(const variant of ['filled','open-inverted','filled-inverted','none','open']){
+      await tapEnd();
+      assert.equal(await head(),variant,'converted curves keep endpoint cycling');
+      assert.equal(await run('pointEditIdx'),null);
+    }
     assert.deepEqual(await page.locator('#canvas').boundingBox(),before);
   }, {context:{viewport,hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
 }
