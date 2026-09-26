@@ -286,7 +286,7 @@ test('image import and undo stay with the original tab after switching away', as
   await page.reload();assert.equal(await run('assets[items[0].id]'),source);
 }));
 
-test('click cycling survives deletion and layer reordering', async () => app(async ({page,run}) => {
+test('click cycling resets after deletion, layer reordering, and nudging', async () => app(async ({page,run}) => {
   await run(`items=${JSON.stringify([rectangle('lower'),rectangle('upper')])};setTool('select');`);
   const box=await page.locator('#canvas').boundingBox();
   const click=()=>page.mouse.click(box.x+170,box.y+145);
@@ -298,6 +298,8 @@ test('click cycling survives deletion and layer reordering', async () => app(asy
   await click();assert.deepEqual(await run('selectedUids()'),['lower']);
   await run('bringToFront()');await click();
   assert.deepEqual(await run('selectedUids()'),['lower']);
+  await page.keyboard.press('ArrowRight');await click();
+  assert.deepEqual(await run('selectedUids()'),['lower'],'a scene edit resets the cycle even when the hit stack is unchanged');
 }));
 
 const wrappedText={type:'text',uid:'text',x:100,y:320,w:110,h:40,size:2,color:'#000000',
@@ -470,6 +472,29 @@ test('touch anchor dragging preserves the grab offset and keeps point editing ac
   assert.equal(await run('pointEditIdx'),0);
   assert.deepEqual(await run('headsOf(items[0])'),{s:false,e:false});
   await session.detach();
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+
+test('double-tap conversion keeps the cycled shape for the next touch drag', {skip:engine !== 'chromium' && 'Raw touch injection requires Chromium CDP'}, async () => app(async ({page,run,context}) => {
+  const scene=['bottom','middle','top'].map(uid=>rectangle(uid));
+  await run(`items=${JSON.stringify(scene)};setTool('select');selection=[2];render();`);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.touchscreen.tap(box.x+180,box.y+150);
+  await page.touchscreen.tap(box.x+190,box.y+155);
+  assert.deepEqual(await run('selectedUids()'),['middle']);
+  assert.equal(await run('items[1].type'),'polygon');
+  assert.equal(await run('pointEditIdx'),1);
+  const session=await context.newCDPSession(page);
+  await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+195,y:box.y+160}]});
+  assert.deepEqual(await run('selectedUids()'),['middle'],'the third press must grab the cycled shape');
+  await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+225,y:box.y+185}]});
+  await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await session.detach();
+  assert.deepEqual(await run('items[1].points'),[{x:130,y:125},{x:290,y:125},{x:290,y:225},{x:130,y:225}]);
+  assert.deepEqual(await run('[items[0],items[2]]'),[scene[0],scene[2]],'the other layers must not move');
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await run('items[1].points'),[{x:100,y:100},{x:260,y:100},{x:260,y:200},{x:100,y:200}]);
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await run('items'),scene,'conversion and dragging remain separate undo steps');
 }, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
 
 test('dragging a rotated curve endpoint retains handles and the other points', async () => app(async ({page,run}) => {

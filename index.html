@@ -2107,10 +2107,16 @@
     if(idx==null) return;
     if(pointEditIdx===idx){ pointEditIdx=null; activeAnchor=null; }
     else {
-      if(items[idx].type!=='polygon'){ beginHistory(); convertToCurve(idx); commitHistory(); }
+      if(items[idx].type!=='polygon'){
+        // Conversion keeps the same object in the same layer. Preserve the cycle so the next
+        // press can still grab it; pickWithClickCycle rechecks the hit stack before continuing.
+        const cycle = clickCycle;
+        beginHistory(); convertToCurve(idx); commitHistory();
+        clickCycle = cycle;
+      }
       pointEditIdx=idx; activeAnchor=null;
     }
-    lastTap=null; clickCycle=null;
+    lastTap=null;
     setSizePicker(false);
     render();
   }
