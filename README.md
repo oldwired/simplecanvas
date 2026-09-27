@@ -42,4 +42,19 @@ When hosted, an optional `shapes-library.json` beside the HTML supplies the init
 It is read only once at startup. Opening the picker never reloads it, and custom file imports
 work whether the page is hosted or opened locally. The HTML works on its own without this file.
 
+## Releases
+
+Push a version tag beginning with `v` followed by a digit, such as `v1.0.0`, to create
+a GitHub release with automatically generated release notes:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Tag a commit that includes `.github/workflows/release.yml`. Each release attaches
+`README.md` and `index.html` from that tag. GitHub also provides the usual source
+archives as ZIP and tar.gz downloads. The workflow uses the built-in `GITHUB_TOKEN`;
+no additional secrets or build step are needed.
+
 Licensed under the MIT License.
