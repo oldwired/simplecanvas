@@ -627,6 +627,7 @@
       <span class="smart-template-label">Template:</span>
       <button type="button" class="smart-template-btn" data-template="clock" aria-pressed="true">Clock</button>
       <button type="button" class="smart-template-btn" data-template="arrow" aria-pressed="false">Arrow</button>
+      <button type="button" class="smart-template-btn" data-template="arc" aria-pressed="false">Arc</button>
       <button type="button" class="smart-template-btn" data-template="chart" aria-pressed="false">Chart</button>
       <button type="button" class="smart-template-btn" data-template="minimal" aria-pressed="false">Minimal</button>
       <button type="button" class="smart-template-btn" data-template="blank" aria-pressed="false">Blank</button>
@@ -1556,7 +1557,11 @@
     const segs = [];
     for(let i=0, last=closed?n:n-1; i<last; i++){
       const a = pts[i], b = pts[(i+1)%n];
-      segs.push({ a, b, c1:a.c1||a, c2:b.c2||b });
+      // a.arcTo (see shapeOps' 'polygon' case) marks the segment LEAVING this point as a circular
+      // arc rather than a straight line/bezier -- smart-object-child use only (see CLAUDE.md), never
+      // set by any real, user-drawn/Point-Edit polygon, so bbox()/snapshotOf()/translateItem() etc.
+      // never need to know about it.
+      segs.push({ a, b, c1:a.c1||a, c2:b.c2||b, arc:a.arcTo });
     }
     return segs;
   }
@@ -1675,7 +1680,13 @@
         const segs = polyCurveSegments(it);
         const d = [['M', pts[0].x, pts[0].y]];
         for(const s of segs){
-          if(s.a.c1 || s.b.c2) d.push(['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]);
+          // s.arc: {cx,cy,r,a1,a2} in this app's own angle convention (0 = top/12 o'clock, positive
+          // = clockwise -- same as Clock/Timer's hand math), NOT canvas/SVG's native 0=3-o'clock
+          // convention -- tracePath()/pathD() below each do the -90deg conversion at their own single
+          // call site, so every OTHER piece of angle math in a script stays in the one convention the
+          // rest of this app already uses.
+          if(s.arc) d.push(['A', s.arc.cx, s.arc.cy, s.arc.r, s.arc.a1, s.arc.a2]);
+          else if(s.a.c1 || s.b.c2) d.push(['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]);
           else d.push(['L', s.b.x, s.b.y]);
         }
         if(closed) d.push(['Z']);
@@ -1773,6 +1784,9 @@
       else if(s[0]==='L') ctx.lineTo(s[1], s[2]);
       else if(s[0]==='Q') ctx.quadraticCurveTo(s[1], s[2], s[3], s[4]);
       else if(s[0]==='C') ctx.bezierCurveTo(s[1], s[2], s[3], s[4], s[5], s[6]);
+      // stored angles are in this app's own 0=top/clockwise convention (see shapeOps' 'polygon'
+      // case) -- canvas's own ctx.arc measures from 0=3-o'clock, so -90deg converts once, here.
+      else if(s[0]==='A') ctx.arc(s[1], s[2], s[3], s[4]-Math.PI/2, s[5]-Math.PI/2);
       else ctx.closePath();
     }
   }
@@ -2359,6 +2373,14 @@
         p.x=norm(p.x+dx); p.y=norm(p.y+dy);
         if(p.c1){ p.c1.x=norm(p.c1.x+dx); p.c1.y=norm(p.c1.y+dy); }
         if(p.c2){ p.c2.x=norm(p.c2.x+dx); p.c2.y=norm(p.c2.y+dy); }
+        // arcTo's own embedded cx/cy (see shapeOps' 'polygon' case) is a center point just like a
+        // point's own x/y -- forgetting this left an arc's actual drawn position (tracePath/svgArcD
+        // both read arcTo.cx/cy directly) stuck in the smart-object child's LOCAL frame while the
+        // rest of the same polygon's points were already correctly shifted to world coordinates by
+        // the two lines above, producing a wildly wrong, jumped-apart arc (real bug, found via actual
+        // use: the arc rendered far outside the item's own selection box, joined to the correctly-
+        // positioned straight segments by a long stray line).
+        if(p.arcTo){ p.arcTo.cx=norm(p.arcTo.cx+dx); p.arcTo.cy=norm(p.arcTo.cy+dy); }
       }); break;
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
       default: it.x=norm(it.x+dx); it.y=norm(it.y+dy);
@@ -4411,7 +4433,19 @@
 
   // ---------- SVG exporter: the same shape description, as markup ----------
   function escXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  const pathD = d => d.map(s => s[0]==='Z' ? 'Z' : s[0] + s.slice(1).join(',')).join(' ');
+  // SVG has no center-parameterized arc command -- only an endpoint form (rx,ry,x-axis-rotation,
+  // large-arc-flag,sweep-flag,x,y). Converting FROM our stored {cx,cy,r,a1,a2} (same convention
+  // tracePath() reads, see shapeOps' 'polygon' case) is simple arithmetic: sweep-flag is always 1
+  // (our a2 is always >= a1, i.e. always a clockwise sweep, which is what SVG's sweep-flag=1 means
+  // in its own y-down coordinate system -- the same one this app already uses); large-arc-flag is 1
+  // once the swept angle normalizes to more than half a turn; the endpoint is just the point at a2.
+  function svgArcD(cx,cy,r,a1,a2){
+    let sweep = ((a2-a1) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
+    const largeArc = sweep > Math.PI ? 1 : 0;
+    const ex = cx + r*Math.sin(a2), ey = cy - r*Math.cos(a2);
+    return `A ${r} ${r} 0 ${largeArc} 1 ${ex} ${ey}`;
+  }
+  const pathD = d => d.map(s => s[0]==='Z' ? 'Z' : s[0]==='A' ? svgArcD(s[1],s[2],s[3],s[4],s[5]) : s[0] + s.slice(1).join(',')).join(' ');
   function styleAttrs(st){
     let a = ` fill="${escXml(st.fill)}" stroke="${escXml(st.stroke)}"`;
     if(st.stroke !== 'none'){
@@ -5183,6 +5217,62 @@
     return state;
   },
 })`;
+  // "Arc": two independently draggable legs (a1, a2) define a circular arc. Fully
+  // inherits the container's own style (line color, stroke width, fill on/off + fill color), like
+  // Arrow -- nothing hard-coded, since there's only one shape and no reason to override the
+  // toolbar's own choices. The first template to use the 'A' (arc) path-segment support (see the
+  // script-contract section above) -- a single 'polygon' child whose points carry an arcTo marker
+  // instead of drawing the arc as many straight segments.
+  //
+  // state.a1/a2 are in this app's own angle convention (0 = top/12 o'clock, positive = clockwise --
+  // same as Clock/Chart). The swept arc always runs CLOCKWISE from a1 to a2 (wrapping around if a2
+  // is numerically "before" a1), matching how two independently rotatable legs would work.
+  //
+  // Fill on ("!= none"): the arc closes back through the center -- a full pie wedge, one CLOSED
+  // polygon (center, arc-start, arc-end). Fill off: just the bow itself -- an OPEN polygon
+  // (arc-start, arc-end only), no center point, so nothing connects the two legs' tips.
+  const ARC_EXAMPLE_SCRIPT = `({
+  initState(){ return { a1: 0, a2: Math.PI/2 }; },   // a visible quarter-turn by default
+
+  children(state, style, w, h){
+    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
+    const a1 = state.a1;
+    const sweep = ((state.a2 - state.a1) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
+    const a2 = a1 + sweep;   // numerically >= a1, so ctx.arc/svgArcD sweep the intended direction
+    const arcStart = { x: cx+r*Math.sin(a1), y: cy-r*Math.cos(a1), arcTo:{cx,cy,r,a1,a2} };
+    const arcEnd = { x: cx+r*Math.sin(a2), y: cy-r*Math.cos(a2) };
+    const points = style.fill ? [{x:cx,y:cy}, arcStart, arcEnd] : [arcStart, arcEnd];
+
+    return [{
+      type:'polygon', points, closed: !!style.fill,
+      color: style.color, size: style.size||4, dash: style.dash,
+      fill: style.fill, fillColor: style.fillColor, strokeOn: style.strokeOn,
+    }];
+  },
+
+  handles(state, w, h){
+    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
+    return [
+      { id:'a1', x: cx+r*Math.sin(state.a1), y: cy-r*Math.cos(state.a1) },
+      { id:'a2', x: cx+r*Math.sin(state.a2), y: cy-r*Math.cos(state.a2) },
+    ];
+  },
+
+  hitEdit(state, lx, ly, w, h){
+    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
+    const near = a => Math.hypot(lx-(cx+r*Math.sin(a)), ly-(cy-r*Math.cos(a))) < 14;
+    if(near(state.a1)) return 'a1';
+    if(near(state.a2)) return 'a2';
+    return null;
+  },
+
+  dragEdit(state, handle, lx, ly, w, h){
+    if(handle !== 'a1' && handle !== 'a2') return state;
+    const cx = w/2, cy = h/2;
+    let a = Math.atan2(lx-cx, -(ly-cy)); if(a < 0) a += 2*Math.PI;
+    return { ...state, [handle]: a };
+  },
+})`;
   // A 4-bar chart with an editable bar COUNT, not just editable bar heights -- demonstrates
   // children()'s editing flag (the "-"/"+" pair only renders while actually in edit mode),
   // handles()'s kind:'click' (both are one-shot actions, not continuous drags -- see the comment
@@ -5357,6 +5447,7 @@
   const SMART_TEMPLATES = {
     clock: { name:'Clock', script:CLOCK_EXAMPLE_SCRIPT },
     arrow: { name:'Arrow', script:ARROW_EXAMPLE_SCRIPT },
+    arc: { name:'Arc', script:ARC_EXAMPLE_SCRIPT },
     chart: { name:'Chart', script:BARCHART_EXAMPLE_SCRIPT },
     minimal: { name:'Minimal', script:MINIMAL_EXAMPLE_SCRIPT },
     blank: { name:'', script:BLANK_EXAMPLE_SCRIPT },
