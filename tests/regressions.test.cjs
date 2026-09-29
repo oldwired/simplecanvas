@@ -618,3 +618,294 @@ test('iPad taps cycle endpoints and double-taps enter and leave point editing', 
   await tapEnd();
   assert.equal(await head(),'open-inverted','converted curves keep endpoint cycling');
 }, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
+
+// ---------- group edit mode ("enter group", Point-Edit-style persistence) ----------
+// A group's own bounding box, once selected, can be "entered" via double-click (on a member, or on
+// empty space between members) -- editingGroupId then names the group, independent of `selection`,
+// which is free to become [] (e.g. after deleting the browsed member) or [oneMemberIdx] (that member
+// picked for move/resize/recolor/delete/edit) while it stays active. It only exits on a click OUTSIDE
+// the group's own box, Escape, Ungroup, or the group vanishing (see groupBoxContains()/syncGroupEdit()).
+// hitTest()/hitStack() treat ANY point inside a group's own box as a hit on its topmost (z-order)
+// member, even across gaps between members -- exactly like a single item's own bbox is already fully
+// clickable, empty interior included. So a click/dblclick on empty space between members always
+// resolves to that representative member, never to "nothing" -- there is no separate "missed every
+// member, but still inside the box" state to track.
+const groupMember = (uid,x) => ({type:'rect',uid,x,y:100,w:80,h:60,size:2,
+  color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:0});
+const groupOf3 = () => [groupMember('m1',100),groupMember('m2',300),groupMember('m3',500)];
+
+test('double-clicking a grouped rect enters group edit mode; moving it leaves siblings untouched; clicking outside the group exits', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);   // center of m1
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[0]);
+
+  await page.mouse.move(canvas.x+140,canvas.y+130);await page.mouse.down();
+  await page.mouse.move(canvas.x+170,canvas.y+110);await page.mouse.up();
+  const [m1,m2,m3]=await run('items');
+  assert.ok(Math.abs(m1.x-130)<.5 && Math.abs(m1.y-80)<.5,'m1 moved by the drag delta (30,-20)');
+  assert.equal(m2.x,300,'m2 untouched');
+  assert.equal(m3.x,500,'m3 untouched');
+  assert.equal(m1.group,'g1');assert.equal(m2.group,'g1');assert.equal(m3.group,'g1');
+
+  await page.mouse.click(canvas.x+900,canvas.y+700);   // genuinely outside the group's own box
+  assert.equal(await run('editingGroupId'),null);
+  assert.deepEqual(await run('selection'),[]);
+}));
+
+test('while in group edit mode, a plain (non-double) click on a DIFFERENT member selects just that one -- no re-double-click needed', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);   // enter via m1
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[0]);
+
+  await page.mouse.click(canvas.x+340,canvas.y+130);   // plain click on m2 -- NOT a double-click
+  assert.equal(await run('editingGroupId'),'g1','still browsing the same group');
+  assert.deepEqual(await run('selection'),[1],'selects just m2, does not re-expand to the whole group');
+
+  await page.mouse.click(canvas.x+540,canvas.y+130);   // then m3, same way
+  assert.deepEqual(await run('selection'),[2]);
+
+  // and it's genuinely movable right away, no need to double-click first
+  await page.mouse.move(canvas.x+540,canvas.y+130);await page.mouse.down();
+  await page.mouse.move(canvas.x+560,canvas.y+130);await page.mouse.up();
+  const [m1,m2,m3]=await run('items');
+  assert.ok(Math.abs(m3.x-520)<.5,'m3 moved');
+  assert.equal(m1.x,100);assert.equal(m2.x,300);
+}));
+
+test('clicking empty space WITHIN the group\'s own box does not exit the mode -- resolves to the topmost member, like a single item\'s own bbox already does', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+
+  // gap between m1 (own box up to x=183) and m2 (own box from x=297), still well within the
+  // group's own union box (x:[97,583], y:[97,163]) -- resolves via the group-box fallback to m3
+  // (index 2, topmost in z-order), same as a click landing anywhere else in the group's own box.
+  await page.mouse.click(canvas.x+240,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1','still inside the group');
+  assert.deepEqual(await run('selection'),[2],'resolves to the topmost member, not nothing');
+
+  // and the mode still works normally from here -- click a different member to pick it instead
+  await page.mouse.click(canvas.x+340,canvas.y+130);
+  assert.deepEqual(await run('selection'),[1]);
+}));
+
+test('double-clicking empty space within an already-selected group\'s box enters its edit mode too, picking the topmost member', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(canvas.x+140,canvas.y+130);   // plain click on m1 -- selects the WHOLE group first
+  assert.deepEqual(await run('selection'),[0,1,2]);
+  assert.equal(await run('editingGroupId'),null,'not in edit mode yet, just a normal whole-group selection');
+
+  await page.mouse.dblclick(canvas.x+240,canvas.y+130);   // empty gap between m1 and m2, within the box
+  assert.equal(await run('editingGroupId'),'g1','entered via empty space, not a direct member hit');
+  assert.deepEqual(await run('selection'),[2],'resolves to the topmost member (m3), ready to move/edit it right away');
+}));
+
+test('a cold click on empty space within an UNSELECTED group\'s own box selects the whole group directly -- no need to hit a member first', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(canvas.x+240,canvas.y+130);   // gap between m1 and m2, nothing selected yet
+  assert.deepEqual(await run('selection'),[0,1,2],'whole group selected, same as clicking a member directly');
+  assert.equal(await run('editingGroupId'),null,'a plain click never enters edit mode');
+}));
+
+test('Escape exits group edit mode', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+  await page.keyboard.press('Escape');
+  assert.equal(await run('editingGroupId'),null);
+}));
+
+test('a plain body press-and-drag right after entering group edit mode moves only that member', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  await page.mouse.move(canvas.x+120,canvas.y+140);await page.mouse.down();   // off-center, plain body
+  await page.mouse.move(canvas.x+135,canvas.y+150);await page.mouse.up();
+  assert.deepEqual(await run('selection'),[0],'still editing just m1, not the whole group');
+  const [m1,m2]=await run('items');
+  assert.ok(Math.abs(m1.x-115)<.5,'m1 moved');
+  assert.equal(m2.x,300,'m2 untouched by the drag');
+}));
+
+test('resizing and recoloring a group member while editing only changes that one member', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+
+  // se corner of m1's padded bbox: x:100,y:100,w:80,h:60,size:2 -> pad=3 -> box (97,97)-(183,163)
+  await page.mouse.move(canvas.x+183,canvas.y+163);await page.mouse.down();
+  await page.mouse.move(canvas.x+203,canvas.y+183);await page.mouse.up();
+  let [m1,m2,m3]=await run('items');
+  assert.ok(m1.w>80 && m1.h>60,'m1 grew');
+  assert.equal(m2.w,80);assert.equal(m3.w,80);
+
+  await run(`setTool('select');selection=[0];applyFillColor('#2563eb',false);`);
+  [m1,m2,m3]=await run('items');
+  assert.equal(m1.fillColor,'#2563eb');
+  assert.equal(m2.fillColor,'#ffd166','m2 keeps its original fill color');
+  assert.equal(m3.fillColor,'#ffd166','m3 keeps its original fill color');
+}));
+
+test('deleting the browsed member stays IN group edit mode (ready to pick another); deleting a group down to one member auto-ungroups the survivor', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+340,canvas.y+130);   // m2, the middle member
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[1]);
+  await page.keyboard.press('Delete');
+  assert.equal(await run('items.length'),2);
+  assert.equal(await run('editingGroupId'),'g1','stays in the group\'s edit mode -- 2 members still remain');
+  assert.deepEqual(await run('selection'),[],'nothing individually selected anymore, ready to pick another');
+  const [m1,m3]=await run('items');
+  assert.equal(m1.group,'g1');assert.equal(m3.group,'g1');
+
+  // and browsing continues to work normally: click the other remaining member
+  await page.mouse.click(canvas.x+540,canvas.y+130);   // m3 is now items[1], still drawn at its own x:500
+  assert.deepEqual(await run('selection'),[1]);
+
+  await run(`items=[${JSON.stringify(groupMember('a',100))},${JSON.stringify(groupMember('b',300))}];setTool('select');render();`);
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+  await page.keyboard.press('Delete');
+  assert.equal(await run('editingGroupId'),null,'auto-ungrouping the lone survivor leaves nothing to browse');
+  const [survivor]=await run('items');
+  assert.equal(survivor.group,undefined,'the last surviving member is auto-ungrouped');
+  assert.equal(survivor.groupRotation,undefined);
+}));
+
+test('undo/redo across a move performed in group edit mode', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  await page.mouse.move(canvas.x+140,canvas.y+130);await page.mouse.down();
+  await page.mouse.move(canvas.x+180,canvas.y+130);await page.mouse.up();
+  assert.ok(Math.abs((await run('items[0].x'))-140)<.5);
+
+  await run('undo()');
+  assert.equal(await run('items[0].x'),100,'position reverts');
+  assert.equal(await run('editingGroupId'),null,'undo leaves group edit mode (cancelGesture resets it)');
+
+  await run('redo()');
+  assert.ok(Math.abs((await run('items[0].x'))-140)<.5,'move re-applies on redo');
+}));
+
+test('moving a member of a ROTATED group compensates for groupRotation; resize/rotation handles are absent for it', async () => app(async ({page,run}) => {
+  // Closer together and lower on the canvas than groupOf3()'s usual spread -- a 90° rotation swings
+  // each member's on-screen position by roughly its own distance from the group's pivot, and
+  // groupOf3()'s normal wide horizontal spread would otherwise land the rotated members off-canvas.
+  const rotatedMember = (uid,x) => ({type:'rect',uid,x,y:400,w:80,h:60,size:2,color:'#1f2937',
+    strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:Math.PI/2});
+  const rotated = [rotatedMember('m1',300),rotatedMember('m2',450),rotatedMember('m3',600)];
+  await run(`items=${JSON.stringify(rotated)};setTool('select');render();`);
+  await run(`editingGroupId='g1';selection=[0];render();`);   // enter directly -- the rotated group's
+                                                                // on-screen dblclick position is nontrivial
+                                                                // to compute here, and entry itself is
+                                                                // already covered by the unrotated tests above
+  assert.equal(await run('resizePivotFor([0])'),null,'no resize handles for a member of a rotated group');
+  assert.equal(await run('rotationPivotFor([0])'),null,'no rotation handle either');
+
+  const before=await run('items[0]');
+  const canvas=await page.locator('#canvas').boundingBox();
+  // items[0].x/y are stored in the LOCAL (unrotated) frame -- with groupRotation set, the on-screen
+  // position of any point on the item is toWorld(item, localX, localY), not the raw stored x/y.
+  const world=await run(`toWorld(items[0], items[0].x+items[0].w/2, items[0].y+items[0].h/2)`);
+  await page.mouse.move(canvas.x+world.x,canvas.y+world.y);await page.mouse.down();
+  await page.mouse.move(canvas.x+world.x+40,canvas.y+world.y);await page.mouse.up();   // 40px purely rightward on screen
+  const after=await run('items[0]');
+  // A pure rightward screen-space drag, compensated for a 90° groupRotation, must leave the member's
+  // stored (local) x unchanged and decrease its stored y by the same amount -- independently derived
+  // from the rotation direction (see the plan/implementation comment), not just re-deriving the
+  // implementation's own formula.
+  assert.ok(Math.abs(after.x-before.x)<.5,'local x unchanged');
+  assert.ok(Math.abs((before.y-after.y)-40)<.5,'local y decreases by the drag distance');
+}));
+
+test('ungrouping while in group edit mode ungroups the whole group and exits edit mode', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+  await run('ungroupSelection()');
+  assert.equal(await run('editingGroupId'),null);
+  assert.deepEqual(await run('selection.slice().sort()'),[0,1,2]);
+  const items=await run('items');
+  for(const it of items){ assert.equal(it.group,undefined); assert.equal(it.groupRotation,undefined); }
+}));
+
+// ---------- text/table: grouped instances get a TWO-STAGE double-click ----------
+// Unlike rect/ellipse/etc, these two types already have their own dblclick behavior (open the text
+// editor, open a cell editor) that fires unconditionally today, group or not. A grouped instance's
+// FIRST double-click now only enters group edit mode instead (so it can be moved/resized/recolored/
+// deleted on its own, like any other grouped shape) -- otherwise a grouped text/table item would have
+// no way to be repositioned without ungrouping at all, since a plain click always grabs the whole
+// group. A SECOND double-click, while already browsing THIS item's own group, opens its own editor,
+// same as an ungrouped instance always could.
+//
+// Test note: selecting a text/table item shows its Font/Size toolbar controls, which can grow the
+// toolbar and shift the canvas element's on-page position -- each of these tests re-fetches the canvas's
+// boundingBox() between separate mouse gestures rather than reusing one cached box throughout, or a
+// second dblclick's coordinates would silently miss the (now-shifted) target.
+const groupedText = () => [
+  {type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
+    color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2,group:'g1',groupRotation:0},
+  {type:'rect',uid:'r1',x:400,y:100,w:80,h:60,size:2,color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:0}
+];
+
+test('grouped text: first double-click enters group edit mode (movable), second opens the text editor', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupedText())};setTool('select');render();`);
+  let canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+200,canvas.y+125);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,selection,editingTextIdx})'),
+    JSON.stringify({editingGroupId:'g1',selection:[0],editingTextIdx:null}),
+    'first dblclick enters group edit mode, does not open the editor');
+
+  // confirm it's genuinely movable now (the whole point of entering this mode first) -- re-fetch:
+  // entering group edit mode just selected a text item, which can grow the toolbar (font controls)
+  // and shift the canvas element, so the box cached before dblclick1 may already be stale.
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvas.x+200,canvas.y+125);await page.mouse.down();
+  await page.mouse.move(canvas.x+230,canvas.y+125);await page.mouse.up();
+  const [movedText,rect]=await run('items');
+  assert.ok(Math.abs(movedText.x-130)<.5,'text moved on its own');
+  assert.equal(rect.x,400,'sibling rect untouched');
+
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+230,canvas.y+125);
+  assert.equal(await run('editingTextIdx'),0,'second dblclick on the now-isolated member opens the text editor');
+}));
+
+test('grouped table: first double-click enters group edit mode, second opens the cell editor', async () => app(async ({page,run}) => {
+  await run(`items=[
+    {type:'table',uid:'tb1',x:100,y:100,w:200,h:80,rows:1,cols:1,size:2,color:'#000000',fontFamily:'sans',fontSize:20,
+      texts:[['cell']],group:'g1',groupRotation:0},
+    {type:'rect',uid:'r1',x:400,y:100,w:80,h:60,size:2,color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:0}
+  ];setTool('select');render();`);
+  let canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+200,canvas.y+140);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,selection,editingTextIdx})'),
+    JSON.stringify({editingGroupId:'g1',selection:[0],editingTextIdx:null}),
+    'first dblclick enters group edit mode, does not open the cell editor');
+
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+200,canvas.y+140);
+  assert.equal(await run('editingTextIdx'),0,'second dblclick opens the cell editor');
+  assert.deepEqual(await run('editingCell'),{r:0,c:0});
+}));
+
+test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
+  await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
+    color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2}];setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+200,canvas.y+125);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,editingTextIdx})'),
+    JSON.stringify({editingGroupId:null,editingTextIdx:0}));
+}));
