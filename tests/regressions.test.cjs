@@ -901,6 +901,32 @@ test('grouped table: first double-click enters group edit mode, second opens the
   assert.deepEqual(await run('editingCell'),{r:0,c:0});
 }));
 
+test('grouped smart object: double-click steps group edit mode -> the object\'s own script-edit mode -> back', async () => app(async ({page,run}) => {
+  const smartScript = `({initState(){return{};},children(state,style,w,h){return[{type:'rect',x:0,y:0,w,h,color:style.color,strokeOn:true,fill:false}];}})`;
+  await run(`items=[
+    {type:'smart',uid:'s1',x:100,y:100,w:180,h:180,color:'#1f2937',fillColor:'#ffd166',fill:false,strokeOn:true,
+      textColor:'#000',size:6,script:${JSON.stringify(smartScript)},state:{},group:'g1',groupRotation:0},
+    {type:'rect',uid:'r1',x:400,y:100,w:80,h:60,size:2,color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:0}
+  ];setTool('select');render();`);
+  let canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+190,canvas.y+190);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,editingSmartIdx,selection})'),
+    JSON.stringify({editingGroupId:'g1',editingSmartIdx:null,selection:[0]}),
+    'first dblclick enters group edit mode, not the script-edit mode');
+
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+190,canvas.y+190);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,editingSmartIdx})'),
+    JSON.stringify({editingGroupId:'g1',editingSmartIdx:0}),
+    'second dblclick enters the smart object\'s own script-edit mode, group edit mode stays too');
+
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+190,canvas.y+190);
+  assert.deepEqual(await run('JSON.stringify({editingGroupId,editingSmartIdx})'),
+    JSON.stringify({editingGroupId:'g1',editingSmartIdx:null}),
+    'third dblclick (the smart object\'s own re-dblclick-exits toggle) leaves script-edit mode, still in group edit mode');
+}));
+
 test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
   await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
     color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2}];setTool('select');render();`);
