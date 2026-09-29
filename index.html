@@ -732,6 +732,17 @@
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
+  // ---------- group "enter" edit mode ----------
+  // Lets a group's own members be browsed, moved/resized/recolored/deleted, and edited one at a
+  // time without ungrouping -- modeled on Point-Edit's own persistence (stays active until a click
+  // lands outside the shape's body), generalized to a whole group's bounding box instead of one
+  // shape. editingGroupId is the group's own id string (not a specific member index) -- it's
+  // deliberately independent of `selection`, which is free to become [] (browsing, nothing
+  // individually picked yet) or [oneMemberIdx] (that one member picked for move/resize/recolor/
+  // delete/edit) while this stays constant; only an explicit exit (click outside the group's own
+  // box, Escape, Ungroup, or the group vanishing entirely) clears it. See groupBoxContains(),
+  // onDown's click-cycle+miss handling, and syncGroupEdit().
+  let editingGroupId = null;
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
   let snapCursorPt = null;      // raw pointer position while placing/dragging a line/arrow endpoint (for hover-highlighting that one target's snap dots)
   let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
@@ -1850,6 +1861,19 @@
     const box = unionBoxOf(members), g = unionBoxOf(members, false);
     return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
+  // Is a world point within a group's own (padded) bounding box, accounting for its groupRotation?
+  // Same box group-edit-mode's own outline draws (piv.box). Used as hitTest()/hitStack()'s fallback
+  // for a grouped item whose own bbox test misses -- makes a group's WHOLE box clickable everywhere
+  // (empty gaps between members included), same as a single item's own bbox already is, resolving to
+  // whichever member's own per-item check runs first in that loop as the group's representative hit.
+  function groupBoxContains(groupId, x, y){
+    const idxs = itemsInGroup(groupId);
+    if(!idxs.length) return false;
+    const piv = groupPivot(groupId);
+    const grot = items[idxs[0]].groupRotation || 0;
+    const lp = grot ? rotatePoint(x,y,piv.cx,piv.cy,-grot) : {x,y};
+    return inBox(piv.box, lp.x, lp.y);
+  }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
   // (the reverse order of how they're applied when drawing)
   function toLocal(it,x,y){
@@ -1963,6 +1987,16 @@
     }
     return b;
   }
+  // A grouped item's own bbox test can fail while (x,y) is still inside the GROUP's overall box (a
+  // gap between members) -- falling back to groupBoxContains() there makes a group's whole box fully
+  // "clickable" everywhere, same as a single item's own bbox already is (a polygon's concave interior
+  // included). Without this, empty gaps inside an otherwise-selected-looking group read as dead space,
+  // which is exactly the inconsistency reported: a lone shape's bbox is always clickable, a group's
+  // wasn't. Done as a strict SECOND pass, only once no item's own bbox matched anywhere -- doing the
+  // fallback check inline during the first pass let a later-iterated (lower z-order) member's group
+  // fallback shadow an EARLIER, more specific direct hit on a higher sibling in the very same group
+  // (a real bug hit while testing: dblclick landed squarely on a grouped text item's own box, but the
+  // group's other, lower-z-order member's fallback check ran first and won).
   function hitTest(x,y,excludeIdx){
     for(let i=items.length-1;i>=0;i--){
       if(i===excludeIdx) continue;
@@ -1970,11 +2004,20 @@
       const p = toLocal(it,x,y);
       if(inBox(bbox(it),p.x,p.y)) return i;
     }
+    const seenGroups = new Set();
+    for(let i=items.length-1;i>=0;i--){
+      if(i===excludeIdx) continue;
+      const it = items[i];
+      if(it.group==null || seenGroups.has(it.group)) continue;
+      seenGroups.add(it.group);
+      if(groupBoxContains(it.group,x,y)) return i;
+    }
     return -1;
   }
   // Every distinct object/group under (x,y), top to bottom — a grouped item contributes only its
   // first (topmost) matching member, so the click-cycle below advances through actual stacked
   // objects rather than getting stuck re-selecting the same group from two of its own members.
+  // Direct (own-bbox) hits are listed before any group-box fallback hit, same precedence as hitTest.
   function hitStack(x,y){
     const stack = [];
     const seenGroups = new Set();
@@ -1988,9 +2031,22 @@
       }
       stack.push(i);
     }
+    for(let i=items.length-1;i>=0;i--){
+      const it = items[i];
+      if(it.group==null || seenGroups.has(it.group)) continue;
+      if(groupBoxContains(it.group,x,y)){
+        seenGroups.add(it.group);
+        stack.push(i);
+      }
+    }
     return stack;
   }
-  const selectionFor = hit => { const g = items[hit].group; return g!=null ? itemsInGroup(g) : [hit]; };
+  // Same group-edit-mode carve-out as onDown's own group-grab (below) -- without this, clicking
+  // again on a member being individually browsed while other objects are stacked underneath it
+  // would never continue the click-cycle (selection is just [thatMember], but this would otherwise
+  // always report the whole group, so the length-mismatch in sameSelection() below would restart
+  // the cycle on every click instead of stepping deeper into the stack).
+  const selectionFor = hit => { const g = items[hit].group; return (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit]; };
   const sameSelection = (a,b) => a.length===b.length && a.every((v,i)=>v===b[i]);
   let clickCycle = null;   // {x,y,stack,depth} — repeated clicks on the same spot walk down the stack
   // With several objects stacked at one spot, a plain hitTest always hands back the topmost — the
@@ -2065,7 +2121,12 @@
     if(!sel || !sel.length) return null;
     const first = items[sel[0]];
     if(!first) return null;
-    if(sel.length===1 && first.group==null){
+    // Group edit mode reuses this single-item branch for the one member currently individually
+    // selected while browsing its group -- but only while the enclosing group itself isn't rotated.
+    // A member of a ROTATED group needs a composed-rotation-pivot (two nested rotations reduced to
+    // one) that doesn't exist in this codebase yet, so it deliberately gets no rotation handle at
+    // all rather than a wrong one (see the explicit `return null` in the group branch below).
+    if(sel.length===1 && (first.group==null || (editingGroupId===first.group && !first.groupRotation))){
       if(pointEditIdx===sel[0]) return null;   // point-edit mode hides the rotation handle too — every
                                                 // drag bakes rotation to 0 anyway, so showing a handle
                                                 // that would just reset itself is more confusing than useful
@@ -2074,6 +2135,7 @@
       return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-33, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
     }
     if(first.group!=null){
+      if(editingGroupId===first.group) return null;   // being browsed, but its group is rotated -- see comment above
       const grp = itemsInGroup(first.group);
       const piv = groupPivot(first.group);
       const u = piv.box;
@@ -2130,13 +2192,15 @@
     if(!sel || !sel.length) return null;
     const first = items[sel[0]];
     if(!first) return null;
-    if(sel.length===1 && first.group==null){
+    // Same group-edit-mode reuse (and same rotated-group cutout) as rotationPivotFor above.
+    if(sel.length===1 && (first.group==null || (editingGroupId===first.group && !first.groupRotation))){
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
       if(pointEditIdx===sel[0]) return null;   // point-edit mode fully replaces the corner-resize UI
       const b = bbox(first);
       return { box:b, ownBox:bbox(first,false), rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
     }
     if(first.group!=null){
+      if(editingGroupId===first.group) return null;   // being browsed, but its group is rotated -- see comment above
       const piv = groupPivot(first.group);
       return { box:piv.box, ownBox:piv.ownBox, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
     }
@@ -2331,10 +2395,22 @@
     }
     if(activeAnchor!=null && (pointEditIdx==null || activeAnchor>=items[pointEditIdx].points.length)) activeAnchor = null;
   }
+  // Unlike syncPointEdit, group edit mode deliberately does NOT self-heal on every selection change
+  // -- selection is expected to move freely between [] (browsing) and [oneMemberIdx] while this stays
+  // active (the actual exit trigger, a click outside the group's own box, lives in onDown; see
+  // groupBoxContains()). This is only the safety-net backstop: the group vanishing entirely (its last
+  // member deleted or ungrouped elsewhere), or `selection` somehow ending up on something that isn't a
+  // member of this group at all (e.g. some future, non-click code path), still clears it.
+  function syncGroupEdit(){
+    if(editingGroupId==null) return;
+    if(!itemsInGroup(editingGroupId).length){ editingGroupId = null; return; }
+    if(selection.some(i => !items[i] || items[i].group!==editingGroupId)) editingGroupId = null;
+  }
 
   // ---------- render ----------
   function render(){
     syncPointEdit();
+    syncGroupEdit();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
     ctx.fillStyle = BG;
@@ -2358,10 +2434,16 @@
       ctx.save();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#6366f1';
-      // dashed outline for each ungrouped selected item — rotated along with the item itself
+      // dashed outline for each ungrouped selected item — rotated along with the item itself. Also
+      // drawn for the one group member currently individually selected while browsing its group
+      // (group edit mode), UNLESS its enclosing group is itself rotated -- this outline uses only
+      // the member's own it.rotation, so it would be visually offset by the un-compensated
+      // groupRotation otherwise (same cutout as resizePivotFor/rotationPivotFor; see the comments
+      // there for why).
       ctx.setLineDash([5,4]);
       for(const i of selection){
-        const it = items[i]; if(!it || it.group!=null) continue;
+        const it = items[i]; if(!it) continue;
+        if(it.group!=null && !(it.group===editingGroupId && !it.groupRotation)) continue;
         if(i===pointEditIdx) continue;   // point-edit overlay replaces the plain dashed outline
         const b = bbox(it);
         const cx=b.x+b.w/2, cy=b.y+b.h/2;
@@ -2370,11 +2452,15 @@
         ctx.strokeRect(b.x-3, b.y-3, b.w+6, b.h+6);
         ctx.restore();
       }
-      // solid box around each selected group — rotates as one rigid piece with its members
+      // solid box around each selected group — rotates as one rigid piece with its members. Skips
+      // the group currently being browsed (editingGroupId) -- that one gets its own dedicated block
+      // right below (solid corner squares too, not just the outline), drawn off editingGroupId
+      // itself rather than `selection` (which may be empty while simply browsing, with no member
+      // individually picked yet, so this per-selection loop alone wouldn't otherwise draw it at all).
       ctx.setLineDash([]);
       const seenGroups = new Set();
       for(const i of selection){
-        const it = items[i]; if(!it || it.group==null || seenGroups.has(it.group)) continue;
+        const it = items[i]; if(!it || it.group==null || it.group===editingGroupId || seenGroups.has(it.group)) continue;
         seenGroups.add(it.group);
         const piv = groupPivot(it.group);
         const u = piv.box;
@@ -2382,6 +2468,27 @@
         ctx.save();
         if(grot){ ctx.translate(piv.cx,piv.cy); ctx.rotate(grot); ctx.translate(-piv.cx,-piv.cy); }
         ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
+        ctx.restore();
+      }
+      // group edit mode: the browsed group's own outline (same style as above) plus solid blue
+      // corner squares -- signals "you're inside this group now, working with its members one at a
+      // time" at a glance. The group's own corner handles are no longer real (draggable) resize
+      // handles while this is active -- resizing/rotating the whole group requires leaving the mode
+      // first and reselecting it as a whole -- so these squares occupy that same position but solid
+      // instead of hollow.
+      if(editingGroupId!=null){
+        const piv = groupPivot(editingGroupId);
+        const grot = items[itemsInGroup(editingGroupId)[0]].groupRotation||0;
+        const u = piv.box;
+        ctx.save();
+        if(grot){ ctx.translate(piv.cx,piv.cy); ctx.rotate(grot); ctx.translate(-piv.cx,-piv.cy); }
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
+        ctx.fillStyle = '#6366f1';
+        for(const [hx,hy] of [[u.x,u.y],[u.x+u.w,u.y],[u.x,u.y+u.h],[u.x+u.w,u.y+u.h]]){
+          ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill();
+        }
         ctx.restore();
       }
       // resize handles — 4 corners of the lone item's box, or of the whole group's box
@@ -2651,7 +2758,17 @@
       if(hit>=0){
         const hitItem = items[hit];
         const g = hitItem.group;
-        const grp = (g!=null) ? itemsInGroup(g) : [hit];         // grouped item → grab the whole group
+        // Clicked something outside the group currently being browsed (a different group, an
+        // ungrouped item -- g here is never null for an item genuinely inside the browsed group,
+        // since g===editingGroupId only holds for its own members) -- leave that mode; the normal
+        // whole-group-grab (or lone-item) selection right below applies fresh, same as if group
+        // edit mode had never been active.
+        if(g !== editingGroupId) editingGroupId = null;
+        // Grouped item -> grab the whole group, UNLESS it's a member of the group currently being
+        // browsed (group edit mode) -- a plain press/drag on any one of ITS members should select
+        // and move just that member, letting you click from one member straight to another without
+        // re-double-clicking each time.
+        const grp = (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit];
         const wasAlreadySelected = selection.indexOf(hit) >= 0;
         // Shift+click on an item already in the selection normally toggles it back out — but if the
         // press turns into a drag (Shift held for the axis-lock below, not to deselect), the whole
@@ -2694,6 +2811,11 @@
         }
         render();
       } else {
+        // Truly missed everything -- hitStack()/pickWithClickCycle() already treat any point inside
+        // a group's own overall box as a hit on its topmost member (see hitTest/hitStack), so reaching
+        // here means (x,y) is outside every item's own bbox AND every group's own box. Always exit
+        // group edit mode and fall back to the plain marquee+deselect.
+        editingGroupId = null;
         marquee = { x0:x, y0:y, x, y, add:e.shiftKey };           // empty space → rubber-band box
         if(!e.shiftKey) selection = [];
         render();
@@ -2888,7 +3010,17 @@
       } else {
         drag.axisLock = null;
       }
-      const stepDx = targetDx - drag.appliedDx, stepDy = targetDy - drag.appliedDy;
+      let stepDx = targetDx - drag.appliedDx, stepDy = targetDy - drag.appliedDy;
+      // Moving a single group member in isolation (group edit mode) needs the raw world-space delta
+      // rotated by -groupRotation first: unlike a whole-group drag (where every member gets the same
+      // delta, so the group's own recomputed pivot shifts by that same amount and the rigid rotation
+      // is preserved for free) or a lone item's OWN rotation (whose pivot is the item's own bbox
+      // center and so always moves along with it), groupRotation pivots on an EXTERNAL, group-wide
+      // point that doesn't track a single dragged member.
+      if(editingGroupId!=null && selection.length===1 && items[selection[0]] && items[selection[0]].group===editingGroupId){
+        const gr = items[selection[0]].groupRotation||0;
+        if(gr){ const r = rotatePoint(stepDx,stepDy,0,0,-gr); stepDx=r.x; stepDy=r.y; }
+      }
       for(const i of selection) translateItem(items[i], stepDx, stepDy);
       drag.appliedDx = targetDx; drag.appliedDy = targetDy;
       render();
@@ -3415,7 +3547,7 @@
   function cancelGesture(){
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
-    editingAnchor=null; pointEditIdx=null; activeAnchor=null;
+    editingAnchor=null; pointEditIdx=null; activeAnchor=null; editingGroupId=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;
@@ -3459,8 +3591,21 @@
   function deleteSelected(){
     if(ui.tool!=='select' || !selection.length) return;
     beginHistory();
+    const affectedGroups = groupsIn(selection);   // capture before splicing renumbers indices
     for(const i of selection.slice().sort((a,b)=>b-a)) items.splice(i,1);  // high→low so indices stay valid
     selection = [];
+    // A group shrunk down to exactly one surviving member is no longer meaningfully a group -- auto-
+    // ungroup it (same bakeGroupRotation convention ungroupSelection already uses below) rather than
+    // leaving a confusing "group of one" (Ungroup stays enabled for something visually indistinguishable
+    // from an ordinary ungrouped item).
+    for(const g of affectedGroups){
+      const survivors = itemsInGroup(g);
+      if(survivors.length===1){
+        bakeGroupRotation(g);
+        delete items[survivors[0]].group;
+        delete items[survivors[0]].groupRotation;
+      }
+    }
     commitHistory(); render();
   }
   // Pull the selected items out (keeping their relative order) and re-insert them
@@ -5025,6 +5170,7 @@
         if(activeAnchor!=null){ activeAnchor=null; render(); return; }
         pointEditIdx=null; render(); return;
       }
+      if(editingGroupId!=null){ editingGroupId=null; render(); return; }
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(!shapePicker.hidden){ setShapePicker(false); return; }
@@ -5049,9 +5195,14 @@
     if((e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown') && ui.tool==='select' && selection.length){
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
-      const dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
-      const dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
+      let dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
+      let dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
       if(!nudging || historyBefore===null){ beginHistory(); nudging = true; }   // (a lost keyup must not leave the next nudge outside history)
+      // Same groupRotation compensation as the drag path in onMove -- see the comment there.
+      if(editingGroupId!=null && selection.length===1 && items[selection[0]] && items[selection[0]].group===editingGroupId){
+        const gr = items[selection[0]].groupRotation||0;
+        if(gr){ const r = rotatePoint(dx,dy,0,0,-gr); dx=r.x; dy=r.y; }
+      }
       for(const i of selection) translateItem(items[i], dx, dy);
       render();
       return;
@@ -5170,11 +5321,27 @@
     // objects (see pickWithClickCycle), selection already correctly names the item the user is
     // now on — a fresh hitTest here would ignore that and always jump back to the topmost one.
     const hit = selection.length===1 ? selection[0] : hitTest(x,y);
+    // text/table are grouped-aware in TWO stages, not one: a grouped instance's FIRST double-click
+    // only enters (or, if already browsing a DIFFERENT group, switches to) group edit mode for its
+    // own group -- selecting just this one member for move/resize/recolor/delete -- rather than
+    // immediately opening its own editor. Otherwise a grouped text/table item would have no way to be
+    // repositioned without ungrouping at all, since a plain click always grabs the whole group. A
+    // SECOND double-click, while already browsing THIS item's own group, opens its own editor, same
+    // as an ungrouped instance always could. An ungrouped instance is completely unaffected -- its own
+    // editor still opens on the very first double-click, exactly as before.
     if(hit>=0 && items[hit].type==='text'){
+      if(items[hit].group!=null && editingGroupId!==items[hit].group){
+        editingGroupId = items[hit].group; selection = [hit]; render();
+        return;
+      }
       openText(hit);
       return;
     }
     if(hit>=0 && items[hit].type==='table'){
+      if(items[hit].group!=null && editingGroupId!==items[hit].group){
+        editingGroupId = items[hit].group; selection = [hit]; render();
+        return;
+      }
       const lp = toLocal(items[hit], x, y);
       const cell = tableCellAt(items[hit], lp.x, lp.y);
       if(cell) openText(hit, null, null, cell);
@@ -5183,6 +5350,17 @@
     if(hit>=0 && selection.length===1 && hit===selection[0] &&
        items[hit].group==null && CONVERTIBLE_TYPES.has(items[hit].type)){
       togglePointEdit();
+      return;
+    }
+    // Group edit mode -- double-click a grouped item (rect/ellipse/image/line/arrow/path/polygon;
+    // text/table handle their own group-aware entry above, one stage earlier in their own branches)
+    // to browse/move/resize/recolor/delete its members one at a time without ungrouping. No
+    // re-double-click-to-exit toggle here (unlike Point-Edit's own toggle) -- this mode is
+    // persistent: it stays active, and lets you click straight from one member to another (see
+    // onDown), until a click lands outside the group's own bounding box (or Escape/Ungroup/the group
+    // vanishing -- see syncGroupEdit()).
+    if(hit>=0 && items[hit].group!=null && !['text','table'].includes(items[hit].type) && items[hit].group!==editingGroupId){
+      editingGroupId = items[hit].group; selection = [hit]; render();
       return;
     }
     if(selection.length){
