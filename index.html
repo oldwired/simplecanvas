@@ -1190,13 +1190,49 @@
     const blocks = [];
     for(const line of body.split('\n')){
       let m;
-      if(m = /^(#{1,3})\s+(.*)$/.exec(line)) blocks.push({type:'h'+m[1].length, runs:parseInline(m[2])});
+      // A blank line (two hard breaks back to back) is a deliberate manual spacer, not an empty
+      // paragraph -- see the 'blank' case in layoutMarkdownBlocks/mdBlockGapAfter for what that
+      // means for its own height and the gaps around it.
+      if(line.trim() === '') blocks.push({type:'blank'});
+      else if(m = /^(#{1,3})\s+(.*)$/.exec(line)) blocks.push({type:'h'+m[1].length, runs:parseInline(m[2])});
       else if(m = /^[-*]\s+(.*)$/.exec(line)) blocks.push({type:'li', runs:parseInline(m[1])});
+      // A numbered list item -- ANY digits work as the marker (matching standard Markdown), and the
+      // NUMBER ACTUALLY SHOWN is auto-renumbered below rather than taken literally, so typing "1."
+      // for every line (the natural way to write a list without hand-renumbering it) still counts up
+      // 1, 2, 3, ... instead of repeating "1." on every item.
+      else if(m = /^(\d+)\.\s+(.*)$/.exec(line)) blocks.push({type:'oli', num:parseInt(m[1],10), runs:parseInline(m[2])});
       // 3+ dashes alone on a line -- unambiguous with the "---" front-matter marker, which is only
       // ever checked against physical line 1 of the raw text (markdownBodyOf), never a body line.
       else if(/^-{3,}$/.test(line.trim())) blocks.push({type:'hr'});
       else blocks.push({type:'p', runs:parseInline(line)});
     }
+    // Auto-renumber every run of consecutive 'oli' blocks, counting up from the FIRST item's own
+    // typed number (matching standard Markdown) -- a 'blank' spacer in between doesn't break the run
+    // (a deliberate blank line inside a list shouldn't reset its count), but any other block does.
+    // Every block in a run also records that run's own WIDEST label ("1." vs "12.") -- since numbers
+    // only ever increase within a run, that's always the run's own LAST item -- so layoutMarkdownBlocks
+    // can size every item's indent off the same shared column instead of each item's own number width
+    // (which would otherwise leave "1." and "12." lines with visibly different body-text indents).
+    let runStart = null, offset = 0, runBlocks = [];
+    const flushOliRun = () => {
+      if(runBlocks.length){
+        const maxLabel = runBlocks[runBlocks.length-1].num + '.';
+        for(const b of runBlocks) b.oliMaxLabel = maxLabel;
+      }
+      runBlocks = [];
+    };
+    for(const b of blocks){
+      if(b.type === 'oli'){
+        if(runStart == null) runStart = b.num;
+        b.num = runStart + offset;
+        offset++;
+        runBlocks.push(b);
+      } else if(b.type !== 'blank'){
+        flushOliRun();
+        runStart = null; offset = 0;
+      }
+    }
+    flushOliRun();
     return blocks;
   }
   const MD_HEADING_SCALE = { h1:1.6, h2:1.3, h3:1.15 };   // h1/h2/h3 relative to the item's own base font size
@@ -1219,6 +1255,20 @@
   function mdFontString(family, sizePx, opts){
     opts = opts || {};
     return (opts.italic?'italic ':'') + (opts.bold?'700 ':'600 ') + sizePx + 'px ' + (FONTS[family]||FONTS.sans);
+  }
+  // The widest a single-digit numbered-list label ("1." through "9.") can be, at a given font/size --
+  // in most proportional fonts "1." is the NARROWEST digit by a real margin, so this is deliberately
+  // NOT just ctx.measureText('1.') (see the caller). Memoized per family+size since it's requested
+  // once per bullet-list block and never changes for the same combination.
+  const mdMaxDigitLabelCache = new Map();
+  function MD_MAX_DIGIT_LABEL_W(fontFamily, fontPx){
+    const key = fontFamily + '|' + fontPx;
+    if(mdMaxDigitLabelCache.has(key)) return mdMaxDigitLabelCache.get(key);
+    ctx.font = mdFontString(fontFamily, fontPx, {});
+    let w = 0;
+    for(let d=1; d<=9; d++) w = Math.max(w, ctx.measureText(d+'.').width);
+    mdMaxDigitLabelCache.set(key, w);
+    return w;
   }
   // Run boundaries land wherever **/*/_ markers literally sit in the source, often mid-word or
   // touching adjacent text with no space (un*believable*, 10x**faster**, Hello,**world**!). Splitting
@@ -1244,14 +1294,64 @@
   // weight/style only, never size), but varies BETWEEN blocks (headings), so this sets ctx.font
   // itself throughout -- unlike layoutWrappedText's contract of "caller pre-sets ctx.font once",
   // callers here must not assume ctx.font is unchanged after calling this.
+  // How much extra breathing room (beyond the block's own lineHeight) follows a block, given what
+  // comes right after it (undefined at the very end of the blocks list). A run of list items
+  // ('li' -> 'li') stays tight -- no gap between bullets. A transition into or out of a list
+  // ('li' <-> non-'li') gets a SMALLER gap than an ordinary paragraph/heading ending: visually,
+  // the same full paragraph-gap read as too much right above a tightly-packed list, and (with no
+  // gap at all previously) far too little right after one. hr is handled entirely separately
+  // above and never reaches this.
+  //
+  // A heading (any level) targets the SAME total post-block gap a plain paragraph gets
+  // (baseLineHeight*1.5) rather than a bonus proportional to its OWN (already font-scaled)
+  // lineHeight. That distinction matters: h1's 1.6x scale already makes its bare lineHeight bigger
+  // than that target on its own (so it needs NO bonus at all -- confirmed fine before this function
+  // added headings at all), while h2/h3's more modest 1.3x/1.15x scale falls short of it on their
+  // own (so THEY need a real top-up). An earlier version used `ownLineHeight*0.5` uniformly, which
+  // overshot every level (worst for h1, whose bonus stacked on top of a bare lineHeight that was
+  // already enough).
+  const isListBlock = t => t==='li' || t==='oli';
+  function mdBlockGapAfter(baseLineHeight, ownLineHeight, currentType, nextType){
+    // A rule's own vertical position (see the 'hr' branch below) is tuned assuming ONLY the
+    // preceding block's bare lineHeight precedes it -- stacking any of the bonuses below on top of
+    // that would push the whole gap bigger than that tuning accounts for, so the rule ends up
+    // sitting further down in it than intended instead of just under the text above it.
+    // A blank line (see 'blank' below) already IS the user's own deliberate spacing choice -- adding
+    // an automatic bonus on either side of it would stack on top of that and make the actual gap
+    // unpredictable, defeating the whole point of a manually-sized spacer.
+    if(nextType === 'hr' || nextType === 'blank') return 0;
+    // A run of the SAME list type ('li'->'li', or 'oli'->'oli') stays tight; switching list type
+    // ('li'<->'oli') is treated as leaving one list and entering another, same smaller gap as
+    // entering/leaving a list from plain text.
+    if(isListBlock(currentType) && isListBlock(nextType) && currentType===nextType) return 0;
+    if(isListBlock(currentType) || isListBlock(nextType)) return baseLineHeight * 0.3;
+    return Math.max(0, baseLineHeight*1.5 - ownLineHeight);
+  }
   function layoutMarkdownBlocks(blocks, boxX, boxY, boxW, boxH, fontFamily, baseFontPx){
     const maxWidth = Math.max(1, boxW - 12);
-    const indentLi = 18;
+    // Both list kinds sit a bit further right than plain paragraph/heading text -- shifts the
+    // bullet/number glyph itself, not just the body text after it, so a list visually reads as
+    // indented from the surrounding text, not flush with its left margin. Scales proportionally
+    // with the item's own font size (18px was tuned at a 24px font -- a smaller font gets a
+    // correspondingly smaller indent, a larger one a correspondingly larger one) rather than
+    // staying a flat pixel count regardless of text size.
+    const listIndent = 18 * (baseFontPx/24);
+    // Same reasoning as listIndent: a flat pixel count here reads fine at the font size it was tuned
+    // at, but becomes proportionally oversized once the font shrinks (8px is a small fraction of a
+    // large font's own line, but a much bigger fraction of a small one) -- found via actual use right
+    // after listIndent alone was made proportional, the same list still looked too spaced out at a
+    // smaller font size specifically.
+    const markerGap = 8 * (baseFontPx/24);
     const out = [];
     let y = boxY + MD_TOP_PAD;
-    for(const block of blocks){
+    for(let bi=0; bi<blocks.length; bi++){
+      const block = blocks[bi];
       const fontPx = mdBlockFontPx(block, baseFontPx);
       const lineHeight = fontPx * 1.2;
+      // A deliberate manual spacer (two hard breaks back to back) -- exactly half a normal line's
+      // height, nothing drawn, and (per mdBlockGapAfter above) no automatic bonus stacked on top of
+      // it from either side; the user is manually sizing this gap, not writing a paragraph.
+      if(block.type === 'blank'){ y += baseFontPx*1.2*0.5; continue; }
       if(block.type === 'hr'){
         // Sized to the font's own cap-height (not the full line-height, which also carries descent +
         // leading a real text line needs but a rule doesn't) -- so the rule reads as sitting centered
@@ -1273,16 +1373,40 @@
       const isHeading = block.type[0] === 'h';
       ctx.font = mdFontString(fontFamily, fontPx, {bold:isHeading});
       const asc = ctx.measureText('M').actualBoundingBoxAscent || fontPx*0.8;
-      const leftPad = block.type==='li' ? indentLi : 0;
+      // A numbered item's own label ("1.", "12.", ...) varies in width with its digit count, unlike
+      // the bullet glyph's fixed slot -- the INDENT is sized off the widest label in the item's own
+      // run (oliMaxLabel, computed once in parseMarkdownBlocks), not this item's own number, so every
+      // item's BODY TEXT lines up at the same x regardless of which one happens to be multi-digit.
+      // The number itself is then right-aligned within that shared column (below), matching how a
+      // real numbered list lines up its markers.
+      const oliLabel = block.type==='oli' ? block.num+'.' : null;
+      const oliColW = block.type==='oli' ? ctx.measureText(block.oliMaxLabel).width : 0;
+      const oliLabelW = block.type==='oli' ? ctx.measureText(oliLabel).width : 0;
+      // A bullet's own column is sized the same as the WIDEST single digit's ("1." through "9.") --
+      // NOT literally "1." specifically, which in most proportional fonts (confirmed: Arial/this
+      // app's own 'sans') is the narrowest digit by a real margin (e.g. "1." measures ~18px here,
+      // every other single digit ~22-23px). A bullet list's own column must match whatever an ACTUAL
+      // single-digit numbered list's column ends up being, and that's set by its own widest member,
+      // not by "1." specifically -- using "1." as the reference left a bullet list's body text
+      // noticeably narrower-indented than a real 2+ item numbered list's, found via actual use.
+      const bulletColW = block.type==='li' ? MD_MAX_DIGIT_LABEL_W(fontFamily, fontPx) : 0;
+      const bulletW = block.type==='li' ? ctx.measureText('•').width : 0;
+      const leftPad = block.type==='li' ? listIndent + bulletColW + markerGap : block.type==='oli' ? listIndent + oliColW + markerGap : 0;
       const avail = Math.max(1, maxWidth - leftPad);
       const measure = (bold, italic, text) => { ctx.font = mdFontString(fontFamily, fontPx, {bold: bold||isHeading, italic}); return ctx.measureText(text).width; };
       const units = tokenizeRuns(block.runs).filter(u=>!u.ws);
       let line = [], lineWidth = 0, firstLineOfBlock = true;
       const flushLine = () => {
         let x = boxX + 6 + leftPad;
-        // only the FIRST visual line of a list item gets the bullet -- wrapped continuation lines
-        // share the same left indent but don't repeat the glyph
-        if(block.type==='li' && firstLineOfBlock) out.push({x: boxX+6, y: y+asc, text:'•', bold:false, italic:false, link:null, fontPx});
+        // only the FIRST visual line of a list item gets the bullet/number -- wrapped continuation
+        // lines share the same left indent but don't repeat the glyph/label
+        // right-aligned within its own column, same convention as the numbered-list label below --
+        // keeps the gap between glyph and body text constant while the glyph itself sits further
+        // right, matching where "1." would sit.
+        if(block.type==='li' && firstLineOfBlock) out.push({x: boxX+6+listIndent+Math.max(0,bulletColW-bulletW), y: y+asc, text:'•', bold:false, italic:false, link:null, fontPx});
+        // right-aligned within the shared run-wide column, so "1." and "12." both end flush at the
+        // same edge just before the gap to the body text, like a real numbered list.
+        else if(block.type==='oli' && firstLineOfBlock) out.push({x: boxX+6+listIndent+Math.max(0,oliColW-oliLabelW), y: y+asc, text:oliLabel, bold:false, italic:false, link:null, fontPx});
         for(const u of line){
           for(const p of u.parts){
             out.push({x, y: y+asc, text:p.text, bold: !!p.bold||isHeading, italic:!!p.italic, link:p.link||null, fontPx});
@@ -1302,6 +1426,10 @@
         else { flushLine(); line.push(u); lineWidth = w; }
       }
       flushLine();   // always at least one line per block -- also what advances Y for a blank line
+      // Extra breathing room after this block -- otherwise consecutive blocks (the normal case:
+      // ordinary text separated by a hard line break) advance by the SAME lineHeight as two wrapped
+      // lines within one paragraph, so separate blocks read as one run-on block of text.
+      y += mdBlockGapAfter(baseFontPx*1.2, lineHeight, block.type, blocks[bi+1] && blocks[bi+1].type);
     }
     return out;
   }

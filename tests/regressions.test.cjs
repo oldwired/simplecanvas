@@ -352,6 +352,83 @@ test('Markdown editor detection matches exact markers and excludes table cells',
   assert.equal((await state()).align,'center');assert.ok((await state()).padding>0);
 }));
 
+test('Markdown numbered lists auto-renumber regardless of the typed digit, and survive export', async () => app(async ({page,run}) => {
+  // Every line typed "1." -- the natural way to write a list without hand-renumbering it -- should
+  // still count up 1,2,3 (not repeat "1." three times); a blank spacer line doesn't reset the count.
+  const body='---\n1. alpha\n1. bravo\n\n1. charlie\n- switched to a bullet\n1. restarts at 1';
+  await run(`items=[{...${JSON.stringify(markdownText)},text:${JSON.stringify(body)}}];setTool('select');render();`);
+  const nums=await run(`parseMarkdownBlocks(markdownBodyOf(items[0].text)).filter(b=>b.type==='oli').map(b=>b.num)`);
+  assert.deepEqual(nums,[1,2,3,1],'blank line keeps counting, a bullet line in between resets it');
+
+  // A different starting number is honored, same as standard Markdown.
+  const started=await run(`parseMarkdownBlocks('5. five\\n5. six\\n5. seven').filter(b=>b.type==='oli').map(b=>b.num)`);
+  assert.deepEqual(started,[5,6,7]);
+
+  // The rendered labels use the RENUMBERED value, not the literally-typed digit, and are painted
+  // (survive PNG/SVG export, same convention the other Markdown export test checks).
+  const labels=await run(`layoutMarkdownBlocks(parseMarkdownBlocks(markdownBodyOf(items[0].text)),0,0,300,600,'sans',28).filter(w=>w.text==='1.'||w.text==='2.'||w.text==='3.').map(w=>w.text)`);
+  assert.deepEqual(labels,['1.','2.','3.','1.']);
+  const svgDownload=page.waitForEvent('download');await run('saveSvg()');
+  const svg=fs.readFileSync(await (await svgDownload).path(),'utf8');
+  assert.ok(svg.includes('>1.<') && svg.includes('>2.<') && svg.includes('>3.<'),'numbered labels are painted into the SVG export');
+
+  // A run spanning a one- and two-digit number ("9.".."11.") must still line up its BODY TEXT at the
+  // same x for every item -- an earlier version sized each item's own indent off its own number
+  // width, so "9." (narrower) and "10."/"11." (wider) left their own body text at different x
+  // positions, a real bug found via actual use right after this first shipped.
+  const wide=await run(`layoutMarkdownBlocks(parseMarkdownBlocks('9. nine\\n10. ten\\n11. eleven'),0,0,300,600,'sans',28)`);
+  const bodyXs=wide.filter(w=>['nine','ten','eleven'].includes(w.text)).map(w=>w.x);
+  assert.equal(new Set(bodyXs).size,1,'body text starts at the same x regardless of the number\'s own digit count');
+  const numX=text=>wide.find(w=>w.text===text).x;
+  assert.ok(numX('9.') < bodyXs[0] && numX('10.') < bodyXs[0] && numX('11.') < bodyXs[0],'the numbers stay clear of the shared body-text column');
+  assert.ok(numX('9.') > numX('10.'),'narrower "9." is right-aligned further in than the wider "10.", not left-flush with it');
+  assert.equal(numX('10.'),numX('11.'),'same-width numbers ("10.","11.") share the exact same start x');
+}));
+
+test('Markdown lists (bulleted and numbered) sit indented to the right of plain paragraph text, with matching body-text start', async () => app(async ({page,run}) => {
+  const rows=await run(`layoutMarkdownBlocks(parseMarkdownBlocks('para\\n- bullet\\n1. one'),0,0,300,600,'sans',28)`);
+  const xOf=text=>rows.find(w=>w.text===text).x;
+  const paraX=xOf('para'), bulletX=xOf('•'), numX=xOf('1.');
+  assert.ok(bulletX>paraX,'a bullet-list marker sits to the right of plain paragraph text, not flush with it');
+  assert.ok(numX>paraX,'a numbered-list marker sits to the right of plain paragraph text, not flush with it');
+
+  // A bullet's own column is sized off the WIDEST single digit ("1." through "9."), not literally
+  // "1." -- found via actual use (a real screenshot + a per-digit width measurement) that "1." is the
+  // NARROWEST digit by a real margin in this app's own font (confirmed: ~18px vs ~22-23px for every
+  // other single digit), so a lone "1."-item list is a misleading reference: any REAL numbered list
+  // with more than one item almost always ends up wider than that, leaving a bullet list's own body
+  // text visibly less indented than it. Found the actually-widest digit dynamically rather than
+  // hardcoding one, since exact per-digit widths are a font metric, not a logical guarantee.
+  const widest=await run(`(()=>{ctx.font=mdFontString('sans',28,{});let best='1',w=0;for(let d=1;d<=9;d++){const t=ctx.measureText(d+'.').width;if(t>w){w=t;best=String(d);}}return best;})()`);
+  const rows2=await run(`layoutMarkdownBlocks(parseMarkdownBlocks('- bullet\\n${widest}. word'),0,0,300,600,'sans',28)`);
+  const xOf2=text=>rows2.find(w=>w.text===text).x;
+  assert.equal(xOf2('bullet'),xOf2('word'),`a bullet list's body text starts exactly where a numbered list's does, even against its widest single digit ("${widest}.")`);
+}));
+
+test('the indent before a list marker, and the gap after it, both scale proportionally with the item\'s own font size', async () => app(async ({page,run}) => {
+  const at=async fontPx=>{
+    const rows=await run(`layoutMarkdownBlocks(parseMarkdownBlocks('- x'),0,0,300,600,'sans',${fontPx})`);
+    const markerX=rows.find(w=>w.text==='•').x, textX=rows.find(w=>w.text==='x').x;
+    const markerW=await run(`(ctx.font=mdFontString('sans',${fontPx},{}),ctx.measureText('•').width)`);
+    return {markerX, gap: textX-(markerX+markerW)};   // markerX-6 == listIndent+rightAlignOffset
+  };
+  const at12=await at(12), at24=await at(24), at48=await at(48);
+  // listIndent should scale linearly with font size -- half the font size roughly halves the indent,
+  // double roughly doubles it. Compare via the DIFFERENCE from the flush-left baseline (x=6) so the
+  // assertion isolates listIndent's own scaling from the marker glyph's unrelated (and non-linear)
+  // own width.
+  const indentPart = r => r.markerX - 6;
+  assert.ok(Math.abs(indentPart(at24)/indentPart(at12) - 2) < 0.15, '24px indent is roughly double the 12px indent');
+  assert.ok(Math.abs(indentPart(at48)/indentPart(at24) - 2) < 0.15, '48px indent is roughly double the 24px indent');
+  // The gap AFTER the marker (markerGap, 8px tuned at 24px) must scale the same way -- a real bug,
+  // found via actual use right after listIndent alone was made proportional: a flat gap becomes a
+  // proportionally BIGGER fraction of a smaller font's own text (8px is small next to a 48px letter,
+  // large next to a 12px one), so the list still looked disproportionate at smaller sizes even once
+  // listIndent itself scaled correctly.
+  assert.ok(Math.abs(at24.gap/at12.gap - 2) < 0.2, '24px marker-to-text gap is roughly double the 12px gap');
+  assert.ok(Math.abs(at48.gap/at24.gap - 2) < 0.2, '48px marker-to-text gap is roughly double the 24px gap');
+}));
+
 test('actual PNG and SVG exports include the full wrapped text height', async () => app(async ({page,run}) => {
   await run(`items=[${JSON.stringify(wrappedText)}];setTool('select');render();`);
   const before=await run('bbox(items[0])');
