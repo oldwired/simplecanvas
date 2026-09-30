@@ -542,20 +542,60 @@ test('iPad taps cycle endpoints and double-taps enter and leave point editing', 
   assert.equal(await head(),'open-inverted','converted curves keep endpoint cycling');
 }, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true,deviceScaleFactor:2}}));
 
-// ---------- contextmenu is always suppressed on the canvas ----------
-// Real bug: on macOS, Control+click is the system-wide secondary-click convention, so Chrome fires
-// a native `contextmenu` event for it regardless of any mousedown/pointerdown handler -- previously
-// only prevented outside 'select' mode, which is exactly the one mode Ctrl+drag-duplicate and
-// Ctrl-anchored-resize (both real, documented features) run in, popping the OS's own image context
-// menu (Copy Image/Save Image/Inspect) in the middle of those gestures.
-test('the canvas never shows the native right-click/Control-click context menu, in any tool', async () => app(async ({page,run}) => {
-  await run(`items=[{type:'rect',uid:'r1',x:100,y:100,w:80,h:60,size:2,color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166'}];setTool('select');render();`);
-  const prevented = tool => run(`(()=>{
-    setTool(${JSON.stringify(tool)});
-    const e = new MouseEvent('contextmenu', {bubbles:true, cancelable:true});
+// ---------- secondary clicks on the canvas ----------
+// The native menu is always suppressed. A secondary press -- the right button, or Control+click on a
+// Mac, which browsers deliver as a primary-button press with ctrlKey followed by a contextmenu event
+// -- never starts a gesture; its one job is finishing the polygon in progress. Duplicate-drag is
+// therefore ⌘+drag on a Mac. Events go straight to the canvas here, so the checks do not depend on
+// the host OS's own Control-click handling.
+const pointerSequence = (run, seq) => run(`(()=>{
+  const r = canvas.getBoundingClientRect();
+  let prevented = null;
+  for(const [type,x,y,init] of ${JSON.stringify(seq)}){
+    const common = {bubbles:true, cancelable:true, clientX:r.left+x, clientY:r.top+y, ...init};
+    const e = type==='contextmenu' ? new MouseEvent(type, common) : new PointerEvent(type, {pointerId:1, pointerType:'mouse', ...common});
     canvas.dispatchEvent(e);
-    return e.defaultPrevented;
-  })()`);
-  assert.equal(await prevented('select'), true, 'suppressed in select mode -- the Ctrl+drag/Ctrl-resize case this bug was actually about');
-  assert.equal(await prevented('rect'), true, 'suppressed in a drawing tool too');
+    if(type==='contextmenu') prevented = e.defaultPrevented;
+  }
+  return prevented;
+})()`);
+const macControlClick = (run, x, y) => pointerSequence(run, [
+  ['pointerdown',x,y,{button:0,buttons:1,ctrlKey:true}], ['contextmenu',x,y,{button:2,ctrlKey:true}], ['pointerup',x,y,{button:0,ctrlKey:true}]]);
+const modifierDrag = (run, mod, x0, y0, x1, y1) => pointerSequence(run, [
+  ['pointerdown',x0,y0,{button:0,buttons:1,[mod]:true}], ['pointermove',(x0+x1)/2,(y0+y1)/2,{buttons:1,[mod]:true}],
+  ['pointermove',x1,y1,{buttons:1,[mod]:true}], ['pointerup',x1,y1,{button:0,[mod]:true}]]);
+
+test('the native context menu is always suppressed; a secondary click finishes the polygon in progress without adding a corner of its own', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(rectangle('r1'))}];setTool('select');selection=[0];render();`);
+  assert.equal(await pointerSequence(run, [['contextmenu',140,130,{button:2}]]), true, 'suppressed in select mode, where Ctrl+drag and Ctrl-resize run');
+  assert.equal(await run('items.length'),1);
+
+  await run(`setTool('polygon');polygonPress(300,300,false,false);polygonPress(400,300,false,false);polygonPress(400,400,false,false);`);
+  assert.equal(await pointerSequence(run, [['contextmenu',450,450,{button:2}]]), true);
+  assert.equal(await run('ui.tool'),'select','right-click finished the polygon');
+  assert.deepEqual(await run('items[1].points'),[{x:300,y:300},{x:400,y:300},{x:400,y:400}],'with exactly the corners placed');
+
+  await run(`isMac=true;setTool('polygon');polygonPress(500,300,false,false);polygonPress(600,300,false,false);polygonPress(600,400,false,false);`);
+  assert.equal(await macControlClick(run, 650, 450), true);
+  assert.equal(await run('ui.tool'),'select','a Mac Control+click finishes it the same way');
+  assert.deepEqual(await run('items[2].points'),[{x:500,y:300},{x:600,y:300},{x:600,y:400}],'and places no stray corner at the click spot first');
+}));
+
+test('on a Mac, Control+click on a selected item duplicates nothing and ⌘+drag is the duplicate-drag; Ctrl+drag stays the duplicate-drag elsewhere', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(rectangle('r1'))}];setTool('select');selection=[0];render();isMac=true;`);
+  assert.equal(await macControlClick(run, 140, 130), true);
+  assert.equal(await run('items.length'),1,'no silent duplicate stacked under the (suppressed) menu');
+  assert.deepEqual(await run('selection'),[0]);
+  await modifierDrag(run, 'metaKey', 140, 130, 200, 170);
+  let items=await run('items');
+  assert.equal(items.length,2,'⌘+drag duplicated');
+  assert.equal(items[0].x,100,'the original stayed');
+  assert.ok(Math.abs(items[1].x-160)<.5 && Math.abs(items[1].y-140)<.5,'the copy followed the drag');
+  assert.deepEqual(await run('selection'),[1]);
+
+  await run('isMac=false');
+  await modifierDrag(run, 'ctrlKey', 200, 170, 260, 170);
+  items=await run('items');
+  assert.equal(items.length,3,'Ctrl+drag still duplicates on other platforms');
+  assert.ok(Math.abs(items[2].x-220)<.5,'the copy followed the drag');
 }));
