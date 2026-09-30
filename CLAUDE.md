@@ -20,6 +20,17 @@ Open inverted, Filled inverted, then None. Endpoint drags retain the head style.
 the shape body to enter/leave point editing; anchor taps select points in that mode. Keep rapid
 endpoint/anchor taps out of double-tap detection. The line-style popover only controls width/dashes.
 
+Group edit mode (double-click a grouped item; `editingGroupId`) browses one group's members
+individually without ungrouping. The scene encoding never changes for it: a member of a ROTATED group
+is drawn and hit-tested in its on-screen frame (`worldFrameOf`), and each gesture on it (drag, resize,
+rotate, endpoint drag, nudge, delete, duplicate) folds the group's `groupRotation` into the members for its own
+duration only (`bakeForGesture` / `unbakeAfterGesture`, `withGroupBaked`) -- the pivot is derived from
+the members' union box, so editing one member with the rotation live would swing every sibling, while
+leaving it folded in permanently would change how the whole group resizes afterwards. `unbakeMembers`
+is the exact inverse (fixed-point pivot). Exits (`exitGroupEdit`, Escape, a click outside the box, a
+tool switch) re-expand the selection to the whole group. Duplicates made inside the mode join the
+group; a lone member on the clipboard is detached (`clonesOf`).
+
 On a Mac, Control+click is treated as a secondary click everywhere on the canvas (`isSecondaryPress`):
 it never starts a gesture and only finishes a polygon in progress via the always-suppressed
 `contextmenu` handler. Duplicate-drag is therefore Cmd+drag on a Mac and Ctrl+drag elsewhere.

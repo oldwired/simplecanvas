@@ -772,13 +772,26 @@ test('a cold click on empty space within an UNSELECTED group\'s own box selects 
   assert.equal(await run('editingGroupId'),null,'a plain click never enters edit mode');
 }));
 
-test('Escape exits group edit mode', async () => app(async ({page,run}) => {
+test('Escape exits group edit mode back to the whole group selected; a tool switch exits it too', async () => app(async ({page,run}) => {
   await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
   const canvas=await page.locator('#canvas').boundingBox();
   await page.mouse.dblclick(canvas.x+140,canvas.y+130);
   assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[0]);
   await page.keyboard.press('Escape');
   assert.equal(await run('editingGroupId'),null);
+  assert.deepEqual(await run('selection.slice().sort()'),[0,1,2],'the lone member is not left selected while the group draws as a whole');
+  assert.equal(await run('resizePivotFor(selection).isGroup'),true,'handles belong to the whole group again');
+
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.equal(await run('editingGroupId'),'g1');
+  await run(`setTool('rect')`);
+  assert.equal(await run('editingGroupId'),null,'switching tools leaves the mode');
+  await page.mouse.click(canvas.x+340,canvas.y+130);   // click-without-drag on the rect tool falls back to select
+  assert.equal(await run('ui.tool'),'select');
+  assert.equal(await run('editingGroupId'),null,'and does not sneak back into it');
+  assert.deepEqual(await run('selection.slice().sort()'),[0,1,2],'a plain whole-group selection');
+  assert.equal(await run('resizePivotFor(selection).isGroup'),true,'with whole-group handles');
 }));
 
 test('a plain body press-and-drag right after entering group edit mode moves only that member', async () => app(async ({page,run}) => {
@@ -856,35 +869,120 @@ test('undo/redo across a move performed in group edit mode', async () => app(asy
   assert.ok(Math.abs((await run('items[0].x'))-140)<.5,'move re-applies on redo');
 }));
 
-test('moving a member of a ROTATED group compensates for groupRotation; resize/rotation handles are absent for it', async () => app(async ({page,run}) => {
-  // Closer together and lower on the canvas than groupOf3()'s usual spread -- a 90° rotation swings
-  // each member's on-screen position by roughly its own distance from the group's pivot, and
-  // groupOf3()'s normal wide horizontal spread would otherwise land the rotated members off-canvas.
-  const rotatedMember = (uid,x) => ({type:'rect',uid,x,y:400,w:80,h:60,size:2,color:'#1f2937',
-    strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:Math.PI/2});
-  const rotated = [rotatedMember('m1',300),rotatedMember('m2',450),rotatedMember('m3',600)];
-  await run(`items=${JSON.stringify(rotated)};setTool('select');render();`);
-  await run(`editingGroupId='g1';selection=[0];render();`);   // enter directly -- the rotated group's
-                                                                // on-screen dblclick position is nontrivial
-                                                                // to compute here, and entry itself is
-                                                                // already covered by the unrotated tests above
-  assert.equal(await run('resizePivotFor([0])'),null,'no resize handles for a member of a rotated group');
-  assert.equal(await run('rotationPivotFor([0])'),null,'no rotation handle either');
+// A 90° rotation swings each member's on-screen position by roughly its own distance from the group's
+// pivot, so these sit closer together and lower on the canvas than groupOf3()'s usual spread, or the
+// rotated members would land off-canvas.
+const rotatedMember = (uid,x) => ({type:'rect',uid,x,y:400,w:80,h:60,size:2,color:'#1f2937',
+  strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:Math.PI/2});
+const rotatedGroup = () => [rotatedMember('m1',300),rotatedMember('m2',450),rotatedMember('m3',600)];
+// on-screen centers of every item -- stored x/y are in the LOCAL (unrotated) frame, so with a group
+// rotation the actual position of any point on an item is toWorld(item, localX, localY)
+const screenCenters = run => run('items.map(it=>toWorld(it, it.x+it.w/2, it.y+it.h/2))');
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 
-  const before=await run('items[0]');
+// every member of the (only) group still encoded the way the fixture was: shared groupRotation, no own rotation
+const encodedAsRotatedGroup = async run => {
+  for(const it of await run('items')){
+    assert.ok(Math.abs(it.groupRotation-Math.PI/2)<1e-9,'groupRotation kept');
+    assert.ok(!it.rotation,'no own rotation left behind on a member');
+  }
+};
+
+test('moving a member of a ROTATED group in edit mode follows the pointer on screen, leaves its siblings put, and keeps the group\'s own encoding', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(rotatedGroup())};setTool('select');render();`);
+  const before=await screenCenters(run);
   const canvas=await page.locator('#canvas').boundingBox();
-  // items[0].x/y are stored in the LOCAL (unrotated) frame -- with groupRotation set, the on-screen
-  // position of any point on the item is toWorld(item, localX, localY), not the raw stored x/y.
-  const world=await run(`toWorld(items[0], items[0].x+items[0].w/2, items[0].y+items[0].h/2)`);
-  await page.mouse.move(canvas.x+world.x,canvas.y+world.y);await page.mouse.down();
-  await page.mouse.move(canvas.x+world.x+40,canvas.y+world.y);await page.mouse.up();   // 40px purely rightward on screen
-  const after=await run('items[0]');
-  // A pure rightward screen-space drag, compensated for a 90° groupRotation, must leave the member's
-  // stored (local) x unchanged and decrease its stored y by the same amount -- independently derived
-  // from the rotation direction (see the plan/implementation comment), not just re-deriving the
-  // implementation's own formula.
-  assert.ok(Math.abs(after.x-before.x)<.5,'local x unchanged');
-  assert.ok(Math.abs((before.y-after.y)-40)<.5,'local y decreases by the drag distance');
+  await page.mouse.dblclick(canvas.x+before[0].x,canvas.y+before[0].y);
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[0]);
+  await encodedAsRotatedGroup(run);   // entering changes nothing about the data
+  const rp=await run('resizePivotFor([0])');
+  assert.ok(rp && Math.abs(rp.rotation-Math.PI/2)<1e-9 && dist({x:rp.cx,y:rp.cy},before[0])<.5,'the browsed member gets resize handles in its on-screen frame');
+  const piv=await run('rotationPivotFor([0])');
+  assert.ok(piv && Math.abs(piv.rotation-Math.PI/2)<1e-9,'and a rotation handle');
+
+  await page.mouse.move(canvas.x+before[0].x,canvas.y+before[0].y);await page.mouse.down();
+  await page.mouse.move(canvas.x+before[0].x+40,canvas.y+before[0].y);await page.mouse.up();   // 40px purely rightward on screen
+  const moved=await screenCenters(run);
+  assert.ok(dist(moved[0],{x:before[0].x+40,y:before[0].y})<.5,'m1 followed the pointer on screen');
+  for(const i of [1,2]) assert.ok(dist(moved[i],before[i])<.5,`m${i+1} did not move`);
+  await encodedAsRotatedGroup(run);   // the rotation was only folded into the members for the drag itself
+
+  await page.mouse.click(canvas.x+before[1].x,canvas.y+before[1].y);   // pick m2
+  assert.deepEqual(await run('selection'),[1]);
+  await page.keyboard.press('Delete');
+  const survivors=await screenCenters(run);
+  assert.equal(survivors.length,2);
+  assert.ok(dist(survivors[0],moved[0])<.5 && dist(survivors[1],before[2])<.5,'the survivors stay put after a sibling is deleted');
+  assert.equal(await run('editingGroupId'),'g1');
+  await encodedAsRotatedGroup(run);
+
+  await run('undo()');   // the delete
+  await run('undo()');   // the move
+  const undone=await screenCenters(run);
+  assert.equal(undone.length,3);
+  for(let i=0;i<3;i++) assert.ok(dist(undone[i],before[i])<.5,`m${i+1} back where it started`);
+  await encodedAsRotatedGroup(run);   // history only ever holds the group's own encoding
+}));
+
+test('entering and leaving group edit mode leaves a rotated group resizing exactly as before', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(rotatedGroup())};setTool('select');render();`);
+  const before=await screenCenters(run);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+before[0].x,canvas.y+before[0].y);
+  assert.equal(await run('editingGroupId'),'g1');
+  await page.keyboard.press('Escape');
+  assert.deepEqual(await run('selection.slice().sort()'),[0,1,2]);
+  const rp=await run('resizePivotFor(selection)');
+  assert.ok(rp.isGroup && Math.abs(rp.rotation-Math.PI/2)<1e-9,'the whole group still resizes in its rotated frame');
+  // its (local) south-east corner, on screen; dragged 60px leftward on screen, which in the group's
+  // 90°-turned frame is straight down its own y axis -- so every member gets taller, none wider
+  const corner=await run(`rotatePoint(${rp.box.x+rp.box.w},${rp.box.y+rp.box.h},${rp.cx},${rp.cy},${rp.rotation})`);
+  await page.mouse.move(canvas.x+corner.x,canvas.y+corner.y);await page.mouse.down();
+  await page.mouse.move(canvas.x+corner.x-60,canvas.y+corner.y,{steps:3});await page.mouse.up();
+  for(const it of await run('items')){
+    assert.ok(Math.abs(it.w-80)<.5,'width untouched');
+    assert.ok(Math.abs(it.h-120)<.5,'height doubled');
+  }
+  await encodedAsRotatedGroup(run);
+}));
+
+test('duplicating a member of a ROTATED group in edit mode leaves the originals put: the copy joins the group without moving its pivot', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(rotatedGroup())};setTool('select');render();`);
+  const before=await screenCenters(run);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+before[0].x,canvas.y+before[0].y);
+  assert.deepEqual(await run('selection'),[0]);
+  await run('duplicateSelection()');
+  let after=await screenCenters(run);
+  assert.equal(after.length,4);
+  for(let i=0;i<3;i++) assert.ok(dist(after[i],before[i])<.5,`m${i+1} did not move (off by ${dist(after[i],before[i]).toFixed(1)}px)`);
+  assert.ok(dist(after[3],{x:before[0].x+16,y:before[0].y+16})<.5,'the copy sits 16px down-right of its source on screen');
+  assert.equal(await run('items[3].group'),'g1');
+  assert.equal(await run('editingGroupId'),'g1');
+  await encodedAsRotatedGroup(run);
+  await run('selection=[2];duplicateSelection()');   // the last member too -- grows the box on another side
+  after=await screenCenters(run);
+  for(let i=0;i<3;i++) assert.ok(dist(after[i],before[i])<.5,`m${i+1} still put (off by ${dist(after[i],before[i]).toFixed(1)}px)`);
+  await run('undo();undo();');
+  assert.equal(await run('items.length'),3);
+  await encodedAsRotatedGroup(run);   // history holds only the group's own encoding
+}));
+
+test('deleting some members of a ROTATED group leaves the survivors in place, down to the auto-ungrouped last one', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(rotatedGroup())};setTool('select');render();`);
+  const before=await screenCenters(run);
+  await run('selection=[1];deleteSelected();');   // a partial selection, straight from the rotated state
+  const two=await screenCenters(run);
+  assert.equal(two.length,2);
+  assert.ok(dist(two[0],before[0])<.5 && dist(two[1],before[2])<.5,'both survivors still drawn where they were');
+  await encodedAsRotatedGroup(run);
+  await run('selection=[1];deleteSelected();');
+  const [lone]=await screenCenters(run);
+  assert.ok(dist(lone,before[0])<.5,'the auto-ungrouped last survivor too');
+  const it=await run('items[0]');
+  assert.equal(it.group,undefined);assert.equal(it.groupRotation,undefined);
+  assert.ok(Math.abs(it.rotation-Math.PI/2)<1e-9,'it keeps the look it had inside the group');
 }));
 
 test('ungrouping while in group edit mode ungroups the whole group and exits edit mode', async () => app(async ({page,run}) => {
@@ -897,6 +995,80 @@ test('ungrouping while in group edit mode ungroups the whole group and exits edi
   assert.deepEqual(await run('selection.slice().sort()'),[0,1,2]);
   const items=await run('items');
   for(const it of items){ assert.equal(it.group,undefined); assert.equal(it.groupRotation,undefined); }
+}));
+
+test('in group edit mode, a member fully covered by a sibling is reachable by click-cycling', async () => app(async ({page,run}) => {
+  const big={...rectangle('big'),x:100,y:100,w:200,h:150,group:'g1',groupRotation:0};
+  const top={...rectangle('top'),x:120,y:120,w:100,h:80,fillColor:'#2563eb',group:'g1',groupRotation:0};
+  await run(`items=${JSON.stringify([big,top])};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+170,canvas.y+160);   // inside both; the top one wins
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[1]);
+  await page.waitForTimeout(600);                          // well past the double-click interval
+  await page.mouse.click(canvas.x+170,canvas.y+160);       // restarts the cycle on the top member
+  assert.deepEqual(await run('selection'),[1]);
+  await page.waitForTimeout(600);
+  await page.mouse.click(canvas.x+170,canvas.y+160);       // steps down to the covered member
+  assert.deepEqual(await run('selection'),[0],'the rect underneath can be picked without ungrouping');
+  assert.equal(await run('editingGroupId'),'g1');
+}));
+
+test('duplicating a browsed member adds the copy to the group being edited; copying it to the clipboard detaches it', async () => app(async ({page,run}) => {
+  await run(`items=${JSON.stringify(groupOf3())};setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+140,canvas.y+130);
+  assert.deepEqual(await run('selection'),[0]);
+  await run('duplicateSelection()');
+  assert.equal(await run('items.length'),4);
+  assert.equal(await run('items[3].group'),'g1','the duplicate joins the group, rather than forming a group of one');
+  assert.equal(await run('editingGroupId'),'g1','still browsing it');
+  assert.deepEqual(await run('selection'),[3]);
+  await run('selection=duplicateItemsInPlace([1])');   // the Ctrl+drag primitive, same rule
+  assert.equal(await run('items[4].group'),'g1');
+  await run('selection=[3];copySelection()');
+  assert.equal(await run('clipboard[0].group'),undefined,'a lone member on the clipboard carries no group');
+}));
+
+test('a line/arrow member picked in group edit mode keeps its endpoint handles: drag one end, click it to cycle the head', async () => app(async ({page,run}) => {
+  await run(`items=[
+    ${JSON.stringify(groupMember('m1',100))},
+    {type:'arrow',uid:'a1',x1:300,y1:130,x2:500,y2:130,size:4,color:'#000000',he:true,group:'g1',groupRotation:0}
+  ];setTool('select');render();`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+400,canvas.y+130);   // on the arrow's shaft
+  assert.equal(await run('editingGroupId'),'g1');
+  assert.deepEqual(await run('selection'),[1]);
+  assert.equal(await run('loneOpenPathIdx(selection)'),1,'endpoint knobs are offered for the browsed arrow');
+  await page.mouse.move(canvas.x+500,canvas.y+130);await page.mouse.down();   // grab its end knob
+  await page.mouse.move(canvas.x+540,canvas.y+170);await page.mouse.up();
+  const [rect,arrow]=await run('items');
+  assert.ok(Math.abs(arrow.x2-540)<.5 && Math.abs(arrow.y2-170)<.5,'the end followed the drag');
+  assert.equal(arrow.x1,300,'the other end stayed put');
+  assert.equal(rect.x,100,'and so did the sibling');
+  assert.equal(arrow.group,'g1','still a member');
+  await page.mouse.click(canvas.x+540,canvas.y+170);   // a plain click on the knob cycles the head style
+  assert.equal(await run('items[1].heStyle'),'filled');
+  assert.equal(await run('editingGroupId'),'g1');
+}));
+
+test('a click in an empty gap of a selected group neither re-aligns nor long-press-edits the text member it resolves to', async () => app(async ({page,run}) => {
+  await run(`items=[
+    {type:'rect',uid:'r1',x:400,y:100,w:80,h:60,size:2,color:'#1f2937',strokeOn:true,fill:true,fillColor:'#ffd166',group:'g1',groupRotation:0},
+    {type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
+      color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2,group:'g1',groupRotation:0}
+  ];setTool('select');render();`);
+  let canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(canvas.x+350,canvas.y+125);   // gap between the text (x:100..300) and the rect (x:400..480)
+  assert.deepEqual(await run('selection.slice().sort()'),[0,1],'the gap selects the whole group');
+  canvas=await page.locator('#canvas').boundingBox();   // the text's font controls may have shifted the canvas
+  await page.mouse.click(canvas.x+350,canvas.y+125);   // again, now on the already-selected group
+  await page.waitForTimeout(500);                       // past the deferred alignment click
+  assert.equal(await run('items[1].align'),'center','alignment untouched');
+  await page.mouse.move(canvas.x+350,canvas.y+125);await page.mouse.down();
+  await page.waitForTimeout(800);                       // past the long-press delay
+  await page.mouse.up();
+  assert.equal(await run('editingTextIdx'),null,'no editor for a press that was not on the text itself');
 }));
 
 // ---------- text/table: grouped instances get a TWO-STAGE double-click ----------
