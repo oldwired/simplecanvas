@@ -20,6 +20,10 @@ Open inverted, Filled inverted, then None. Endpoint drags retain the head style.
 the shape body to enter/leave point editing; anchor taps select points in that mode. Keep rapid
 endpoint/anchor taps out of double-tap detection. The line-style popover only controls width/dashes.
 
+On a Mac, Control+click is treated as a secondary click everywhere on the canvas (`isSecondaryPress`):
+it never starts a gesture and only finishes a polygon in progress via the always-suppressed
+`contextmenu` handler. Duplicate-drag is therefore Cmd+drag on a Mac and Ctrl+drag elsewhere.
+
 Automated Playwright regressions are checked in under `tests/`; see `tests/README.md` for Chromium
 and WebKit commands and the remaining manual Office/iPad checks. They are development dependencies
 only; opening `index.html` still requires no build step or runtime dependency.
