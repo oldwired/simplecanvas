@@ -732,6 +732,19 @@
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
+  // ---------- group "enter" edit mode ----------
+  // Lets a group's own members be browsed, moved/resized/recolored/deleted, and edited one at a
+  // time without ungrouping -- modeled on Point-Edit's own persistence (stays active until a click
+  // lands outside the shape's body), generalized to a whole group's bounding box instead of one
+  // shape. editingGroupId is the group's own id string (not a specific member index) -- it's
+  // deliberately independent of `selection`, which is free to become [] (browsing, nothing
+  // individually picked yet) or [oneMemberIdx] (that one member picked for move/resize/recolor/
+  // delete/edit) while this stays constant; only an explicit exit (click outside the group's own
+  // box, Escape, Ungroup, or the group vanishing entirely) clears it. See enterGroupEdit(),
+  // groupBoxContains(), onDown's click-cycle+miss handling, syncGroupEdit(), and bakeForGesture()
+  // for how a member of a ROTATED group is edited on its own.
+  let editingGroupId = null;
+  let bakedGesture = null;      // {g,rot} while a gesture on a browsed member runs with its group's rotation temporarily folded into the members (bakeForGesture)
   let snapPt = null;            // anchor a line/arrow endpoint is currently snapped to (for the indicator ring)
   let snapCursorPt = null;      // raw pointer position while placing/dragging a line/arrow endpoint (for hover-highlighting that one target's snap dots)
   let nudging = false;          // an arrow-key nudge has opened a history step that the matching keyup will commit
@@ -1193,13 +1206,49 @@
     const blocks = [];
     for(const line of body.split('\n')){
       let m;
-      if(m = /^(#{1,3})\s+(.*)$/.exec(line)) blocks.push({type:'h'+m[1].length, runs:parseInline(m[2])});
+      // A blank line (two hard breaks back to back) is a deliberate manual spacer, not an empty
+      // paragraph -- see the 'blank' case in layoutMarkdownBlocks/mdBlockGapAfter for what that
+      // means for its own height and the gaps around it.
+      if(line.trim() === '') blocks.push({type:'blank'});
+      else if(m = /^(#{1,3})\s+(.*)$/.exec(line)) blocks.push({type:'h'+m[1].length, runs:parseInline(m[2])});
       else if(m = /^[-*]\s+(.*)$/.exec(line)) blocks.push({type:'li', runs:parseInline(m[1])});
+      // A numbered list item -- ANY digits work as the marker (matching standard Markdown), and the
+      // NUMBER ACTUALLY SHOWN is auto-renumbered below rather than taken literally, so typing "1."
+      // for every line (the natural way to write a list without hand-renumbering it) still counts up
+      // 1, 2, 3, ... instead of repeating "1." on every item.
+      else if(m = /^(\d+)\.\s+(.*)$/.exec(line)) blocks.push({type:'oli', num:parseInt(m[1],10), runs:parseInline(m[2])});
       // 3+ dashes alone on a line -- unambiguous with the "---" front-matter marker, which is only
       // ever checked against physical line 1 of the raw text (markdownBodyOf), never a body line.
       else if(/^-{3,}$/.test(line.trim())) blocks.push({type:'hr'});
       else blocks.push({type:'p', runs:parseInline(line)});
     }
+    // Auto-renumber every run of consecutive 'oli' blocks, counting up from the FIRST item's own
+    // typed number (matching standard Markdown) -- a 'blank' spacer in between doesn't break the run
+    // (a deliberate blank line inside a list shouldn't reset its count), but any other block does.
+    // Every block in a run also records that run's own WIDEST label ("1." vs "12.") -- since numbers
+    // only ever increase within a run, that's always the run's own LAST item -- so layoutMarkdownBlocks
+    // can size every item's indent off the same shared column instead of each item's own number width
+    // (which would otherwise leave "1." and "12." lines with visibly different body-text indents).
+    let runStart = null, offset = 0, runBlocks = [];
+    const flushOliRun = () => {
+      if(runBlocks.length){
+        const maxLabel = runBlocks[runBlocks.length-1].num + '.';
+        for(const b of runBlocks) b.oliMaxLabel = maxLabel;
+      }
+      runBlocks = [];
+    };
+    for(const b of blocks){
+      if(b.type === 'oli'){
+        if(runStart == null) runStart = b.num;
+        b.num = runStart + offset;
+        offset++;
+        runBlocks.push(b);
+      } else if(b.type !== 'blank'){
+        flushOliRun();
+        runStart = null; offset = 0;
+      }
+    }
+    flushOliRun();
     return blocks;
   }
   const MD_HEADING_SCALE = { h1:1.6, h2:1.3, h3:1.15 };   // h1/h2/h3 relative to the item's own base font size
@@ -1222,6 +1271,20 @@
   function mdFontString(family, sizePx, opts){
     opts = opts || {};
     return (opts.italic?'italic ':'') + (opts.bold?'700 ':'600 ') + sizePx + 'px ' + (FONTS[family]||FONTS.sans);
+  }
+  // The widest a single-digit numbered-list label ("1." through "9.") can be, at a given font/size --
+  // in most proportional fonts "1." is the NARROWEST digit by a real margin, so this is deliberately
+  // NOT just ctx.measureText('1.') (see the caller). Memoized per family+size since it's requested
+  // once per bullet-list block and never changes for the same combination.
+  const mdMaxDigitLabelCache = new Map();
+  function MD_MAX_DIGIT_LABEL_W(fontFamily, fontPx){
+    const key = fontFamily + '|' + fontPx;
+    if(mdMaxDigitLabelCache.has(key)) return mdMaxDigitLabelCache.get(key);
+    ctx.font = mdFontString(fontFamily, fontPx, {});
+    let w = 0;
+    for(let d=1; d<=9; d++) w = Math.max(w, ctx.measureText(d+'.').width);
+    mdMaxDigitLabelCache.set(key, w);
+    return w;
   }
   // Run boundaries land wherever **/*/_ markers literally sit in the source, often mid-word or
   // touching adjacent text with no space (un*believable*, 10x**faster**, Hello,**world**!). Splitting
@@ -1247,14 +1310,64 @@
   // weight/style only, never size), but varies BETWEEN blocks (headings), so this sets ctx.font
   // itself throughout -- unlike layoutWrappedText's contract of "caller pre-sets ctx.font once",
   // callers here must not assume ctx.font is unchanged after calling this.
+  // How much extra breathing room (beyond the block's own lineHeight) follows a block, given what
+  // comes right after it (undefined at the very end of the blocks list). A run of list items
+  // ('li' -> 'li') stays tight -- no gap between bullets. A transition into or out of a list
+  // ('li' <-> non-'li') gets a SMALLER gap than an ordinary paragraph/heading ending: visually,
+  // the same full paragraph-gap read as too much right above a tightly-packed list, and (with no
+  // gap at all previously) far too little right after one. hr is handled entirely separately
+  // above and never reaches this.
+  //
+  // A heading (any level) targets the SAME total post-block gap a plain paragraph gets
+  // (baseLineHeight*1.5) rather than a bonus proportional to its OWN (already font-scaled)
+  // lineHeight. That distinction matters: h1's 1.6x scale already makes its bare lineHeight bigger
+  // than that target on its own (so it needs NO bonus at all -- confirmed fine before this function
+  // added headings at all), while h2/h3's more modest 1.3x/1.15x scale falls short of it on their
+  // own (so THEY need a real top-up). An earlier version used `ownLineHeight*0.5` uniformly, which
+  // overshot every level (worst for h1, whose bonus stacked on top of a bare lineHeight that was
+  // already enough).
+  const isListBlock = t => t==='li' || t==='oli';
+  function mdBlockGapAfter(baseLineHeight, ownLineHeight, currentType, nextType){
+    // A rule's own vertical position (see the 'hr' branch below) is tuned assuming ONLY the
+    // preceding block's bare lineHeight precedes it -- stacking any of the bonuses below on top of
+    // that would push the whole gap bigger than that tuning accounts for, so the rule ends up
+    // sitting further down in it than intended instead of just under the text above it.
+    // A blank line (see 'blank' below) already IS the user's own deliberate spacing choice -- adding
+    // an automatic bonus on either side of it would stack on top of that and make the actual gap
+    // unpredictable, defeating the whole point of a manually-sized spacer.
+    if(nextType === 'hr' || nextType === 'blank') return 0;
+    // A run of the SAME list type ('li'->'li', or 'oli'->'oli') stays tight; switching list type
+    // ('li'<->'oli') is treated as leaving one list and entering another, same smaller gap as
+    // entering/leaving a list from plain text.
+    if(isListBlock(currentType) && isListBlock(nextType) && currentType===nextType) return 0;
+    if(isListBlock(currentType) || isListBlock(nextType)) return baseLineHeight * 0.3;
+    return Math.max(0, baseLineHeight*1.5 - ownLineHeight);
+  }
   function layoutMarkdownBlocks(blocks, boxX, boxY, boxW, boxH, fontFamily, baseFontPx){
     const maxWidth = Math.max(1, boxW - 12);
-    const indentLi = 18;
+    // Both list kinds sit a bit further right than plain paragraph/heading text -- shifts the
+    // bullet/number glyph itself, not just the body text after it, so a list visually reads as
+    // indented from the surrounding text, not flush with its left margin. Scales proportionally
+    // with the item's own font size (18px was tuned at a 24px font -- a smaller font gets a
+    // correspondingly smaller indent, a larger one a correspondingly larger one) rather than
+    // staying a flat pixel count regardless of text size.
+    const listIndent = 18 * (baseFontPx/24);
+    // Same reasoning as listIndent: a flat pixel count here reads fine at the font size it was tuned
+    // at, but becomes proportionally oversized once the font shrinks (8px is a small fraction of a
+    // large font's own line, but a much bigger fraction of a small one) -- found via actual use right
+    // after listIndent alone was made proportional, the same list still looked too spaced out at a
+    // smaller font size specifically.
+    const markerGap = 8 * (baseFontPx/24);
     const out = [];
     let y = boxY + MD_TOP_PAD;
-    for(const block of blocks){
+    for(let bi=0; bi<blocks.length; bi++){
+      const block = blocks[bi];
       const fontPx = mdBlockFontPx(block, baseFontPx);
       const lineHeight = fontPx * 1.2;
+      // A deliberate manual spacer (two hard breaks back to back) -- exactly half a normal line's
+      // height, nothing drawn, and (per mdBlockGapAfter above) no automatic bonus stacked on top of
+      // it from either side; the user is manually sizing this gap, not writing a paragraph.
+      if(block.type === 'blank'){ y += baseFontPx*1.2*0.5; continue; }
       if(block.type === 'hr'){
         // Sized to the font's own cap-height (not the full line-height, which also carries descent +
         // leading a real text line needs but a rule doesn't) -- so the rule reads as sitting centered
@@ -1276,16 +1389,40 @@
       const isHeading = block.type[0] === 'h';
       ctx.font = mdFontString(fontFamily, fontPx, {bold:isHeading});
       const asc = ctx.measureText('M').actualBoundingBoxAscent || fontPx*0.8;
-      const leftPad = block.type==='li' ? indentLi : 0;
+      // A numbered item's own label ("1.", "12.", ...) varies in width with its digit count, unlike
+      // the bullet glyph's fixed slot -- the INDENT is sized off the widest label in the item's own
+      // run (oliMaxLabel, computed once in parseMarkdownBlocks), not this item's own number, so every
+      // item's BODY TEXT lines up at the same x regardless of which one happens to be multi-digit.
+      // The number itself is then right-aligned within that shared column (below), matching how a
+      // real numbered list lines up its markers.
+      const oliLabel = block.type==='oli' ? block.num+'.' : null;
+      const oliColW = block.type==='oli' ? ctx.measureText(block.oliMaxLabel).width : 0;
+      const oliLabelW = block.type==='oli' ? ctx.measureText(oliLabel).width : 0;
+      // A bullet's own column is sized the same as the WIDEST single digit's ("1." through "9.") --
+      // NOT literally "1." specifically, which in most proportional fonts (confirmed: Arial/this
+      // app's own 'sans') is the narrowest digit by a real margin (e.g. "1." measures ~18px here,
+      // every other single digit ~22-23px). A bullet list's own column must match whatever an ACTUAL
+      // single-digit numbered list's column ends up being, and that's set by its own widest member,
+      // not by "1." specifically -- using "1." as the reference left a bullet list's body text
+      // noticeably narrower-indented than a real 2+ item numbered list's, found via actual use.
+      const bulletColW = block.type==='li' ? MD_MAX_DIGIT_LABEL_W(fontFamily, fontPx) : 0;
+      const bulletW = block.type==='li' ? ctx.measureText('•').width : 0;
+      const leftPad = block.type==='li' ? listIndent + bulletColW + markerGap : block.type==='oli' ? listIndent + oliColW + markerGap : 0;
       const avail = Math.max(1, maxWidth - leftPad);
       const measure = (bold, italic, text) => { ctx.font = mdFontString(fontFamily, fontPx, {bold: bold||isHeading, italic}); return ctx.measureText(text).width; };
       const units = tokenizeRuns(block.runs).filter(u=>!u.ws);
       let line = [], lineWidth = 0, firstLineOfBlock = true;
       const flushLine = () => {
         let x = boxX + 6 + leftPad;
-        // only the FIRST visual line of a list item gets the bullet -- wrapped continuation lines
-        // share the same left indent but don't repeat the glyph
-        if(block.type==='li' && firstLineOfBlock) out.push({x: boxX+6, y: y+asc, text:'•', bold:false, italic:false, link:null, fontPx});
+        // only the FIRST visual line of a list item gets the bullet/number -- wrapped continuation
+        // lines share the same left indent but don't repeat the glyph/label
+        // right-aligned within its own column, same convention as the numbered-list label below --
+        // keeps the gap between glyph and body text constant while the glyph itself sits further
+        // right, matching where "1." would sit.
+        if(block.type==='li' && firstLineOfBlock) out.push({x: boxX+6+listIndent+Math.max(0,bulletColW-bulletW), y: y+asc, text:'•', bold:false, italic:false, link:null, fontPx});
+        // right-aligned within the shared run-wide column, so "1." and "12." both end flush at the
+        // same edge just before the gap to the body text, like a real numbered list.
+        else if(block.type==='oli' && firstLineOfBlock) out.push({x: boxX+6+listIndent+Math.max(0,oliColW-oliLabelW), y: y+asc, text:oliLabel, bold:false, italic:false, link:null, fontPx});
         for(const u of line){
           for(const p of u.parts){
             out.push({x, y: y+asc, text:p.text, bold: !!p.bold||isHeading, italic:!!p.italic, link:p.link||null, fontPx});
@@ -1305,6 +1442,10 @@
         else { flushLine(); line.push(u); lineWidth = w; }
       }
       flushLine();   // always at least one line per block -- also what advances Y for a blank line
+      // Extra breathing room after this block -- otherwise consecutive blocks (the normal case:
+      // ordinary text separated by a hard line break) advance by the SAME lineHeight as two wrapped
+      // lines within one paragraph, so separate blocks read as one run-on block of text.
+      y += mdBlockGapAfter(baseFontPx*1.2, lineHeight, block.type, blocks[bi+1] && blocks[bi+1].type);
     }
     return out;
   }
@@ -1722,6 +1863,19 @@
     const box = unionBoxOf(members), g = unionBoxOf(members, false);
     return { cx:g.x+g.w/2, cy:g.y+g.h/2, box, ownBox:g };
   }
+  // Is a world point within a group's own (padded) bounding box, accounting for its groupRotation?
+  // Same box group-edit-mode's own outline draws (piv.box). Used as groupBoxHit()/hitStack()'s fallback
+  // for a grouped item whose own bbox test misses -- makes a group's WHOLE box clickable everywhere
+  // (empty gaps between members included), same as a single item's own bbox already is, resolving to
+  // whichever member's own per-item check runs first in that loop as the group's representative hit.
+  function groupBoxContains(groupId, x, y){
+    const idxs = itemsInGroup(groupId);
+    if(!idxs.length) return false;
+    const piv = groupPivot(groupId);
+    const grot = items[idxs[0]].groupRotation || 0;
+    const lp = grot ? rotatePoint(x,y,piv.cx,piv.cy,-grot) : {x,y};
+    return inBox(piv.box, lp.x, lp.y);
+  }
   // world point -> item's local (unrotated) frame — undoes groupRotation first, then own rotation
   // (the reverse order of how they're applied when drawing)
   function toLocal(it,x,y){
@@ -1809,7 +1963,10 @@
   function loneOpenPathIdx(sel){
     if(!sel || sel.length!==1) return null;
     const it = items[sel[0]];
-    return it && it.group==null && pointEditIdx!==sel[0] && isOpenPath(it) ? sel[0] : null;
+    // Also for the one member individually picked while browsing its group (group edit mode); its
+    // endpoints are world points either way (pathEnds), and the drag itself runs with the group's
+    // rotation folded into the member (bakeForGesture).
+    return it && editsAlone(it) && pointEditIdx!==sel[0] && isOpenPath(it) ? sel[0] : null;
   }
   function pathEnds(it){
     if(it.type==='polygon') return [it.points[0],it.points[it.points.length-1]].map(p=>toWorld(it,p.x,p.y));
@@ -1835,34 +1992,81 @@
     }
     return b;
   }
+  // Is (x,y) on the item itself -- inside its own (padded) bbox?
+  function pressedOn(it,x,y){ const p = toLocal(it,x,y); return inBox(bbox(it),p.x,p.y); }
+  // The topmost item whose OWN bbox contains (x,y), or -1. Deliberately knows nothing about group
+  // boxes: every caller asking "is the pointer actually on something?" (snap-target hover, the
+  // point-edit miss check, dblclick-on-empty-canvas tool switching) wants exactly that, and the
+  // group-box fallback below would make a group's empty gaps answer yes.
   function hitTest(x,y,excludeIdx){
     for(let i=items.length-1;i>=0;i--){
       if(i===excludeIdx) continue;
       const it = items[i];
-      const p = toLocal(it,x,y);
-      if(inBox(bbox(it),p.x,p.y)) return i;
+      if(pressedOn(it,x,y)) return i;
     }
     return -1;
+  }
+  // A grouped item's own bbox test can fail while (x,y) is still inside the GROUP's overall box (a
+  // gap between members) -- falling back to groupBoxContains() there makes a group's whole box fully
+  // "clickable" everywhere, same as a single item's own bbox already is (a polygon's concave interior
+  // included). Without this, empty gaps inside an otherwise-selected-looking group read as dead space,
+  // which is exactly the inconsistency reported: a lone shape's bbox is always clickable, a group's
+  // wasn't. Always a strict SECOND pass, only once no item's own bbox matched anywhere -- doing the
+  // fallback check inline during the first pass let a later-iterated (lower z-order) member's group
+  // fallback shadow an EARLIER, more specific direct hit on a higher sibling in the very same group
+  // (a real bug hit while testing: dblclick landed squarely on a grouped text item's own box, but the
+  // group's other, lower-z-order member's fallback check ran first and won). Answers with the topmost
+  // member of the topmost such group, as that group's representative hit, or -1.
+  function groupBoxHit(x,y){
+    const seenGroups = new Set();
+    for(let i=items.length-1;i>=0;i--){
+      const it = items[i];
+      if(it.group==null || seenGroups.has(it.group)) continue;
+      seenGroups.add(it.group);
+      if(groupBoxContains(it.group,x,y)) return i;
+    }
+    return -1;
+  }
+  // hitTest plus that group-box fallback -- for the selection paths, where a group's whole box counts.
+  function hitTestWithGroupBox(x,y){
+    const hit = hitTest(x,y);
+    return hit>=0 ? hit : groupBoxHit(x,y);
   }
   // Every distinct object/group under (x,y), top to bottom — a grouped item contributes only its
   // first (topmost) matching member, so the click-cycle below advances through actual stacked
   // objects rather than getting stuck re-selecting the same group from two of its own members.
+  // The group currently being browsed (group edit mode) is the exception: its members are exactly
+  // what the cycle has to walk through there, one at a time, so each one contributes its own entry
+  // (a member fully covered by a sibling would otherwise be unreachable in the very mode meant to
+  // reach it). Direct (own-bbox) hits are listed before any group-box fallback hit, as in hitTest.
   function hitStack(x,y){
     const stack = [];
     const seenGroups = new Set();
     for(let i=items.length-1;i>=0;i--){
       const it = items[i];
-      const p = toLocal(it,x,y);
-      if(!inBox(bbox(it),p.x,p.y)) continue;
+      if(!pressedOn(it,x,y)) continue;
       if(it.group!=null){
-        if(seenGroups.has(it.group)) continue;
+        if(it.group!==editingGroupId && seenGroups.has(it.group)) continue;
         seenGroups.add(it.group);
       }
       stack.push(i);
     }
+    for(let i=items.length-1;i>=0;i--){
+      const it = items[i];
+      if(it.group==null || seenGroups.has(it.group)) continue;
+      if(groupBoxContains(it.group,x,y)){
+        seenGroups.add(it.group);
+        stack.push(i);
+      }
+    }
     return stack;
   }
-  const selectionFor = hit => { const g = items[hit].group; return g!=null ? itemsInGroup(g) : [hit]; };
+  // Same group-edit-mode carve-out as onDown's own group-grab (below) -- without this, clicking
+  // again on a member being individually browsed while other objects are stacked underneath it
+  // would never continue the click-cycle (selection is just [thatMember], but this would otherwise
+  // always report the whole group, so the length-mismatch in sameSelection() below would restart
+  // the cycle on every click instead of stepping deeper into the stack).
+  const selectionFor = hit => { const g = items[hit].group; return (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit]; };
   const sameSelection = (a,b) => a.length===b.length && a.every((v,i)=>v===b[i]);
   let clickCycle = null;   // {x,y,stack,depth} — repeated clicks on the same spot walk down the stack
   // With several objects stacked at one spot, a plain hitTest always hands back the topmost — the
@@ -1930,22 +2134,37 @@
     return {x:x0,y:y0,w:x1-x0,h:y1-y0};
   }
 
+  // An item that is moved/resized/rotated on its own: ungrouped, or a member of the group currently
+  // being browsed (group edit mode).
+  const editsAlone = it => it.group==null || it.group===editingGroupId;
+  // Where such an item sits on screen: its own-size boxes (padded and bare) centered on its world
+  // center, turned by groupRotation plus own rotation. For an ungrouped item that is simply its own
+  // bbox and rotation. For a member of a rotated group it's the frame its handles are drawn in and
+  // hit-tested against -- and, once bakeForGesture() has folded the group's rotation into the member
+  // for the duration of a gesture, exactly the member's own stored frame as well, so the single-item
+  // gesture code below needs no group awareness at all.
+  function worldFrameOf(it){
+    const b = bbox(it), ob = bbox(it,false);
+    const c = toWorld(it, b.x+b.w/2, b.y+b.h/2);
+    return { cx:c.x, cy:c.y, rotation:(it.groupRotation||0)+(it.rotation||0),
+             box:{x:c.x-b.w/2, y:c.y-b.h/2, w:b.w, h:b.h}, ownBox:{x:c.x-ob.w/2, y:c.y-ob.h/2, w:ob.w, h:ob.h} };
+  }
   // One rotation handle/pivot descriptor that works for both cases: a lone ungrouped item rotates
   // around its own center (handle rides along with its own rotation); a whole group rotates as a
   // rigid body around the group's fixed pivot (handle rides along with the group's rotation too).
+  // Several browsed members selected together get no handle, like a multi-selection of lone items.
   function rotationPivotFor(sel){
     if(!sel || !sel.length) return null;
     const first = items[sel[0]];
     if(!first) return null;
-    if(sel.length===1 && first.group==null){
+    if(sel.length===1 && editsAlone(first)){
       if(pointEditIdx===sel[0]) return null;   // point-edit mode hides the rotation handle too — every
                                                 // drag bakes rotation to 0 anyway, so showing a handle
                                                 // that would just reset itself is more confusing than useful
-      const b = bbox(first);
-      const cx=b.x+b.w/2, cy=b.y+b.h/2;
-      return { cx, cy, stemTop:b.y-3, handleX:cx, handleY:b.y-33, rotation:first.rotation||0, members:[sel[0]], isGroup:false };
+      const f = worldFrameOf(first), b = f.box;
+      return { cx:f.cx, cy:f.cy, stemTop:b.y-3, handleX:f.cx, handleY:b.y-33, rotation:f.rotation, members:[sel[0]], isGroup:false };
     }
-    if(first.group!=null){
+    if(first.group!=null && first.group!==editingGroupId){
       const grp = itemsInGroup(first.group);
       const piv = groupPivot(first.group);
       const u = piv.box;
@@ -2002,13 +2221,13 @@
     if(!sel || !sel.length) return null;
     const first = items[sel[0]];
     if(!first) return null;
-    if(sel.length===1 && first.group==null){
+    if(sel.length===1 && editsAlone(first)){
       if(first.type==='line' || first.type==='arrow') return null;   // these get endpoint handles instead
       if(pointEditIdx===sel[0]) return null;   // point-edit mode fully replaces the corner-resize UI
-      const b = bbox(first);
-      return { box:b, ownBox:bbox(first,false), rotation:first.rotation||0, cx:b.x+b.w/2, cy:b.y+b.h/2, isGroup:false, members:[sel[0]] };
+      const f = worldFrameOf(first);
+      return { box:f.box, ownBox:f.ownBox, rotation:f.rotation, cx:f.cx, cy:f.cy, isGroup:false, members:[sel[0]] };
     }
-    if(first.group!=null){
+    if(first.group!=null && first.group!==editingGroupId){
       const piv = groupPivot(first.group);
       return { box:piv.box, ownBox:piv.ownBox, rotation:first.groupRotation||0, cx:piv.cx, cy:piv.cy, isGroup:true, members:itemsInGroup(first.group) };
     }
@@ -2203,10 +2422,65 @@
     }
     if(activeAnchor!=null && (pointEditIdx==null || activeAnchor>=items[pointEditIdx].points.length)) activeAnchor = null;
   }
+  // Enter group edit mode for group g, with memberIdx (or nothing) individually picked.
+  function enterGroupEdit(g, memberIdx){
+    editingGroupId = g;
+    selection = memberIdx!=null ? [memberIdx] : [];
+    render();
+  }
+  // Editing ONE member of a ROTATED group on its own. The group's rotation pivot is derived from the
+  // members' union box, so moving, resizing or deleting one member with that rotation still live
+  // would shift the pivot and visibly swing every untouched sibling. So for the duration of any such
+  // gesture the group's rotation is folded into its members (bakeGroupRotation -- each member then
+  // carries the rotation itself, at its own world position, which is exactly the frame worldFrameOf()
+  // already draws and hit-tests its handles in), the plain single-item gesture code runs unchanged,
+  // and at the end the rotation is folded back OUT (unbakeGroupRotation) around whatever the members'
+  // new union box is. The scene's stored encoding therefore never changes: undo snapshots (taken
+  // before the fold-in, committed after the fold-out), autosave, and above all the whole group's own
+  // resize/rotate frame afterwards are all exactly what they were before the visit.
+  function groupRotationOf(g){ const idxs = itemsInGroup(g); return idxs.length ? (items[idxs[0]].groupRotation||0) : 0; }
+  function bakeForGesture(){
+    if(editingGroupId==null || bakedGesture) return;
+    const rot = groupRotationOf(editingGroupId);
+    if(!rot) return;
+    bakeGroupRotation(editingGroupId);
+    bakedGesture = { g:editingGroupId, rot };
+  }
+  function unbakeAfterGesture(){
+    if(!bakedGesture) return;
+    const { g, rot } = bakedGesture;
+    bakedGesture = null;
+    if(itemsInGroup(g).length) unbakeGroupRotation(g, rot);
+  }
+  // Same fold-in/fold-out around one immediate change to group g's members (a delete, a text commit).
+  function withGroupBaked(g, fn){
+    const rot = g!=null ? groupRotationOf(g) : 0;
+    if(rot) bakeGroupRotation(g);
+    fn();
+    if(rot && itemsInGroup(g).length) unbakeGroupRotation(g, rot);
+  }
+  // Leave the mode. Whatever member(s) were individually picked re-expand to their whole group, so
+  // nothing is left half-selected (one member in `selection` while the group draws as a whole).
+  function exitGroupEdit(){
+    editingGroupId = null;
+    selection = expandSelection(selection);
+  }
+  // Unlike syncPointEdit, group edit mode deliberately does NOT self-heal on every selection change
+  // -- selection is expected to move freely between [] (browsing) and [oneMemberIdx] while this stays
+  // active (the actual exit trigger, a click outside the group's own box, lives in onDown; see
+  // groupBoxContains()). This is only the safety-net backstop: the group vanishing entirely (its last
+  // member deleted or ungrouped elsewhere), or `selection` ending up on something that isn't a member
+  // of this group at all (a paste, say), still clears it.
+  function syncGroupEdit(){
+    if(editingGroupId==null) return;
+    if(!itemsInGroup(editingGroupId).length ||
+       selection.some(i => !items[i] || items[i].group!==editingGroupId)) exitGroupEdit();
+  }
 
   // ---------- render ----------
   function render(){
     syncPointEdit();
+    syncGroupEdit();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
     ctx.fillStyle = BG;
@@ -2230,23 +2504,29 @@
       ctx.save();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#6366f1';
-      // dashed outline for each ungrouped selected item — rotated along with the item itself
+      // dashed outline for each ungrouped selected item — rotated along with the item itself. Also
+      // drawn for each group member individually selected while browsing its group (group edit
+      // mode), in its on-screen frame (worldFrameOf: group rotation and own rotation combined).
       ctx.setLineDash([5,4]);
       for(const i of selection){
-        const it = items[i]; if(!it || it.group!=null) continue;
+        const it = items[i]; if(!it) continue;
+        if(!editsAlone(it)) continue;
         if(i===pointEditIdx) continue;   // point-edit overlay replaces the plain dashed outline
-        const b = bbox(it);
-        const cx=b.x+b.w/2, cy=b.y+b.h/2;
+        const f = worldFrameOf(it), b = f.box;
         ctx.save();
-        if(it.rotation){ ctx.translate(cx,cy); ctx.rotate(it.rotation); ctx.translate(-cx,-cy); }
+        if(f.rotation){ ctx.translate(f.cx,f.cy); ctx.rotate(f.rotation); ctx.translate(-f.cx,-f.cy); }
         ctx.strokeRect(b.x-3, b.y-3, b.w+6, b.h+6);
         ctx.restore();
       }
-      // solid box around each selected group — rotates as one rigid piece with its members
+      // solid box around each selected group — rotates as one rigid piece with its members. Skips
+      // the group currently being browsed (editingGroupId) -- that one gets its own dedicated block
+      // right below (solid corner squares too, not just the outline), drawn off editingGroupId
+      // itself rather than `selection` (which may be empty while simply browsing, with no member
+      // individually picked yet, so this per-selection loop alone wouldn't otherwise draw it at all).
       ctx.setLineDash([]);
       const seenGroups = new Set();
       for(const i of selection){
-        const it = items[i]; if(!it || it.group==null || seenGroups.has(it.group)) continue;
+        const it = items[i]; if(!it || it.group==null || it.group===editingGroupId || seenGroups.has(it.group)) continue;
         seenGroups.add(it.group);
         const piv = groupPivot(it.group);
         const u = piv.box;
@@ -2254,6 +2534,32 @@
         ctx.save();
         if(grot){ ctx.translate(piv.cx,piv.cy); ctx.rotate(grot); ctx.translate(-piv.cx,-piv.cy); }
         ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
+        ctx.restore();
+      }
+      // group edit mode: the browsed group's own outline (same style as above) plus solid blue
+      // corner squares -- signals "you're inside this group now, working with its members one at a
+      // time" at a glance. The group's own corner handles are no longer real (draggable) resize
+      // handles while this is active -- resizing/rotating the whole group requires leaving the mode
+      // first and reselecting it as a whole -- so these squares occupy that same position but solid
+      // instead of hollow.
+      if(editingGroupId!=null){
+        // Mid-gesture the group's rotation is temporarily folded into its members (bakeForGesture);
+        // draw the box from what the group will be once it's folded back out, so it doesn't visibly
+        // snap between the two encodings while a member is being dragged.
+        const live = bakedGesture && bakedGesture.g===editingGroupId;
+        const scene = live ? unbakeMembers(itemsInGroup(editingGroupId).map(i=>clone(items[i])), bakedGesture.rot) : items;
+        const piv = groupPivot(editingGroupId, scene);
+        const grot = live ? bakedGesture.rot : (items[itemsInGroup(editingGroupId)[0]].groupRotation||0);
+        const u = piv.box;
+        ctx.save();
+        if(grot){ ctx.translate(piv.cx,piv.cy); ctx.rotate(grot); ctx.translate(-piv.cx,-piv.cy); }
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
+        ctx.fillStyle = '#6366f1';
+        for(const [hx,hy] of [[u.x,u.y],[u.x+u.w,u.y],[u.x,u.y+u.h],[u.x+u.w,u.y+u.h]]){
+          ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill();
+        }
         ctx.restore();
       }
       // resize handles — 4 corners of the lone item's box, or of the whole group's box
@@ -2414,6 +2720,7 @@
           if(piv.rotation) lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
           if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 11){
             beginHistory();
+            bakeForGesture();   // a browsed member of a rotated group: rotate it in its own frame (see worldFrameOf)
             rotating = { cx:piv.cx, cy:piv.cy, startAngle:Math.atan2(y-piv.cy, x-piv.cx),
                          startRotation:piv.rotation, field: piv.isGroup?'groupRotation':'rotation',
                          members:piv.members, moved:false };
@@ -2466,7 +2773,8 @@
         const k = Math.hypot(x-ends[0].x,y-ends[0].y)<=Math.hypot(x-ends[1].x,y-ends[1].y) ? 0 : 1;
         if(Math.hypot(x-ends[k].x, y-ends[k].y) <= (e.pointerType==='mouse' ? HANDLE : 22)){
           beginHistory();
-          // bake any rotation into the stored coordinates so the endpoint can be moved in world space
+          bakeForGesture();   // a browsed member of a rotated group first carries that rotation itself...
+          // ...then bake any rotation into the stored coordinates so the endpoint can be moved in world space
           if(it.type==='polygon') bakeItemRotation(it);
           else { it.x1=norm(ends[0].x); it.y1=norm(ends[0].y); it.x2=norm(ends[1].x); it.y2=norm(ends[1].y); delete it.rotation; }
           endDrag = { idx:li, end:k+1, sx:x, sy:y, grabX:x-ends[k].x, grabY:y-ends[k].y, moved:false };
@@ -2503,6 +2811,7 @@
             };
             const oc = ownCorners[hitHandle];
             beginHistory();
+            bakeForGesture();   // a browsed member of a rotated group: its stored frame now IS rp's (see worldFrameOf)
             const Aw = rp.rotation ? rotatePoint(oc.ax, oc.ay, rp.cx, rp.cy, rp.rotation) : {x:oc.ax, y:oc.ay};
             resizing = {
               rotation:rp.rotation,
@@ -2523,7 +2832,17 @@
       if(hit>=0){
         const hitItem = items[hit];
         const g = hitItem.group;
-        const grp = (g!=null) ? itemsInGroup(g) : [hit];         // grouped item → grab the whole group
+        // Clicked something outside the group currently being browsed (a different group, an
+        // ungrouped item -- g here is never null for an item genuinely inside the browsed group,
+        // since g===editingGroupId only holds for its own members) -- leave that mode; the normal
+        // whole-group-grab (or lone-item) selection right below applies fresh, same as if group
+        // edit mode had never been active.
+        if(g !== editingGroupId) editingGroupId = null;
+        // Grouped item -> grab the whole group, UNLESS it's a member of the group currently being
+        // browsed (group edit mode) -- a plain press/drag on any one of ITS members should select
+        // and move just that member, letting you click from one member straight to another without
+        // re-double-clicking each time.
+        const grp = (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit];
         const wasAlreadySelected = selection.indexOf(hit) >= 0;
         // Shift+click on an item already in the selection normally toggles it back out — but if the
         // press turns into a drag (Shift held for the axis-lock below, not to deselect), the whole
@@ -2551,7 +2870,10 @@
         }
         const dragHitItem = items[dragHitIdx];
         drag = {x0:x, y0:y, appliedDx:0, appliedDy:0, axisLock:null, moved:false, hitIdx:dragHitIdx, wasAlreadySelected:duplicating?false:wasAlreadySelected, shiftToggle, forceCommit, pendingCycleHit:cycleHit};
-        if(dragHitItem.type==='text' || dragHitItem.type==='table'){
+        // A long press opens the editor -- only when the press actually landed on the text/table
+        // itself: a grouped one is also reached as its group's representative for a press in an empty
+        // gap of the group's box (see groupBoxHit), and that must not start editing it.
+        if((dragHitItem.type==='text' || dragHitItem.type==='table') && pressedOn(dragHitItem,x,y)){
           const textIdx = dragHitIdx;
           const cellAtDown = dragHitItem.type==='table' ? tableCellAt(dragHitItem, toLocal(dragHitItem,x,y).x, toLocal(dragHitItem,x,y).y) : null;
           longPressTimer = setTimeout(()=>{
@@ -2566,6 +2888,11 @@
         }
         render();
       } else {
+        // Truly missed everything -- hitStack()/pickWithClickCycle() already treat any point inside
+        // a group's own overall box as a hit on its topmost member (see hitTest/hitStack), so reaching
+        // here means (x,y) is outside every item's own bbox AND every group's own box. Always exit
+        // group edit mode and fall back to the plain marquee+deselect.
+        exitGroupEdit();
         marquee = { x0:x, y0:y, x, y, add:e.shiftKey };           // empty space → rubber-band box
         if(!e.shiftKey) selection = [];
         render();
@@ -2743,6 +3070,7 @@
       const rawDx = x-drag.x0, rawDy = y-drag.y0;
       if(rawDx||rawDy){
         drag.moved = true;
+        bakeForGesture();   // browsed member(s) of a rotated group: move in world space, fold back out on release
         if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
       }
       // Shift constrains the drag to a single axis (horizontal or vertical). The axis is decided
@@ -2821,11 +3149,13 @@
       return;
     }
     if(rotating){
+      unbakeAfterGesture();
       if(rotating.moved) commitHistory(); else historyBefore=null;
       rotating=null;
       return;
     }
     if(resizing){
+      unbakeAfterGesture();
       if(resizing.moved) commitHistory(); else historyBefore=null;
       resizing=null;
       return;
@@ -2836,6 +3166,7 @@
         // Plain click/tap cycles heads; dragging only moves the endpoint.
         cycleHead(items[endDrag.idx],endDrag.end===1 ? 'start' : 'end');
       }
+      unbakeAfterGesture();
       commitHistory();
       endDrag=null; snapPt=null; snapCursorPt=null;
       render();
@@ -2850,6 +3181,7 @@
     }
     if(drag){
       if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+      unbakeAfterGesture();
       if(drag.moved || drag.forceCommit){
         commitHistory();
       } else {
@@ -2860,13 +3192,14 @@
         } else if(drag.pendingCycleHit!=null){
           // this press didn't turn into a drag, so it's a plain repeat click after all — now it's
           // safe to actually advance the cycle to the next object stacked underneath
-          const cg = items[drag.pendingCycleHit].group;
-          selection = (cg!=null) ? itemsInGroup(cg) : [drag.pendingCycleHit];
+          selection = selectionFor(drag.pendingCycleHit);   // a browsed group's member on its own, else the whole group
           render();
         } else if(drag.wasAlreadySelected && drag.hitIdx!=null){
           const it = items[drag.hitIdx];
-          if(it && (it.type==='text' || it.type==='table')){
-            const {x,y} = pos(e);
+          const {x,y} = pos(e);
+          // ...and only for a click on the text/table itself, not one in an empty gap of its group's
+          // box that merely resolved to it as the group's representative (see groupBoxHit)
+          if(it && (it.type==='text' || it.type==='table') && pressedOn(it,x,y)){
             // delayed: a dblclick is two of these clicks in a row — if one follows shortly, it should
             // only open the editor, not also change the alignment first
             if(alignClickTimer) clearTimeout(alignClickTimer);
@@ -2949,7 +3282,7 @@
       current=null; historyBefore=null;
       if(clickWithoutDrag){
         const {x,y} = pos(e);
-        const hit = hitTest(x,y);
+        const hit = hitTestWithGroupBox(x,y);
         if(hit>=0){
           const g = items[hit].group;
           selection = (g!=null) ? itemsInGroup(g) : [hit];
@@ -3125,7 +3458,10 @@
       const idx = editingTextIdx;
       beginHistory();
       if(val){ items[idx].text = val; }
-      else { items.splice(idx,1); selection = selection.filter(i=>i!==idx).map(i=>i>idx?i-1:i); }
+      else {
+        withGroupBaked(items[idx].group, ()=>items.splice(idx,1));   // removing a member moves its group's pivot
+        selection = selection.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
+      }
       commitHistory();
     } else if(val && textBox && textDraft){
       beginHistory();
@@ -3285,9 +3621,10 @@
   // drag/resize/rotate...) together with its pending history transaction, so that swapping the
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
+    unbakeAfterGesture();   // never leave a group in the mid-gesture encoding
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
-    editingAnchor=null; pointEditIdx=null; activeAnchor=null;
+    editingAnchor=null; pointEditIdx=null; activeAnchor=null; editingGroupId=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;
@@ -3331,8 +3668,28 @@
   function deleteSelected(){
     if(ui.tool!=='select' || !selection.length) return;
     beginHistory();
+    const affectedGroups = groupsIn(selection);   // capture before splicing renumbers indices
+    // A group losing only SOME members (group edit mode) keeps its look only if its shared rotation is
+    // folded into the members while the pivot -- derived from ALL members' union box -- is still the
+    // one they were drawn with; after the splice it would already be a different box. Folded back
+    // out afterwards around the survivors' box (see bakeForGesture for the same dance per gesture).
+    const rotations = new Map([...affectedGroups].map(g=>[g, groupRotationOf(g)]));
+    for(const g of affectedGroups) bakeGroupRotation(g);
     for(const i of selection.slice().sort((a,b)=>b-a)) items.splice(i,1);  // high→low so indices stay valid
     selection = [];
+    // A group shrunk down to exactly one surviving member is no longer meaningfully a group -- auto-
+    // ungroup it (same convention as ungroupSelection below) rather than leaving a confusing "group
+    // of one" (Ungroup stays enabled for something visually indistinguishable from an ordinary
+    // ungrouped item).
+    for(const g of affectedGroups){
+      const survivors = itemsInGroup(g);
+      if(survivors.length===1){
+        delete items[survivors[0]].group;
+        delete items[survivors[0]].groupRotation;
+      } else if(survivors.length){
+        unbakeGroupRotation(g, rotations.get(g));
+      }
+    }
     commitHistory(); render();
   }
   // Pull the selected items out (keeping their relative order) and re-insert them
@@ -3350,81 +3707,119 @@
   const bringToFront = ()=>reorderSelection(true);
   const sendToBack   = ()=>reorderSelection(false);
 
+  // Fresh copies of the given item INDICES, ready to be added back to a scene. A group that's fully
+  // inside the set stays together (the callers remap it to a fresh id); a member pulled out of its
+  // group on its own -- only possible while browsing that group in group edit mode -- is detached
+  // instead, its share of the group's rotation folded in, rather than becoming a "group of one".
+  // With `keepBrowsed`, members of the group currently being browsed stay in it (a duplicate made
+  // inside the group is one more member of that group); the clipboard never keeps them, since a
+  // paste may land anywhere, any time later.
+  function clonesOf(idxs, keepBrowsed){
+    const counts = {};
+    for(const i of idxs){ const g = items[i].group; if(g!=null) counts[g] = (counts[g]||0)+1; }
+    return idxs.map(i=>{
+      const copy = clone(items[i]);
+      copy.uid = newUid();
+      const g = copy.group;
+      if(g!=null && !(keepBrowsed && g===editingGroupId) && counts[g]!==itemsInGroup(g).length){
+        const piv = groupPivot(g);
+        bakeMemberRotation(copy, piv.cx, piv.cy);
+        delete copy.group; delete copy.groupRotation;
+      }
+      return copy;
+    });
+  }
+  // Give every group among the copies a fresh id (a copy and its source must never share one) --
+  // except `keepGroup`, the group being browsed, whose copies are meant to join it (see clonesOf).
+  function remapGroups(copies, keepGroup){
+    const gmap = {};
+    for(const copy of copies){
+      if(copy.group==null || copy.group===keepGroup) continue;
+      if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
+      copy.group = gmap[copy.group];
+    }
+  }
   // Clones a set of item INDICES in place (no offset, no history/tool side effects) — the raw
   // primitive Ctrl/⌘+drag duplication builds on; `addClones` below is the equivalent for the
   // "Duplicate selection" menu command, which nudges the copies and manages its own undo step.
   function duplicateItemsInPlace(idxs){
-    const gmap = {};
+    const copies = clonesOf(idxs, true);
+    remapGroups(copies, editingGroupId);
     const newSel = [];
-    for(const i of idxs){
-      const copy = clone(items[i]);
-      copy.uid = newUid();
-      if(copy.group!=null){
-        if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
-        copy.group = gmap[copy.group];
-      }
-      items.push(copy);
-      newSel.push(items.length-1);
-    }
+    for(const copy of copies){ items.push(copy); newSel.push(items.length-1); }
     return newSel;
   }
-  // duplicate / copy / paste (images keep their asset id, so the bitmap is shared)
+  // Add offset copies of `list` to the scene (no history/tool side effects); returns their indices.
+  function insertClones(list, off, keepGroup){
+    const copies = list.map(it=>{ const copy = clone(it); copy.uid = newUid(); translateItem(copy, off, off); return copy; });
+    remapGroups(copies, keepGroup);
+    const newSel = [];
+    for(const copy of copies){ items.push(copy); newSel.push(items.length-1); }
+    return newSel;
+  }
+  // paste (images keep their asset id, so the bitmap is shared)
   function addClones(list, off){
     beginHistory();
-    const gmap = {};                       // remap each source group to a fresh one
-    const newSel = [];
-    for(const it of list){
-      const copy = clone(it);
-      copy.uid = newUid();
-      translateItem(copy, off, off);
-      if(copy.group!=null){
-        if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
-        copy.group = gmap[copy.group];
-      }
-      items.push(copy);
-      newSel.push(items.length-1);
-    }
+    const newSel = insertClones(list, off, null);
     if(ui.tool!=='select') setTool('select');
     selection = newSel;
     commitHistory(); render();
   }
-  // Fold a group's shared groupRotation into each member's own geometry (a shift plus own rotation),
-  // leaving every member looking exactly as before with groupRotation back at 0. Needed before
-  // anything that changes the group's pivot or membership: ungrouping, regrouping, erasing a member.
+  // Fold one member's share of its group's rotation (about the group pivot cx,cy) into its own
+  // geometry -- a shift plus own rotation -- leaving it looking exactly as before with groupRotation
+  // back at 0.
+  function bakeMemberRotation(it, cx, cy){
+    const rot = it.groupRotation || 0;
+    if(rot){
+      const b = worldBBoxOwn(it);
+      const ownCx = b.x+b.w/2, ownCy = b.y+b.h/2;
+      const target = rotatePoint(ownCx, ownCy, cx, cy, rot);
+      translateItem(it, target.x-ownCx, target.y-ownCy);
+      it.rotation = (it.rotation||0) + rot;
+    }
+    it.groupRotation = 0;
+  }
+  // Fold a group's shared groupRotation into each member's own geometry. Needed before anything that
+  // changes the group's pivot or membership: ungrouping, regrouping, erasing a member, deleting some
+  // members, editing one member on its own (group edit mode).
   function bakeGroupRotation(g){
     const idxs = itemsInGroup(g);
     if(!idxs.some(i=>items[i].groupRotation)) return;
     const piv = groupPivot(g);   // snapshot BEFORE touching any member — baking one would shift the pivot for the rest
-    for(const i of idxs){
-      const it = items[i];
-      const rot = it.groupRotation || 0;
-      if(rot){
-        const b = worldBBoxOwn(it);
-        const ownCx = b.x+b.w/2, ownCy = b.y+b.h/2;
-        const target = rotatePoint(ownCx, ownCy, piv.cx, piv.cy, rot);
-        translateItem(it, target.x-ownCx, target.y-ownCy);
-        it.rotation = (it.rotation||0) + rot;
-      }
-      it.groupRotation = 0;
-    }
+    for(const i of idxs) bakeMemberRotation(items[i], piv.cx, piv.cy);
   }
+  // The inverse: re-encode members that carry their rotation themselves as a group rotation of r
+  // (each member's own rotation reduced by r), with every member still drawn exactly where it is.
+  // The group pivot is derived from the members' union box in the group's local frame, which itself
+  // depends on where the members end up, so the local layout is the fixed point of that relation:
+  // with everything rotated by -r about the origin and U0 the center of THAT union box, the pivot
+  // has to be P = rotate(U0, origin, r), and each member's local center rotate(c, P, -r). Works on
+  // a standalone list (clones, for a preview) as well as on the live members.
+  function unbakeMembers(list, r){
+    if(!r || !list.length) return list;
+    for(const it of list){
+      const b = worldBBoxOwn(it);
+      const cx = b.x+b.w/2, cy = b.y+b.h/2;
+      const t = rotatePoint(cx, cy, 0, 0, -r);
+      translateItem(it, t.x-cx, t.y-cy);
+      const rot = (it.rotation||0) - r;
+      if(Math.abs(rot) < 1e-9) delete it.rotation; else it.rotation = rot;
+      it.groupRotation = r;
+    }
+    const u = unionBoxOf(list, false);
+    const P = rotatePoint(u.x+u.w/2, u.y+u.h/2, 0, 0, r);
+    const q = rotatePoint(P.x, P.y, 0, 0, -r);
+    for(const it of list) translateItem(it, P.x-q.x, P.y-q.y);
+    return list;
+  }
+  function unbakeGroupRotation(g, r){ unbakeMembers(itemsInGroup(g).map(i=>items[i]), r); }
   // Same math as bakeGroupRotation, but against a standalone list of cloned items (not live `items`
   // indices) — used when adding a selection to the library without touching the live scene.
   function bakeGroupRotationLocal(members){
     if(!members.some(it=>it.groupRotation)) return;
     const b = unionBoxOf(members, false);
     const cx = b.x+b.w/2, cy = b.y+b.h/2;
-    for(const it of members){
-      const rot = it.groupRotation || 0;
-      if(rot){
-        const bb = worldBBoxOwn(it);
-        const ownCx = bb.x+bb.w/2, ownCy = bb.y+bb.h/2;
-        const target = rotatePoint(ownCx, ownCy, cx, cy, rot);
-        translateItem(it, target.x-ownCx, target.y-ownCy);
-        it.rotation = (it.rotation||0) + rot;
-      }
-      it.groupRotation = 0;
-    }
+    for(const it of members) bakeMemberRotation(it, cx, cy);
   }
   function groupsIn(sel){
     const gs = new Set();
@@ -3455,11 +3850,19 @@
   }
   function duplicateSelection(){
     if(ui.tool!=='select' || !selection.length) return;
-    addClones(selection.slice().sort((a,b)=>a-b).map(i=>items[i]), 16);
+    const idxs = selection.slice().sort((a,b)=>a-b);
+    beginHistory();
+    // Copies made while browsing a group join it (clonesOf). Inside a ROTATED group that insertion,
+    // like every other member edit, happens with the group's rotation folded in (so the copies are
+    // made from, offset in, and added to the members' on-screen frame) and folded back out around the
+    // enlarged box afterwards -- an extra member added with the rotation live would move the group's
+    // pivot and shift every original on screen.
+    withGroupBaked(editingGroupId, ()=>{ selection = insertClones(clonesOf(idxs, true), 16, editingGroupId); });
+    commitHistory(); render();
   }
   function copySelection(){
     if(ui.tool!=='select' || !selection.length) return;
-    clipboard = selection.slice().sort((a,b)=>a-b).map(i=>clone(items[i]));
+    clipboard = clonesOf(selection.slice().sort((a,b)=>a-b), false);
     clipboardAssets = assetsUsedBy(clipboard, assets);
     // Best-effort: also put the selection on the real OS clipboard, so pasting into another program
     // gets a usable representation instead of nothing. text/plain carries our own JSON (what our own
@@ -4104,7 +4507,7 @@
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     canvas.className = 'tool-'+t;
-    if(t!=='select'){ selection=[]; marquee=null; }
+    if(t!=='select'){ selection=[]; marquee=null; editingGroupId=null; }   // nothing selected, no group being browsed either
     if(t!=='eraser') cursorPt=null;
     if(t!=='table') setTablePicker(false);
     if(t!=='shape') setShapePicker(false);
@@ -4897,6 +5300,7 @@
         if(activeAnchor!=null){ activeAnchor=null; render(); return; }
         pointEditIdx=null; render(); return;
       }
+      if(editingGroupId!=null){ exitGroupEdit(); render(); return; }   // back out to the group as a whole
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
       if(!shapePicker.hidden){ setShapePicker(false); return; }
@@ -4924,6 +5328,7 @@
       const dx = e.key==='ArrowLeft' ? -step : e.key==='ArrowRight' ? step : 0;
       const dy = e.key==='ArrowUp' ? -step : e.key==='ArrowDown' ? step : 0;
       if(!nudging || historyBefore===null){ beginHistory(); nudging = true; }   // (a lost keyup must not leave the next nudge outside history)
+      bakeForGesture();   // browsed member(s) of a rotated group: nudge in world space, fold back out on the keyup
       for(const i of selection) translateItem(items[i], dx, dy);
       render();
       return;
@@ -4934,9 +5339,11 @@
       if(piv){
         e.preventDefault();
         beginHistory();
+        bakeForGesture();   // a browsed member of a rotated group turns in its own frame
         const delta = (Math.PI/12) * (e.key==='.' ? 1 : -1);
         const field = piv.isGroup ? 'groupRotation' : 'rotation';
         for(const idx of piv.members) items[idx][field] = (items[idx][field]||0) + delta;
+        unbakeAfterGesture();
         commitHistory(); render();
         return;
       }
@@ -4947,10 +5354,10 @@
   });
   window.addEventListener('keyup', e=>{
     if(!nudging) return;   // only close the step a nudge opened — never someone else's pending transaction
-    if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown'){ nudging = false; commitHistory(); }
+    if(e.key==='ArrowLeft' || e.key==='ArrowRight' || e.key==='ArrowUp' || e.key==='ArrowDown'){ nudging = false; unbakeAfterGesture(); commitHistory(); }
   });
   // Cmd+Tab / a file dialog while an arrow key is down: the keyup never arrives, so close the step here
-  window.addEventListener('blur', ()=>{ if(nudging){ nudging = false; commitHistory(); } });
+  window.addEventListener('blur', ()=>{ if(nudging){ nudging = false; unbakeAfterGesture(); commitHistory(); } });
 
   // iOS Safari does not turn two taps into a dblclick, so recognise a double tap ourselves (two lifts
   // within 300ms and 25px, touch or pen) and hand it to the very same handler the mouse uses
@@ -5041,11 +5448,23 @@
     // If this dblclick's second tap just advanced a click-cycle through a stack of overlapping
     // objects (see pickWithClickCycle), selection already correctly names the item the user is
     // now on — a fresh hitTest here would ignore that and always jump back to the topmost one.
-    const hit = selection.length===1 ? selection[0] : hitTest(x,y);
-    if(hit>=0 && items[hit].type==='text'){
-      openText(hit);
+    const hit = selection.length===1 ? selection[0] : hitTestWithGroupBox(x,y);
+    // Group edit mode -- double-click a grouped item (any type) to browse/move/resize/recolor/delete
+    // its members one at a time without ungrouping. Comes BEFORE the per-type actions below on
+    // purpose: a grouped text/table item's FIRST double-click only enters (or, if already browsing a
+    // DIFFERENT group, switches to) this mode -- selecting just that member -- rather than opening
+    // its editor, since otherwise it would have no way to be repositioned without ungrouping at all
+    // (a plain click always grabs the whole group). A SECOND double-click, while already browsing
+    // its own group, falls through to its editor, same as an ungrouped instance always could; an
+    // ungrouped instance is unaffected either way. No re-double-click-to-exit toggle here (unlike
+    // Point-Edit's own toggle) -- this mode is persistent: it stays active, and lets you click
+    // straight from one member to another (see onDown), until a click lands outside the group's own
+    // bounding box (or Escape/Ungroup/a tool switch/the group vanishing -- see syncGroupEdit()).
+    if(hit>=0 && items[hit].group!=null && items[hit].group!==editingGroupId){
+      enterGroupEdit(items[hit].group, hit);
       return;
     }
+    if(hit>=0 && items[hit].type==='text'){ openText(hit); return; }
     if(hit>=0 && items[hit].type==='table'){
       const lp = toLocal(items[hit], x, y);
       const cell = tableCellAt(items[hit], lp.x, lp.y);
@@ -5063,8 +5482,10 @@
         const lp = rotatePoint(x,y,piv.cx,piv.cy,-piv.rotation);
         if(Math.hypot(lp.x-piv.handleX, lp.y-piv.handleY) <= 11){
           beginHistory();
+          bakeForGesture();   // a browsed member of a rotated group: "upright" means upright on screen
           const field = piv.isGroup ? 'groupRotation' : 'rotation';
           for(const idx of piv.members) items[idx][field] = 0;
+          unbakeAfterGesture();
           commitHistory(); render();
         }
       }
