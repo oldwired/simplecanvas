@@ -5068,7 +5068,15 @@
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('pointerleave', ()=>{ if(cursorPt){ cursorPt=null; render(); } });
   canvas.addEventListener('contextmenu', e=>{
-    if(ui.tool!=='select') e.preventDefault();
+    // Always suppressed -- a right-click/Ctrl+click has no functionality of its own here in ANY
+    // tool (onDown already ignores every non-primary button press outright), so there was never a
+    // reason to let the native menu through in 'select' specifically. Real bug: on macOS, Control+
+    // click is the system-wide secondary-click convention -- Chrome fires this contextmenu event for
+    // it regardless of any mousedown/pointerdown handler, which was popping the OS's own image
+    // context menu (Copy Image/Save Image/Inspect) in the middle of this app's own Ctrl+drag-
+    // duplicate and Ctrl-anchored-resize gestures, since those only ever run in 'select' mode -- the
+    // one case this used to exempt.
+    e.preventDefault();
     if(ui.tool==='polygon' && polyDraft) finishPolygon();
   });
 
