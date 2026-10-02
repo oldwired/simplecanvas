@@ -846,7 +846,11 @@
   // here before it may touch live state: unknown types and malformed geometry are dropped, colors
   // and numbers are normalized, images must have a real data-URL asset, text fonts are rebuilt.
   const ITEM_TYPES = ['path','line','arrow','rect','ellipse','polygon','text','table','image','smart'];
-  const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000, MAX_SCRIPT = 20000, MAX_STATE_JSON = 4000;
+  // MAX_SCRIPT: 50,000 -- generous headroom above the longest shipped example (race-start-timer.js,
+  // ~37,300 chars with its full explanatory header comment). SMART_SHAPES.md tells readers to paste a
+  // reference script's ENTIRE file, comments included, so the cap needs to comfortably fit that, not
+  // just a minimal/stripped script.
+  const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000, MAX_SCRIPT = 50000, MAX_STATE_JSON = 4000;
   textInput.maxLength = MAX_TEXT;   // the same limit the loader enforces, so nothing typed is cut on reload
   const isNum = v => typeof v === 'number' && Number.isFinite(v);
   const isColor = v => typeof v === 'string' && /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);   // CSS hex: 3, 4, 6 or 8 digits

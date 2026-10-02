@@ -1315,3 +1315,31 @@ test('a smart shape\'s polygon children do not drift on repeated repaints', asyn
   const after = await run(`JSON.stringify(shapeOps(items[0]).find(op=>op.kind==='path').d)`);
   assert.equal(after, before, 'the polygon\'s on-screen points must not shift after repeated, unrelated repaints');
 }));
+
+// Real bug, reported directly: a smart shape built from a long reference template (race-start-timer.js,
+// ~37,300 characters with its full explanatory header comment -- SMART_SHAPES.md explicitly tells
+// readers to paste a reference script's whole file that way) was silently rejected as "invalid" the
+// moment it went through a save/load round-trip (export the Shape Library, re-import it into a fresh
+// view) -- creating it live via the dialog never checks script length at all, so the problem only
+// surfaced later. Root cause: normalizeItem's own MAX_SCRIPT cap (20,000, set before any example this
+// long existed) was well under half of what the documented workflow actually produces. Fixed by
+// raising the cap to 50,000.
+test('a smart shape with a long reference-template script survives a save/load round-trip', async () => app(async ({page,run}) => {
+  const result = await run(`
+    (() => {
+      // Pad a trivial script with a long comment, well past the OLD 20,000-char cap but under the
+      // new 50,000 one -- mirrors race-start-timer.js's own shape (mostly explanatory comment).
+      const padding = '/*' + 'x'.repeat(30000) + '*/';
+      const script = padding + '\\n({ children(state,style,w,h){ return [{type:"rect",x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } })';
+      const raw = {type:'smart',uid:'long1',x:10,y:10,w:100,h:100,color:'#000',fillColor:'#fff',
+        fill:false,strokeOn:true,textColor:'#000',size:2,fontFamily:'sans',fontSize:12,
+        font:fontStr('sans',12),script,state:{}};
+      const scene = normalizeScene([raw], {}, FORMAT_VERSION);
+      return JSON.stringify({ scriptLength: script.length, itemCount: scene.items.length,
+        survived: scene.items.length===1 && scene.items[0].type==='smart' });
+    })()
+  `);
+  const parsed = JSON.parse(result);
+  assert.ok(parsed.scriptLength > 20000, 'the test script must actually exceed the OLD cap to be meaningful');
+  assert.ok(parsed.survived, `a ${parsed.scriptLength}-character script must survive normalizeScene (a real save/load round-trip), not be silently dropped`);
+}));

@@ -279,9 +279,11 @@ even though it renders fine on canvas.
 
 ## Constraints
 
-- **Script length**: 20,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
+- **Script length**: 50,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
   Both are enforced on save/load — an oversized script or state is silently rejected (the item
-  fails to load) rather than truncated.
+  fails to load) rather than truncated. 50,000 comfortably fits an entire reference template file,
+  explanatory header comment included, the way "A complete worked example" below tells you to
+  paste one — the longest shipped one (`race-start-timer.js`) is already ~37,300 characters.
 - **Sandboxed.** A smart shape's script is real JavaScript, but it never runs in the page's own
   scope — every hook (`children`/`handles`/`hitEdit`/`dragEdit`/`initState`/`initStyle`) is
   called inside a single, shared, dedicated Worker with `fetch`/`XMLHttpRequest`/`WebSocket`/
