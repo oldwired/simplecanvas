@@ -282,13 +282,23 @@ even though it renders fine on canvas.
 - **Script length**: 20,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
   Both are enforced on save/load — an oversized script or state is silently rejected (the item
   fails to load) rather than truncated.
-- **No sandbox.** A smart shape's script is real JavaScript, executed via `new Function()` in
-  the page's own global scope. Only place a smart shape from a Shape Library file you trust —
-  importing a shared library executes every smart shape's script the moment its thumbnail
-  renders in the library popover, not only when it's placed on the canvas.
-- Compiled once per distinct script string and cached — editing a script's text (even by one
-  character) recompiles it; identical text across different items reuses the same compiled
-  function.
+- **Sandboxed.** A smart shape's script is real JavaScript, but it never runs in the page's own
+  scope — every hook (`children`/`handles`/`hitEdit`/`dragEdit`/`initState`/`initStyle`) is
+  called inside a single, shared, dedicated Worker with `fetch`/`XMLHttpRequest`/`WebSocket`/
+  `importScripts`/`Worker`/`indexedDB`/`caches`/`BroadcastChannel`/`Notification` all deleted
+  before any script runs in it. A Worker has no `document`/`window`/DOM and no
+  `localStorage`/cookies at all (not exposed in worker scope, regardless of origin), so none of
+  those are reachable either way. Every call crosses `postMessage` and is therefore async; the
+  app bridges that with a last-known-good cache for live rendering and a real await for export —
+  a script's own hooks don't need to know or care about this. An infinite loop in a script hangs
+  only that shared worker (never the page's own main thread), is caught by a timeout, and the
+  worker is torn down and recreated — the worst a hostile or broken script can do is make every
+  smart shape go temporarily blank for a few seconds (scripts aren't isolated from EACH OTHER,
+  only from the host page and your data), never crash or freeze the app, and never reach
+  anything outside the worker it runs in.
+- Compiled once per distinct script string and cached (inside the sandbox, not the page) —
+  editing a script's text (even by one character) recompiles it; identical text across
+  different items reuses the same compiled function.
 - Untested and not recommended as children: nesting another smart shape, a table, or an image —
   the rendering pipeline doesn't forbid them, but no shipped template uses them and they haven't
   been exercised. Stick to `rect`/`ellipse`/`line`/`text`/`polygon`.

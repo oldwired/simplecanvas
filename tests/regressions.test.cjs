@@ -1150,8 +1150,14 @@ test('grouped smart object: double-click steps group edit mode -> the object\'s 
     JSON.stringify({editingGroupId:'g1',editingSmartIdx:0}),
     'second dblclick enters the smart object\'s own script-edit mode, group edit mode stays too');
 
+  // Once editingSmartIdx is set (as of the dblclick above), every press here crosses the sandbox for
+  // its own hitEdit check (see onDown) -- onDoubleClick's own exit-toggle below waits for that to
+  // settle before deciding anything (see its own comment), but page.mouse.dblclick() itself only
+  // waits for the synthetic DOM events to dispatch, not for the app's own async continuation after
+  // them. A short wait lets that continuation actually run before asserting its result.
   canvas=await page.locator('#canvas').boundingBox();
   await page.mouse.dblclick(canvas.x+190,canvas.y+190);
+  await page.waitForTimeout(50);
   assert.deepEqual(await run('JSON.stringify({editingGroupId,editingSmartIdx})'),
     JSON.stringify({editingGroupId:'g1',editingSmartIdx:null}),
     'third dblclick (the smart object\'s own re-dblclick-exits toggle) leaves script-edit mode, still in group edit mode');
@@ -1176,20 +1182,26 @@ test('ungrouped text/table still open their own editor on the very first double-
 // smart shape with its own handles benefits, not just one script -- verified here against the Chart
 // template this PR itself ships.
 test('a real double-click on a smart object\'s own handle stays in edit mode; a double-click on its plain body still exits', async () => app(async ({page,run}) => {
-  await run(`items=[{type:'smart',uid:'c1',x:40,y:40,w:240,h:160,color:'#1f2937',fillColor:'#ffd166',
-    fill:false,strokeOn:false,textColor:'#1f2937',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
-    script:SMART_TEMPLATES.chart.script,state:compileSmartScript(SMART_TEMPLATES.chart.script).initState()}];
-    setTool('select');selection=[0];editingSmartIdx=0;render();`);
-  const handlePt = await run(`(()=>{
+  await run(`(async()=>{
+    const initState = await requestSmartCall(SMART_TEMPLATES.chart.script, 'initState', []);
+    items=[{type:'smart',uid:'c1',x:40,y:40,w:240,h:160,color:'#1f2937',fillColor:'#ffd166',
+      fill:false,strokeOn:false,textColor:'#1f2937',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
+      script:SMART_TEMPLATES.chart.script,state:initState}];
+    setTool('select');selection=[0];editingSmartIdx=0;render();
+  })()`);
+  const handlePt = await run(`(async()=>{
     const it = items[0];
-    const def = compileSmartScript(it.script);
-    const hs = def.handles(it.state, it.w, it.h, smartResolvedStyle(it));
+    const hs = await requestSmartCall(it, 'handles', [it.state, it.w, it.h, smartResolvedStyle(it)]);
     const h = hs.find(x=>x.id==='add');
     return { x: it.x + h.x, y: it.y + h.y };
   })()`);
   const canvas = await page.locator('#canvas').boundingBox();
   const barsBefore = await run('items[0].state.values.length');
+  // Every press here crosses the sandbox for its own hitEdit/dragEdit check (see onDown) --
+  // page.mouse.dblclick() only waits for the synthetic DOM events to dispatch, not for the app's own
+  // async continuation after them, so a short wait lets that continuation actually finish first.
   await page.mouse.dblclick(canvas.x + handlePt.x, canvas.y + handlePt.y);
+  await page.waitForTimeout(50);
   assert.equal(await run('editingSmartIdx'), 0, 'a double-click on the "+" handle itself stays in edit mode');
   // Chart's own "+" has no debounce of its own (unlike the race-start-timer example's cycle buttons),
   // so a real double-click's TWO separate clicks each correctly resolve their own add-bar action --
@@ -1199,5 +1211,107 @@ test('a real double-click on a smart object\'s own handle stays in edit mode; a 
   // a double-click on the item's own plain body (the top margin strip, above the bars/labels and
   // well away from any handle -- but still inside the 240x160 box at (40,40)) still exits, unchanged
   await page.mouse.dblclick(canvas.x + 240, canvas.y + 48);
+  await page.waitForTimeout(50);
   assert.equal(await run('editingSmartIdx'), null, 'a double-click on the plain body still exits edit mode as before');
+}));
+
+// ---------- Smart Shape sandbox: the actual security boundary ----------
+// A smart shape's script is untrusted (SMART_SHAPES.md) and runs inside a dedicated Worker with every
+// network global deleted before it ever runs -- not in the app's own scope. These two tests are the
+// ones that actually prove the isolation holds, rather than just that the feature still works.
+test('a hostile script cannot reach the host page\'s DOM, localStorage, network, or top frame', async () => app(async ({page,run}) => {
+  // The script reports what it could/couldn't reach via its own returned descriptor (child text) --
+  // run() itself can't see into the worker directly, so the proof has to come back this way.
+  const hostileScript = `({
+    children(state, style, w, h){
+      const report = {};
+      try { report.parentDoc = !!window.parent.document.title; } catch(e) { report.parentDoc = 'blocked:'+e.constructor.name; }
+      try { localStorage.setItem('pwned','1'); report.localStorage = 'REACHED'; } catch(e) { report.localStorage = 'blocked:'+e.constructor.name; }
+      try { report.fetch = typeof fetch; } catch(e) { report.fetch = 'blocked'; }
+      try { report.xhr = typeof XMLHttpRequest; } catch(e) { report.xhr = 'blocked'; }
+      try { report.topLocation = window.top.location.href; } catch(e) { report.topLocation = 'blocked:'+e.constructor.name; }
+      return [{type:'text', text:JSON.stringify(report), x:0,y:0,w:w,h:h, align:'left', font:'12px sans', color:'#000'}];
+    }
+  })`;
+  await run(`items=[{type:'smart',uid:'h1',x:40,y:40,w:200,h:100,color:'#000',fillColor:'#fff',
+    fill:false,strokeOn:false,textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
+    script:${JSON.stringify(hostileScript)},state:{}}];setTool('select');render();`);
+  await page.waitForTimeout(100);   // let the cache's background children() request resolve
+  const kids = await run(`smartChildrenCache.get('h1').kids`);
+  const report = JSON.parse(kids[0].text);
+  assert.match(report.parentDoc, /^blocked:/, 'cannot reach the host page\'s DOM through window.parent');
+  assert.match(report.localStorage, /^blocked:/, 'cannot read or write the host page\'s localStorage');
+  assert.equal(report.fetch, 'undefined', 'fetch is deleted inside the sandbox');
+  assert.equal(report.xhr, 'undefined', 'XMLHttpRequest is deleted inside the sandbox');
+  assert.match(report.topLocation, /^blocked:/, 'cannot reach the top frame either');
+  // and, most directly: the host's OWN localStorage was never actually touched
+  assert.equal(await run(`localStorage.getItem('pwned')`), null, 'the host page\'s real localStorage is untouched');
+}));
+
+test('an infinite loop in a script times out, recovers, and does not take down other smart shapes', async () => app(async ({page,run}) => {
+  // All smart scripts share ONE worker (an explicit, accepted trade-off -- see the sandbox's own
+  // comment: isolation is from the host, not between scripts), so a hung script temporarily blocks
+  // whatever else happened to be queued alongside it in that same worker too -- `ok1`'s own request,
+  // sent in the same render() pass as the hung one, is rejected right along with it when the timeout
+  // fires and the worker is torn down. A timed-out item also gets a backoff window (see
+  // smartBackoffUntil) so it isn't retried on literally the very next render() -- without that, a
+  // script that hangs EVERY time (not just once) would re-hang the shared worker on every single
+  // render() for as long as the canvas is used at all, repeatedly colliding with whatever else shares
+  // that pass. The guarantee under test: the hang never reaches the main thread (confirmed by this
+  // test, and the whole suite, simply completing at all); the sandbox itself recovers promptly
+  // (a fresh, unrelated call succeeds right after); and once the hung item is gone from the scene (the
+  // realistic resolution -- delete it, or undo its placement), an unrelated sibling that was only ever
+  // collateral damage renders correctly again.
+  const hangScript = `({ children(){ while(true){} } })`;
+  const okScript = `({ children(state,style,w,h){ return [{type:'rect',x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } } )`;
+  await run(`items=[
+    {type:'smart',uid:'hang1',x:40,y:40,w:100,h:100,color:'#000',fillColor:'#fff',fill:false,strokeOn:false,
+      textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script:${JSON.stringify(hangScript)},state:{}},
+    {type:'smart',uid:'ok1',x:200,y:40,w:100,h:100,color:'#000',fillColor:'#fff',fill:false,strokeOn:false,
+      textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script:${JSON.stringify(okScript)},state:{}}
+  ];setTool('select');render();`);
+  // Give the hung request time to hit its own timeout and regenerate the sandbox (250ms + margin).
+  await page.waitForTimeout(500);
+  assert.equal(await run(`smartChildrenCache.has('hang1')`), false, 'the hung shape never got a result, but caused no crash');
+  // The sandbox must have actually recovered: a fresh, unrelated call (unrelated to either item above)
+  // succeeds normally.
+  const fresh = await run(`requestSmartCall('({children(){return [{type:"rect",x:1,y:2,w:3,h:4}]}})', 'children', [{},{},10,10,false])`);
+  assert.deepEqual(fresh, [{type:'rect',x:1,y:2,w:3,h:4}], 'a normal call succeeds after the hang, proving the worker was regenerated');
+  // Remove the hung item (the realistic recovery path) so ok1's own retry isn't immediately paired
+  // with the same hang all over again. ok1's own request was collateral damage from that same
+  // worker-sharing, so it's under the same backoff (see smartBackoffUntil) -- wait that out too before
+  // expecting a retry, reading the real constant rather than duplicating its value here.
+  await run(`items = items.filter(it=>it.uid!=='hang1');`);
+  const backoffMs = await run('SMART_BACKOFF_MS');
+  await page.waitForTimeout(backoffMs + 200);
+  await run(`render()`);
+  await page.waitForTimeout(100);
+  const okKids = await run(`smartChildrenCache.get('ok1') && smartChildrenCache.get('ok1').kids`);
+  assert.ok(okKids && okKids.length, 'the other shape renders correctly once the hung one is gone from the scene');
+}));
+
+// Real bug, reported directly: a smart shape's polygon-type children (a flag pennant, a clock's own
+// elapsed-time wedge, an arrow's curved shaft -- anything with a `points` array) drifted further off
+// its container on every single repaint, winding up well outside the container within a few frames.
+// Root cause: shapeOps' 'smart' case merges each cached child with Object.assign({...}, raw) before
+// calling translateItem on it -- a SHALLOW copy, so `child.points` was still the exact same array (and
+// point objects) smartChildrenFor keeps cached across many render() calls. translateItem mutates a
+// polygon's points (and a point's own arcTo/c1/c2) IN PLACE, not just a top-level x/y -- before the
+// render-loop cache existed, def.children() ran fresh on every single call, so this aliasing was
+// harmless (nothing persisted to corrupt); caching made the same points shift a little further on
+// every repaint instead of sitting still.
+test('a smart shape\'s polygon children do not drift on repeated repaints', async () => app(async ({page,run}) => {
+  const script = `({
+    children(state,style,w,h){
+      return [{type:'polygon', points:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], closed:true, color:style.color, size:2, strokeOn:true, fill:false}];
+    }
+  })`;
+  await run(`items=[{type:'smart',uid:'d1',x:100,y:100,w:80,h:60,color:'#1f2937',fillColor:'#ffd166',
+    fill:false,strokeOn:false,textColor:'#1f2937',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
+    script:${JSON.stringify(script)},state:{}}];setTool('select');render();`);
+  await page.waitForTimeout(100);   // let the cache's first background children() request resolve
+  const before = await run(`JSON.stringify(shapeOps(items[0]).find(op=>op.kind==='path').d)`);
+  for(let i=0;i<10;i++) await run('render()');   // 10 more repaints, reusing the SAME cached children
+  const after = await run(`JSON.stringify(shapeOps(items[0]).find(op=>op.kind==='path').d)`);
+  assert.equal(after, before, 'the polygon\'s on-screen points must not shift after repeated, unrelated repaints');
 }));
