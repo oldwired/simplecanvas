@@ -3411,6 +3411,11 @@
   }
   function onUp(e){
     if(smartDrag){
+      // Same precedent as editingAnchor/endDrag below: resolving a script's own handle must not ALSO
+      // let the native dblclick event do something unrelated on top of it (e.g. a double-click on a
+      // click-kind cycle button was exiting smart-object edit mode entirely, on top of the button's
+      // own already-correct single advance) -- this was simply the one gesture here missing that flag.
+      handledPointerUp = true;
       if(smartDrag.kind === 'click') resolveSmartDragOnce();
       else if(smartDrag.moved) commitHistory();
       else resolveSmartDragOnce();

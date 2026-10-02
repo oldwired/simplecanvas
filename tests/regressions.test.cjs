@@ -1165,3 +1165,39 @@ test('ungrouped text/table still open their own editor on the very first double-
   assert.deepEqual(await run('JSON.stringify({editingGroupId,editingTextIdx})'),
     JSON.stringify({editingGroupId:null,editingTextIdx:0}));
 }));
+
+// ---------- a real double-click on a smart object's own handle must not exit edit mode ----------
+// Real bug, reported directly: a real double-click on one of a smart shape's own handles (e.g. the
+// Chart template's "+" add-bar button, a kind:'click' handle) left edit mode entirely -- each half of
+// the double-click correctly resolved the handle's own action via onDown/onUp's smartDrag machinery,
+// but the native dblclick event ALSO fired the generic "re-double-click a smart object exits edit
+// mode" toggle on top of it, since onUp's smartDrag resolution was missing the handledPointerUp flag
+// its sibling gestures (editingAnchor/endDrag, used by Point-Edit) already set. General fix -- any
+// smart shape with its own handles benefits, not just one script -- verified here against the Chart
+// template this PR itself ships.
+test('a real double-click on a smart object\'s own handle stays in edit mode; a double-click on its plain body still exits', async () => app(async ({page,run}) => {
+  await run(`items=[{type:'smart',uid:'c1',x:40,y:40,w:240,h:160,color:'#1f2937',fillColor:'#ffd166',
+    fill:false,strokeOn:false,textColor:'#1f2937',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
+    script:SMART_TEMPLATES.chart.script,state:compileSmartScript(SMART_TEMPLATES.chart.script).initState()}];
+    setTool('select');selection=[0];editingSmartIdx=0;render();`);
+  const handlePt = await run(`(()=>{
+    const it = items[0];
+    const def = compileSmartScript(it.script);
+    const hs = def.handles(it.state, it.w, it.h, smartResolvedStyle(it));
+    const h = hs.find(x=>x.id==='add');
+    return { x: it.x + h.x, y: it.y + h.y };
+  })()`);
+  const canvas = await page.locator('#canvas').boundingBox();
+  const barsBefore = await run('items[0].state.values.length');
+  await page.mouse.dblclick(canvas.x + handlePt.x, canvas.y + handlePt.y);
+  assert.equal(await run('editingSmartIdx'), 0, 'a double-click on the "+" handle itself stays in edit mode');
+  // Chart's own "+" has no debounce of its own (unlike the race-start-timer example's cycle buttons),
+  // so a real double-click's TWO separate clicks each correctly resolve their own add-bar action --
+  // that part is unchanged and expected. The actual fix under test is editingSmartIdx surviving above.
+  assert.ok(await run('items[0].state.values.length') > barsBefore, 'the handle\'s own click resolution still fires normally');
+
+  // a double-click on the item's own plain body (the top margin strip, above the bars/labels and
+  // well away from any handle -- but still inside the 240x160 box at (40,40)) still exits, unchanged
+  await page.mouse.dblclick(canvas.x + 240, canvas.y + 48);
+  assert.equal(await run('editingSmartIdx'), null, 'a double-click on the plain body still exits edit mode as before');
+}));
