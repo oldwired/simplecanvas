@@ -1230,6 +1230,7 @@
   // `it.script` anywhere in the file.
   const SMART_WORKER_SRC = `
 "use strict";
+postMessage({ready:true});
 for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){
   try{ delete self[g]; }catch(e){}
   try{ self[g] = undefined; }catch(e){}
@@ -1271,34 +1272,50 @@ self.onmessage = function(e){
 
   let smartSandboxWorker = null;
   let smartSandboxGeneration = 0;
+  let smartSandboxReady = null;            // Promise<generation>, resolves once the worker confirms it's actually running
   const smartSandboxPending = new Map();  // reqId -> {resolve, reject, timer, generation}
   let smartSandboxReqSeq = 0;
   const SMART_CALL_TIMEOUT_MS = 250;      // scripts only ever build small descriptor arrays -- generous
                                            // margin while still catching a hang almost instantly
 
+  // Waits for the worker's own {ready:true} ping (its first action, see SMART_WORKER_SRC) before
+  // sending it anything real. The HTML spec says a message posted to a worker before its script has
+  // even started running still queues correctly and is delivered once it does -- so in principle this
+  // handshake shouldn't be load-bearing. It's here anyway because that exact "arrives instantly for me,
+  // not for this one user, on Chrome specifically" gap is precisely the shape a real engine-level race
+  // in worker startup (a brand-new renderer process for the worker not yet fully spun up, a message
+  // posted into that gap genuinely lost rather than queued) would produce, and there is no way to
+  // confirm or rule that out without controlling the user's own browser -- so this makes the guarantee
+  // explicit and self-verified instead of resting on an engine behavior a dropped first message is, by
+  // definition, impossible to directly observe from here.
   function createSmartSandbox(){
     const gen = ++smartSandboxGeneration;
     const blob = new Blob([SMART_WORKER_SRC], {type:'text/javascript'});
     const url = URL.createObjectURL(blob);
     const w = new Worker(url);
     URL.revokeObjectURL(url);   // the worker already has the blob's bytes; the URL itself isn't needed after construction
-    w.onmessage = (e)=>{
-      const data = e.data || {};
-      const pending = smartSandboxPending.get(data.id);
-      if(!pending || pending.generation !== gen) return;
-      smartSandboxPending.delete(data.id);
-      clearTimeout(pending.timer);
-      pending.resolve(data);
-    };
+    smartSandboxWorker = w;
     w.onerror = (e)=>{ e.preventDefault && e.preventDefault(); };   // a bug in SMART_WORKER_SRC itself
                                                                       // would land here -- never a user
                                                                       // script error, which compile()/
                                                                       // the per-call try/catch contain
-    smartSandboxWorker = w;
-    return gen;
+    return new Promise(resolve=>{
+      w.onmessage = ()=>{   // the one and only message before the ready ping -- switch to the real handler
+        w.onmessage = (e)=>{
+          const data = e.data || {};
+          const pending = smartSandboxPending.get(data.id);
+          if(!pending || pending.generation !== gen) return;
+          smartSandboxPending.delete(data.id);
+          clearTimeout(pending.timer);
+          pending.resolve(data);
+        };
+        resolve(gen);
+      };
+    });
   }
   function ensureSmartSandbox(){
-    return smartSandboxWorker ? smartSandboxGeneration : createSmartSandbox();
+    if(!smartSandboxReady) smartSandboxReady = createSmartSandbox();
+    return smartSandboxReady;
   }
   // Forcibly stops the current worker -- including mid-infinite-loop (see the comment above) -- and
   // drops every outstanding request (they'll never get a reply from a terminated worker). The next
@@ -1307,12 +1324,13 @@ self.onmessage = function(e){
   function regenerateSmartSandbox(){
     if(smartSandboxWorker) smartSandboxWorker.terminate();
     smartSandboxWorker = null;
+    smartSandboxReady = null;
     for(const p of smartSandboxPending.values()){ clearTimeout(p.timer); p.reject(new Error('smart sandbox regenerated')); }
     smartSandboxPending.clear();
   }
   function requestSmartSandbox(message){
-    const gen = ensureSmartSandbox();
-    return new Promise((resolve, reject)=>{
+    return ensureSmartSandbox().then(gen=>new Promise((resolve, reject)=>{
+      if(gen !== smartSandboxGeneration){ reject(new Error('stale smart sandbox generation')); return; }
       const id = ++smartSandboxReqSeq;
       const timer = setTimeout(()=>{
         smartSandboxPending.delete(id);
@@ -1321,7 +1339,7 @@ self.onmessage = function(e){
       }, SMART_CALL_TIMEOUT_MS);
       smartSandboxPending.set(id, {resolve, reject, timer, generation:gen});
       smartSandboxWorker.postMessage({...message, id});
-    });
+    }));
   }
   const scriptOf = s => typeof s === 'string' ? s : (s && s.script) || '';
   // Calls one hook (children/handles/hitEdit/dragEdit/initState/initStyle) inside the sandbox; resolves
