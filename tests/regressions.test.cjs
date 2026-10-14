@@ -1365,17 +1365,6 @@ test('SVG icon conversion: stroke icon, circle, and rejected features', async ()
       '<mask id="m"><path d="M0 0h1v1z"/></mask><path d="M0 0h10v10z" mask="url(#m)"/>',
       '<path fill="url(#g)" d="M0 0h10v10z"/>',
     ].map(b=>svgIconToItems(b,{left:0,top:0,width:24,height:24}).error || null);
-    // nonzero winding of a flattened item at a point: 0 = unpainted
-    const winding = (it, x, y)=>{ const poly = flattenContour(it.points); let w = 0;
-      for(let k=0; k<poly.length; k++){ const a = poly[k], b = poly[(k+1)%poly.length];
-        if(a.y<=y && b.y>y && (b.x-a.x)*(y-a.y)-(x-a.x)*(b.y-a.y)>0) w++;
-        else if(a.y>y && b.y<=y && (b.x-a.x)*(y-a.y)-(x-a.x)*(b.y-a.y)<0) w--; }
-      return w; };
-    const holes = ['<path fill-rule="evenodd" d="M0 0h24v24H0zM6 6h12v12H6z"/>',   // evenodd: same winding
-                   '<path d="M0 0h24v24H0zM6 6v12h12V6z"/>',                       // nonzero: opposite winding
-                   '<path d="M0 0h24v24H0zM6 6v12h12V6zM10 10h4v4h-4z"/>']         // island inside the hole
-      .map(b=>{ const r = svgIconToItems(b,{left:0,top:0,width:24,height:24}); const it = r.items[0];
-        return {count:r.items.length, center:r.items.map(i=>winding(i,0,0)), ring:winding(it,-50,-50)}; });
     const duo = svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', {left:0,top:0,width:24,height:24});
     const thin = svgIconToItems('<path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 2h20"/>', {left:0,top:0,width:24,height:24}).items[0].size;
     ui.color = '#00ff00';   // the toolbar color must not leak into imported icons
@@ -1387,14 +1376,9 @@ test('SVG icon conversion: stroke icon, circle, and rejected features', async ()
       absent: svgIconToItems('<path d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
       outline: (it=>[it.color, it.fillColor])(svgIconToItems('<path fill="none" stroke="currentColor" d="M2 2h20v20H2z"/>', vb).items[0]),
     };
-    return JSON.stringify({boat, circle, rej, holes, thin, colors, duo:svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', vb).items.map(i=>i.fillColor), color:ICON_INK});
+    return JSON.stringify({boat, circle, rej, thin, colors, duo:svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', vb).items.map(i=>i.fillColor), color:ICON_INK});
   })()`));
   assert.equal(r.thin, 8, 'a fractional stroke width (1.5 x 5 = 7.5) is rounded to whole pixels');
-  assert.deepEqual(r.holes[0],{count:1, center:[0], ring:r.holes[0].ring});
-  assert.notEqual(r.holes[0].ring, 0, 'evenodd hole: outline painted, center left empty');
-  assert.deepEqual(r.holes[1].center, [0], 'nonzero opposite-winding hole is left empty');
-  assert.equal(r.holes[2].count, 2, 'an island inside a hole becomes its own filled polygon');
-  assert.notEqual(r.holes[2].center[1], 0, 'and the island itself is painted');
   assert.deepEqual(r.colors, {current:r.color, named:'#ff0000', hex:'#3366cc', absent:'#000000', outline:[r.color, r.color]},
     'icons keep their own colors (currentColor = preview ink), never the toolbar color');
   assert.notEqual(r.duo[0], r.color, 'a translucent layer becomes a tint');
@@ -1466,7 +1450,7 @@ test('icon dialog filters licenses, imports an icon with its license, and places
   assert.ok(!iconRequests.some(p=>p.endsWith('.svg')), 'thumbnails are drawn from batched set data, not one request per icon');
   assert.equal(iconRequests.filter(p=>p==='/lucide.json').length, 1, 'one request per set, reused for both imports');
   assert.match(await page.locator('#iconResults img').first().getAttribute('src'), /^data:image\/svg\+xml,/);
-  const placed = JSON.parse(await run(`(()=>{ placeShapeAt(shapeLibrary.shapes[0], 400, 300);
+  const placed = JSON.parse(await run(`(async()=>{ await placeShapeAt(shapeLibrary.shapes[0], 400, 300);
     return JSON.stringify(items.map(i=>({type:i.type, group:i.group}))); })()`));
   assert.equal(placed.length, 3);
   assert.ok(placed[0].group!=null && placed.every(i=>i.group===placed[0].group), 'placed icon is one group');
@@ -2448,3 +2432,90 @@ test('resident instance Workers are bounded and evicted realms never transfer gl
   assert.ok(result.stats.peak<=result.limit && result.stats.resident<=result.limit);
   assert.ok(result.stats.retired>0,'the workload crosses the resident limit');
 }));
+
+
+// Compare production canvas/SVG/PNG output with the browser's own rendering of the source SVG.
+// These fixtures are centered in their viewBox, matching the library's centering policy.
+test('compound icon fills and short curved contours survive editing, persistence and image export',async()=>app(async({run})=>{
+  const cases=[
+    ['overlapping evenodd','<path fill-rule="evenodd" d="M0 0H16V24H0Z M8 0H24V24H8Z"/>',[[4,12],[12,12],[20,12]]],
+    ['overlapping opposite winding','<path d="M0 0H16V24H0Z M8 0V24H24V0Z"/>',[[4,12],[12,12],[20,12]]],
+    ['nested nonzero','<path d="M0 0H24V24H0Z M3 3H21V21H3Z M6 6V18H18V6Z M9 9V15H15V9Z"/>',[[1,12],[4,12],[7,12],[12,12]]],
+    ['evenodd island','<path fill-rule="evenodd" d="M0 0H24V24H0Z M6 6H18V18H6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
+    ['nonzero island','<path d="M0 0H24V24H0Z M6 6V18H18V6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
+    ['disjoint contours','<path d="M0 0H8V24H0Z M16 0H24V24H16Z"/>',[[4,12],[12,12],[20,12]]],
+    ['two-anchor lens','<path d="M0 12C0 0 24 0 24 12C24 24 0 24 0 12Z"/>',[[1,1],[12,4],[12,12],[12,20]]],
+    ['one-anchor loop','<path d="M12 24C-12 -8 36 -8 12 24Z"/>',[[2,12],[12,2],[12,12],[22,12]]],
+  ];
+  for(const [name,body,samples] of cases){
+    const r=await run(`(async()=>{
+      const body=${JSON.stringify(body)},samples=${JSON.stringify(samples)},vb={left:0,top:0,width:24,height:24};
+      const at=samples.map(([x,y])=>[x*5,y*5]);
+      async function raster(url,width,height,points){
+        const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+        const off=document.createElement('canvas');off.width=width;off.height=height;const x=off.getContext('2d');
+        x.fillStyle='#fff';x.fillRect(0,0,width,height);x.drawImage(image,0,0,width,height);
+        return points.map(([px,py])=>Array.from(x.getImageData(Math.round(px),Math.round(py),1,1).data));
+      }
+      const expected=await raster('data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24">'+body+'</svg>'),120,120,at);
+      const converted=svgIconToItems(body,vb);
+      if(!converted.items)return {error:converted.error};
+      const lib=normalizeShapeLibrary(JSON.parse(JSON.stringify({shapes:[{name:'Imported',items:converted.items}]})));
+      items=normalizeScene(lib.shapes[0].items,{},FORMAT_VERSION).items;ensureUids(items);
+      items.forEach(it=>translateItem(it,60,60));
+      items.forEach((_,i)=>convertToCurve(i));
+      setTool('select');selection=[];render();
+      const canvasPixels=at.map(([x,y])=>Array.from(ctx.getImageData(x*dpr,y*dpr,1,1).data));
+      const svg=await itemsToSVGMarkup(items,{width:120,height:120,background:false});
+      const svgPixels=await raster('data:image/svg+xml,'+encodeURIComponent(svg),120,120,at);
+      const bitmap=await createImageBitmap(await itemsToPngBlob(items,{background:false,scale:1,margin:0}));
+      const png=document.createElement('canvas');png.width=png.height=120;const px=png.getContext('2d');
+      px.fillStyle='#fff';px.fillRect(0,0,120,120);px.drawImage(bitmap,(120-bitmap.width)/2,(120-bitmap.height)/2);
+      const pngPixels=at.map(([x,y])=>Array.from(px.getImageData(x,y,1,1).data));
+      return {expected,canvasPixels,svgPixels,pngPixels};
+    })()`);
+    assert.equal(r.error,undefined,name+' converts');
+    assert.deepEqual(r.canvasPixels,r.expected,name+' matches the original on canvas after roundtrip and point-edit conversion');
+    assert.deepEqual(r.svgPixels,r.expected,name+' keeps its fill in SVG export');
+    assert.deepEqual(r.pngPixels,r.expected,name+' keeps its fill in PNG export');
+  }
+}));
+
+test('Close, Escape and library replacement invalidate pending icon imports',async()=>{
+  for(const action of ['close','escape','replace'])await app(async({page,run})=>{
+    let release,retryStarted,calls=0;
+    const response=new Promise(resolve=>release=resolve),retry=new Promise(resolve=>retryStarted=resolve);
+    const body='<rect width="24" height="24"/>';
+    await page.route('https://api.iconify.design/**',async route=>{
+      const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
+      if(url.pathname==='/search')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({
+        icons:['test:late'],collections:{test:{name:'Test',license:{title:'MIT',spdx:'MIT'}}}
+      })});
+      if(url.pathname==='/test.json'){
+        if(++calls===1)return route.fulfill({status:503,headers,body:''});
+        retryStarted();await response;
+        return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{late:{body}}})});
+      }
+      return route.fulfill({status:404,headers,body:''});
+    });
+    await run('openIconDialog()');await page.locator('#iconSearchInput').fill('late');await page.locator('#iconSearchBtn').click();
+    await page.locator('#iconResults .shape-thumb').waitFor();
+    assert.equal(await page.locator('#iconResults .shape-thumb').textContent(),'?');
+    await page.locator('#iconResults .shape-thumb').click();await retry;
+    if(action==='close')await page.locator('#iconDialogCancel').click();
+    if(action==='escape')await page.keyboard.press('Escape');
+    const replacement={shapes:[{name:'Replacement',items:[rectangle()]}]};
+    await importLibrary(page,replacement);
+    await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes[0]?.name')==='Replacement');
+    release();
+    await page.waitForFunction(()=>__test.run("iconBodies.has('test:late')"));
+    await run('new Promise(resolve=>setTimeout(resolve,30))');
+    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement'],action+' cannot append to the replacement library');
+    assert.equal(await run('shapeLibraryDirty'),false,'a cancelled import does not create unexported changes');
+    if(action==='replace')await page.locator('#iconDialogCancel').click();
+    await run('openIconDialog()');
+    await page.locator('#iconResults .shape-thumb').click();
+    await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
+    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement','late'],'a fresh explicit click can add the cached icon');
+  });
+});

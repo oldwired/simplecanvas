@@ -745,7 +745,7 @@
   const TABS_KEY = 'simplecanvas:tabs:v1';
   // The migrated tab keeps its original key: migration never needs a second copy of a large sketch.
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
-  const FORMAT_VERSION = 2;     // bump when the saved-file schema changes (2: group pivots ignore stroke width)
+  const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
   const BG = '#ffffff';
   const PRESETS = {   // swatch color -> its tooltip, in display order
     '#1f2937':'Dark', '#ef4444':'Red', '#f97316':'Orange', '#eab308':'Yellow', '#ffff00':'Neon Yellow', '#22c55e':'Green',
@@ -930,6 +930,7 @@
         case 'polygon':
           it.points = pts(2);
           it.closed = raw.closed !== false;
+          if(raw.fillRule==='evenodd') it.fillRule='evenodd';
           if(!it.closed && it.points.length < 2) return null;
           if(it.closed && it.points.length < 3) return null;
           // a plain polygon has no type-implied arrowhead the way 'arrow' does, so unlike line/arrow's
@@ -1620,7 +1621,14 @@ self.onmessage = function(e){
       if(budget.points>MAX_POINTS) throw new Error('Point budget exceeded');
       out.points=raw.points.map(point);
       if(raw.type==='path') out.mode=['pen','marker','brush'].includes(raw.mode)?raw.mode:'pen';
-      else { out.closed=raw.closed!==false; if(out.closed && out.points.length<3) throw new Error('Closed polygon needs three points'); }
+      else {
+        out.closed=raw.closed!==false;
+        if(out.closed && out.points.length<3) throw new Error('Closed polygon needs three points');
+        if(raw.fillRule!==undefined){
+          if(!['nonzero','evenodd'].includes(raw.fillRule))throw new Error('Invalid fill rule');
+          if(raw.fillRule==='evenodd')out.fillRule='evenodd';
+        }
+      }
     } else for(const key of ['x','y','w','h']) number(key);
     for(const key of ['color','fillColor','textColor']) if(raw[key]!==undefined){
       if(!isColor(raw[key])) throw new Error('Invalid '+key); out[key]=raw[key];
@@ -2215,7 +2223,7 @@ self.onmessage = function(e){
   }
   // Indices of zero-width "bridge" segments: a straight A->B whose exact reverse B->A is another straight
   // segment of the same closed polygon. Imported icons fold each hole into its outline that way
-  // (bridgeHole); the fill needs the bridge, a visible stroke must skip it. Derived from the geometry,
+  // (bridgeSvgContours); the fill needs the bridge, a visible stroke must skip it. Derived from the geometry,
   // so once a bridge point is moved apart (Point Edit) it is an ordinary edge again.
   function polyBridgeSegments(segs){
     const straight = s=>!s.arc && !s.a.c1 && !s.b.c2;
@@ -2354,7 +2362,7 @@ self.onmessage = function(e){
           : ['L', s.b.x, s.b.y];
         const d = [['M', pts[0].x, pts[0].y], ...segs.map(segCmd)];
         if(closed) d.push(['Z']);
-        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
+        const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it), fillRule:it.fillRule };
         const bridges = closed && style.stroke!=='none' ? polyBridgeSegments(segs) : new Set();
         if(!bridges.size) ops.push({ kind:'path', d, style });
         else{
@@ -2476,7 +2484,7 @@ self.onmessage = function(e){
     ctx.lineJoin = style.join || 'miter';
     ctx.setLineDash(style.dash || []);
     ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
-    if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(); }
+    if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(style.fillRule==='evenodd'?'evenodd':'nonzero'); }
     if(style.stroke !== 'none' && style.width>0){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
   }
   function paintOp(op){
@@ -3171,67 +3179,33 @@ self.onmessage = function(e){
     out[out.length-1][4] = x2; out[out.length-1][5] = y2;   // land exactly on the requested endpoint
     return out;
   }
-  // Signed area of a subpath's anchor polygon -- only its sign (winding direction) is used, to tell a
-  // cut-out hole from an ordinary nested filled shape.
-  function subpathArea(pts){
-    let a = 0;
-    for(let k=0; k<pts.length; k++){ const p = pts[k], q = pts[(k+1)%pts.length]; a += p.x*q.y - q.x*p.y; }
-    return a/2;
-  }
-  function subpathBox(pts){
-    const xs = [], ys = [];
-    for(const p of pts){ for(const c of [p, p.c1, p.c2]) if(c){ xs.push(c.x); ys.push(c.y); } }
-    return {x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys)};
-  }
-  // A closed contour sampled into a plain polyline (curves included), for area and containment tests.
-  function flattenContour(pts){
-    const out = [];
-    for(let k=0; k<pts.length; k++){
-      const p = pts[k], q = pts[(k+1)%pts.length];
-      if(!p.c1 && !q.c2){ out.push({x:p.x, y:p.y}); continue; }
-      const a = p.c1||p, b = q.c2||q;
-      for(let t=0; t<1; t+=0.125) out.push({x:cubicPoint(p.x,a.x,b.x,q.x,t), y:cubicPoint(p.y,a.y,b.y,q.y,t)});
+  // Native polygons need at least three anchors, but a closed cubic with one or two anchors
+  // can still enclose an area. Split a segment with de Casteljau's construction; no flattening
+  // or contour reversal is needed, so both fill and stroke retain the original curve.
+  function svgContourPoints(points){
+    const pts=points.map(p=>({...p,...(p.c1?{c1:{...p.c1}}:{}),...(p.c2?{c2:{...p.c2}}:{})}));
+    if(pts.length===1 && !pts[0].c1 && !pts[0].c2)return [];
+    const mid=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
+    while(pts.length && pts.length<3){
+      let i=pts.findIndex((p,k)=>p.c1 || pts[(k+1)%pts.length].c2);
+      if(i<0)i=0;
+      const a=pts[i],b=pts[(i+1)%pts.length];
+      let m;
+      if(a.c1 || b.c2){
+        const ab=mid(a,a.c1||a),bc=mid(a.c1||a,b.c2||b),cd=mid(b.c2||b,b);
+        const abc=mid(ab,bc),bcd=mid(bc,cd);
+        m={...mid(abc,bcd),c2:abc,c1:bcd};a.c1=ab;b.c2=cd;
+      }else m=mid(a,b);
+      pts.splice(i+1,0,m);
     }
-    return out;
+    return pts;
   }
-  function pointInPolyline(x, y, poly){
-    let inside = false;
-    for(let k=0, j=poly.length-1; k<poly.length; j=k++){
-      const a = poly[k], b = poly[j];
-      if((a.y>y)!==(b.y>y) && x < (b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x) inside = !inside;
-    }
-    return inside;
-  }
-  // Classifies one SVG element's filled contours the way its fill rule paints them: each contour gets the
-  // smallest contour enclosing it as its parent, and is `solid` (paints its inside) or not -- evenodd by
-  // nesting depth, nonzero by the summed winding. A non-solid contour directly inside a solid one is
-  // that solid contour's hole. Returned largest first, so islands inside holes paint on top.
-  function svgContourTree(subs, evenodd){
-    const cs = subs.map(s=>{ const poly = flattenContour(s.points); return {s, poly, area:subpathArea(poly), box:subpathBox(poly), holes:[]}; })
-      .sort((a,b)=>Math.abs(b.area)-Math.abs(a.area));
-    cs.forEach((c, k)=>{
-      let parent = null;
-      for(let j=k-1; j>=0; j--){   // walk from the smallest larger contour outward
-        const P = cs[j];
-        if(c.box.x0>=P.box.x0 && c.box.y0>=P.box.y0 && c.box.x1<=P.box.x1 && c.box.y1<=P.box.y1 &&
-           pointInPolyline(c.poly[0].x, c.poly[0].y, P.poly) && (!parent || Math.abs(P.area)<Math.abs(parent.area))) parent = P;
-      }
-      c.parent = parent;
-      c.depth = parent ? parent.depth+1 : 0;
-      c.winding = (parent ? parent.winding : 0) + Math.sign(c.area);
-      c.solid = evenodd ? c.depth%2===0 : c.winding!==0;
-      if(!c.solid && parent && parent.solid) parent.holes.push(c);
-    });
-    return cs;
-  }
-  // Folds a hole into its outline as one contour: outline -> zero-width bridge -> around the hole ->
-  // back along the same bridge -> rest of the outline. The hole must wind against the outline so the
-  // app's nonzero fill leaves it empty, hence `sameWinding` reverses it first. Bridges are straight
-  // (the points at both ends drop the control handle facing the bridge).
-  function bridgeHole(outer, hole, sameWinding){
+  // Connect contours with exactly reversed, zero-width bridges. Keep every contour's original
+  // direction: together with the stored fill rule this preserves SVG winding even where contours
+  // overlap or are nested several levels deep. Stroke generation skips these artificial bridges.
+  function bridgeSvgContours(outer, hole){
     const strip = p=>{ const q = {x:p.x, y:p.y}; if(p.c1) q.c1 = {...p.c1}; if(p.c2) q.c2 = {...p.c2}; return q; };
-    let h = hole.map(strip);
-    if(sameWinding) h = h.reverse().map(p=>{ const q = {x:p.x, y:p.y}; if(p.c2) q.c1 = p.c2; if(p.c1) q.c2 = p.c1; return q; });
+    const h = hole.map(strip);
     let bi = 0, bj = 0, best = Infinity;
     for(let i=0; i<outer.length; i++) for(let j=0; j<h.length; j++){
       const d = (outer[i].x-h[j].x)**2 + (outer[i].y-h[j].y)**2;
@@ -3259,7 +3233,7 @@ self.onmessage = function(e){
   // Converts an icon's SVG body (Iconify's `body`, i.e. the content inside <svg>) into native polygon
   // items, grouped if more than one, scaled so the longer viewBox side is ICON_TARGET_SIZE and centered
   // on (0,0) like a Shape Library template. Returns {items} or {error}. Holes are folded into their
-  // outline (bridgeHole) and translucent layers become tints; masks, gradients and transforms are refused
+  // compound polygon and translucent layers become tints; masks, gradients and transforms are refused
   // instead of drawn wrong.
   function svgIconToItems(body, vb){
     const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">'+body+'</svg>', 'image/svg+xml');
@@ -3319,7 +3293,7 @@ self.onmessage = function(e){
             ? `M${x+rx} ${y}H${x+w-rx}A${rx} ${ry} 0 0 1 ${x+w} ${y+ry}V${y+h-ry}A${rx} ${ry} 0 0 1 ${x+w-rx} ${y+h}H${x+rx}A${rx} ${ry} 0 0 1 ${x} ${y+h-ry}V${y+ry}A${rx} ${ry} 0 0 1 ${x+rx} ${y}Z`
             : `M${x} ${y}H${x+w}V${y+h}H${x}Z`;
         }
-        const subs = svgPathToSubpaths(d).filter(s=>s.points.length>1);
+        const subs = svgPathToSubpaths(d).filter(s=>s.points.length>1 || s.points.some(p=>p.c1 || p.c2));
         // Translucent layers (duotone icons) become a lighter tint of the same color -- polygons have no
         // opacity of their own, and on the usual white canvas the tint looks the same.
         const alpha = st.alpha==null ? 1 : st.alpha;
@@ -3336,28 +3310,34 @@ self.onmessage = function(e){
         // whole pixels, like every width the toolbar can set
         const size = Math.min(60, Math.max(1, Math.round((Number.isFinite(sw) ? sw : 1)*scale)));
         const tf = p=>({ x:norm((p.x-vb.left)*scale), y:norm((p.y-vb.top)*scale) });
-        const out = (points, closed, strokeOn, fill)=>list.push({ type:'polygon', points:points.map(p=>{
+        const out = (points, closed, strokeOn, fill, fillRule)=>list.push({ type:'polygon', points:points.map(p=>{
           const q = tf(p);
           if(p.c1) q.c1 = tf(p.c1);
           if(p.c2) q.c2 = tf(p.c2);
           return q;
-        }), closed, color:strokeColor, size, strokeOn, fill, fillColor });
-        // a 2-point subpath can't enclose an area -- it can only survive as a plain stroke
-        if(stroked) for(const s of subs) if(s.points.length<3 || !filled) out(s.points, s.closed && s.points.length>=3, true, false);
-        if(!filled) continue;
-        // Filled contours: work out which ones are holes (by the element's fill rule) and fold each hole
-        // into the solid contour around it -- see svgContourTree / bridgeHole.
-        for(const c of svgContourTree(subs.filter(s=>s.points.length>=3), st['fill-rule']==='evenodd')){
-          if(!c.solid){   // holes get their stroke from their outline below; a stray unpainted contour keeps its own
-            if(stroked && !(c.parent && c.parent.solid)) out(c.s.points, true, true, false);
-            continue;
+        }), closed, color:strokeColor, size, strokeOn, fill, fillColor, ...(fillRule==='evenodd'?{fillRule}:{}) });
+        if(!filled){
+          if(stroked)for(const sub of subs){
+            const points=sub.closed?svgContourPoints(sub.points):sub.points;
+            if(points.length>1)out(points,sub.closed,true,false);
           }
-          let points = c.s.points;
-          for(const h of c.holes) points = bridgeHole(points, h.s.points, Math.sign(c.area)===Math.sign(h.area));
-          if(!stroked || !c.holes.length){ out(points, true, stroked, true); continue; }
-          // a bridged outline would show its bridges if stroked: fill it bare, stroke the real contours on top
-          out(points, true, false, true);
-          for(const k of [c, ...c.holes]) out(k.s.points, true, true, false);
+          continue;
+        }
+        const contours=subs.map(sub=>svgContourPoints(sub.points)).filter(points=>points.length>=3);
+        if(!contours.length)continue;
+        let points=contours[0];
+        for(const contour of contours.slice(1)){
+          if(points.length+contour.length+2>MAX_POINTS)throw new Error('too many points');
+          points=bridgeSvgContours(points,contour);
+        }
+        if(points.length>MAX_POINTS)throw new Error('too many points');
+        // A filled SVG path closes open subpaths implicitly, but their stroke must remain open.
+        // Multiple subpaths are filled as one compound polygon and stroked separately.
+        const sharedStroke=stroked && subs.length===1 && subs[0].closed;
+        out(points,true,sharedStroke,true,st['fill-rule']);
+        if(stroked && !sharedStroke)for(const sub of subs){
+          const outline=sub.closed?svgContourPoints(sub.points):sub.points;
+          if(outline.length>1)out(outline,sub.closed,true,false);
         }
       }
     }catch(e){ return {error:'This icon could not be converted.'}; }
@@ -3423,6 +3403,7 @@ self.onmessage = function(e){
     }
     const next = { type:'polygon', points, closed, uid:it.uid, color:it.color, size:it.size };
     if(it.dash) next.dash = it.dash;
+    if(it.fillRule==='evenodd') next.fillRule='evenodd';
     if(it.type==='line' || it.type==='arrow'){ next.strokeOn = true; next.fill = false; }
     else { next.strokeOn = it.strokeOn !== false; next.fill = !!it.fill; if(it.fillColor) next.fillColor = it.fillColor; }
     if(it.rotation) next.rotation = it.rotation;
@@ -5734,6 +5715,7 @@ self.onmessage = function(e){
       else if(st.cap) a += ` stroke-linecap="${st.cap}"`;
       if(st.join) a += ` stroke-linejoin="${st.join}"`;
     }
+    if(st.fillRule==='evenodd') a += ' fill-rule="evenodd"';
     if(st.opacity != null && st.opacity !== 1) a += ` opacity="${st.opacity}"`;
     return a;
   }
@@ -7078,12 +7060,15 @@ self.onmessage = function(e){
   const iconResults = document.getElementById('iconResults');
   let iconSearchSeq = 0, iconLastSearch = null;
   function openIconDialog(){
+    iconSearchSeq++;   // reopening starts a new dialog session
     iconStatus.textContent = iconLastSearch ? iconStatus.textContent : 'Search the open Iconify collections by keyword (English works best).';
     iconDialog.showModal();
+    if(iconLastSearch)renderIconResults(iconLastSearch);
     iconSearchInput.focus(); iconSearchInput.select();
   }
   document.getElementById('addIconBtn').addEventListener('click', openIconDialog);
   document.getElementById('iconDialogCancel').addEventListener('click', ()=>iconDialog.close());
+  iconDialog.addEventListener('close', ()=>{if(!iconDialog.open)iconSearchSeq++;});
   iconDialog.addEventListener('click', e=>e.stopPropagation());
   iconDialog.addEventListener('keydown', e=>e.stopPropagation());
   iconPermissiveOnly.addEventListener('change', ()=>{ if(iconLastSearch) renderIconResults(iconLastSearch); });
@@ -7104,7 +7089,7 @@ self.onmessage = function(e){
                                                       : 'Couldn\'t reach Iconify — check your connection.'; }
       return;
     }
-    if(request!==iconSearchSeq) return;   // a newer search is already on its way
+    if(request!==iconSearchSeq || !iconDialog.open) return;   // newer search or closed session
     iconLastSearch = data;
     renderIconResults(data);
   });
@@ -7168,7 +7153,7 @@ self.onmessage = function(e){
     const request = ++iconSearchSeq;
     iconStatus.textContent = 'Loading previews…';
     await loadIconBodies(found);
-    if(request!==iconSearchSeq) return;
+    if(request!==iconSearchSeq || !iconDialog.open) return;
     iconResults.innerHTML = '';
     for(const ic of found){
       const setName = typeof ic.col.name==='string' ? ic.col.name : ic.set;
@@ -7200,10 +7185,12 @@ self.onmessage = function(e){
   }
   async function importIconToLibrary(set, name, col){
     const request = ++iconSearchSeq;   // also supersedes any search still in flight
+    const library=shapeLibrary;
     iconStatus.textContent = 'Adding "'+name+'"…';
     const key = set+':'+name;
     if(!iconBodies.has(key)) await loadIconBodies([{set, name}]);
-    if(request!==iconSearchSeq) return;
+    if(request!==iconSearchSeq || !iconDialog.open) return;
+    if(library!==shapeLibrary){iconStatus.textContent='The library changed — select the icon again to add it.';return;}
     if(!iconBodies.has(key)){ iconStatus.textContent = 'Couldn\'t reach Iconify — check your connection, or wait a minute and try again.'; return; }
     const icon = iconBodies.get(key);
     if(!icon){ iconStatus.textContent = 'That icon could not be loaded.'; return; }

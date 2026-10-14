@@ -28,12 +28,17 @@ width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
 
-The shape library is optional. Select canvas objects and choose **Add selection to library…**
-from the menu, or choose **Import library…** to open your own library file. The library button
-appears once a library is available. Click a shape to place it; **Manage** lets you rename,
-delete, or replace a shape with the current canvas selection. For smart shapes, **Edit source…**
-opens their existing script in the authoring dialog. Save changes, then export the library to keep
-the updated code and preview. Images cannot be included.
+The shape library is optional. Open the library picker and choose **Add selection** to save
+selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
+available even before a library exists, including **Add smart shape…**. Click a saved shape to
+place it; **Manage** also lets you rename, delete, or replace an entry with the current selection.
+For smart shapes, **Edit source…** opens their existing script in the authoring dialog. Save changes,
+then export the library to keep the updated code and preview. Images cannot be included.
+
+**Add icon** searches Iconify when online and imports a result as editable native polygons, with
+its collection and license attached to the library entry. SVG cut-outs and curves are preserved.
+The license filter shows permissively licensed collections by default; each collection retains
+its own terms. Closing the dialog cancels a pending import.
 
 **Export library…** downloads the entire active library as `shapes-library.json`. Library
 changes last only for the current visit and are separate from sketch saves and autosave.
