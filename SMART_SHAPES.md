@@ -16,10 +16,17 @@ app as an end user; see [README.md](README.md) for that.
 1. Open the **Shape Library** panel → **Manage** → **Add smart shape…**.
 2. Pick a starting point from the **Template** dropdown (Clock / Arrow / Arc / Timer / Chart /
    Minimal / Blank), or just start typing your own script over it.
-3. Give it a name and click **Add**. The new shape appears in the library, ready to place.
+3. Give it a name and click **Create**. The new shape appears in the library, ready to place.
 4. On the canvas, double-click a placed smart shape to enter its **edit mode** (solid blue
    corner markers) — drag its handles there to change its state. Double-click again, or click
    outside it, to leave.
+
+To edit a library definition, choose **Manage → Edit source…** beside its name. The authoring
+dialog opens with its existing name and script; **Save changes** updates that entry and regenerates
+its PNG preview. Its saved state, dimensions, and appearance are preserved; `initState()` and
+`initStyle()` run when creating a definition. Existing canvas instances keep their own scripts.
+If an entry contains multiple smart shapes, each has a numbered **Edit source…** action. Export
+the library to retain your changes.
 
 The **script** field takes a single JavaScript **expression** — not a series of statements —
 that evaluates to one object literal: `({ children(state, style, w, h){ ... }, ... })`. It's

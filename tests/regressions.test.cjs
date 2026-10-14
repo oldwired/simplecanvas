@@ -1674,3 +1674,75 @@ test('cancelled smart double-clicks and touch taps cannot act on a replacement t
   assert.equal(await run('ui.tool'),'pen','a delayed touch double-tap cannot switch the new tab’s tool');
   assert.equal(await run('editingSmartIdx'),null);
 }));
+
+test('Manage opens existing smart source without executing it; cancelling an async save keeps the definition',async()=>app(async({page,run})=>{
+  const original=smartFixture(slowClickScript,{n:7});
+  await importLibrary(page,{shapes:[{name:'Counter',items:[original]},{name:'Box',items:[rectangle()]}]});
+  await page.locator('#libraryDialogCancel').click();await page.locator('#manageShapesBtn').click();
+  assert.equal(await page.getByRole('button',{name:'Edit source… Box',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Edit source… Counter',exact:true}).click();
+  assert.equal(await page.locator('#smartObjectNameInput').inputValue(),'Counter');
+  assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),slowClickScript);
+  assert.equal(await page.locator('#smartTemplateRow').isVisible(),false);
+  assert.equal(await page.locator('iframe[sandbox]').count(),0,'reading code alone does not execute it');
+  await page.locator('#smartObjectScriptInput').fill('({children(){return [];}})');
+  await page.locator('#smartObjectDialogCancel').click();
+  assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);
+  await page.getByRole('button',{name:'Edit source… Counter',exact:true}).click();
+  const delayed=`(()=>{const end=performance.now()+120;while(performance.now()<end){}return {children(){return [];}}})()`;
+  await page.locator('#smartObjectScriptInput').fill(delayed);
+  await page.locator('#smartObjectDialogSubmit').click();
+  await page.locator('#smartObjectDialogCancel').click();await page.waitForTimeout(200);
+  assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);
+  assert.deepEqual(await run('shapeLibrary.shapes[0].items[0].state'),{n:7});
+}));
+
+test('source edits update the library and bundled PNG, survive export, and preserve placed instances',async()=>app(async({page,run})=>{
+  const oldScript=`({children(){return [{type:'rect',x:0,y:0,w:180,h:180,fill:true,fillColor:'#dc2626'}];}})`;
+  const newScript=oldScript.replace('#dc2626','#3b82f6');
+  await importLibrary(page,{shapes:[{name:'Color box',items:[smartFixture(oldScript,{n:7})]}]});
+  await page.locator('#libraryDialogSubmit').click();await page.locator('.shape-thumb img').waitFor();
+  const before=await downloadedJSON(page,run,'exportShapeLibrary()');
+  await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
+  await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
+  await page.getByRole('button',{name:'Edit source… Color box',exact:true}).click();
+  await page.locator('#smartObjectScriptInput').fill('({initState(){return {};}})');
+  await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>document.querySelector('#smartObjectDialogError').textContent.includes('children'));
+  assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),oldScript);
+  await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
+  const after=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.equal(after.shapes.length,1,'saving updates the entry instead of adding a duplicate');
+  assert.deepEqual(after.shapes[0].items[0],{...before.shapes[0].items[0],script:newScript});
+  assert.notEqual(after.shapes[0].thumbnail.png,before.shapes[0].thumbnail.png);
+  assert.equal(await run('items[0].script'),oldScript,'placed instances keep their own definition');
+  await page.reload();await importLibrary(page,after);
+  assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the edited preview is bundled');
+  await page.locator('#manageShapesBtn').click();
+  await page.getByRole('button',{name:'Edit source… Color box',exact:true}).click();
+  assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),newScript);
+  await page.locator('#smartObjectDialogCancel').click();
+  await page.locator('#newSmartObjectBtn').click();
+  assert.equal(await page.locator('#smartTemplateRow').isVisible(),true);
+  await page.locator('#smartObjectNameInput').fill('New shape');
+  await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
+  assert.deepEqual(await run('shapeLibrary.shapes.map(t=>t.name)'),['Color box','New shape']);
+}));
+
+test('composite library entries expose each smart script and edit only the chosen component',async()=>app(async({page,run})=>{
+  const first=smartFixture(slowClickScript,{n:1}),second={...smartFixture('({children(){return [];}})',{n:2}),x:350};
+  await importLibrary(page,{shapes:[{name:'Composite',items:[first,rectangle(),second]}]});
+  await page.locator('#libraryDialogCancel').click();await page.locator('#manageShapesBtn').click();
+  await page.getByRole('button',{name:'Edit source 2… Composite',exact:true}).click();
+  assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),second.script);
+  const updated='({children(){return [{type:"ellipse",x:0,y:0,w:50,h:50}];}})';
+  await page.locator('#smartObjectScriptInput').fill(updated);await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
+  const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.equal(exported.shapes[0].items[0].script,first.script);
+  assert.equal(exported.shapes[0].items[1].type,'rect');
+  assert.deepEqual(exported.shapes[0].items[2].state,{n:2});
+  assert.equal(exported.shapes[0].items[2].script,updated);
+}));
