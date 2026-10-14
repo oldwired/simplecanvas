@@ -59,6 +59,10 @@ its own interactive state.
 State is never mutated in place — `dragEdit` returns a fresh object (`{...state, ...}` is the
 usual pattern). A completed click or drag creates one undo entry if its validated state differs.
 Quick clicks are processed in input order, including when release precedes the hook reply.
+A following nudge or style change keeps a released handle action and its own undo entry. An
+unreleased press is cancelled when another edit begins. Escape, undo, tool changes, and document
+replacement cancel pending actions. Smart editing tracks one pointer at a time; additional fingers
+cannot release or cancel the active finger's press.
 
 Every hook reply is validated before rendering, export, preview generation, or state updates.
 `children()` returning `[]` is valid. A malformed result affects only that shape: a live refresh
@@ -301,6 +305,7 @@ even though it renders fine on canvas.
   Both are enforced at execution as well as load. Oversized state updates are rejected, not
   truncated. State contains only JSON data, has at most 16 levels, and cannot use the keys
   `__proto__`, `prototype`, or `constructor`. The longest shipped script is about 37,300 characters.
+  A missing saved state defaults to `{}`; a supplied invalid state rejects that imported item.
 - **Result limits:** 1,000 children, 20,000 points across the whole result, 2,000 characters per
   text child and 20,000 total text characters. A serialized reply is limited to 512 KiB. Geometry
   must contain finite numbers between -1,000,000 and 1,000,000. Negative local coordinates and
@@ -338,9 +343,13 @@ headers, dimensions, and size are checked on import, and decoding failures becom
 Ordinary shape previews are generated automatically. A missing smart-shape preview displays a
 placeholder until you approve script execution. Opening an automatically loaded library asks once;
 declining still lets you use the library. **Generate missing previews…** offers the choice again.
+Automatic preview creation or recovery does not mark the library as having unexported changes.
 Newly authored or replaced entries regenerate previews, and exporting retains generated PNGs so
 future imports can display them without running scripts. Placing/editing a smart shape still runs
 its hooks inside the sandbox. Renaming an entry does not require a new picture.
+
+Thumbnails and cropped SVG/PNG exports include painted children outside the container, including
+outside labels and thick outlines. The editable container and rotation pivots keep their geometry.
 
 ## A complete worked example
 

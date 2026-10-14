@@ -756,6 +756,7 @@
   let polyDraft = null;         // {color,size,fill,fillColor,points} while clicking out a polygon
   let longPressTimer = null;    // pending "open text for editing" timer while a click sits still on a text item
   let alignClickTimer = null;   // pending "set alignment" timer — cancelled if a dblclick follows (which only edits)
+  let pendingDoubleClicks = 0;
   let assetSeq = 0;
   let assets = {};              // current tab's image data, including images retained by its history
   let imgCache = new Map();     // current tab's decoded images
@@ -780,6 +781,8 @@
   let smartGestureEpoch = 0;
   let smartGestureQueue = Promise.resolve();
   let smartCurrentPress = null;
+  const ignoredSmartPointers = new Set();
+  const ignoredSmartPointerUps = new WeakSet();
   let smartMutationOwner = null;
   let smartReplay = false;
   const smartGestureRecords = new Set();
@@ -821,11 +824,22 @@
     for(const it of list){ if(typeof it.uid !== 'string' || seen.has(it.uid)) it.uid = newUid(); seen.add(it.uid); }
     return list;
   }
-  const snap = () => JSON.stringify(ensureUids(items));
+  const snap = () => {
+    ensureUids(items);
+    const pending=[...smartGestureRecords].filter(p=>p.sd && !p.cancelled);
+    if(!pending.length) return JSON.stringify(items);
+    const copy=clone(items);
+    // In-flight handle state is visible on canvas, but belongs to its own transaction.
+    for(const p of pending){
+      const it=copy.find(it=>it.uid===p.it.uid);
+      if(it) it.state=clone(p.sd.originalState);
+    }
+    return JSON.stringify(copy);
+  };
 
   function beginHistory(){
     if(!shapePlacementOwner) shapePlacementEpoch++;
-    if(!smartMutationOwner) cancelSmartGestures();
+    if(!smartMutationOwner) cancelSmartGestures(true);
     historyBefore = snap();
   }
   function commitHistory(){
@@ -941,13 +955,9 @@
         // The script is the whole point of the item -- reject rather than silently degrade to an empty box.
         if(typeof raw.script !== 'string' || !raw.script.trim() || raw.script.length > MAX_SCRIPT) return null;
         it.script = raw.script;
-        // state is a nice-to-have, not load-bearing for validity -- garbage/missing just resets to {}
-        // (initState(), called on next placement/edit, fills in real defaults). A circular-ref state
-        // throws out of JSON.stringify and is caught by this function's own outer try/catch below.
-        const rawState = (raw.state && typeof raw.state === 'object' && !Array.isArray(raw.state)) ? raw.state : {};
-        const stateJson = JSON.stringify(rawState);
-        if(stateJson.length > MAX_STATE_JSON) return null;
-        it.state = JSON.parse(stateJson);
+        // Missing state keeps the legacy empty default. Supplied state obeys the same contract as
+        // hook results, so an imported item cannot become permanently uneditable at its first reply.
+        it.state = normalizeSmartState(raw.state===undefined ? {} : raw.state);
       }
       if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
       if(typeof raw.group === 'string' && raw.group.length <= 64){
@@ -1474,7 +1484,7 @@ self.onmessage = function(e){
       if(typeof raw[key]!=='boolean') throw new Error('Invalid '+key); out[key]=raw[key];
     }
     if(raw.size!==undefined) number('size',0,60);
-    if(raw.dash!==undefined){ if(!['solid','tight','wide'].includes(raw.dash)) throw new Error('Invalid dash'); if(raw.dash!=='solid') out.dash=raw.dash; }
+    if(raw.dash!==undefined){ if(!['solid','tight','wide'].includes(raw.dash)) throw new Error('Invalid dash'); out.dash=raw.dash; }
     for(const key of ['hsStyle','heStyle']) if(raw[key]!==undefined){ if(!HEAD_STYLES.has(raw[key])) throw new Error('Invalid arrowhead'); out[key]=raw[key]; }
     if(raw.type==='text'){
       if(typeof raw.text!=='string' || raw.text.length>MAX_TEXT) throw new Error('Text exceeds 2000 characters or is not text');
@@ -2273,7 +2283,7 @@ self.onmessage = function(e){
     ctx.setLineDash(style.dash || []);
     ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
     if(style.fill !== 'none'){ ctx.fillStyle = style.fill; ctx.fill(); }
-    if(style.stroke !== 'none'){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
+    if(style.stroke !== 'none' && style.width>0){ ctx.strokeStyle = style.stroke; ctx.stroke(); }
   }
   function paintOp(op){
     switch(op.kind){
@@ -3216,6 +3226,10 @@ self.onmessage = function(e){
           const b = bbox(sit);
           const cx=b.x+b.w/2, cy=b.y+b.h/2;
           ctx.save();
+          if(sit.group!=null && sit.groupRotation){
+            const piv=groupPivot(sit.group);
+            ctx.translate(piv.cx,piv.cy);ctx.rotate(sit.groupRotation);ctx.translate(-piv.cx,-piv.cy);
+          }
           if(sit.rotation){ ctx.translate(cx,cy); ctx.rotate(sit.rotation); ctx.translate(-cx,-cy); }
           ctx.setLineDash([]);
           ctx.fillStyle = '#6366f1';
@@ -3365,6 +3379,10 @@ self.onmessage = function(e){
   const isSecondaryPress = e => (e.button!==undefined && e.button!==0) || (isMac && !!e.ctrlKey);
   function onDown(e){
     if(isSecondaryPress(e)) return;
+    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
+      if(e.pointerId!==smartCurrentPress.e.pointerId) ignoredSmartPointers.add(e.pointerId);
+      return;
+    }
     handledPointerUp = false;
     if(textInput.style.display==='block'){ commitText(); }
     const {x,y} = pos(e);
@@ -3628,9 +3646,11 @@ self.onmessage = function(e){
   }
 
   function onMove(e){
+    if(ignoredSmartPointers.has(e.pointerId)) return;
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
     if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
+      if(e.pointerId!==smartCurrentPress.e.pointerId) return;
       const press=smartCurrentPress;press.latest={...p,e};
       if(press.mode==='pending' || press.mode==='body') return;
       if(press.mode==='handle'){ runSmartDragMove(p.x,p.y,press.sd); return; }
@@ -3882,12 +3902,13 @@ self.onmessage = function(e){
     if(sd.pendingAfterInFlight) sendNextSmartDragEdit(it, sd);
     else if(sd.onSettle){ const fn = sd.onSettle; sd.onSettle = null; fn(); }
   }
-  function smartGestureValid(p){ return !p.cancelled && p.epoch===smartGestureEpoch && p.tab===activeTabId && items[p.idx]===p.it; }
-  function cancelSmartGestures(){
+  function smartGestureValid(p){ return !p.cancelled && p.epoch===smartGestureEpoch && p.tab===activeTabId && items.includes(p.it); }
+  function cancelSmartGestures(preserveReleased=false){
     smartGestureEpoch++;
     for(const p of smartGestureRecords){
+      if(preserveReleased && p.released){p.epoch=smartGestureEpoch;continue;}
       p.cancelled=true;
-      if(p.sd && p.tab===activeTabId && items[p.idx]===p.it) p.it.state=clone(p.sd.originalState);
+      if(p.sd && p.tab===activeTabId && items.includes(p.it)) p.it.state=clone(p.sd.originalState);
       p.release();
       if(p.sd?.onSettle){const settle=p.sd.onSettle;p.sd.onSettle=null;settle();}
     }
@@ -3913,7 +3934,7 @@ self.onmessage = function(e){
     handledPointerUp=!!handle;
     if(handle){
       const sd={press:p,handle,kind:h.kind,moved:false,lx:p.lp.x,ly:p.lp.y,token:++smartDragToken,
-        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,before:snap(),originalState:clone(it.state||{})};
+        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,originalState:clone(it.state||{})};
       p.sd=sd;p.mode='handle';
       if(smartCurrentPress===p && !p.released) smartDrag=sd;
       if(p.latest) runSmartDragMove(p.latest.x,p.latest.y,sd);
@@ -3928,7 +3949,17 @@ self.onmessage = function(e){
       }
       if(!smartGestureValid(p)) return;
       if(JSON.stringify(it.state||{})!==JSON.stringify(sd.originalState)){
-        historyBefore=sd.before;commitHistory();
+        // A completed click may settle during or after another edit. Commit only its state, using
+        // the other transaction's baseline when still open; keep that transaction independently undoable.
+        const before=historyBefore===null ? snap() : historyBefore;
+        if(historyBefore!==null){
+          const next=JSON.parse(historyBefore), target=next.find(item=>item.uid===it.uid);
+          if(target) target.state=clone(it.state);
+          historyBefore=JSON.stringify(next);
+        }
+        undoStack.push(before);
+        if(undoStack.length>80) undoStack.shift();
+        redoStack=[];clickCycle=null;save();updateButtons();
       }
       p.sd=null;render();return;
     }
@@ -3944,9 +3975,11 @@ self.onmessage = function(e){
     await p.releaseDone;
   }
   function onUp(e){
+    if(ignoredSmartPointers.delete(e.pointerId)){ignoredSmartPointerUps.add(e);return;}
     if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
       const p=smartCurrentPress;
-      if(e.type==='pointercancel'){cancelSmartGestures();render();return;}
+      if(e.pointerId!==p.e.pointerId) return;
+      if(e.type==='pointercancel'){cancelSmartGestures(true);render();return;}
       p.released=true;p.upEvent=e;p.upPoint=pos(e);p.release();
       if(p.sd===smartDrag) smartDrag=null;
       if(p.mode!=='normal') return;
@@ -4007,7 +4040,7 @@ self.onmessage = function(e){
           const {x,y} = pos(e);
           // ...and only for a click on the text/table itself, not one in an empty gap of its group's
           // box that merely resolved to it as the group's representative (see groupBoxHit)
-          if(it && (it.type==='text' || it.type==='table') && pressedOn(it,x,y)){
+          if(!pendingDoubleClicks && it && (it.type==='text' || it.type==='table') && pressedOn(it,x,y)){
             // delayed: a dblclick is two of these clicks in a row — if one follows shortly, it should
             // only open the editor, not also change the alignment first
             if(alignClickTimer) clearTimeout(alignClickTimer);
@@ -4822,7 +4855,7 @@ self.onmessage = function(e){
     if(shapePreviewFailures.get(tpl)===source) return Promise.resolve();
     const job=createShapeThumbnail(tpl.items).then(png=>{
       if(!shapeLibrary?.shapes.includes(tpl) || source!==shapePreviewKey(tpl.items)) return;
-      tpl.thumbnail={version:1,source,png};shapeLibraryDirty=true;shapeLibraryRevision++;
+      tpl.thumbnail={version:1,source,png};shapeLibraryRevision++;
     }).catch(()=>{shapePreviewFailures.set(tpl,source);toast('Could not generate preview for '+tpl.name);})
       .finally(()=>{shapePreviewJobs.delete(tpl);if(shapeLibrary?.shapes.includes(tpl))updateShapeLibraryUI();});
     shapePreviewJobs.set(tpl,job);return job;
@@ -5007,11 +5040,11 @@ self.onmessage = function(e){
   }
 
   // ---------- export ----------
-  // Painted text may overflow its box. Include the measured glyphs for export without changing
+  // Text and smart children may overflow their box. Include painted content without changing
   // the geometry bounds used for handles, hit testing, or item/group rotation pivots.
   function paintedWorldBBox(it, sceneItems=items){
     const box = worldBBox(it,sceneItems);
-    if(it.type!=='text' && it.type!=='table') return box;
+    if(it.type!=='text' && it.type!=='table' && it.type!=='smart') return box;
     let minX=box.x, minY=box.y, maxX=box.x+box.w, maxY=box.y+box.h;
     const includeRect = (left,top,right,bottom)=>{
       for(const [x,y] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
@@ -5026,6 +5059,23 @@ self.onmessage = function(e){
       includeRect(x-m.actualBoundingBoxLeft-1,y-m.actualBoundingBoxAscent-1,
                   x+m.actualBoundingBoxRight+1,y+m.actualBoundingBoxDescent+1);
     };
+    if(it.type==='smart'){
+      // Children may deliberately draw beyond the editable container. Expand only painted bounds;
+      // changing bbox() would move rotation pivots and selection/resize geometry.
+      for(const raw of smartChildrenFor(it)){
+        const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},clone(raw));
+        translateItem(child,it.x,it.y);
+        const b=paintedWorldBBox(child,[]);
+        includeRect(b.x,b.y,b.x+b.w,b.y+b.h);
+        // Arc descriptors can sweep beyond their endpoints. The complete circle is a conservative
+        // bound, including the child's outline, without altering its stored polygon geometry.
+        for(const point of child.points||[]) if(point.arcTo){
+          const a=point.arcTo, r=Math.max(0,a.r)+(child.size||0)/2+2;
+          includeRect(a.cx-r,a.cy-r,a.cx+r,a.cy+r);
+        }
+      }
+      return {x:minX,y:minY,w:maxX-minX,h:maxY-minY};
+    }
     ctx.save();
     try{
       ctx.textBaseline='alphabetic';
@@ -5181,37 +5231,36 @@ self.onmessage = function(e){
   // (background off, so pasting a selection into another app's canvas doesn't carry an opaque backdrop).
   async function itemsToSVGMarkup(itemList, opts){
     opts = opts || {};
-    let w, h, ox, oy;
-    if(opts.width != null && opts.height != null){
-      // Exact canvas dimensions, no auto-crop -- items keep their own on-screen x/y as-is, so the
-      // result matches the live canvas 1:1 (including any empty space around the actual objects).
-      w = opts.width; h = opts.height; ox = 0; oy = 0;
-    } else {
-      // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
-      // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
-      // of surrounding empty canvas that happened to be visible at the time.
-      const m = 24;
-      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-      for(const it of itemList){
-        const b = paintedWorldBBox(it,itemList);
-        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
-        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
-      }
-      w = (maxX-minX) + m*2; h = (maxY-minY) + m*2;
-      ox = -minX + m; oy = -minY + m;
-    }
-    // warmSmartExportCache resolves every smart item's children() up front so the synchronous loop
-    // below (unchanged -- itemToSVG/shapeOps) never has to ask the sandbox itself. See its own comment
-    // for why this two-phase "resolve everything, then paint" shape is required, not optional.
+    // Resolve children before measuring as well as painting, so both use the same export result.
     const cache=await warmSmartExportCache(itemList);
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
-    let body = '';
-    try{ for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets); }
-    finally{ smartExportCache = prevExportCache; }
-    const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
-      + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
+    try{
+      let w, h, ox, oy;
+      if(opts.width != null && opts.height != null){
+        // Exact canvas dimensions, no auto-crop -- items keep their own on-screen x/y as-is, so the
+        // result matches the live canvas 1:1 (including any empty space around the actual objects).
+        w = opts.width; h = opts.height; ox = 0; oy = 0;
+      } else {
+        // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
+        // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
+        // of surrounding empty canvas that happened to be visible at the time.
+        const m = 24;
+        let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+        for(const it of itemList){
+          const b = paintedWorldBBox(it,itemList);
+          minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+          maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+        }
+        w = (maxX-minX) + m*2; h = (maxY-minY) + m*2;
+        ox = -minX + m; oy = -minY + m;
+      }
+      let body = '';
+      for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets);
+      const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${w} ${h}">`
+        + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
+    }finally{smartExportCache = prevExportCache;}
   }
   // Renders a list of items to an offscreen PNG canvas, as a Promise<Blob> -- reuses drawItem()
   // itself (same technique as savePng(), just parameterized over an arbitrary item list instead of
@@ -5231,7 +5280,7 @@ self.onmessage = function(e){
     try{
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       for(const it of itemList){
-        const b = paintedWorldBBox(it);
+        const b = paintedWorldBBox(it,itemList);
         minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
         maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
       }
@@ -6469,7 +6518,9 @@ self.onmessage = function(e){
   }
 
   function shapeThumbSVGSync(list){
-    const box = unionBoxOf(list, true);
+    const bounds=list.map(it=>paintedWorldBBox(it,list));
+    const x=Math.min(...bounds.map(b=>b.x)), y=Math.min(...bounds.map(b=>b.y));
+    const box={x,y,w:Math.max(...bounds.map(b=>b.x+b.w))-x,h:Math.max(...bounds.map(b=>b.y+b.h))-y};
     const inner = list.map(it=>itemToSVG(it,list,{})).join('');
     return `<svg width="128" height="128" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
   }
@@ -6492,8 +6543,15 @@ self.onmessage = function(e){
     if(thumbnail){
       const img=document.createElement('img');img.alt='';img.src=thumbnail.png;b.appendChild(img);
       img.onerror=()=>{
-        delete tpl.thumbnail;shapePreviewFailures.set(tpl,shapePreviewKey(tpl.items));
-        if(b.isConnected){updateShapeLibraryUI();offerMissingSmartPreviews(shapeLibrary);}
+        if(tpl.thumbnail?.png!==thumbnail.png || tpl.thumbnail?.source!==thumbnail.source) return;
+        delete tpl.thumbnail;
+        // A rejected bundled image is a missing preview. Ordinary entries regenerate automatically;
+        // smart entries need fresh consent before their scripts may run.
+        shapePreviewFailures.delete(tpl);smartPreviewConsent.delete(tpl);
+        previewQuestionsOffered.delete(shapeLibrary);
+        // Import can rebuild the grid before the first image fails. Recover the active entry even
+        // when that particular image element has already been replaced.
+        if(shapeLibrary?.shapes.includes(tpl)){updateShapeLibraryUI();offerMissingSmartPreviews(shapeLibrary);}
       };
     } else {
       const placeholder=document.createElement('span');placeholder.className='preview-placeholder';placeholder.textContent='?';b.appendChild(placeholder);
@@ -7067,18 +7125,19 @@ self.onmessage = function(e){
   // within 300ms and 25px, touch or pen) and hand it to the very same handler the mouse uses
   let lastTap = null;
   async function onTapUp(e){   // registered after onUp, so the second tap's own vertex/selection has landed first
-    if(e.pointerType==='mouse') return;
+    if(e.pointerType==='mouse' || ignoredSmartPointerUps.has(e)) return;
     const now = performance.now();
     const epoch=smartGestureEpoch, tab=activeTabId;
+    const tap={t:now,x:e.clientX,y:e.clientY};
+    const doubleTap=lastTap && now-lastTap.t<300 && Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<25;
+    lastTap=doubleTap ? null : tap;
+    // Recognise the second lift before waiting: replayed clicks must not arm an alignment timer
+    // while this double-tap is waiting for its own smart hit tests.
+    if(doubleTap){await onDoubleClick(e);return;}
     // handledPointerUp may still be settling (a smart object's own hitEdit crossing the sandbox
     // asynchronously -- see onDoubleClick's own identical await) -- wait for that before reading it.
     if(smartHitSettled) await smartHitSettled;
-    if(epoch!==smartGestureEpoch || tab!==activeTabId){lastTap=null;return;}
-    if(handledPointerUp){lastTap=null;return;}
-    if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
-      lastTap = null;
-      onDoubleClick(e);
-    } else lastTap = { t:now, x:e.clientX, y:e.clientY };
+    if(epoch!==smartGestureEpoch || tab!==activeTabId || handledPointerUp){if(lastTap===tap)lastTap=null;}
   }
   canvas.addEventListener('dblclick', onDoubleClick);
   // touch-action:none on canvas/textInput doesn't reliably stop Safari's native double-tap-to-zoom
@@ -7103,6 +7162,7 @@ self.onmessage = function(e){
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   async function onDoubleClick(e){
     if(hasPendingShapePlacement()) return;
+    if(alignClickTimer){clearTimeout(alignClickTimer);alignClickTimer=null;}
     const epoch=smartGestureEpoch, tab=activeTabId;
     // A smart object's own hitEdit crosses the sandbox asynchronously now -- a real double-click's two
     // presses each kick one off (see onDown), and this native 'dblclick' event fires right after the
@@ -7111,7 +7171,9 @@ self.onmessage = function(e){
     // processSmartGesture) -- otherwise a double-click on one of a smart object's own handles would
     // read this flag too early and run the generic exit-toggle below on top of the handle's own,
     // already-correct resolution (exactly the bug this flag exists to prevent).
-    if(smartHitSettled) await smartHitSettled;
+    pendingDoubleClicks++;
+    try{if(smartHitSettled) await smartHitSettled;}
+    finally{pendingDoubleClicks--;}
     if(epoch!==smartGestureEpoch || tab!==activeTabId) return;
     if(handledPointerUp) return;
     if(performance.now() - polygonClosedByClickAt < 500){
