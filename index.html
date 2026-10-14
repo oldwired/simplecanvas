@@ -728,6 +728,8 @@
   let pointEditIdx = null;      // index into items[] currently in Point-Edit mode; null = not in this mode
   let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
   let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
+  let insertHover = null;      // world point where a click on the outline would insert an anchor (mouse hover)
+  let lastInsert = null;       // {idx, pointIndex, at} of an anchor a plain click just inserted, unmoved
   let handledPointerUp = false; // a handle gesture must not also become a double-tap tool change
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
@@ -1520,6 +1522,78 @@
   function cubicPoint(p0,p1,p2,p3,t){
     const mt=1-t;
     return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+  }
+  // ---------- Point Edit: adding and removing anchors ----------
+  // Nearest spot on a polygon's outline to a point in the item's LOCAL frame: {seg, t, x, y, d}.
+  // Each segment is sampled, then the best sample is refined by bisection -- well under a pixel on
+  // any curve this app can hold.
+  function nearestOnOutline(it, lx, ly){
+    let best = null;
+    polyCurveSegments(it).forEach((s, i)=>{
+      const at = t=>({x:cubicPoint(s.a.x,s.c1.x,s.c2.x,s.b.x,t), y:cubicPoint(s.a.y,s.c1.y,s.c2.y,s.b.y,t)});
+      const dist = t=>{ const q = at(t); return Math.hypot(q.x-lx, q.y-ly); };
+      let bt = 0, bd = Infinity;
+      for(let k=0; k<=32; k++){ const d = dist(k/32); if(d<bd){ bd = d; bt = k/32; } }
+      for(let step=1/64; step>1e-4; step/=2){
+        for(const t of [bt-step, bt+step]){
+          if(t<0 || t>1) continue;
+          const d = dist(t);
+          if(d<bd){ bd = d; bt = t; }
+        }
+      }
+      if(!best || bd<best.d){ const q = at(bt); best = {seg:i, t:bt, x:q.x, y:q.y, d:bd}; }
+    });
+    return best;
+  }
+  // Inserts an anchor at parameter t of segment `seg` without changing the outline: a straight
+  // segment just gains a corner on itself, a curve is split exactly (de Casteljau), so the two
+  // halves together trace the original curve. Neighbor handles are only rewritten where they
+  // existed. Returns the new anchor's index.
+  function insertAnchor(it, seg, t){
+    const pts = it.points, a = pts[seg], b = pts[(seg+1)%pts.length];
+    const lerp = (p,q)=>({x:p.x+(q.x-p.x)*t, y:p.y+(q.y-p.y)*t});
+    const r = q=>({x:norm(q.x), y:norm(q.y)});
+    let np;
+    if(!a.c1 && !b.c2) np = r(lerp(a, b));
+    else{
+      const p1 = a.c1||a, p2 = b.c2||b;
+      const q0 = lerp(a,p1), q1 = lerp(p1,p2), q2 = lerp(p2,b), r0 = lerp(q0,q1), r1 = lerp(q1,q2);
+      if(a.c1) a.c1 = r(q0);
+      if(b.c2) b.c2 = r(q2);
+      np = {...r(lerp(r0,r1)), c2:r(r0), c1:r(r1)};
+    }
+    pts.splice(seg+1, 0, np);
+    return seg+1;
+  }
+  // a closed outline needs 3 anchors to enclose anything, an open line 2
+  function minAnchorsOf(it){ return it.closed===false ? 2 : 3; }
+  function removeAnchor(idx, pointIndex){
+    const it = items[idx];
+    if(!it || !it.points[pointIndex]) return false;
+    if(it.points.length<=minAnchorsOf(it)){
+      toast(it.closed===false ? 'A line needs at least 2 points' : 'A closed shape needs at least 3 points');
+      return false;
+    }
+    beginHistory();
+    bakeItemRotation(it);   // the rotation pivots on the bbox, which a removed point can change
+    it.points.splice(pointIndex, 1);
+    activeAnchor = null;
+    commitHistory();
+    render();
+    return true;
+  }
+  // The tap target that deletes the active anchor (touch has no Delete key or Alt-click): a small
+  // round "x" up and to the right of it, only while removing it is allowed.
+  function anchorDeleteButtonPos(){
+    if(pointEditIdx==null || activeAnchor==null) return null;
+    const it = items[pointEditIdx];
+    if(!it || !it.points[activeAnchor] || it.points.length<=minAnchorsOf(it)) return null;
+    const w = toWorld(it, it.points[activeAnchor].x, it.points[activeAnchor].y);
+    return {x:w.x+16, y:w.y-16};
+  }
+  // How close a press has to land to the outline to insert an anchor there.
+  function outlineInsertRadius(it, pointerType){
+    return Math.max(pointerType==='mouse' ? 6 : 14, (it.size||2)/2 + 3);
   }
   // real roots in (0,1) of the derivative B'(t)=0 per axis: A t^2 + B t + C = 0
   function cubicAxisExtremeTs(p0,p1,p2,p3){
@@ -2603,6 +2677,20 @@
             }
             ctx.beginPath(); ctx.rect(aw.x-5, aw.y-5, 10, 10);
             ctx.fillStyle = '#fff'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();   // active anchor reads as "selected"
+            const del = anchorDeleteButtonPos();
+            if(del){   // round "x" that removes the active anchor (the touch-friendly route; see onDown)
+              ctx.beginPath(); ctx.moveTo(aw.x+5, aw.y-5); ctx.lineTo(del.x, del.y);
+              ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1; ctx.stroke();
+              ctx.beginPath(); ctx.arc(del.x, del.y, 7, 0, Math.PI*2);
+              ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.5; ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(del.x-3, del.y-3); ctx.lineTo(del.x+3, del.y+3); ctx.moveTo(del.x+3, del.y-3); ctx.lineTo(del.x-3, del.y+3); ctx.stroke();
+            }
+          }
+          if(insertHover){   // ghost anchor with a "+": a click here adds a point
+            ctx.beginPath(); ctx.arc(insertHover.x, insertHover.y, 6, 0, Math.PI*2);
+            ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(insertHover.x-3, insertHover.y); ctx.lineTo(insertHover.x+3, insertHover.y);
+            ctx.moveTo(insertHover.x, insertHover.y-3); ctx.lineTo(insertHover.x, insertHover.y+3); ctx.stroke();
           }
           ctx.restore();
         }
@@ -2746,7 +2834,43 @@
           const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
           candidates.push({pointIndex:pi,handle:'anchor',w,radius:HANDLE,d:Math.hypot(x-w.x,y-w.y)});
         }
+        const del = anchorDeleteButtonPos();
+        if(del) candidates.push({pointIndex:activeAnchor,handle:'delete',w:del,radius:HANDLE,d:Math.hypot(x-del.x,y-del.y)});
         const target=candidates.filter(c=>c.d<=(e.pointerType==='mouse' ? c.radius : 22)).sort((a,b)=>a.d-b.d)[0];
+        // The second click of a double-click on the outline lands on the anchor its first click just
+        // inserted: that was meant as the old "double-click leaves Point-Edit", so take the insertion
+        // back (it has its own undo entry) instead of keeping a stray point.
+        const li = lastInsert;
+        lastInsert = null;
+        if(target && target.handle==='anchor' && li && li.idx===pointEditIdx && li.pointIndex===target.pointIndex &&
+           performance.now()-li.at < 400 && undoStack.length){
+          items = JSON.parse(undoStack.pop());
+          pointEditIdx = null; activeAnchor = null;
+          handledPointerUp = true;   // this press is the dblclick's second half -- it must not re-enter Point-Edit
+          save(); updateButtons(); render();
+          return;
+        }
+        if(target && (target.handle==='delete' || (target.handle==='anchor' && e.altKey))){
+          handledPointerUp = true;
+          removeAnchor(pointEditIdx, target.pointIndex);
+          return;
+        }
+        if(!target){
+          // a press on the outline itself (not on an anchor) inserts an anchor there and grabs it
+          const lp = toLocal(pit, x, y), near = nearestOnOutline(pit, lp.x, lp.y);
+          if(near && near.d <= outlineInsertRadius(pit, e.pointerType)){
+            beginHistory();
+            bakeItemRotation(pit);
+            const lp2 = toLocal(pit, x, y), near2 = nearestOnOutline(pit, lp2.x, lp2.y);
+            const pi = insertAnchor(pit, near2.seg, near2.t);
+            const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
+            activeAnchor = pi; insertHover = null;
+            editingAnchor = {idx:pointEditIdx,pointIndex:pi,handle:'anchor',sx:x,sy:y,moved:false,inserted:true,
+              grabX:x-w.x,grabY:y-w.y,startX:x,startY:y,appliedDx:0,appliedDy:0,axisLock:null};
+            render();
+            return;
+          }
+        }
         if(target){
           activeAnchor=target.pointIndex;
           beginHistory();
@@ -2930,10 +3054,37 @@
     render();
   }
 
+  // Mouse hover in Point-Edit: show where a click on the outline would insert an anchor -- not over an
+  // existing anchor, a handle or the delete button, which a click there would hit instead.
+  function updateInsertHover(p, e){
+    let next = null;
+    if(pointEditIdx!=null && e.pointerType==='mouse' && selection.length===1 && selection[0]===pointEditIdx){
+      const it = items[pointEditIdx];
+      const nearAnchor = it.points.some(q=>{ const w = toWorld(it, q.x, q.y); return Math.hypot(p.x-w.x, p.y-w.y) <= HANDLE+2; });
+      const del = anchorDeleteButtonPos();
+      const ap = activeAnchor!=null && it.points[activeAnchor];
+      const nearHandle = ap && ['c1','c2'].some(hk=>{
+        const t = ap[hk] || defaultHandleOffset(it, activeAnchor, hk);
+        if(!t) return false;
+        const w = toWorld(it, t.x, t.y);
+        return Math.hypot(p.x-w.x, p.y-w.y) <= HANDLE_SUB+2;
+      });
+      if(!nearAnchor && !nearHandle && !(del && Math.hypot(p.x-del.x, p.y-del.y) <= HANDLE+2)){
+        const lp = toLocal(it, p.x, p.y), near = nearestOnOutline(it, lp.x, lp.y);
+        if(near && near.d <= outlineInsertRadius(it, 'mouse')) next = toWorld(it, near.x, near.y);
+      }
+    }
+    if((next && insertHover && next.x===insertHover.x && next.y===insertHover.y) || (!next && !insertHover)) return;
+    insertHover = next;
+    render();
+  }
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor) return;
+    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor){
+      updateInsertHover(p, e);
+      return;
+    }
     const {x,y} = p;
 
     if(editingAnchor){
@@ -3174,7 +3325,9 @@
     }
     if(editingAnchor){
       handledPointerUp = true;
-      if(editingAnchor.moved) commitHistory(); else historyBefore=null;
+      if(editingAnchor.moved || editingAnchor.inserted) commitHistory(); else historyBefore=null;
+      lastInsert = editingAnchor.inserted && !editingAnchor.moved
+        ? {idx:editingAnchor.idx, pointIndex:editingAnchor.pointIndex, at:performance.now()} : null;
       editingAnchor=null;
       render();
       return;
@@ -5317,7 +5470,12 @@
     if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); exportProject(); return; }
     if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); pendingFileAction='open'; projectInput.click(); return; }
     if(mod) return;
-    if(e.key==='Delete' || e.key==='Backspace'){ e.preventDefault(); deleteSelected(); return; }
+    if(e.key==='Delete' || e.key==='Backspace'){
+      e.preventDefault();
+      // in Point-Edit with an anchor picked, the key removes that anchor, never the whole shape
+      if(pointEditIdx!=null && activeAnchor!=null){ removeAnchor(pointEditIdx, activeAnchor); return; }
+      deleteSelected(); return;
+    }
     if(e.key===']'){ bringToFront(); return; }
     if(e.key==='['){ sendToBack(); return; }
     // nudge the selection with the arrow keys — 1px, or 10px with Shift. A held-down key auto-repeats
