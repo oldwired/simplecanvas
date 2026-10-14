@@ -1344,6 +1344,213 @@ test('a smart shape with a long reference-template script survives a save/load r
   assert.ok(parsed.survived, `a ${parsed.scriptLength}-character script must survive normalizeScene (a real save/load round-trip), not be silently dropped`);
 }));
 
+// ---------- Iconify icon import ----------
+const SAILBOAT = '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></g>';
+
+test('SVG path parser handles arcs, compact numbers, and closing', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(()=>{
+    const arc = svgPathToSubpaths('M0 0 A10 10 0 0 1 20 0');
+    const a = arc[0].points, last = a[a.length-1];
+    const samples = [];
+    for(let k=0;k<a.length-1;k++){ const p=a[k], q=a[k+1]; for(let t=0;t<=1;t+=0.125)
+      samples.push({x:cubicPoint(p.x,p.c1?p.c1.x:p.x,q.c2?q.c2.x:q.x,q.x,t), y:cubicPoint(p.y,p.c1?p.c1.y:p.y,q.c2?q.c2.y:q.y,q.y,t)}); }
+    const top = samples.reduce((m,p)=>p.y<m.y?p:m);
+    const compact = svgPathToSubpaths('M1.5-.5.5.5l1e1 0a4 4 0 014 4z');
+    const two = svgPathToSubpaths('M0 0h10v10zm20 0h5v5z');
+    return JSON.stringify({last, top, compactFirst: compact[0].points[0], compactSecond: compact[0].points[1],
+      compactClosed: compact[0].closed, twoCount: two.length, secondStart: two[1].points[0], twoClosed: two.map(s=>s.closed)});
+  })()`));
+  assert.ok(Math.abs(r.last.x-20)<1e-6 && Math.abs(r.last.y)<1e-6, 'arc ends exactly at its endpoint');
+  assert.ok(Math.abs(r.top.x-10)<0.5 && Math.abs(r.top.y+10)<0.1, `arc apex near (10,-10), got ${JSON.stringify(r.top)}`);
+  assert.deepEqual([r.compactFirst.x, r.compactFirst.y], [1.5, -0.5]);
+  assert.deepEqual([r.compactSecond.x, r.compactSecond.y], [0.5, 0.5], 'a second pair after M is an implicit L');
+  assert.equal(r.compactClosed, true);
+  assert.equal(r.twoCount, 2);
+  assert.deepEqual([r.secondStart.x, r.secondStart.y], [20, 0], 'relative m after Z starts from the closed subpath start');
+  assert.deepEqual(r.twoClosed, [true, true]);
+}));
+
+test('SVG icon conversion: stroke icon, circle, and rejected features', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(()=>{
+    const boat = svgIconToItems(${JSON.stringify(SAILBOAT)}, {left:0,top:0,width:24,height:24});
+    const circle = svgIconToItems('<circle cx="12" cy="12" r="10" fill="currentColor"/>', {left:0,top:0,width:24,height:24});
+    const rej = [
+      '<path d="M0 0h10v10z" transform="rotate(10)"/>',
+      '<mask id="m"><path d="M0 0h1v1z"/></mask><path d="M0 0h10v10z" mask="url(#m)"/>',
+      '<path fill="url(#g)" d="M0 0h10v10z"/>',
+    ].map(b=>svgIconToItems(b,{left:0,top:0,width:24,height:24}).error || null);
+    // nonzero winding of a flattened item at a point: 0 = unpainted
+    const winding = (it, x, y)=>{ const poly = flattenContour(it.points); let w = 0;
+      for(let k=0; k<poly.length; k++){ const a = poly[k], b = poly[(k+1)%poly.length];
+        if(a.y<=y && b.y>y && (b.x-a.x)*(y-a.y)-(x-a.x)*(b.y-a.y)>0) w++;
+        else if(a.y>y && b.y<=y && (b.x-a.x)*(y-a.y)-(x-a.x)*(b.y-a.y)<0) w--; }
+      return w; };
+    const holes = ['<path fill-rule="evenodd" d="M0 0h24v24H0zM6 6h12v12H6z"/>',   // evenodd: same winding
+                   '<path d="M0 0h24v24H0zM6 6v12h12V6z"/>',                       // nonzero: opposite winding
+                   '<path d="M0 0h24v24H0zM6 6v12h12V6zM10 10h4v4h-4z"/>']         // island inside the hole
+      .map(b=>{ const r = svgIconToItems(b,{left:0,top:0,width:24,height:24}); const it = r.items[0];
+        return {count:r.items.length, center:r.items.map(i=>winding(i,0,0)), ring:winding(it,-50,-50)}; });
+    const duo = svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', {left:0,top:0,width:24,height:24});
+    const thin = svgIconToItems('<path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 2h20"/>', {left:0,top:0,width:24,height:24}).items[0].size;
+    ui.color = '#00ff00';   // the toolbar color must not leak into imported icons
+    const vb = {left:0,top:0,width:24,height:24};
+    const colors = {
+      current: svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      named: svgIconToItems('<path fill="red" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      hex: svgIconToItems('<path fill="#36c" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      absent: svgIconToItems('<path d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      outline: (it=>[it.color, it.fillColor])(svgIconToItems('<path fill="none" stroke="currentColor" d="M2 2h20v20H2z"/>', vb).items[0]),
+    };
+    return JSON.stringify({boat, circle, rej, holes, thin, colors, duo:svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', vb).items.map(i=>i.fillColor), color:ICON_INK});
+  })()`));
+  assert.equal(r.thin, 8, 'a fractional stroke width (1.5 x 5 = 7.5) is rounded to whole pixels');
+  assert.deepEqual(r.holes[0],{count:1, center:[0], ring:r.holes[0].ring});
+  assert.notEqual(r.holes[0].ring, 0, 'evenodd hole: outline painted, center left empty');
+  assert.deepEqual(r.holes[1].center, [0], 'nonzero opposite-winding hole is left empty');
+  assert.equal(r.holes[2].count, 2, 'an island inside a hole becomes its own filled polygon');
+  assert.notEqual(r.holes[2].center[1], 0, 'and the island itself is painted');
+  assert.deepEqual(r.colors, {current:r.color, named:'#ff0000', hex:'#3366cc', absent:'#000000', outline:[r.color, r.color]},
+    'icons keep their own colors (currentColor = preview ink), never the toolbar color');
+  assert.notEqual(r.duo[0], r.color, 'a translucent layer becomes a tint');
+  assert.equal(r.duo[1], r.color, 'an opaque layer keeps the drawing color');
+  assert.ok(r.boat.items, r.boat.error);
+  assert.equal(r.boat.items.length, 3);
+  assert.deepEqual(r.boat.items.map(i=>i.type), ['polygon','polygon','polygon']);
+  assert.deepEqual(r.boat.items.map(i=>i.closed), [true, true, false]);
+  assert.ok(r.boat.items.every(i=>i.strokeOn && !i.fill && i.group==='s1'), 'stroke icon -> grouped outline polygons');
+  assert.ok(Math.abs(r.boat.items[0].size-10)<0.01, 'stroke width 2 scales with the 24 -> 120 viewBox');
+  assert.equal(r.circle.items.length, 1);
+  const c = r.circle.items[0];
+  assert.ok(c.closed && c.fill && !c.strokeOn && c.points.length===4 && c.points.every(p=>p.c1 && p.c2), 'circle -> closed 4-anchor bezier');
+  assert.ok(c.group == null, 'a single item is not grouped');
+  assert.ok(r.rej.every(Boolean), `every unsupported icon is refused: ${JSON.stringify(r.rej)}`);
+}));
+
+async function routeIconify(page){
+  const cors = {'access-control-allow-origin':'*'};
+  await page.route('https://api.iconify.design/**', route => {
+    const url = new URL(route.request().url());
+    if(url.pathname==='/search') return route.fulfill({headers:cors, contentType:'application/json', body:JSON.stringify({
+      icons:['gplset:sailboat','lucide:sailboat','multi:sailboat'], total:3, limit:96, start:0,
+      collections:{
+        lucide:{name:'Lucide', author:{name:'Lucide Contributors', url:'https://github.com/lucide-icons/lucide'},
+          license:{title:'ISC', spdx:'ISC', url:'https://github.com/lucide-icons/lucide/blob/main/LICENSE'}, tags:['Uses Stroke'], palette:false},
+        gplset:{name:'GPL Icons', author:{name:'Someone'}, license:{title:'GPL 3.0', spdx:'GPL-3.0', url:'javascript:alert(1)'}, palette:false},
+        multi:{name:'Colorful', license:{title:'MIT', spdx:'MIT'}, palette:true},
+      }})});
+    if(url.pathname==='/lucide.json') return route.fulfill({headers:cors, contentType:'application/json',
+      body:JSON.stringify({prefix:'lucide', width:24, height:24, icons:{sailboat:{body:SAILBOAT}}})});
+    if(url.pathname.endsWith('.svg')) return route.fulfill({headers:cors, contentType:'image/svg+xml',
+      body:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>'});
+    return route.fulfill({status:404, headers:cors, body:''});
+  });
+}
+
+test('icon dialog filters licenses, imports an icon with its license, and places it as one group', async () => app(async ({page,run}) => {
+  await routeIconify(page);
+  const iconRequests = [];
+  page.on('request', r => { if(r.url().startsWith('https://api.iconify.design/')) iconRequests.push(new URL(r.url()).pathname); });
+  await run('openIconDialog()');
+  await page.fill('#iconSearchInput', 'sailboat');
+  await page.click('#iconSearchBtn');
+  await page.waitForSelector('#iconResults .shape-entry');
+  assert.equal(await page.locator('#iconResults .shape-entry').count(), 1, 'GPL hidden, multicolor dropped');
+  assert.match(await page.textContent('#iconStatus'), /1 more hidden/);
+  await page.uncheck('#iconPermissiveOnly');
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===2);
+  assert.equal(await page.locator('#iconResults .icon-license.restricted').count(), 1);
+  assert.equal(await page.locator('#iconResults [href^="javascript"]').count(), 0, 'non-http license links are not linked');
+  await page.check('#iconPermissiveOnly');
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===1);
+  assert.match(await page.locator('#iconResults .icon-license').first().textContent(), /Lucide/);
+  await page.locator('#iconResults .shape-thumb').first().click();
+  await page.waitForFunction(()=>__test.run('shapeLibrary && shapeLibrary.shapes.length')===1);
+  const lib = JSON.parse(await run(`JSON.stringify({open: iconDialog.open, entry: shapeLibrary.shapes[0],
+    roundTrip: normalizeShapeLibrary(JSON.parse(JSON.stringify(shapeLibrary))).shapes[0].source})`));
+  assert.equal(lib.open, false, 'dialog closes after import');
+  assert.equal(lib.entry.name, 'sailboat');
+  assert.equal(lib.entry.source.license.spdx, 'ISC');
+  assert.equal(lib.entry.source.setName, 'Lucide');
+  assert.deepEqual(lib.roundTrip, lib.entry.source, 'source survives export/import normalization');
+  assert.equal(lib.entry.items.length, 3);
+  await run('openIconDialog()');
+  await page.locator('#iconResults .shape-thumb').first().click();
+  await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
+  assert.equal(await run('shapeLibrary.shapes[1].name'), 'sailboat 2', 'a second import gets a unique name');
+  assert.ok(!iconRequests.some(p=>p.endsWith('.svg')), 'thumbnails are drawn from batched set data, not one request per icon');
+  assert.equal(iconRequests.filter(p=>p==='/lucide.json').length, 1, 'one request per set, reused for both imports');
+  assert.match(await page.locator('#iconResults img').first().getAttribute('src'), /^data:image\/svg\+xml,/);
+  const placed = JSON.parse(await run(`(()=>{ placeShapeAt(shapeLibrary.shapes[0], 400, 300);
+    return JSON.stringify(items.map(i=>({type:i.type, group:i.group}))); })()`));
+  assert.equal(placed.length, 3);
+  assert.ok(placed[0].group!=null && placed.every(i=>i.group===placed[0].group), 'placed icon is one group');
+}));
+
+test('hole bridges get no stroke, everything else strokes as before', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(async ()=>{
+    const it = svgIconToItems('<path fill-rule="evenodd" d="M0 0h24v24H0zM6 6h12v12H6z"/>', {left:0,top:0,width:24,height:24}).items[0];
+    const summary = item=>shapeOps(item).filter(o=>o.kind==='path').map(o=>({stroke:o.style.stroke, fill:o.style.fill,
+      cmds:o.d.map(c=>c[0]).join('')}));
+    const stroked = {...it, strokeOn:true};
+    const moved = clone(stroked); const k = moved.points.findIndex((p,i)=>moved.points.some((q,j)=>j!==i && q.x===p.x && q.y===p.y));
+    moved.points[k] = {...moved.points[k], x:moved.points[k].x+7};
+    const plain = {type:'polygon', points:[{x:0,y:0},{x:100,y:0},{x:50,y:80}], closed:true, color:'#000000', size:4, strokeOn:true, fill:true, fillColor:'#ff0000'};
+    const spike = {...plain, points:[{x:0,y:0},{x:100,y:0},{x:150,y:40},{x:100,y:0},{x:50,y:80}]};
+    const svg = await itemsToSVGMarkup([stroked]);
+    return JSON.stringify({off:summary(it), on:summary(stroked), moved:summary(moved), plain:summary(plain), spike:summary(spike),
+      svgPaths:(svg.match(/<path /g)||[]).length});
+  })()`));
+  assert.equal(r.off.length, 1, 'stroke off: one path, unchanged');
+  assert.equal(r.plain.length, 1, 'an ordinary polygon: one path, unchanged');
+  assert.equal(r.spike.length, 1, 'a drawn spike (A->B directly followed by B->A) keeps its stroke');
+  assert.equal(r.on.length, 2, 'bridged polygon with stroke: fill path + stroke path');
+  assert.equal(r.on[0].stroke, 'none');
+  assert.match(r.on[0].cmds, /Z$/, 'the fill keeps the whole closed contour');
+  assert.equal(r.on[1].fill, 'none');
+  assert.ok(!r.on[1].cmds.includes('Z'), 'the stroke path is open runs');
+  assert.equal((r.on[1].cmds.match(/L/g)||[]).length, 8, 'outline 4 + hole 4 edges stroked, both bridge segments skipped');
+  assert.equal((r.on[1].cmds.match(/M/g)||[]).length, 2, 'two runs: outline and hole');
+  assert.equal(r.moved.length, 1, 'a bridge point moved apart is an ordinary edge again');
+  assert.equal(r.svgPaths, 2, 'SVG export follows the same split');
+}));
+
+test('library footer stays below a grid capped at four rows, and hides in Manage', async () => app(async ({page,run}) => {
+  await run(`shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:Array.from({length:20}, (_,k)=>({name:'s'+k,
+    items:[{type:'rect', x:-20, y:-20, w:40, h:40, color:'#000000', size:2, strokeOn:true, fill:false}]}))}; setShapePicker(true)`);
+  const m = JSON.parse(await run(`(()=>{ const g = shapeGrid.getBoundingClientRect(), f = shapePickerFooter.getBoundingClientRect(),
+    e = shapeGrid.querySelector('.shape-entry').getBoundingClientRect();
+    return JSON.stringify({gridH:g.height, rowH:e.height, scrolls:shapeGrid.scrollHeight>shapeGrid.clientHeight,
+      footerBelow:f.top>=g.bottom, footerVisible:!shapePickerFooter.hidden && f.height>0}); })()`));
+  assert.ok(m.scrolls, 'twenty shapes overflow the grid, which scrolls');
+  assert.ok(m.gridH < 5*m.rowH, `grid shows at most four rows (grid ${m.gridH}px, row ${m.rowH}px)`);
+  assert.ok(m.footerBelow && m.footerVisible, 'footer sits under the grid, outside its scroll area');
+  assert.equal(await run(`shapeGrid.querySelectorAll('.shape-entry').length`), 20, 'the grid holds only shapes, no add tiles');
+  await page.click('#manageShapesBtn');
+  assert.equal(await run('shapePickerFooter.hidden'), true, 'Manage has its own actions; footer is hidden');
+}));
+
+test('icon entry points hide while the browser is offline and return when it reconnects', async () => app(async ({run,context}) => {
+  const visible = ()=>run(`JSON.stringify({btn: !document.getElementById('addIconBtn').hidden,
+    tile: !document.getElementById('addIconFooterBtn').hidden})`).then(JSON.parse);
+  await run('renderShapeLibrary()');
+  assert.deepEqual(await visible(), {btn:true, tile:true});
+  await context.setOffline(true);
+  await run('new Promise(r=>setTimeout(r,50))');
+  assert.deepEqual(await visible(), {btn:false, tile:false});
+  await context.setOffline(false);
+  await run('new Promise(r=>setTimeout(r,50))');
+  assert.deepEqual(await visible(), {btn:true, tile:true});
+}));
+
+test('icon search offline shows a message instead of failing', async () => app(async ({page,run}) => {
+  await page.route('https://api.iconify.design/**', route => route.abort());
+  await run('openIconDialog()');
+  await page.fill('#iconSearchInput', 'anchor');
+  await page.click('#iconSearchBtn');
+  await page.waitForFunction(()=>/connection/.test(document.getElementById('iconStatus').textContent));
+  assert.equal(await page.locator('#iconResults .shape-entry').count(), 0);
+}));
+
 test('the Timer template shows a large "N Minutes left" readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
   const r = JSON.parse(await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
