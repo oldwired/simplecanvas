@@ -142,7 +142,13 @@
   .shape-thumb .preview-placeholder{font-size:22px;color:var(--muted)}
   .shape-library-actions[hidden]{display:none}
   .shape-name{display:block;font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .shape-grid:not(.managing) .shape-name{text-align:center}
+  .shape-grid:not(.managing) .shape-name{text-align:center;line-height:16px}
+  /* at most 4 rows of shapes, then the grid scrolls on its own and the footer below stays in view */
+  .shape-grid:not(.managing){grid-auto-rows:86px;max-height:calc(4 * 86px + 3 * 8px);overflow-y:auto;padding-right:4px}
+  .shape-picker-footer{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+  .shape-picker-footer[hidden],.shape-picker-footer button[hidden]{display:none}
+  .shape-picker-footer button{flex:1;min-width:0;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:8px;font-size:12px;padding:7px 6px}
+  .shape-picker-footer svg{width:16px;height:16px;flex:none}
   .shape-grid.managing{grid-template-columns:1fr}
   .shape-grid.managing .shape-entry{display:grid;grid-template-columns:54px minmax(0,1fr);gap:4px 8px;border-bottom:1px solid var(--line);padding-bottom:8px}
   .shape-grid.managing .shape-thumb{height:54px;grid-row:span 2}
@@ -151,6 +157,7 @@
   .shape-entry-actions button{width:auto;padding:5px;font-size:12px}
   .shape-library-actions button{justify-content:center;border:1px solid var(--line);font-size:12px}
   .shape-library-actions{margin:10px 0}
+  #addIconBtn[hidden]{display:none}
   #shapePickerManage .shape-library-help:last-child{margin-top:10px}
   .shape-picker button:disabled,.menu button:disabled{opacity:.45;cursor:default}
   .library-dialog{width:360px;max-width:calc(100vw - 40px);box-sizing:border-box;border:1px solid var(--line);border-radius:14px;padding:20px;color:var(--ink);box-shadow:0 12px 40px #0002}
@@ -173,6 +180,19 @@
   .library-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .library-dialog-actions button{padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
   .library-dialog-actions .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #iconDialog{width:560px}
+  .icon-search-row{display:flex;gap:8px}
+  .icon-search-row input{flex:1}
+  .icon-search-row button{padding:8px 13px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-size:13px;cursor:pointer}
+  .library-dialog .icon-license-filter{display:flex;align-items:center;gap:6px;margin:10px 0 0;color:var(--muted)}
+  .library-dialog .icon-license-filter input{width:auto;margin:0}
+  .library-dialog .icon-status{color:var(--muted);min-height:18px;margin:8px 0 4px}
+  .icon-grid{grid-template-columns:repeat(4,minmax(0,1fr));max-height:360px;overflow:auto;padding-right:2px}
+  .shape-grid .shape-thumb img{width:100%;height:100%;object-fit:contain;display:block}
+  .icon-license{display:block;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
+  .icon-license:hover{text-decoration:underline}
+  .icon-license.restricted{color:#b45309;font-weight:600}
+  .library-dialog .icon-note{font-size:12px;color:var(--muted);margin:10px 0 0}
   .tab-picker-list{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:auto;margin:10px 0}
   .tab-picker-list button{text-align:left;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
     background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
@@ -437,12 +457,16 @@
         <div class="shape-library-status" id="shapeLibraryStatus" role="status"></div>
         <div class="shape-grid" id="shapeGrid"></div>
         <div class="shape-library-actions" id="generateShapePreviews" hidden><button type="button" id="generateShapePreviewsBtn">Generate missing previews…</button></div>
+        <div class="shape-picker-footer" id="shapePickerFooter">
+          <button type="button" id="addSelectionFooterBtn" title="Add the selected canvas objects to the library"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add selection</button>
+          <button type="button" id="addIconFooterBtn" title="Search Iconify and add an icon to the library"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" stroke-width="1.8"/><path d="m15 15 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add icon</button>
+        </div>
         <div id="shapePickerManage">
           <div class="shape-library-help" id="shapeLibraryHelp">Replace uses the selected canvas objects. Library edits do not change placed shapes.</div>
           <div class="shape-library-actions"><button type="button" id="importLibraryBtn">Import…</button><button type="button" id="exportLibraryBtn">Export library…</button></div>
           <div class="shape-library-help">Library changes last for this visit. Export to keep them; import the file next time.</div>
           <div class="shape-library-help">For automatic import place the exported file next to index.html as shapes-library.json (via FTP).</div>
-          <div class="shape-library-actions"><button type="button" id="newSmartObjectBtn">Add smart shape…</button></div>
+          <div class="shape-library-actions"><button type="button" id="newSmartObjectBtn">Add smart shape…</button><button type="button" id="addIconBtn">Add icon…</button></div>
         </div>
         <input type="file" id="shapeLibraryInput" accept="application/json,.json" style="display:none">
       </div>
@@ -646,6 +670,17 @@
     </div>
     <p class="dialog-error" id="smartObjectDialogError" role="alert"></p>
     <div class="library-dialog-actions"><button type="button" id="smartObjectDialogCancel">Cancel</button><button type="submit" class="primary" id="smartObjectDialogSubmit">Create</button></div>
+  </form>
+</dialog>
+<dialog class="library-dialog" id="iconDialog" aria-labelledby="iconDialogTitle">
+  <form id="iconSearchForm">
+    <h2 id="iconDialogTitle">Add icon</h2>
+    <div class="icon-search-row"><input id="iconSearchInput" type="search" autocomplete="off" placeholder="e.g. sailboat, anchor, flag" aria-label="Search icons"><button type="submit" class="primary" id="iconSearchBtn">Search</button></div>
+    <label class="icon-license-filter"><input type="checkbox" id="iconPermissiveOnly" checked> Only permissive licenses (MIT, Apache, ISC, BSD, CC0)</label>
+    <p class="icon-status" id="iconStatus" role="status"></p>
+    <div class="shape-grid icon-grid" id="iconResults"></div>
+    <p class="icon-note">Icons via <a href="https://iconify.design" target="_blank" rel="noopener">Iconify</a> — each icon set keeps its own license, shown below each icon.</p>
+    <div class="library-dialog-actions"><button type="button" id="iconDialogCancel">Close</button></div>
   </form>
 </dialog>
 <dialog class="library-dialog" id="tabPickerDialog" aria-labelledby="tabPickerTitle">
@@ -2178,6 +2213,24 @@ self.onmessage = function(e){
     }
     return segs;
   }
+  // Indices of zero-width "bridge" segments: a straight A->B whose exact reverse B->A is another straight
+  // segment of the same closed polygon. Imported icons fold each hole into its outline that way
+  // (bridgeHole); the fill needs the bridge, a visible stroke must skip it. Derived from the geometry,
+  // so once a bridge point is moved apart (Point Edit) it is an ordinary edge again.
+  function polyBridgeSegments(segs){
+    const straight = s=>!s.arc && !s.a.c1 && !s.b.c2;
+    const keys = new Map(), bridges = new Set();
+    segs.forEach((s, i)=>{ if(straight(s)) keys.set(s.a.x+','+s.a.y+'>'+s.b.x+','+s.b.y, i); });
+    segs.forEach((s, i)=>{
+      if(!straight(s)) return;
+      const j = keys.get(s.b.x+','+s.b.y+'>'+s.a.x+','+s.a.y);
+      // the two halves of a real bridge always have the hole's whole loop between them; directly
+      // consecutive A->B->A is a drawn spike and keeps its stroke
+      const n = segs.length, adjacent = j===(i+1)%n || i===(j+1)%n;
+      if(j!==undefined && j!==i && !adjacent){ bridges.add(i); bridges.add(j); }
+    });
+    return bridges;
+  }
   // The first noncoincident control determines the limiting endpoint tangent. If the local
   // control coincides with the tip, the next derivative uses the other control, then the other
   // anchor. Skip collapsed segments; an entirely collapsed curve has no arrowhead direction.
@@ -2291,20 +2344,32 @@ self.onmessage = function(e){
         const closed = it.closed !== false;
         const pts = it.points, n = pts.length;
         const segs = polyCurveSegments(it);
-        const d = [['M', pts[0].x, pts[0].y]];
-        for(const s of segs){
-          // s.arc: {cx,cy,r,a1,a2} in this app's own angle convention (0 = top/12 o'clock, positive
-          // = clockwise -- same as Clock/Timer's hand math), NOT canvas/SVG's native 0=3-o'clock
-          // convention -- tracePath()/pathD() below each do the -90deg conversion at their own single
-          // call site, so every OTHER piece of angle math in a script stays in the one convention the
-          // rest of this app already uses.
-          if(s.arc) d.push(['A', s.arc.cx, s.arc.cy, s.arc.r, s.arc.a1, s.arc.a2]);
-          else if(s.a.c1 || s.b.c2) d.push(['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]);
-          else d.push(['L', s.b.x, s.b.y]);
-        }
+        // s.arc: {cx,cy,r,a1,a2} in this app's own angle convention (0 = top/12 o'clock, positive
+        // = clockwise -- same as Clock/Timer's hand math), NOT canvas/SVG's native 0=3-o'clock
+        // convention -- tracePath()/pathD() below each do the -90deg conversion at their own single
+        // call site, so every OTHER piece of angle math in a script stays in the one convention the
+        // rest of this app already uses.
+        const segCmd = s=>s.arc ? ['A', s.arc.cx, s.arc.cy, s.arc.r, s.arc.a1, s.arc.a2]
+          : (s.a.c1 || s.b.c2) ? ['C', s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.b.x, s.b.y]
+          : ['L', s.b.x, s.b.y];
+        const d = [['M', pts[0].x, pts[0].y], ...segs.map(segCmd)];
         if(closed) d.push(['Z']);
         const style = { fill:closed ? fillOf(it) : 'none', stroke:strokeOf(it), width:it.size, cap:'round', join:'round', dash:dashOf(it) };
-        ops.push({ kind:'path', d, style });
+        const bridges = closed && style.stroke!=='none' ? polyBridgeSegments(segs) : new Set();
+        if(!bridges.size) ops.push({ kind:'path', d, style });
+        else{
+          // fill the whole contour, but stroke only the real edges: each run of non-bridge segments is
+          // its own subpath, starting right after a bridge so a run never wraps across the start point
+          ops.push({ kind:'path', d, style:{...style, stroke:'none'} });
+          const first = Math.min(...bridges), sd = [];
+          for(let k=1; k<=segs.length; k++){
+            const i = (first+k) % segs.length;
+            if(bridges.has(i)) continue;
+            if(bridges.has((i-1+segs.length) % segs.length)) sd.push(['M', segs[i].a.x, segs[i].a.y]);
+            sd.push(segCmd(segs[i]));
+          }
+          if(sd.length) ops.push({ kind:'path', d:sd, style:{...style, fill:'none'} });
+        }
         // Both renderers use the actual endpoint tangent, including degenerate controls.
         if(!closed && n>=2){
           if(it.he){
@@ -3003,6 +3068,311 @@ self.onmessage = function(e){
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
       default: it.x=norm(it.x+dx); it.y=norm(it.y+dy);
     }
+  }
+
+  // ---------- SVG icon -> native polygons (Iconify import) ----------
+  // Parses one SVG path `d` into subpaths of this app's own polygon point format: {x,y,c1?,c2?},
+  // where a segment a->b uses a.c1 (outgoing) and b.c2 (incoming) -- see polyCurveSegments.
+  // Quadratics and elliptical arcs are converted to cubics (arcTo can't be used: it's circular-only
+  // and normalizeItem strips it anyway). Throws on malformed input.
+  function svgPathToSubpaths(d){
+    const NUM = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/y;
+    let i = 0;
+    const skip = ()=>{ while(i<d.length && /[\s,]/.test(d[i])) i++; };
+    const num = ()=>{ skip(); NUM.lastIndex = i; const m = NUM.exec(d); if(!m) throw new Error('bad number'); i = NUM.lastIndex; return +m[0]; };
+    // arc flags are single characters and may be written with no separator ("a4 4 0 014 4")
+    const flag = ()=>{ skip(); const c = d[i]; if(c!=='0' && c!=='1') throw new Error('bad arc flag'); i++; return c==='1'; };
+    const subs = [];
+    let cur = null, x = 0, y = 0, sx = 0, sy = 0, prev = '', lastC = null, lastQ = null;
+    const start = (px,py)=>{ cur = {points:[{x:px,y:py}], closed:false}; subs.push(cur); x = sx = px; y = sy = py; };
+    const ensure = ()=>{ if(!cur) throw new Error('path must start with M'); if(cur.closed) start(sx, sy); };
+    const line = (px,py)=>{ ensure(); cur.points.push({x:px,y:py}); x = px; y = py; };
+    const cubic = (x1,y1,x2,y2,px,py)=>{
+      ensure(); cur.points[cur.points.length-1].c1 = {x:x1,y:y1};
+      cur.points.push({x:px, y:py, c2:{x:x2,y:y2}}); x = px; y = py;
+    };
+    while(true){
+      skip();
+      if(i>=d.length) break;
+      let cmd = d[i];
+      if(/[MmLlHhVvCcSsQqTtAaZz]/.test(cmd)) i++;
+      else if(prev && prev!=='Z' && prev!=='z') cmd = prev==='M' ? 'L' : prev==='m' ? 'l' : prev;   // implicit repeat
+      else throw new Error('unexpected '+cmd);
+      const rel = cmd===cmd.toLowerCase(), C = cmd.toUpperCase();
+      const ox = rel ? x : 0, oy = rel ? y : 0;
+      if(C==='Z'){
+        if(cur && !cur.closed){
+          const pts = cur.points, a = pts[0], b = pts[pts.length-1];
+          if(pts.length>1 && Math.abs(a.x-b.x)<1e-6 && Math.abs(a.y-b.y)<1e-6){ if(b.c2) a.c2 = b.c2; pts.pop(); }
+          cur.closed = true;
+        }
+        x = sx; y = sy; lastC = lastQ = null; prev = cmd;
+        continue;
+      }
+      if(C==='M'){ start(ox+num(), oy+num()); }
+      else if(C==='L'){ line(ox+num(), oy+num()); }
+      else if(C==='H'){ line((rel?x:0)+num(), y); }
+      else if(C==='V'){ line(x, (rel?y:0)+num()); }
+      else if(C==='C'){
+        const x1=ox+num(), y1=oy+num(), x2=ox+num(), y2=oy+num(), px=ox+num(), py=oy+num();
+        cubic(x1,y1,x2,y2,px,py); lastC = {x:x2,y:y2};
+      } else if(C==='S'){
+        const r = lastC && /[CcSs]/.test(prev) ? {x:2*x-lastC.x, y:2*y-lastC.y} : {x,y};
+        const x2=ox+num(), y2=oy+num(), px=ox+num(), py=oy+num();
+        cubic(r.x,r.y,x2,y2,px,py); lastC = {x:x2,y:y2};
+      } else if(C==='Q' || C==='T'){
+        let qx, qy;
+        if(C==='Q'){ qx = ox+num(); qy = oy+num(); }
+        else { const r = lastQ && /[QqTt]/.test(prev) ? {x:2*x-lastQ.x, y:2*y-lastQ.y} : {x,y}; qx = r.x; qy = r.y; }
+        const px = ox+num(), py = oy+num();
+        cubic(x+2/3*(qx-x), y+2/3*(qy-y), px+2/3*(qx-px), py+2/3*(qy-py), px, py); lastQ = {x:qx,y:qy};
+      } else if(C==='A'){
+        const rx = num(), ry = num(), rot = num(), fa = flag(), fs = flag(), px = ox+num(), py = oy+num();
+        const segs = svgArcToCubics(x, y, rx, ry, rot, fa, fs, px, py);
+        if(segs) for(const s of segs) cubic(...s); else line(px, py);
+      }
+      if(C!=='C' && C!=='S') lastC = null;
+      if(C!=='Q' && C!=='T') lastQ = null;
+      prev = cmd;
+    }
+    return subs;
+  }
+  // SVG endpoint arc -> cubic segments [x1,y1,x2,y2,x,y], each spanning at most 90 degrees
+  // (SVG spec F.6.5 center conversion). Returns null for a degenerate arc that's just a line.
+  function svgArcToCubics(x1, y1, rx, ry, rotDeg, large, sweep, x2, y2){
+    if(x1===x2 && y1===y2) return [];
+    rx = Math.abs(rx); ry = Math.abs(ry);
+    if(!rx || !ry) return null;
+    const phi = rotDeg*Math.PI/180, cos = Math.cos(phi), sin = Math.sin(phi);
+    const dx = (x1-x2)/2, dy = (y1-y2)/2;
+    const x1p = cos*dx + sin*dy, y1p = -sin*dx + cos*dy;
+    const lam = x1p*x1p/(rx*rx) + y1p*y1p/(ry*ry);
+    if(lam>1){ const s = Math.sqrt(lam); rx *= s; ry *= s; }
+    const rx2 = rx*rx, ry2 = ry*ry;
+    const den = rx2*y1p*y1p + ry2*x1p*x1p;
+    let coef = den ? Math.sqrt(Math.max(0, (rx2*ry2 - den)/den)) : 0;
+    if(large===sweep) coef = -coef;
+    const cxp = coef*rx*y1p/ry, cyp = -coef*ry*x1p/rx;
+    const cx = cos*cxp - sin*cyp + (x1+x2)/2, cy = sin*cxp + cos*cyp + (y1+y2)/2;
+    const angle = (ux,uy,vx,vy)=>Math.atan2(ux*vy - uy*vx, ux*vx + uy*vy);
+    const ux = (x1p-cxp)/rx, uy = (y1p-cyp)/ry, vx = (-x1p-cxp)/rx, vy = (-y1p-cyp)/ry;
+    const t1 = angle(1, 0, ux, uy);
+    let dt = angle(ux, uy, vx, vy);
+    if(!sweep && dt>0) dt -= 2*Math.PI; else if(sweep && dt<0) dt += 2*Math.PI;
+    const n = Math.max(1, Math.ceil(Math.abs(dt)/(Math.PI/2) - 1e-9)), step = dt/n;
+    const k = 4/3*Math.tan(step/4);
+    const at = t=>({ x: cx + cos*rx*Math.cos(t) - sin*ry*Math.sin(t), y: cy + sin*rx*Math.cos(t) + cos*ry*Math.sin(t) });
+    const tangent = t=>({ x: -cos*rx*Math.sin(t) - sin*ry*Math.cos(t), y: -sin*rx*Math.sin(t) + cos*ry*Math.cos(t) });
+    const out = [];
+    for(let s=0, t=t1; s<n; s++, t+=step){
+      const p0 = at(t), p3 = at(t+step), d0 = tangent(t), d3 = tangent(t+step);
+      out.push([p0.x + k*d0.x, p0.y + k*d0.y, p3.x - k*d3.x, p3.y - k*d3.y, p3.x, p3.y]);
+    }
+    out[out.length-1][4] = x2; out[out.length-1][5] = y2;   // land exactly on the requested endpoint
+    return out;
+  }
+  // Signed area of a subpath's anchor polygon -- only its sign (winding direction) is used, to tell a
+  // cut-out hole from an ordinary nested filled shape.
+  function subpathArea(pts){
+    let a = 0;
+    for(let k=0; k<pts.length; k++){ const p = pts[k], q = pts[(k+1)%pts.length]; a += p.x*q.y - q.x*p.y; }
+    return a/2;
+  }
+  function subpathBox(pts){
+    const xs = [], ys = [];
+    for(const p of pts){ for(const c of [p, p.c1, p.c2]) if(c){ xs.push(c.x); ys.push(c.y); } }
+    return {x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys)};
+  }
+  // A closed contour sampled into a plain polyline (curves included), for area and containment tests.
+  function flattenContour(pts){
+    const out = [];
+    for(let k=0; k<pts.length; k++){
+      const p = pts[k], q = pts[(k+1)%pts.length];
+      if(!p.c1 && !q.c2){ out.push({x:p.x, y:p.y}); continue; }
+      const a = p.c1||p, b = q.c2||q;
+      for(let t=0; t<1; t+=0.125) out.push({x:cubicPoint(p.x,a.x,b.x,q.x,t), y:cubicPoint(p.y,a.y,b.y,q.y,t)});
+    }
+    return out;
+  }
+  function pointInPolyline(x, y, poly){
+    let inside = false;
+    for(let k=0, j=poly.length-1; k<poly.length; j=k++){
+      const a = poly[k], b = poly[j];
+      if((a.y>y)!==(b.y>y) && x < (b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x) inside = !inside;
+    }
+    return inside;
+  }
+  // Classifies one SVG element's filled contours the way its fill rule paints them: each contour gets the
+  // smallest contour enclosing it as its parent, and is `solid` (paints its inside) or not -- evenodd by
+  // nesting depth, nonzero by the summed winding. A non-solid contour directly inside a solid one is
+  // that solid contour's hole. Returned largest first, so islands inside holes paint on top.
+  function svgContourTree(subs, evenodd){
+    const cs = subs.map(s=>{ const poly = flattenContour(s.points); return {s, poly, area:subpathArea(poly), box:subpathBox(poly), holes:[]}; })
+      .sort((a,b)=>Math.abs(b.area)-Math.abs(a.area));
+    cs.forEach((c, k)=>{
+      let parent = null;
+      for(let j=k-1; j>=0; j--){   // walk from the smallest larger contour outward
+        const P = cs[j];
+        if(c.box.x0>=P.box.x0 && c.box.y0>=P.box.y0 && c.box.x1<=P.box.x1 && c.box.y1<=P.box.y1 &&
+           pointInPolyline(c.poly[0].x, c.poly[0].y, P.poly) && (!parent || Math.abs(P.area)<Math.abs(parent.area))) parent = P;
+      }
+      c.parent = parent;
+      c.depth = parent ? parent.depth+1 : 0;
+      c.winding = (parent ? parent.winding : 0) + Math.sign(c.area);
+      c.solid = evenodd ? c.depth%2===0 : c.winding!==0;
+      if(!c.solid && parent && parent.solid) parent.holes.push(c);
+    });
+    return cs;
+  }
+  // Folds a hole into its outline as one contour: outline -> zero-width bridge -> around the hole ->
+  // back along the same bridge -> rest of the outline. The hole must wind against the outline so the
+  // app's nonzero fill leaves it empty, hence `sameWinding` reverses it first. Bridges are straight
+  // (the points at both ends drop the control handle facing the bridge).
+  function bridgeHole(outer, hole, sameWinding){
+    const strip = p=>{ const q = {x:p.x, y:p.y}; if(p.c1) q.c1 = {...p.c1}; if(p.c2) q.c2 = {...p.c2}; return q; };
+    let h = hole.map(strip);
+    if(sameWinding) h = h.reverse().map(p=>{ const q = {x:p.x, y:p.y}; if(p.c2) q.c1 = p.c2; if(p.c1) q.c2 = p.c1; return q; });
+    let bi = 0, bj = 0, best = Infinity;
+    for(let i=0; i<outer.length; i++) for(let j=0; j<h.length; j++){
+      const d = (outer[i].x-h[j].x)**2 + (outer[i].y-h[j].y)**2;
+      if(d<best){ best = d; bi = i; bj = j; }
+    }
+    const o = outer.map(strip);
+    const oIn = o[bi], oOut = strip(o[bi]); delete oIn.c1; delete oOut.c2;
+    const ring = h.slice(bj).concat(h.slice(0, bj));
+    const hIn = ring[0], hOut = strip(ring[0]); delete hIn.c2; delete hOut.c1;
+    return [...o.slice(0, bi), oIn, ...ring, hOut, oOut, ...o.slice(bi+1)];
+  }
+  function opacityOf(v){
+    const n = parseFloat(v);
+    return v==null || !Number.isFinite(n) ? 1 : Math.max(0, Math.min(1, n));
+  }
+  function tintTowardWhite(hex, alpha){
+    const m = /^#([0-9a-f]{6})$/i.exec(hex);
+    if(!m || alpha>=1) return hex;
+    const n = parseInt(m[1], 16);
+    return '#' + [16, 8, 0].map(s=>Math.round(((n>>s)&255)*alpha + 255*(1-alpha)).toString(16).padStart(2,'0')).join('');
+  }
+  const ICON_TARGET_SIZE = 120;
+  const ICON_INK = '#1f2937';   // what a monochrome icon's currentColor becomes, in previews and on import
+  const iconColorProbe = document.createElement('canvas').getContext('2d');
+  // Converts an icon's SVG body (Iconify's `body`, i.e. the content inside <svg>) into native polygon
+  // items, grouped if more than one, scaled so the longer viewBox side is ICON_TARGET_SIZE and centered
+  // on (0,0) like a Shape Library template. Returns {items} or {error}. Holes are folded into their
+  // outline (bridgeHole) and translucent layers become tints; masks, gradients and transforms are refused
+  // instead of drawn wrong.
+  function svgIconToItems(body, vb){
+    const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">'+body+'</svg>', 'image/svg+xml');
+    if(doc.querySelector('parsererror')) return {error:'This icon could not be read.'};
+    const SHAPES = new Set(['path','circle','ellipse','rect','line','polyline','polygon']);
+    const IGNORE = new Set(['title','desc','metadata']);
+    const elems = [];
+    const visit = (node, inherited)=>{
+      for(const el of node.children){
+        const tag = el.localName;
+        if(IGNORE.has(tag)) continue;
+        if(tag!=='g' && !SHAPES.has(tag)) throw new Error('unsupported');
+        if(el.hasAttribute('transform') || el.hasAttribute('mask') || el.hasAttribute('clip-path') || el.hasAttribute('filter') || el.hasAttribute('style')) throw new Error('unsupported');
+        const st = {...inherited};
+        for(const a of ['fill','stroke','stroke-width','fill-rule','opacity','fill-opacity','stroke-opacity']) if(el.hasAttribute(a)) st[a] = el.getAttribute(a).trim();
+        if(el.hasAttribute('opacity')) st.alpha = (inherited.alpha==null ? 1 : inherited.alpha) * opacityOf(el.getAttribute('opacity'));
+        for(const a of ['fill','stroke']) if(st[a] && /url\(/i.test(st[a])) throw new Error('unsupported');   // gradients/patterns
+        if(tag==='g') visit(el, st); else elems.push({el, tag, st});
+      }
+    };
+    try{ visit(doc.documentElement, {}); }
+    catch(e){ return {error:'This icon uses SVG features SimpleCanvas can\'t reproduce (masks, gradients or transforms).'}; }
+    const g = (el,a)=>parseFloat(el.getAttribute(a)) || 0;
+    const ellipseD = (cx,cy,rx,ry)=>`M${cx-rx} ${cy}A${rx} ${ry} 0 1 0 ${cx+rx} ${cy}A${rx} ${ry} 0 1 0 ${cx-rx} ${cy}Z`;
+    const pointsD = (el, close)=>{
+      const n = (el.getAttribute('points')||'').trim().split(/[\s,]+/).map(Number);
+      if(n.length<4 || n.some(v=>!Number.isFinite(v))) throw new Error('bad points');
+      let s = 'M'+n[0]+' '+n[1];
+      for(let k=2; k+1<n.length; k+=2) s += 'L'+n[k]+' '+n[k+1];
+      return close ? s+'Z' : s;
+    };
+    // The icon keeps the colors its library preview shows, independent of the toolbar's current color:
+    // currentColor -> ICON_INK (what the preview renders it with), explicit colors as written.
+    const paint = v=>{
+      if(v==null || /^currentcolor$/i.test(v)) return ICON_INK;
+      iconColorProbe.fillStyle = '#000000';
+      iconColorProbe.fillStyle = v;   // the browser parses names/rgb()/#rgb; invalid input leaves black
+      const c = iconColorProbe.fillStyle;
+      return /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : ICON_INK;
+    };
+    const scale = ICON_TARGET_SIZE / Math.max(vb.width, vb.height);
+    const list = [];
+    try{
+      for(const {el, tag, st} of elems){
+        let d;
+        if(tag==='path') d = el.getAttribute('d') || '';
+        else if(tag==='circle') d = ellipseD(g(el,'cx'), g(el,'cy'), g(el,'r'), g(el,'r'));
+        else if(tag==='ellipse') d = ellipseD(g(el,'cx'), g(el,'cy'), g(el,'rx'), g(el,'ry'));
+        else if(tag==='line') d = `M${g(el,'x1')} ${g(el,'y1')}L${g(el,'x2')} ${g(el,'y2')}`;
+        else if(tag==='polyline') d = pointsD(el, false);
+        else if(tag==='polygon') d = pointsD(el, true);
+        else if(tag==='rect'){
+          const x = g(el,'x'), y = g(el,'y'), w = g(el,'width'), h = g(el,'height');
+          let rx = el.hasAttribute('rx') ? g(el,'rx') : g(el,'ry'), ry = el.hasAttribute('ry') ? g(el,'ry') : rx;
+          rx = Math.min(rx, w/2); ry = Math.min(ry, h/2);
+          d = rx>0 && ry>0
+            ? `M${x+rx} ${y}H${x+w-rx}A${rx} ${ry} 0 0 1 ${x+w} ${y+ry}V${y+h-ry}A${rx} ${ry} 0 0 1 ${x+w-rx} ${y+h}H${x+rx}A${rx} ${ry} 0 0 1 ${x} ${y+h-ry}V${y+ry}A${rx} ${ry} 0 0 1 ${x+rx} ${y}Z`
+            : `M${x} ${y}H${x+w}V${y+h}H${x}Z`;
+        }
+        const subs = svgPathToSubpaths(d).filter(s=>s.points.length>1);
+        // Translucent layers (duotone icons) become a lighter tint of the same color -- polygons have no
+        // opacity of their own, and on the usual white canvas the tint looks the same.
+        const alpha = st.alpha==null ? 1 : st.alpha;
+        const fillAlpha = alpha * opacityOf(st['fill-opacity']), strokeAlpha = alpha * opacityOf(st['stroke-opacity']);
+        const filled = (st.fill==null ? 'currentColor' : st.fill) !== 'none' && fillAlpha>0.02;   // SVG's default fill is black
+        const stroked = st.stroke!=null && st.stroke!=='none' && strokeAlpha>0.02;
+        if(!filled && !stroked) continue;
+        // SVG's default fill (attribute absent) is black; a stroke only exists when set explicitly
+        // (an unfilled outline icon still gets its stroke color as fillColor, for when fill is switched on)
+        const fillBase = st.fill==null ? '#000000' : paint(st.fill), strokeBase = stroked ? paint(st.stroke) : fillBase;
+        const fillColor = tintTowardWhite(filled ? fillBase : strokeBase, filled ? fillAlpha : 1);
+        const strokeColor = tintTowardWhite(strokeBase, stroked ? strokeAlpha : fillAlpha);
+        const sw = st['stroke-width']!=null ? parseFloat(st['stroke-width']) : 1;
+        // whole pixels, like every width the toolbar can set
+        const size = Math.min(60, Math.max(1, Math.round((Number.isFinite(sw) ? sw : 1)*scale)));
+        const tf = p=>({ x:norm((p.x-vb.left)*scale), y:norm((p.y-vb.top)*scale) });
+        const out = (points, closed, strokeOn, fill)=>list.push({ type:'polygon', points:points.map(p=>{
+          const q = tf(p);
+          if(p.c1) q.c1 = tf(p.c1);
+          if(p.c2) q.c2 = tf(p.c2);
+          return q;
+        }), closed, color:strokeColor, size, strokeOn, fill, fillColor });
+        // a 2-point subpath can't enclose an area -- it can only survive as a plain stroke
+        if(stroked) for(const s of subs) if(s.points.length<3 || !filled) out(s.points, s.closed && s.points.length>=3, true, false);
+        if(!filled) continue;
+        // Filled contours: work out which ones are holes (by the element's fill rule) and fold each hole
+        // into the solid contour around it -- see svgContourTree / bridgeHole.
+        for(const c of svgContourTree(subs.filter(s=>s.points.length>=3), st['fill-rule']==='evenodd')){
+          if(!c.solid){   // holes get their stroke from their outline below; a stray unpainted contour keeps its own
+            if(stroked && !(c.parent && c.parent.solid)) out(c.s.points, true, true, false);
+            continue;
+          }
+          let points = c.s.points;
+          for(const h of c.holes) points = bridgeHole(points, h.s.points, Math.sign(c.area)===Math.sign(h.area));
+          if(!stroked || !c.holes.length){ out(points, true, stroked, true); continue; }
+          // a bridged outline would show its bridges if stroked: fill it bare, stroke the real contours on top
+          out(points, true, false, true);
+          for(const k of [c, ...c.holes]) out(k.s.points, true, true, false);
+        }
+      }
+    }catch(e){ return {error:'This icon could not be converted.'}; }
+    if(!list.length) return {error:'This icon has no drawable shapes.'};
+    if(list.length>MAX_ITEMS) return {error:'This icon is too complex.'};
+    const items = list.map(r=>normalizeItem(r, {}));
+    if(items.some(it=>!it)) return {error:'This icon could not be converted.'};
+    const box = unionBoxOf(items, false);
+    if(!Number.isFinite(box.x+box.y+box.w+box.h) || (box.w<=0 && box.h<=0)) return {error:'This icon has no drawable shapes.'};   // a lone straight line is fine
+    for(const it of items){
+      translateItem(it, -(box.x+box.w/2), -(box.y+box.h/2));
+      delete it.uid;
+      if(items.length>1){ it.group = 's1'; it.groupRotation = 0; }
+    }
+    return {items};
   }
 
   // ---------- Point Edit (convert a shape into an editable bezier curve) ----------
@@ -6693,6 +7063,184 @@ self.onmessage = function(e){
     if(file) importShapeLibraryFile(file);
   });
 
+  // ---------- icon import dialog (Iconify) ----------
+  // Iconify's public API sends Access-Control-Allow-Origin:* and needs no key, so this works straight
+  // from the browser with no backend. Everything coming back is external data: icon/set ids are
+  // restricted to Iconify's own naming charset before being used in URLs, all text goes in via
+  // textContent, and link targets go through the same http(s)-only check as normalizeShapeSource.
+  const ICONIFY_API = 'https://api.iconify.design';
+  const PERMISSIVE_LICENSES = new Set(['MIT','Apache-2.0','ISC','CC0-1.0','BSD-2-Clause','BSD-3-Clause','Unlicense']);
+  const ICON_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  const iconDialog = document.getElementById('iconDialog');
+  const iconSearchInput = document.getElementById('iconSearchInput');
+  const iconPermissiveOnly = document.getElementById('iconPermissiveOnly');
+  const iconStatus = document.getElementById('iconStatus');
+  const iconResults = document.getElementById('iconResults');
+  let iconSearchSeq = 0, iconLastSearch = null;
+  function openIconDialog(){
+    iconStatus.textContent = iconLastSearch ? iconStatus.textContent : 'Search the open Iconify collections by keyword (English works best).';
+    iconDialog.showModal();
+    iconSearchInput.focus(); iconSearchInput.select();
+  }
+  document.getElementById('addIconBtn').addEventListener('click', openIconDialog);
+  document.getElementById('iconDialogCancel').addEventListener('click', ()=>iconDialog.close());
+  iconDialog.addEventListener('click', e=>e.stopPropagation());
+  iconDialog.addEventListener('keydown', e=>e.stopPropagation());
+  iconPermissiveOnly.addEventListener('change', ()=>{ if(iconLastSearch) renderIconResults(iconLastSearch); });
+  document.getElementById('iconSearchForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const q = iconSearchInput.value.trim();
+    if(!q) return;
+    const request = ++iconSearchSeq;
+    iconStatus.textContent = 'Searching…';
+    let data;
+    try{
+      const res = await fetch(ICONIFY_API+'/search?query='+encodeURIComponent(q)+'&limit=96');
+      if(!res.ok) throw new Error(res.status===429 ? 'busy' : 'HTTP '+res.status);
+      data = await res.json();
+    }catch(err){
+      if(request===iconSearchSeq){ iconResults.innerHTML = ''; iconLastSearch = null;
+        iconStatus.textContent = err.message==='busy' ? 'Iconify is limiting requests right now — wait a minute and try again.'
+                                                      : 'Couldn\'t reach Iconify — check your connection.'; }
+      return;
+    }
+    if(request!==iconSearchSeq) return;   // a newer search is already on its way
+    iconLastSearch = data;
+    renderIconResults(data);
+  });
+  // Icon bodies by 'set:name' (null = the set doesn't have it). Fetched one request per icon SET, not
+  // per icon: Iconify rate-limits per IP, and ~90 separate thumbnail requests per search trip that limit
+  // quickly. The same bodies draw the thumbnails and are reused on import, so a click needs no request.
+  const iconBodies = new Map();
+  function iconFromSetData(data, name){
+    const icons = data && data.icons && typeof data.icons==='object' ? data.icons : {};
+    let icon = icons[name];
+    const alias = data && data.aliases && data.aliases[name];
+    if(!icon && alias && typeof alias.parent==='string') icon = icons[alias.parent];
+    if(!icon || typeof icon.body!=='string') return null;
+    const pick = (k, dflt)=>Number.isFinite(icon[k]) ? icon[k] : Number.isFinite(data[k]) ? data[k] : dflt;
+    const vb = {left:pick('left',0), top:pick('top',0), width:pick('width',16), height:pick('height',16)};
+    return vb.width>0 && vb.height>0 ? {body:icon.body, vb} : null;
+  }
+  async function loadIconBodies(list){
+    const bySet = new Map();
+    for(const {set, name} of list){
+      if(iconBodies.has(set+':'+name)) continue;
+      if(!bySet.has(set)) bySet.set(set, []);
+      bySet.get(set).push(name);
+    }
+    await Promise.all([...bySet].map(async ([set, names])=>{
+      try{
+        const res = await fetch(ICONIFY_API+'/'+set+'.json?icons='+names.map(encodeURIComponent).join(','));
+        if(!res.ok) return;   // not cached: a later search or click retries
+        const data = await res.json();
+        for(const n of names) iconBodies.set(set+':'+n, iconFromSetData(data, n));
+      }catch(err){}
+    }));
+  }
+  // The thumbnail is an <img> of a data: URL, so the icon's SVG can never run script in this page.
+  function iconThumbURL(ic){
+    const {left, top, width, height} = ic.vb;
+    return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+
+      [left, top, width, height].join(' ')+'" style="color:'+ICON_INK+'">'+ic.body+'</svg>');
+  }
+  function iconLicenseOf(col){
+    const lic = col && col.license && typeof col.license==='object' ? col.license : {};
+    const spdx = typeof lic.spdx==='string' ? lic.spdx : '';
+    return { title: typeof lic.title==='string' ? lic.title : (spdx || 'unknown license'), spdx,
+             url: typeof lic.url==='string' && /^https?:\/\//i.test(lic.url) ? lic.url : '',
+             permissive: PERMISSIVE_LICENSES.has(spdx) };
+  }
+  async function renderIconResults(data){
+    const cols = data && data.collections && typeof data.collections==='object' ? data.collections : {};
+    const found = [];
+    let hidden = 0;
+    for(const full of Array.isArray(data && data.icons) ? data.icons : []){
+      if(typeof full!=='string') continue;
+      const [set, name] = full.split(':');
+      const col = cols[set];
+      if(!col || !ICON_ID.test(set||'') || !ICON_ID.test(name||'')) continue;
+      if(col.palette) continue;   // multicolor sets -- this app draws each shape in a single color
+      const lic = iconLicenseOf(col);
+      if(iconPermissiveOnly.checked && !lic.permissive){ hidden++; continue; }
+      found.push({set, name, col, lic});
+    }
+    const request = ++iconSearchSeq;
+    iconStatus.textContent = 'Loading previews…';
+    await loadIconBodies(found);
+    if(request!==iconSearchSeq) return;
+    iconResults.innerHTML = '';
+    for(const ic of found){
+      const setName = typeof ic.col.name==='string' ? ic.col.name : ic.set;
+      const entry = document.createElement('div');
+      entry.className = 'shape-entry';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'shape-thumb';
+      b.title = 'Add "'+ic.name+'" to the library\n'+setName+' · '+ic.lic.title;
+      const body = iconBodies.get(ic.set+':'+ic.name);
+      if(body){
+        const img = document.createElement('img');
+        img.src = iconThumbURL(body); img.alt = ic.name;
+        b.appendChild(img);
+      }else b.textContent = '?';   // preview didn't load; a click still tries to fetch the icon
+      b.addEventListener('click', ()=>importIconToLibrary(ic.set, ic.name, ic.col));
+      const label = document.createElement('span');
+      label.className = 'shape-name'; label.textContent = ic.name; label.title = ic.name;
+      const lic = document.createElement(ic.lic.url ? 'a' : 'span');
+      lic.className = 'icon-license' + (ic.lic.permissive ? '' : ' restricted');
+      lic.textContent = (ic.lic.permissive ? '' : '! ') + setName + ' · ' + (ic.lic.spdx || ic.lic.title);
+      lic.title = setName + ' — ' + ic.lic.title + (ic.lic.permissive ? '' : ' (check the license terms before use)');
+      if(ic.lic.url){ lic.href = ic.lic.url; lic.target = '_blank'; lic.rel = 'noopener'; }
+      entry.append(b, label, lic);
+      iconResults.appendChild(entry);
+    }
+    const more = hidden ? ' (' + hidden + ' more hidden by the license filter)' : '';
+    iconStatus.textContent = found.length ? found.length + ' icon' + (found.length===1?'':'s') + more + ' — click one to add it to the library.'
+                                          : 'No icons found' + more + '.';
+  }
+  async function importIconToLibrary(set, name, col){
+    const request = ++iconSearchSeq;   // also supersedes any search still in flight
+    iconStatus.textContent = 'Adding "'+name+'"…';
+    const key = set+':'+name;
+    if(!iconBodies.has(key)) await loadIconBodies([{set, name}]);
+    if(request!==iconSearchSeq) return;
+    if(!iconBodies.has(key)){ iconStatus.textContent = 'Couldn\'t reach Iconify — check your connection, or wait a minute and try again.'; return; }
+    const icon = iconBodies.get(key);
+    if(!icon){ iconStatus.textContent = 'That icon could not be loaded.'; return; }
+    const result = svgIconToItems(icon.body, icon.vb);
+    if(!result.items){ iconStatus.textContent = result.error; return; }
+    let shapeName = name, n = 2;
+    while(validateShapeName(shapeName)) shapeName = name + ' ' + (n++);
+    const lic = iconLicenseOf(col);
+    const author = col && col.author && typeof col.author==='object' ? col.author : {};
+    const source = normalizeShapeSource({provider:'iconify', set, icon:name, setName:col && col.name,
+      license:{title:lic.title, spdx:lic.spdx, url:lic.url}, author:{name:author.name, url:author.url}});
+    if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
+    shapeLibrary.shapes.push({name:shapeName, savedAt:new Date().toISOString(), ...(source ? {source} : {}), items:result.items});
+    shapeLibraryChanged();
+    iconDialog.close();
+    managingShapes = false;
+    setShapePicker(true);
+    toast('Added "'+shapeName+'" to the library — export to keep it');
+  }
+
+  // Where a library shape came from (currently only Iconify imports): kept so the icon's license
+  // stays attached through export/import. Comes from outside (the Iconify API, or a shared library
+  // file), so every field is type- and length-checked, and URLs must be http(s) -- they end up as
+  // link hrefs. Returns null for anything unusable; the shape itself is still kept without it.
+  function normalizeShapeSource(s){
+    if(!s || typeof s!=='object' || s.provider!=='iconify') return null;
+    const str = (v, max=200)=>typeof v==='string' && v.length<=max ? v : '';
+    const url = v=>typeof v==='string' && v.length<=500 && /^https?:\/\//i.test(v) ? v : '';
+    const out = {provider:'iconify', set:str(s.set, 64), icon:str(s.icon, 128), setName:str(s.setName)};
+    if(!out.set || !out.icon) return null;
+    const lic = s.license && typeof s.license==='object' ? s.license : {};
+    const au = s.author && typeof s.author==='object' ? s.author : {};
+    out.license = {title:str(lic.title), spdx:str(lic.spdx, 64), url:url(lic.url)};
+    out.author = {name:str(au.name), url:url(au.url)};
+    return out;
+  }
+
   // Validate before replacing the active library. Reject a malformed file as a whole rather than
   // silently dropping shapes: the picker and export must always describe the same collection.
   function normalizeShapeLibrary(raw){
@@ -6717,7 +7265,8 @@ self.onmessage = function(e){
       const box = unionBoxOf(list);
       if(!Number.isFinite(box.x+box.y+box.w+box.h) || box.w<=0 || box.h<=0) throw new Error('Invalid geometry in shape: '+name);
       const thumbnail=normalizeShapeThumbnail(entry.thumbnail,list);
-      return {name, ...(typeof entry.savedAt==='string' ? {savedAt:entry.savedAt} : {}), items:list,...(thumbnail?{thumbnail}:{})};
+      const source=normalizeShapeSource(entry.source);
+      return {name, ...(typeof entry.savedAt==='string' ? {savedAt:entry.savedAt} : {}), ...(source?{source}:{}), items:list,...(thumbnail?{thumbnail}:{})};
     });
     return {app:'SimpleCanvasShapeLibrary', version:1, shapes};
   }
@@ -6771,6 +7320,11 @@ self.onmessage = function(e){
     b.addEventListener('click', ()=>armShapeForPlacement(tpl));
     const label = document.createElement('span');
     label.className = 'shape-name'; label.textContent = tpl.name; label.title = tpl.name;
+    if(tpl.source){
+      const credit = (tpl.source.setName || tpl.source.set) + ' · ' + (tpl.source.license.title || tpl.source.license.spdx || 'license unknown');
+      b.title += '\n' + credit;
+      label.title += '\n' + credit;
+    }
     entry.append(b, label);
     if(managingShapes){
       const actions = document.createElement('div');
@@ -6794,19 +7348,6 @@ self.onmessage = function(e){
     shapeGrid.appendChild(entry);
   }
 
-  function addAddSelectionTile(){
-    const entry = document.createElement('div');
-    entry.className = 'shape-entry';
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'shape-thumb'; b.title = 'Add selection to library…';
-    b.setAttribute('aria-label', 'Add selection to library');
-    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 7.1v9.8M7.1 12h9.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
-    b.addEventListener('click', addSelectionToLibrary);
-    const label = document.createElement('span');
-    label.className = 'shape-name'; label.textContent = 'Add selection…';
-    entry.append(b, label);
-    shapeGrid.appendChild(entry);
-  }
 
   function renderShapeLibrary(){
     syncShapeLibraryEntries(true);missingSmartPreviews.clear();
@@ -6819,8 +7360,17 @@ self.onmessage = function(e){
     shapePickerManage.hidden = !managingShapes;
     for(const tpl of entries) addShapeButton(tpl);
     document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
-    if(!managingShapes) addAddSelectionTile();
+    // Icon search needs Iconify. navigator.onLine=false reliably means no network at all; true only
+    // means "some network", so a LAN without internet still shows the button and the dialog reports it.
+    document.getElementById('addIconBtn').hidden = !navigator.onLine;
+    document.getElementById('addIconFooterBtn').hidden = !navigator.onLine;
+    document.getElementById('shapePickerFooter').hidden = managingShapes;
   }
+  document.getElementById('addSelectionFooterBtn').addEventListener('click', addSelectionToLibrary);
+  document.getElementById('addIconFooterBtn').addEventListener('click', ()=>openIconDialog());
+  window.addEventListener('online', renderShapeLibrary);
+  window.addEventListener('offline', renderShapeLibrary);
+
 
   function importShapeLibraryFile(file){
     const request = ++shapeLibraryImportSeq;
