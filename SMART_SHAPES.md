@@ -23,8 +23,9 @@ app as an end user; see [README.md](README.md) for that.
 
 To edit a library definition, choose **Manage → Edit source…** beside its name. The authoring
 dialog opens with its existing name and script; **Save changes** updates that entry and regenerates
-its PNG preview. Its saved state, dimensions, and appearance are preserved; `initState()` and
-`initStyle()` run when creating a definition. Existing canvas instances keep their own scripts.
+its PNG preview. The definition's saved state, dimensions, and appearance are preserved.
+`initState()` and `initStyle()` run afresh when placing each instance; saved values supply defaults
+for omitted hooks or style fields. Existing canvas instances keep their own scripts and state.
 If an entry contains multiple smart shapes, each has a numbered **Edit source…** action. Export
 the library to retain your changes.
 
@@ -48,8 +49,8 @@ its own interactive state.
 
 | Hook | Called | Arguments | Returns |
 |---|---|---|---|
-| `initState()` | Once, when a fresh instance is placed/created | — | a plain, JSON-safe state object |
-| `initStyle()` | Once, when a fresh instance is created (right after `initState()`) | — | a partial style/size override (see below) |
+| `initState()` | When creating a definition for its preview, and afresh for each placement | — | a plain, JSON-safe state object |
+| `initStyle()` | After `initState()`, when creating a definition and for each placement | — | a partial style/size override (see below) |
 | `children(state, style, w, h, editing)` | Every render | current state, resolved style, container width/height, `true` only for the one instance currently in edit mode | array of child shape descriptors |
 | `handles(state, w, h, style)` | While in edit mode, to draw handle markers | state, width/height, resolved style | array of `{id, x, y, kind?}` |
 | `hitEdit(state, lx, ly, w, h, style)` | On press, while in edit mode | state, press position (**local** coords, see below), width/height, resolved style | a handle `id`, or `null`/falsy if the press missed every handle |
@@ -63,6 +64,8 @@ Every hook reply is validated before rendering, export, preview generation, or s
 `children()` returning `[]` is valid. A malformed result affects only that shape: a live refresh
 keeps the last valid drawing, or stays empty if none exists, and reports an error. Invalid state
 updates keep the previous state. Missing optional hooks return no handles or make no state change.
+On export failure, a cached drawing is used only if its script, state, style, size, and non-editing
+mode all match. Otherwise that smart shape is omitted; edit-only handles never enter an export.
 
 ### `initState()`
 
@@ -76,9 +79,9 @@ initState(){ return { value: -45 }; }
 
 ### `initStyle()` (optional)
 
-Lets a script override some of the *creation-time* style/size the toolbar would otherwise
-supply, without needing to touch anything after placement. Return a partial object; any field
-you omit keeps the normal default. Recognized fields, each individually validated (an
+Lets a script override the initial style/size of each new placement. Return a partial object;
+omitted fields keep the library definition's saved values. When authoring a new definition, those
+base values come from the defaults below. Recognized fields, each individually validated (an
 unknown/wrong-typed field is just ignored, not rejected):
 
 | Field | Clamp |
@@ -97,8 +100,9 @@ Every field is still fully adjustable afterward via the ordinary toolbar/resize 
 initStyle(){ return { fontSize: 12, strokeOn: false, w: 240, h: 160 }; }
 ```
 
-Without an `initStyle()`, a new instance starts black, unfilled, stroke on, at 180×180, using
-whatever font/fill-color/text-color the toolbar currently has.
+Without an `initStyle()`, a newly authored definition starts black, unfilled, stroke on, at 180×180,
+using the toolbar's current font/fill-color/text-color. Placements then inherit that definition's
+saved style and size.
 
 ### `children(state, style, w, h, editing)` (required)
 
@@ -313,13 +317,16 @@ even though it renders fine on canvas.
   dynamic module imports. The Worker inherits that policy from its local Blob source. Script source
   is sent as data; it is never inserted into the frame's HTML. The opaque origin separates it from
   the app's storage, and a Worker exposes no page DOM. The frame and main app exchange messages over
-  a dedicated MessageChannel. Startup and hook requests have deadlines; a timeout terminates the
+  a dedicated MessageChannel. Requests wait in a trusted queue, with one dispatched at a time. The
+  250 ms execution deadline begins at dispatch, so time spent waiting for earlier hooks does not
+  consume it. Startup has a separate deadline; a timeout terminates the
   Worker and permits a fresh sandbox. Scripts share that Worker, so a hang can temporarily interrupt
   sibling requests too. Browser-level memory exhaustion is not a resource quota this boundary can
   enforce. The app remains one HTML file and supports hosted and local use.
-- Compiled once per distinct script string and cached (inside the sandbox, not the page) —
-  editing a script's text (even by one character) recompiles it; identical text across
-  different items reuses the same compiled function.
+- Up to 64 compiled definitions are cached in the Worker, evicting the least recently used.
+  Identical scripts reuse a compiled function while cached; evicted scripts compile on their next
+  call. Live drawing/handle caches are released when an item leaves the active document or its
+  script is replaced. Late replies cannot recreate those removed entries.
 - Children cannot be nested smart shapes, tables, or asset-referencing images. Use the documented
   primitives above. Bézier controls (`c1`/`c2`) and polygon arcs (`arcTo`) are preserved.
 

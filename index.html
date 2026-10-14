@@ -783,6 +783,10 @@
   let smartMutationOwner = null;
   let smartReplay = false;
   const smartGestureRecords = new Set();
+  let shapePlacementEpoch = 0;
+  let shapePlacementQueue = Promise.resolve();
+  let shapePlacementOwner = false;
+  const shapePlacementRequests = new Set();
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   // ---------- group "enter" edit mode ----------
   // Lets a group's own members be browsed, moved/resized/recolored/deleted, and edited one at a
@@ -819,7 +823,11 @@
   }
   const snap = () => JSON.stringify(ensureUids(items));
 
-  function beginHistory(){ if(!smartMutationOwner) cancelSmartGestures(); historyBefore = snap(); }
+  function beginHistory(){
+    if(!shapePlacementOwner) shapePlacementEpoch++;
+    if(!smartMutationOwner) cancelSmartGestures();
+    historyBefore = snap();
+  }
   function commitHistory(){
     if(historyBefore === null) return;
     ensureUids(items);
@@ -1231,13 +1239,14 @@ for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScript
 try{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}
 var cache = new Map();
 function compile(src){
-  if(cache.has(src)) return cache.get(src);
+  if(cache.has(src)){const def=cache.get(src);cache.delete(src);cache.set(src,def);return def;}
   var def = null;
   try{
     def = new Function('"use strict";return ('+src+');')();
     if(!def || typeof def.children !== 'function') def = null;
   }catch(e){ def = null; }
   cache.set(src, def);
+  if(cache.size>64) cache.delete(cache.keys().next().value);
   return def;
 }
 self.onmessage = function(e){
@@ -1267,7 +1276,8 @@ self.onmessage = function(e){
   let smartSandboxGeneration = 0;
   let smartSandboxReady = null;
   let smartSandboxStartupReject = null;
-  const smartSandboxPending = new Map();  // reqId -> {resolve, reject, timer, generation}
+  const smartSandboxPending = new Map();  // queued and active requests, in input order
+  let smartSandboxActive = null;
   let smartSandboxReqSeq = 0;
   const SMART_CALL_TIMEOUT_MS = 250;      // scripts only ever build small descriptor arrays -- generous
                                            // margin while still catching a hang almost instantly
@@ -1326,11 +1336,13 @@ self.onmessage = function(e){
             ready=true; clearTimeout(startupTimer); smartSandboxStartupReject=null; resolve(gen); return;
           }
           const pending = smartSandboxPending.get(data.id);
-          if(!pending || pending.generation !== gen) return;
+          if(!pending || pending.generation !== gen || data.id!==smartSandboxActive) return;
           smartSandboxPending.delete(data.id);
           clearTimeout(pending.timer);
+          smartSandboxActive=null;
           try{ pending.resolve(validateSmartReply(data,pending.message)); }
           catch(err){ reportSmartError(pending.message.src,pending.message.fn||'script',err.message); pending.reject(err); }
+          dispatchSmartSandboxNext();
         }catch(err){ clearTimeout(startupTimer); reject(err); regenerateSmartSandbox(); }
       };
       frame.addEventListener('load',()=>{ if(gen===smartSandboxGeneration) frame.contentWindow.postMessage('connect','*',[channel.port2]); },{once:true});
@@ -1355,6 +1367,17 @@ self.onmessage = function(e){
     if(smartSandboxStartupReject){ smartSandboxStartupReject(new Error('Smart shape sandbox stopped')); smartSandboxStartupReject=null; }
     for(const p of smartSandboxPending.values()){ clearTimeout(p.timer); p.reject(new Error('smart sandbox regenerated')); }
     smartSandboxPending.clear();
+    smartSandboxActive=null;
+  }
+  // Queue in the trusted page, dispatching one request at a time. Waiting for earlier hooks does
+  // not consume this hook's deadline. The bridge enforces 250 ms; this timer covers lost replies.
+  function dispatchSmartSandboxNext(){
+    if(smartSandboxActive!==null || !smartSandboxPending.size) return;
+    const [id,pending]=smartSandboxPending.entries().next().value;
+    smartSandboxActive=id;
+    pending.timer=setTimeout(()=>regenerateSmartSandbox(),SMART_CALL_TIMEOUT_MS+250);
+    try{smartSandboxPort.postMessage({...pending.message,id});}
+    catch(_){regenerateSmartSandbox();}
   }
   function requestSmartSandbox(message){
     if(typeof message.src!=='string' || !message.src.trim() || message.src.length>MAX_SCRIPT ||
@@ -1363,13 +1386,8 @@ self.onmessage = function(e){
     return ensureSmartSandbox().then(gen=>new Promise((resolve, reject)=>{
       if(gen !== smartSandboxGeneration){ reject(new Error('stale smart sandbox generation')); return; }
       const id = ++smartSandboxReqSeq;
-      const timer = setTimeout(()=>{
-        smartSandboxPending.delete(id);
-        regenerateSmartSandbox();
-        reject(new Error('smart sandbox timeout'));
-      }, SMART_CALL_TIMEOUT_MS);
-      smartSandboxPending.set(id, {resolve, reject, timer, generation:gen, message});
-      smartSandboxPort.postMessage({...message, id});
+      smartSandboxPending.set(id, {resolve, reject, timer:null, generation:gen, message});
+      dispatchSmartSandboxNext();
     })).catch(err=>{reportSmartError(message.src,message.fn||'script',err.message);throw err;});
   }
   const scriptOf = s => typeof s === 'string' ? s : (s && s.script) || '';
@@ -1551,6 +1569,28 @@ self.onmessage = function(e){
   // the script (replacing it, or just waiting) recovers promptly.
   const SMART_BACKOFF_MS = 3000;
   const smartBackoffUntil = new Map();
+  const smartCacheOwners = new Map();  // only items in the active document, with their current source
+  function dropSmartCache(uid){
+    smartCacheOwners.delete(uid);smartChildrenCache.delete(uid);smartHandlesCache.delete(uid);
+    smartInFlight.delete(uid);smartHandlesInFlight.delete(uid);smartBackoffUntil.delete(uid);
+  }
+  function pruneSmartCaches(){
+    if(!smartCacheOwners.size) return;
+    const live=new Set(items);
+    for(const [uid,owner] of smartCacheOwners){
+      if(!live.has(owner.item) || owner.item.uid!==uid || owner.item.type!=='smart' || owner.script!==owner.item.script) dropSmartCache(uid);
+    }
+  }
+  function smartCacheOwner(it){
+    let owner=smartCacheOwners.get(it.uid);
+    if(!owner || owner.item!==it || owner.script!==it.script){
+      dropSmartCache(it.uid);owner={item:it,script:it.script};smartCacheOwners.set(it.uid,owner);
+    }
+    return owner;
+  }
+  function smartCacheOwnerCurrent(it,owner){
+    return smartCacheOwners.get(it.uid)===owner && it.script===owner.script && items.includes(it);
+  }
   function smartSig(it, extra){
     return it.script+':'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+JSON.stringify(smartResolvedStyle(it))+(extra?'|'+extra:'');
   }
@@ -1560,31 +1600,33 @@ self.onmessage = function(e){
   // nowhere else to turn. Here it would be wrong: a sibling queued behind a hung/timed-out script in
   // the same shared worker has its OWN request rejected right along with it, and caching THAT as "this
   // script legitimately draws nothing" would freeze it blank forever, since a matching signature never
-  // asks again. Only a genuine reply (`r.ok`, even if its own `result` is null) is cached; a rejection
-  // just clears in-flight, starts this item's own backoff window, and leaves nothing cached, so the
-  // next render() once that window passes retries it fresh against whatever worker is live by then.
+  // asks again. Only a validated reply is cached; a rejection clears in-flight, starts this item's
+  // own backoff window, and preserves its last valid drawing. After that window, a render retries
+  // the refresh against whatever worker is live by then.
   function smartChildrenFor(it, editing){
     if(smartExportCache && smartExportCache.has(it)) return smartExportCache.get(it);
+    const owner=smartCacheOwner(it);
     const sig = smartSig(it, editing?'E':'');
     const cached = smartChildrenCache.get(it.uid);
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
       smartInFlight.add(it.uid);
       requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children', args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing]})
-        .then(r=>{ smartChildrenCache.set(it.uid, {sig, kids:(r.ok ? r.result : null)||[]}); smartInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
-        .catch(()=>{ smartInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
+        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartChildrenCache.set(it.uid, {sig, kids:r.result}); smartInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
+        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
     }
     return cached ? cached.kids : [];
   }
   function smartHandlesFor(it){
+    const owner=smartCacheOwner(it);
     const sig = smartSig(it);
     const cached = smartHandlesCache.get(it.uid);
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartHandlesInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
       smartHandlesInFlight.add(it.uid);
       requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it)]})
-        .then(r=>{ smartHandlesCache.set(it.uid, {sig, hs:(r.ok ? r.result : null)||[]}); smartHandlesInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
-        .catch(()=>{ smartHandlesInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
+        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
+        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
     }
     return cached ? cached.hs : [];
   }
@@ -1605,7 +1647,11 @@ self.onmessage = function(e){
       try{
         const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]});
         map.set(it,r.result);
-      }catch(err){ if(strict) throw err; map.set(it,smartChildrenCache.get(it.uid)?.kids || []); }
+      }catch(err){
+        if(strict) throw err;
+        const cached=smartChildrenCache.get(it.uid);
+        map.set(it,cached?.sig===smartSig(it)?cached.kids:[]);
+      }
     }
     return map;
   }
@@ -3055,6 +3101,7 @@ self.onmessage = function(e){
 
   // ---------- render ----------
   function render(){
+    pruneSmartCaches();
     syncPointEdit();
     syncSmartEdit();
     syncGroupEdit();
@@ -4176,19 +4223,46 @@ self.onmessage = function(e){
     render();
     toast('Table added — drag a corner to resize');
   }
-  // Places one instance of a library template, centered on (x,y). Re-clones from the
-  // pristine tpl.items and remaps uids/group ids fresh each time —
-  // same pattern as addClones — so the same shape can be placed repeatedly without cross-contamination.
+  // Initialize a fresh copy; omitted/invalid optional results keep the definition's saved defaults.
+  // The same ordering applies to authoring and placement: state first, then style/size.
+  async function initializeSmartItem(it,caps){
+    caps=caps || await requestSmartCaps(it);
+    if(!caps) throw new Error('Smart shape could not be initialized');
+    if(caps.initState){const state=await requestSmartCall(it,'initState',[]);if(state!==null)it.state=state;}
+    if(caps.initStyle) Object.assign(it,await requestSmartCall(it,'initStyle',[]) || {});
+    it.font=fontStr(it.fontFamily,it.fontSize);
+    return it;
+  }
+  function shapePlacementValid(p){return p.epoch===shapePlacementEpoch && p.tab===activeTabId && p.items===items;}
+  function hasPendingShapePlacement(){return [...shapePlacementRequests].some(shapePlacementValid);}
+  // Ordinary shapes remain synchronous. Smart placements initialize in click order before opening
+  // a history entry, so cancellation cannot add a late shape to another document or transaction.
   function placeShapeAt(tpl, x, y){
     if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
-    const box = unionBoxOf(tpl.items, false);   // stroke-free center — matches how it was centered at save time
+    const list=clone(tpl.items),name=tpl.name;
+    if(!list.some(it=>it.type==='smart')){commitShapePlacement(list,name,x,y);return;}
+    const p={epoch:shapePlacementEpoch,tab:activeTabId,items};
+    shapePlacementRequests.add(p);
+    shapePlacementQueue=shapePlacementQueue.then(async()=>{
+      for(const it of list){
+        if(!shapePlacementValid(p)) return;
+        if(it.type==='smart') await initializeSmartItem(it);
+      }
+      if(!shapePlacementValid(p)) return;
+      shapePlacementOwner=true;
+      try{commitShapePlacement(list,name,x,y);}finally{shapePlacementOwner=false;}
+    }).catch(()=>{if(shapePlacementValid(p))toast('Could not initialize "'+name+'"');})
+      .finally(()=>shapePlacementRequests.delete(p));
+    return shapePlacementQueue;
+  }
+  function commitShapePlacement(list,name,x,y){
+    const box = unionBoxOf(list, false);   // center after initialization, including any size overrides
     const cx = box.x + box.w/2, cy = box.y + box.h/2;
     const dx = x - cx, dy = y - cy;
     beginHistory();
     const gmap = {};
     const newSel = [];
-    for(const raw of tpl.items){
-      const copy = clone(raw);
+    for(const copy of list){
       copy.uid = newUid();
       translateItem(copy, dx, dy);
       if(copy.group != null){
@@ -4202,7 +4276,7 @@ self.onmessage = function(e){
     commitHistory();
     setTool('select');
     render();
-    toast('"' + tpl.name + '" added');
+    toast('"' + name + '" added');
   }
   function commitText(){
     const val = textInput.value.trim();
@@ -4382,6 +4456,7 @@ self.onmessage = function(e){
   // drag/resize/rotate...) together with its pending history transaction, so that swapping the
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
+    shapePlacementEpoch++;
     cancelSmartGestures();editingSmartIdx=null;
     unbakeAfterGesture();   // never leave a group in the mid-gesture encoding
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
@@ -4401,6 +4476,7 @@ self.onmessage = function(e){
     selection = expandSelection(sel);
   }
   function undo(){
+    shapePlacementEpoch++;
     cancelSmartGestures();
     if(!undoStack.length) return;
     cancelGesture();
@@ -4411,6 +4487,7 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function redo(){
+    shapePlacementEpoch++;
     cancelSmartGestures();
     if(!redoStack.length) return;
     cancelGesture();
@@ -4421,7 +4498,7 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function clearAll(){
-    if(!items.length) return;
+    if(!items.length){shapePlacementEpoch++;return;}
     if(!confirm('Erase everything on the canvas?')) return;
     cancelGesture();
     beginHistory();
@@ -5380,7 +5457,7 @@ self.onmessage = function(e){
 
   // ---------- toolbar wiring ----------
   function setTool(t){
-    if(t!==ui.tool){cancelSmartGestures();editingSmartIdx=null;}
+    if(t!==ui.tool){if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
     if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
     document.querySelectorAll('[data-tool].btn').forEach(b=>{
@@ -6336,39 +6413,13 @@ self.onmessage = function(e){
       // exactly like Arrow originally did. A hard-coded-visibility script (like Clock's face, which
       // never reads style.strokeOn) is unaffected by this either way, so there's no real downside to
       // making it the universal default.
-      const resolved = { color:'#000000', fillColor:st.fillColor, fill:false, strokeOn:true,
-                          textColor:st.textColor, size:st.size, fontFamily:st.fontFamily, fontSize:st.fontSize };
-      // A script can optionally override any subset of these creation-time defaults via an
-      // initStyle() hook -- e.g. a chart wanting a smaller starting font size than whatever the
-      // toolbar happens to be at, without reintroducing the fragile per-template table above (this
-      // lives on the SCRIPT itself, so it travels with the script no matter which picker entry, if
-      // any, was used to get there). Unlike strokeOn/fill/color, none of these fields get special
-      // universal treatment on their own -- initStyle() is the only way to deviate from the toolbar.
-      // Silently ignores an unknown/wrong-typed field rather than rejecting the whole thing, same
-      // "degrade gracefully" spirit as normalizeItem.
-      if(caps.initStyle){
-        const over = await requestSmartCall(script, 'initStyle', []) || {};
-        if(isColor(over.color)) resolved.color = over.color;
-        if(isColor(over.fillColor)) resolved.fillColor = over.fillColor;
-        if(isColor(over.textColor)) resolved.textColor = over.textColor;
-        if(typeof over.fill === 'boolean') resolved.fill = over.fill;
-        if(typeof over.strokeOn === 'boolean') resolved.strokeOn = over.strokeOn;
-        if(isNum(over.size)) resolved.size = Math.min(60, Math.max(1, over.size));
-        if(typeof over.fontFamily === 'string' && FONTS[over.fontFamily]) resolved.fontFamily = over.fontFamily;
-        if(isNum(over.fontSize)) resolved.fontSize = Math.min(400, Math.max(6, Math.round(over.fontSize)));
-        // w/h: a script whose natural shape isn't square (the bar chart wants more width than height,
-        // say) can ask for a better-fitting starting size instead of the generic 180x180 square.
-        if(isNum(over.w)) w = Math.min(2000, Math.max(20, Math.round(over.w)));
-        if(isNum(over.h)) h = Math.min(2000, Math.max(20, Math.round(over.h)));
-      }
       const item = {
         type:'smart', x:-w/2, y:-h/2, w, h,
-        color: resolved.color, fillColor: resolved.fillColor,
-        fill: resolved.fill, strokeOn: resolved.strokeOn,
-        textColor: resolved.textColor, size: resolved.size,
-        fontFamily: resolved.fontFamily, fontSize: resolved.fontSize, font: fontStr(resolved.fontFamily, resolved.fontSize),
-        script, state: (caps.initState ? (await requestSmartCall(script, 'initState', []) || {}) : {}),
+        color:'#000000',fillColor:st.fillColor,fill:false,strokeOn:true,textColor:st.textColor,size:st.size,
+        fontFamily:st.fontFamily,fontSize:st.fontSize,script,state:{},
       };
+      await initializeSmartItem(item,caps);
+      item.x=-item.w/2;item.y=-item.h/2;
       if(!current()) return;
       const latestNameErr=validateShapeName(name);
       if(latestNameErr){smartObjectDialogError.textContent=latestNameErr;return;}
@@ -6945,6 +6996,7 @@ self.onmessage = function(e){
     if(textInput.style.display==='block' || isTextTarget(e.target)) return;
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
+      if(hasPendingShapePlacement()){shapePlacementEpoch++;ui.pendingShape=null;setTool('select');render();return;}
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(current){ current=null; snapPt=null; snapCursorPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(pointEditIdx!=null){   // one Escape drops the active handles, a second leaves point-edit mode
@@ -7050,6 +7102,7 @@ self.onmessage = function(e){
   canvas.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   async function onDoubleClick(e){
+    if(hasPendingShapePlacement()) return;
     const epoch=smartGestureEpoch, tab=activeTabId;
     // A smart object's own hitEdit crosses the sandbox asynchronously now -- a real double-click's two
     // presses each kick one off (see onDown), and this native 'dblclick' event fires right after the
