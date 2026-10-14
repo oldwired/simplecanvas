@@ -26,3 +26,12 @@ An iPad-sized touch scenario exercises endpoint cycling and double-tap point edi
 and WebKit. Mouse checks cover undo/reload/import, curve tangents, and preserving heads during drags.
 The raw touch-drag test uses Chromium's CDP interface and is skipped in WebKit. A physical iPad
 Safari pass is still needed before release to check native touch behavior and the on-screen keyboard.
+
+For the smart-shape rendering and library-preview benchmark, run
+`node tests/performance.cjs b95efd1` (replace the argument to compare another Git revision).
+It compares the current file with that revision using ten race timers over 200 warmed repaints,
+then 40 preview completions and ten picker reopens. It reports drawing rebuilds, serialized data,
+PNG decodes, grid rebuilds, and elapsed time; timings depend on hardware and are not pass/fail limits.
+The preview scenario supplies synthetic PNG jobs to isolate picker work from script execution and
+rasterization. The normal regression suite covers actual generation, consent, source-edit races,
+canvas/SVG/PNG output, and retaining focus while previews complete.

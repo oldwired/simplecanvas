@@ -1684,6 +1684,10 @@ self.onmessage = function(e){
   const smartBackoffUntil = new Map();
   const smartRetryTimers = new Map();
   const smartCacheOwners = new Map();  // only items in the active document, with their current source
+  const smartStyleCache = new WeakMap();
+  const smartSignatureCache = new WeakMap();
+  const smartPaintCache = new WeakMap();
+  let smartSignatureRevision = 0;
   function clearSmartRetry(uid){
     clearTimeout(smartRetryTimers.get(uid));smartRetryTimers.delete(uid);smartBackoffUntil.delete(uid);
   }
@@ -1700,7 +1704,10 @@ self.onmessage = function(e){
   }
   function dropSmartCache(uid){
     const it=smartCacheOwners.get(uid)?.item;
-    if(it)disposeSmartExecution(smartItemExecutions.get(it));
+    if(it){
+      disposeSmartExecution(smartItemExecutions.get(it));
+      smartStyleCache.delete(it);smartSignatureCache.delete(it);smartPaintCache.delete(it);
+    }
     clearSmartRetry(uid);
     smartCacheOwners.delete(uid);smartChildrenCache.delete(uid);smartHandlesCache.delete(uid);
     smartInFlight.delete(uid);smartHandlesInFlight.delete(uid);smartBackoffUntil.delete(uid);
@@ -1723,7 +1730,14 @@ self.onmessage = function(e){
     return smartCacheOwners.get(it.uid)===owner && it.script===owner.script && items.includes(it);
   }
   function smartSig(it, extra){
-    return it.script+':'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+JSON.stringify(smartResolvedStyle(it))+(extra?'|'+extra:'');
+    const style=smartResolvedStyle(it);
+    let cached=smartSignatureCache.get(it);
+    if(!cached || cached.script!==it.script || cached.style!==style){
+      cached={script:it.script,style,revision:++smartSignatureRevision};smartSignatureCache.set(it,cached);
+    }
+    // State can be edited in place. It is bounded by the hook contract, unlike the potentially
+    // 50 KB source: serialize state, but retain source/style behind an instance-local revision.
+    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+(extra?'|'+extra:'');
   }
   // Cache only validated replies. The convenience wrapper's null-on-failure contract cannot
   // distinguish an empty drawing from a failed request; failures need their own retry path.
@@ -1785,13 +1799,19 @@ self.onmessage = function(e){
   // The plain, resolved style a script's children() receives -- exactly the fields the toolbar's
   // Fill/Stroke/Stroke-width/Text-color dropdowns already write onto the container itself. A child
   // descriptor that OMITS a field inherits it (via shapeOps' merge); one that sets it explicitly hard-codes it.
+  const smartStyleFields=['color','fillColor','fill','strokeOn','textColor','size','dash','fontFamily','fontSize','font'];
+  const smartPresetColors=Object.keys(PRESETS);
   function smartResolvedStyle(it){
-    return { color:it.color, fillColor:it.fillColor, fill:!!it.fill, strokeOn:strokeOn(it), textColor:it.textColor, size:it.size, dash:it.dash,
+    const cached=smartStyleCache.get(it);
+    if(cached && smartStyleFields.every((key,i)=>cached.fields[i]===it[key]))return cached.style;
+    const style={ color:it.color, fillColor:it.fillColor, fill:!!it.fill, strokeOn:strokeOn(it), textColor:it.textColor, size:it.size, dash:it.dash,
               fontFamily:it.fontFamily||'sans', fontSize:it.fontSize||16, font:it.font||fontStr(it.fontFamily||'sans', it.fontSize||16),
               // the toolbar's own color-swatch palette, in its own display order -- lets a script size
               // itself (or anything else) off "however many colors the toolbar actually offers" instead
               // of hard-coding a duplicate, driftable copy of that count/list.
-              presetColors: Object.keys(PRESETS) };
+              presetColors:smartPresetColors };
+    smartStyleCache.set(it,{fields:smartStyleFields.map(key=>it[key]),style});
+    return style;
   }
   // text sits 6px in from the left/right edge, or on the center line
   function textAnchorX(x, w, align){ return align==='left' ? x+6 : align==='right' ? x+w-6 : x+w/2; }
@@ -2345,30 +2365,22 @@ self.onmessage = function(e){
         // chrome (e.g. a delete/add control) that the committed render and SVG/PNG export never
         // include -- see smartChildrenFor/warmSmartExportCache for why export always passes false.
         const kids = smartChildrenFor(it, it===items[editingSmartIdx]);
-        for(const raw of kids){
-          // one bad/garbage child descriptor doesn't take the rest of the object down with it
-          try{
-            // Only fields that are universally meaningful get a free inherited default. fill/fillColor/
-            // strokeOn are deliberately NOT blanket-inherited here: strokeOn in particular means
-            // something different per type (for a line/arrow it's "is this visible at ALL", not "show
-            // an outline" like it does for a rect/ellipse) -- inheriting the container's own usual
-            // strokeOn:false (an invisible box, by design) would silently make every line/arrow child
-            // invisible too. A script that wants a fillable child to follow the container's own
-            // fill/stroke must say so explicitly (style.fill/style.fillColor/style.strokeOn).
-            //
-            // clone(raw), not raw itself: `raw` is a LIVE reference into smartChildrenFor's cache (kept
-            // across many render() calls, not recreated every time the way a direct synchronous
-            // def.children() call used to be) -- translateItem mutates nested structures (a polygon's
-            // `points`, a point's own `arcTo`/`c1`/`c2`) IN PLACE, not just top-level x/y, so without
-            // this clone every repaint would shift the SAME cached points further, compounding a little
-            // more on every single render() call. A real, found bug: this is exactly what made the AP/
-            // General-Recall flag pennants (and the Timer/Arc wedge, and Arrow's own curve) drift
-            // further off their container on every repaint instead of just sitting still.
-            const child = Object.assign({ color:it.color, textColor:it.textColor, size:it.size, dash:it.dash }, clone(raw));
-            translateItem(child, it.x, it.y);   // child coords are LOCAL to the container's top-left
-            ops.push(...shapeOps(child));
-          }catch(e){}
+        const style=smartResolvedStyle(it);
+        let cached=smartPaintCache.get(it);
+        if(!cached || cached.kids!==kids || cached.style!==style){
+          const localOps=[];
+          for(const raw of kids){
+            // Geometry builders only read descriptors. Leave cached points, controls and arc
+            // centers in local coordinates; translate the paint group instead of cloning/mutating
+            // every child on every repaint. Only the universal defaults are inherited.
+            try{
+              const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
+              localOps.push(...shapeOps(child));
+            }catch(e){}
+          }
+          cached={kids,style,ops:localOps};smartPaintCache.set(it,cached);
         }
+        ops.push({kind:'group',x:it.x,y:it.y,ops:cached.ops});
         break;
       }
     }
@@ -2404,6 +2416,11 @@ self.onmessage = function(e){
   }
   function paintOp(op){
     switch(op.kind){
+      case 'group':
+        ctx.save();ctx.translate(op.x,op.y);
+        for(const child of op.ops)paintOp(child);
+        ctx.restore();
+        break;
       case 'image': {
         const im = getImg(op.id);
         if(im && im.complete && im.naturalWidth) ctx.drawImage(im, op.x, op.y, op.w, op.h);
@@ -4929,9 +4946,52 @@ self.onmessage = function(e){
   const shapePreviewFailures = new WeakMap();
   const smartPreviewConsent = new WeakSet();
   const previewQuestionsOffered = new WeakSet();
+  const shapePreviewVersions = new WeakMap();
+  const shapePreviewKeys = new WeakMap();
+  const shapeThumbnailValidation = new WeakMap();
+  const shapePreviewButtons = new WeakMap();
+  const missingSmartPreviews = new Set();
+  const pendingShapePreviews = new Set();
+  let shapePreviewFrame = null;
+  let shapeEntryLibrary = null, shapeEntryList = null, shapeLibraryEntries = new Set();
+
+  function syncShapeLibraryEntries(force=false){
+    if(force || shapeEntryLibrary!==shapeLibrary || shapeEntryList!==shapeLibrary?.shapes){
+      shapeEntryLibrary=shapeLibrary;shapeEntryList=shapeLibrary?.shapes;
+      shapeLibraryEntries=new Set(shapeEntryList || []);
+    }
+  }
+  function activeLibraryShape(tpl){syncShapeLibraryEntries();return shapeLibraryEntries.has(tpl);}
+  // Library descriptors are private to this module. Every content edit (including the source
+  // editor's in-place script replacement) must invalidate their fingerprint and pending results.
+  function invalidateShapePreview(tpl){
+    shapePreviewVersions.set(tpl.items,(shapePreviewVersions.get(tpl.items)||0)+1);
+    shapePreviewKeys.delete(tpl.items);shapePreviewFailures.delete(tpl);
+    delete tpl.thumbnail;
+  }
+  function queueShapePreview(tpl){
+    pendingShapePreviews.add(tpl);
+    if(shapePreviewFrame!==null)return;
+    shapePreviewFrame=requestAnimationFrame(()=>{
+      shapePreviewFrame=null;
+      for(const entry of pendingShapePreviews){
+        if(!activeLibraryShape(entry))continue;
+        const button=shapePreviewButtons.get(entry);
+        if(button?.isConnected)paintShapePreview(entry,button);
+      }
+      pendingShapePreviews.clear();
+      document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
+    });
+  }
 
   // This fingerprint detects stale pictures, not trust. Imported PNGs remain untrusted images.
   function shapePreviewKey(list){
+    const revision=shapePreviewVersions.get(list)||0, cached=shapePreviewKeys.get(list);
+    if(cached?.revision===revision)return cached.key;
+    const key=computeShapePreviewKey(list);
+    shapePreviewKeys.set(list,{revision,key});return key;
+  }
+  function computeShapePreviewKey(list){
     const canonical=v=>Array.isArray(v)?v.map(canonical):v && typeof v==='object'
       ? Object.fromEntries(Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>[k,canonical(v[k])])) : v;
     const normalized=list.map(it=>{
@@ -4945,7 +5005,17 @@ self.onmessage = function(e){
     return 'png1:'+json.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
   }
   function normalizeShapeThumbnail(raw,list){
-    if(!raw || raw.version!==1 || raw.source!==shapePreviewKey(list) || typeof raw.png!=='string' || raw.png.length>350000 ||
+    if(!raw || typeof raw!=='object')return null;
+    const key=shapePreviewKey(list), cached=shapeThumbnailValidation.get(raw);
+    if(cached && cached.key===key && cached.version===raw.version && cached.source===raw.source && cached.png===raw.png)return cached.result;
+    const result=decodeShapeThumbnail(raw,key);
+    const record={key,version:raw.version,source:raw.source,png:raw.png,result};
+    shapeThumbnailValidation.set(raw,record);
+    if(result)shapeThumbnailValidation.set(result,record);
+    return result;
+  }
+  function decodeShapeThumbnail(raw,key){
+    if(raw.version!==1 || raw.source!==key || typeof raw.png!=='string' || raw.png.length>350000 ||
        !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(raw.png)) return null;
     try{
       const bytes=atob(raw.png.slice(22));
@@ -4973,16 +5043,22 @@ self.onmessage = function(e){
     }finally{URL.revokeObjectURL(url);}
   }
   function ensureShapeThumbnail(tpl){
+    if(!activeLibraryShape(tpl))return Promise.resolve();
     if(validShapeThumbnail(tpl)) return Promise.resolve();
     if(tpl.items.some(it=>it.type==='smart') && !smartPreviewConsent.has(tpl)) return Promise.resolve();
-    if(shapePreviewJobs.has(tpl)) return shapePreviewJobs.get(tpl);
-    const source=shapePreviewKey(tpl.items);
+    // An edit may supersede the running job. Export callers must also await its replacement,
+    // rather than downloading an entry before the newly edited preview has been generated.
+    if(shapePreviewJobs.has(tpl)) return shapePreviewJobs.get(tpl).then(()=>ensureShapeThumbnail(tpl));
+    const list=tpl.items, revision=shapePreviewVersions.get(list)||0, lib=shapeLibrary;
+    const source=shapePreviewKey(list);
     if(shapePreviewFailures.get(tpl)===source) return Promise.resolve();
-    const job=createShapeThumbnail(tpl.items).then(png=>{
-      if(!shapeLibrary?.shapes.includes(tpl) || source!==shapePreviewKey(tpl.items)) return;
+    const current=()=>lib===shapeLibrary && activeLibraryShape(tpl) && tpl.items===list &&
+      revision===(shapePreviewVersions.get(list)||0) && source===shapePreviewKey(list);
+    const job=createShapeThumbnail(list).then(png=>{
+      if(!current())return;
       tpl.thumbnail={version:1,source,png};shapeLibraryRevision++;
-    }).catch(()=>{shapePreviewFailures.set(tpl,source);toast('Could not generate preview for '+tpl.name);})
-      .finally(()=>{shapePreviewJobs.delete(tpl);if(shapeLibrary?.shapes.includes(tpl))updateShapeLibraryUI();});
+    }).catch(()=>{if(current()){shapePreviewFailures.set(tpl,source);toast('Could not generate preview for '+tpl.name);}})
+      .finally(()=>{shapePreviewJobs.delete(tpl);if(activeLibraryShape(tpl))queueShapePreview(tpl);});
     shapePreviewJobs.set(tpl,job);return job;
   }
   async function offerMissingSmartPreviews(lib,again=false){
@@ -5027,6 +5103,7 @@ self.onmessage = function(e){
   function shapeLibraryChanged(){
     shapeLibraryDirty = true;
     shapeLibraryRevision++;
+    syncShapeLibraryEntries(true);
     ui.pendingShape = null;
     if(ui.tool==='shape') setTool('select');
     updateShapeLibraryUI();
@@ -5066,7 +5143,7 @@ self.onmessage = function(e){
     if(!await askLibrary({title:'Replace shape', message:'Replace "'+tpl.name+'" with the current canvas selection? Shapes already placed on the canvas will stay as they are.', submit:'Replace shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     tpl.items = list;
-    delete tpl.thumbnail; shapePreviewFailures.delete(tpl); smartPreviewConsent.add(tpl);
+    invalidateShapePreview(tpl);smartPreviewConsent.add(tpl);
     tpl.savedAt = new Date().toISOString();
     shapeLibraryChanged();
     toast('Replaced "'+tpl.name+'" — export to keep the change');
@@ -5292,6 +5369,7 @@ self.onmessage = function(e){
   }
   function opToSVG(op, assetPool=assets){
     switch(op.kind){
+      case 'group': return `<g transform="translate(${op.x} ${op.y})">${op.ops.map(child=>opToSVG(child,assetPool)).join('')}</g>`;
       case 'image': {
         const src = assetPool[op.id];
         return src ? `<image href="${escXml(src)}" x="${op.x}" y="${op.y}" width="${op.w}" height="${op.h}" preserveAspectRatio="none"/>` : '';
@@ -5828,6 +5906,7 @@ self.onmessage = function(e){
   tabPickerDialog.addEventListener('keydown', e=>e.stopPropagation());
 
   function updateShapeLibraryUI(){
+    syncShapeLibraryEntries(true);
     const count = shapeLibrary ? shapeLibrary.shapes.length : 0;
     const status = !shapeLibrary ? 'No library loaded' : shapeLibraryDirty
       ? 'Library has unexported changes'
@@ -6563,7 +6642,7 @@ self.onmessage = function(e){
         edit.entry.name=name;
         if(script!==edit.item.script){
           edit.item.script=script;
-          delete edit.entry.thumbnail;shapePreviewFailures.delete(edit.entry);smartPreviewConsent.add(edit.entry);
+          invalidateShapePreview(edit.entry);smartPreviewConsent.add(edit.entry);
         }
         edit.entry.savedAt=new Date().toISOString();
         shapeLibraryChanged();smartObjectDialog.close();setShapePicker(true);
@@ -6660,13 +6739,11 @@ self.onmessage = function(e){
     finally{ smartExportCache = prevExportCache; }
   }
 
-  function addShapeButton(tpl){
-    const entry = document.createElement('div');
-    entry.className = 'shape-entry';
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'shape-thumb'; b.title = 'Place '+tpl.name;
-    b.setAttribute('aria-label', 'Place '+tpl.name);
+  function paintShapePreview(tpl,b){
+    b.replaceChildren();
     const thumbnail=validShapeThumbnail(tpl);
+    if(!thumbnail && tpl.items.some(it=>it.type==='smart'))missingSmartPreviews.add(tpl);
+    else missingSmartPreviews.delete(tpl);
     if(thumbnail){
       const img=document.createElement('img');img.alt='';img.src=thumbnail.png;b.appendChild(img);
       img.onerror=()=>{
@@ -6678,12 +6755,20 @@ self.onmessage = function(e){
         previewQuestionsOffered.delete(shapeLibrary);
         // Import can rebuild the grid before the first image fails. Recover the active entry even
         // when that particular image element has already been replaced.
-        if(shapeLibrary?.shapes.includes(tpl)){updateShapeLibraryUI();offerMissingSmartPreviews(shapeLibrary);}
+        if(activeLibraryShape(tpl)){queueShapePreview(tpl);offerMissingSmartPreviews(shapeLibrary);}
       };
     } else {
       const placeholder=document.createElement('span');placeholder.className='preview-placeholder';placeholder.textContent='?';b.appendChild(placeholder);
       ensureShapeThumbnail(tpl);
     }
+  }
+  function addShapeButton(tpl){
+    const entry = document.createElement('div');
+    entry.className = 'shape-entry';
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'shape-thumb'; b.title = 'Place '+tpl.name;
+    b.setAttribute('aria-label', 'Place '+tpl.name);
+    shapePreviewButtons.set(tpl,b);paintShapePreview(tpl,b);
     b.addEventListener('click', ()=>armShapeForPlacement(tpl));
     const label = document.createElement('span');
     label.className = 'shape-name'; label.textContent = tpl.name; label.title = tpl.name;
@@ -6725,6 +6810,7 @@ self.onmessage = function(e){
   }
 
   function renderShapeLibrary(){
+    syncShapeLibraryEntries(true);missingSmartPreviews.clear();
     const entries = shapeLibrary ? shapeLibrary.shapes : [];
     if(!entries.length) managingShapes = false;
     shapeGrid.innerHTML = '';
@@ -6735,9 +6821,8 @@ self.onmessage = function(e){
     else manageShapesBtn.setAttribute('aria-pressed', String(managingShapes));
     document.getElementById('shapeLibraryStatus').hidden = !managingShapes;
     shapePickerManage.hidden = !managingShapes;
-    const missingSmart=entries.some(tpl=>tpl.items.some(it=>it.type==='smart') && !validShapeThumbnail(tpl));
-    document.getElementById('generateShapePreviews').hidden=!missingSmart;
     for(const tpl of entries) addShapeButton(tpl);
+    document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
     if(!managingShapes) addAddSelectionTile();
   }
 

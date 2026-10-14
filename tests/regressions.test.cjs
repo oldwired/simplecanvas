@@ -1248,7 +1248,7 @@ test('a hostile script cannot reach the host page\'s DOM, localStorage, network,
   assert.equal(await run(`localStorage.getItem('pwned')`), null, 'the host page\'s real localStorage is untouched');
 }));
 
-test('an infinite loop in a script times out, recovers, and does not take down other smart shapes', async () => app(async ({page,run}) => {
+test('an infinite loop in a script times out, recovers, and does not take down other smart shapes', async () => app(async ({page,run,context}) => {
   // Keep the offender present: recovery must preserve healthy queued work without manual renders.
   const hangScript = `({ children(){ while(true){} } })`;
   const okScript = `({ children(state,style,w,h){ return [{type:'rect',x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } } )`;
@@ -1267,34 +1267,39 @@ test('an infinite loop in a script times out, recovers, and does not take down o
   assert.equal(await run('items.length'),2);
   await run('selection=[1];render()');await page.keyboard.press('ArrowRight');
   assert.equal(await run('items[1].x'),201);await run('undo()');assert.equal(await run('items[1].x'),200);
-  const svg=await run('itemsToSVGMarkup(items)');
-  assert.ok(svg.includes('x="200"'),'healthy content still exports beside a hanging owner');
+  const svg=await run('itemsToSVGMarkup(items,{width:600,height:300,background:false})');
+  const preview=await context.newPage();await preview.setContent(svg);
+  const position=await preview.locator('rect').evaluate(rect=>{
+    const p=new DOMPoint(rect.x.baseVal.value,rect.y.baseVal.value).matrixTransform(rect.getCTM());
+    return {x:p.x,y:p.y};
+  });
+  assert.deepEqual(position,{x:200,y:40},'healthy content still exports at its world position beside a hanging owner');
 }));
 
 // Real bug, reported directly: a smart shape's polygon-type children (a flag pennant, a clock's own
 // elapsed-time wedge, an arrow's curved shaft -- anything with a `points` array) drifted further off
 // its container on every single repaint, winding up well outside the container within a few frames.
-// Root cause: shapeOps' 'smart' case merges each cached child with Object.assign({...}, raw) before
-// calling translateItem on it -- a SHALLOW copy, so `child.points` was still the exact same array (and
-// point objects) smartChildrenFor keeps cached across many render() calls. translateItem mutates a
-// polygon's points (and a point's own arcTo/c1/c2) IN PLACE, not just a top-level x/y -- before the
-// render-loop cache existed, def.children() ran fresh on every single call, so this aliasing was
-// harmless (nothing persisted to corrupt); caching made the same points shift a little further on
-// every repaint instead of sitting still.
+// Cached geometry must stay local and unchanged across paints, including nested curve controls.
 test('a smart shape\'s polygon children do not drift on repeated repaints', async () => app(async ({page,run}) => {
   const script = `({
     children(state,style,w,h){
-      return [{type:'polygon', points:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], closed:true, color:style.color, size:2, strokeOn:true, fill:false}];
+      return [{type:'polygon', points:[{x:0,y:0,c1:{x:20,y:-20}},
+        {x:w,y:0,c2:{x:w-20,y:-20},arcTo:{cx:w,cy:h/2,r:h/2,a1:0,a2:Math.PI}},
+        {x:w,y:h},{x:0,y:h}], closed:true, color:style.color, size:2, strokeOn:true, fill:false}];
     }
   })`;
   await run(`items=[{type:'smart',uid:'d1',x:100,y:100,w:80,h:60,color:'#1f2937',fillColor:'#ffd166',
     fill:false,strokeOn:false,textColor:'#1f2937',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),
     script:${JSON.stringify(script)},state:{}}];setTool('select');render();`);
-  await page.waitForTimeout(100);   // let the cache's first background children() request resolve
-  const before = await run(`JSON.stringify(shapeOps(items[0]).find(op=>op.kind==='path').d)`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.has('d1')"));
+  const before=await run(`(()=>{
+    const kids=smartChildrenCache.get('d1').kids;
+    const freeze=o=>{if(o && typeof o==='object'){Object.values(o).forEach(freeze);Object.freeze(o);}};
+    freeze(kids);render();return {children:JSON.stringify(kids),pixels:canvas.toDataURL()};
+  })()`);
   for(let i=0;i<10;i++) await run('render()');   // 10 more repaints, reusing the SAME cached children
-  const after = await run(`JSON.stringify(shapeOps(items[0]).find(op=>op.kind==='path').d)`);
-  assert.equal(after, before, 'the polygon\'s on-screen points must not shift after repeated, unrelated repaints');
+  const after=await run(`({children:JSON.stringify(smartChildrenCache.get('d1').kids),pixels:canvas.toDataURL()})`);
+  assert.deepEqual(after,before,'nested geometry and painted pixels stay unchanged across unrelated repaints');
 }));
 
 // Real bug, reported directly: a smart shape built from a long reference template (race-start-timer.js,
@@ -1400,6 +1405,88 @@ const slowClickScript = `({
   hitEdit(s,x,y){const end=performance.now()+40;while(performance.now()<end){}return Math.hypot(x-50,y-50)<14?'inc':null;},
   dragEdit(s){const end=performance.now()+40;while(performance.now()<end){}return {n:(s.n||0)+1};}
 })`;
+
+test('cached smart drawings follow moves, rotations, state, style and size edits in canvas and SVG',async()=>app(async({page,run,context})=>{
+  const script='/*'+'long source '.repeat(2800)+'*/'+`({children(s,style,w,h,editing){return [
+    {type:'rect',x:s.offset||0,y:0,w,h,fill:true,fillColor:editing?'#0000ff':style.color,strokeOn:false}];}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(script))},w:80,h:60,color:'#ff0000'}];setTool('select');selection=[];render();`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.has('smart-test')"));
+  const pixel=(x,y)=>run(`Array.from(ctx.getImageData(${x}*dpr,${y}*dpr,1,1).data).slice(0,3)`);
+  assert.deepEqual(await pixel(120,120),[255,0,0]);
+  await run('items[0].x=300;items[0].y=200;items[0].rotation=Math.PI/2;render()');
+  assert.deepEqual(await pixel(340,230),[255,0,0],'position-only edits translate the cached local drawing');
+  assert.notDeepEqual(await pixel(120,120),[255,0,0],'moving does not leave the previous drawing behind');
+  const preview=await context.newPage();
+  await preview.setContent(await run('itemsToSVGMarkup(items,{width:700,height:500,background:false})'));
+  assert.deepEqual(await preview.locator('rect[fill="#ff0000"]').evaluate(rect=>{
+    const p=new DOMPoint(rect.x.baseVal.value+rect.width.baseVal.value/2,rect.y.baseVal.value+rect.height.baseVal.value/2).matrixTransform(rect.getCTM());
+    return {x:p.x,y:p.y};
+  }),{x:340,y:230},'SVG transforms place the local drawing at the same world coordinates');
+  await run("items[0].rotation=0;items[0].state.offset=-20;items[0].color='#00ff00';items[0].w=100;items[0].h=80;render()");
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.w===100"));
+  assert.deepEqual(await pixel(310,220),[0,255,0],'in-place state and style edits refresh geometry and colors');
+  assert.notDeepEqual(await pixel(390,220),[0,255,0],'new local bounds replace the old cached bounds');
+  await run('selection=[0];editingSmartIdx=0;render()');
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.fillColor==='#0000ff'"));
+  assert.deepEqual(await pixel(310,220),[0,0,255],'editing children replace the non-editing drawing');
+  const exported=await run('itemsToSVGMarkup(items)');
+  assert.ok(exported.includes('#00ff00') && !exported.includes('#0000ff'),'export uses non-editing children');
+  const pngColor=await run(`(async()=>{
+    const im=await createImageBitmap(await itemsToPngBlob(items,{background:false,margin:0,scale:1}));
+    const c=document.createElement('canvas');c.width=im.width;c.height=im.height;
+    const x=c.getContext('2d');x.drawImage(im,0,0);return Array.from(x.getImageData(30,20,1,1).data).slice(0,3);
+  })()`);
+  assert.deepEqual(pngColor,[0,255,0],'PNG also uses the fresh export drawing');
+  await run('render()');
+  assert.deepEqual(await pixel(310,220),[0,0,255],'an export cannot replace the active edit-mode drawing');
+}));
+
+test('finishing many previews preserves the focused library entry without removing tiles',async()=>app(async({page,run})=>{
+  await run(`
+    const c=document.createElement('canvas');c.width=c.height=128;const png=c.toDataURL();
+    window.releasePreviews=[];
+    createShapeThumbnail=()=>new Promise(resolve=>window.releasePreviews.push(()=>resolve(png)));
+    shapeLibrary=normalizeShapeLibrary({shapes:Array.from({length:40},(_,i)=>({name:'Box '+i,items:[${JSON.stringify(rectangle())}]}))});
+    setShapePicker(true);
+  `);
+  await page.getByRole('button',{name:'Place Box 0',exact:true}).focus();
+  await page.evaluate(()=>{
+    window.removedPreviewTiles=0;
+    new MutationObserver(records=>records.forEach(r=>window.removedPreviewTiles+=r.removedNodes.length))
+      .observe(document.querySelector('#shapeGrid'),{childList:true});
+  });
+  await page.evaluate(()=>window.releasePreviews.forEach(release=>release()));
+  await page.waitForFunction(()=>document.querySelectorAll('.shape-thumb img').length===40);
+  assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('aria-label')),'Place Box 0','a finishing preview does not interrupt keyboard/touch focus');
+  assert.equal(await page.evaluate(()=>window.removedPreviewTiles),0,'preview completion only replaces its image, not other entries');
+  const library=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.equal(library.shapes.filter(t=>t.thumbnail?.version===1).length,40);
+  assert.equal(await run('shapeLibraryDirty'),false);
+}));
+
+test('an edited preview supersedes an in-flight job even when the script changes back',async()=>app(async({page,run})=>{
+  const first='({children(){return [{type:"rect",x:0,y:0,w:100,h:100,fill:true,fillColor:"#ff0000"}];}})';
+  const second=first.replace('#ff0000','#00ff00');
+  await run(`
+    const create=createShapeThumbnail;window.previewStarted=0;window.finishOldPreview=null;
+    createShapeThumbnail=list=>{
+      if(window.previewStarted++===0)return new Promise(resolve=>window.finishOldPreview=resolve);
+      return create(list);
+    };
+    shapeLibrary=normalizeShapeLibrary({shapes:[{name:'Changing',items:[${JSON.stringify(smartFixture(first))}]}]});
+    smartPreviewConsent.add(shapeLibrary.shapes[0]);setShapePicker(true);
+    const tpl=shapeLibrary.shapes[0];
+    tpl.items[0].script=${JSON.stringify(second)};invalidateShapePreview(tpl);
+    tpl.items[0].script=${JSON.stringify(first)};invalidateShapePreview(tpl);
+  `);
+  const exporting=downloadedJSON(page,run,'exportShapeLibrary()');
+  await page.evaluate(()=>window.finishOldPreview('data:image/png;base64,STALE'));
+  const library=await exporting;
+  assert.equal(await page.evaluate(()=>window.previewStarted),2,'the obsolete job is discarded and a fresh preview is generated');
+  assert.notEqual(library.shapes[0].thumbnail.png,'data:image/png;base64,STALE','export waits for the replacement preview');
+  await page.waitForFunction(()=>document.querySelector('.shape-thumb img')?.naturalWidth===128);
+  assert.equal(await page.locator('#generateShapePreviews').isVisible(),false);
+}));
 
 test('per-instance Workers contain handler replacement and prototype tampering',async()=>app(async({run})=>{
   const handler=`(self.onmessage=e=>postMessage(JSON.stringify({id:e.data.id,ok:true,result:{owned:true}})),{children(){return [];}})`;
