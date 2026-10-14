@@ -138,6 +138,9 @@
   .shape-entry{min-width:0}
   .shape-grid .shape-thumb{width:100%;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;justify-content:center}
   .shape-grid .shape-thumb svg{width:100%;height:100%;display:block}
+  .shape-grid .shape-thumb img{width:100%;height:100%;object-fit:contain;display:block}
+  .shape-thumb .preview-placeholder{font-size:22px;color:var(--muted)}
+  .shape-library-actions[hidden]{display:none}
   .shape-name{display:block;font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .shape-grid:not(.managing) .shape-name{text-align:center}
   .shape-grid.managing{grid-template-columns:1fr}
@@ -432,6 +435,7 @@
         <div class="shape-picker-heading"><strong id="shapePickerLabel">Shape library</strong><button type="button" id="manageShapesBtn" aria-pressed="false">Manage</button></div>
         <div class="shape-library-status" id="shapeLibraryStatus" role="status"></div>
         <div class="shape-grid" id="shapeGrid"></div>
+        <div class="shape-library-actions" id="generateShapePreviews" hidden><button type="button" id="generateShapePreviewsBtn">Generate missing previews…</button></div>
         <div id="shapePickerManage">
           <div class="shape-library-help" id="shapeLibraryHelp">Replace uses the selected canvas objects. Library edits do not change placed shapes.</div>
           <div class="shape-library-actions"><button type="button" id="importLibraryBtn">Import…</button><button type="button" id="exportLibraryBtn">Export library…</button></div>
@@ -767,32 +771,17 @@
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
   // ---------- smart objects (script-driven interactive canvas items) ----------
   let editingSmartIdx = null;   // index into items[] currently in smart-object edit mode; null = not in this mode
-  let smartDrag = null;         // {idx,handle,kind,moved,lx,ly,token,inFlight,latest,pendingAfterInFlight,onSettle}
-                                 // while dragging a handle hitEdit() returned; lx/ly is the original press
-                                 // position, reused on a plain click/tap that never moved, or always for a
-                                 // 'click'-kind handle (see onUp/onMove) -- kind comes from the matching
-                                 // handles() entry, defaulting to 'drag' if absent/unmarked. token/inFlight/
-                                 // latest/pendingAfterInFlight/onSettle: see requestSmartDragEdit/
-                                 // onSmartDragEditReply -- dragEdit crosses the sandbox asynchronously, so
-                                 // at most one request is ever in flight per gesture, always for the latest
-                                 // known pointer sample, never a growing backlog.
+  let smartDrag = null;         // active script handle; its press owns state/history and async replies
   let smartDragToken = 0;
-  // While a press is waiting on hitEdit's own async reply (see onDown): {idx,releasedEarly}. Identity
-  // (not a token/counter) is what distinguishes one press's own pending object from another's, since a
-  // real double-click's two presses can each have a hitEdit request outstanding at once (the second
-  // one starting before the first's reply arrives) -- each still resolves independently, exactly as
-  // two real synchronous clicks always would have; only the MOST RECENT press's own object sits in
-  // this shared variable, which is all onMove/onUp ever need (see below).
   let smartHitPending = null;
-  // pendingMoveDuringHit buffers only the LATEST pointer sample seen while smartHitPending is set
-  // (never a queue -- dragEdit only ever needs "where is the pointer now"), replayed the instant a
-  // reply lands and finds a handle, so a fast press-then-drag doesn't lose its first bit of motion.
-  let pendingMoveDuringHit = null;
-  // Resolves once the MOST RECENT smartHitPending request (if any) has been fully handled by
-  // onSmartHitEditReply. A real double-click's native 'dblclick' event fires right after its second
-  // press's onUp -- before either press's async hitEdit reply can possibly have arrived -- so
-  // onDoubleClick awaits this before reading handledPointerUp, instead of reading it too early.
+  // Includes all replies and history commits for completed presses, in their input order.
   let smartHitSettled = null;
+  let smartGestureEpoch = 0;
+  let smartGestureQueue = Promise.resolve();
+  let smartCurrentPress = null;
+  let smartMutationOwner = null;
+  let smartReplay = false;
+  const smartGestureRecords = new Set();
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   // ---------- group "enter" edit mode ----------
   // Lets a group's own members be browsed, moved/resized/recolored/deleted, and edited one at a
@@ -829,7 +818,7 @@
   }
   const snap = () => JSON.stringify(ensureUids(items));
 
-  function beginHistory(){ historyBefore = snap(); }
+  function beginHistory(){ if(!smartMutationOwner) cancelSmartGestures(); historyBefore = snap(); }
   function commitHistory(){
     if(historyBefore === null) return;
     ensureUids(items);
@@ -1206,13 +1195,10 @@
   // sandbox below, which does the compiling and calling the old compileSmartScript() used to do
   // directly, inside an isolated Worker instead.
   // ---------- Smart-shape sandbox ----------
-  // A smart shape's script is untrusted (see SMART_SHAPES.md) -- it compiles and executes entirely
-  // inside a single, shared, dedicated Worker, loaded from a same-origin blob: URL. A Worker has no
-  // `document`/`window`/DOM at all and no `localStorage`/cookies -- neither is exposed in worker scope,
-  // by spec, regardless of origin -- so those three channels are closed structurally, not by a policy
-  // that could be misconfigured. The one channel a plain Worker keeps by default is the network
-  // (fetch/XHR/WebSocket/...), closed below by deleting every such global before the untrusted script
-  // ever runs.
+  // The trusted srcdoc bridge owns a Worker in an opaque-origin frame. Its CSP is inherited by
+  // the Blob Worker and blocks network and external code loads even through native prototypes.
+  // User scripts are messages, never interpolated into the frame's HTML. Only the Worker evaluates
+  // them; the bridge remains responsive so it can terminate a hung Worker.
   //
   // A Worker (not a sandboxed iframe) is essential for a second, equally important reason, confirmed
   // empirically during development: a dedicated Worker always runs on a genuinely separate OS thread,
@@ -1228,9 +1214,15 @@
   // true-async export path, and the interactive hit-test/drag state machine for how each of those
   // three call shapes copes with that. Nothing outside this sandbox calls `new Function` on
   // `it.script` anywhere in the file.
+  const SMART_MAX_REPLY = 524288;
+  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle']);
   const SMART_WORKER_SRC = `
 "use strict";
-postMessage({ready:true});
+const send = value => {
+  const json = JSON.stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});
+  postMessage(new TextEncoder().encode(json).length <= 524288 ? json : JSON.stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));
+};
+send({ready:true});
 for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){
   try{ delete self[g]; }catch(e){}
   try{ self[g] = undefined; }catch(e){}
@@ -1247,13 +1239,12 @@ function compile(src){
   cache.set(src, def);
   return def;
 }
-function safe(v){ try{ return JSON.parse(JSON.stringify(v===undefined?null:v)); }catch(e){ return null; } }
 self.onmessage = function(e){
   var msg = e.data || {};
   var id = msg.id;
   var def = compile(msg.src || '');
-  if(msg.method === 'caps'){
-    postMessage({id:id, ok:!!def, caps: def ? {
+  try{ if(msg.method === 'caps'){
+    send({id:id, ok:!!def, caps: def ? {
       children: typeof def.children==='function', handles: typeof def.handles==='function',
       hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
       initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function'
@@ -1261,56 +1252,88 @@ self.onmessage = function(e){
     return;
   }
   if(msg.method === 'call'){
-    if(!def || typeof def[msg.fn] !== 'function'){ postMessage({id:id, ok:true, result:null}); return; }
-    var result = null;
-    try{ result = safe(def[msg.fn].apply(def, msg.args || [])); }catch(e){ result = null; }
-    postMessage({id:id, ok:true, result:result});
+    if(!def || typeof def[msg.fn] !== 'function'){ send({id:id, ok:true, result:null}); return; }
+    const result = def[msg.fn].apply(def, msg.args || []);
+    send({id:id, ok:true, result:result===undefined ? null : result});
     return;
   }
+  }catch(e){ send({id:id,ok:false,error:'Script hook failed'}); }
 };
 `;
 
-  let smartSandboxWorker = null;
+  let smartSandboxFrame = null;
+  let smartSandboxPort = null;
   let smartSandboxGeneration = 0;
-  let smartSandboxReady = null;            // Promise<generation>, resolves once the worker confirms it's actually running
+  let smartSandboxReady = null;
+  let smartSandboxStartupReject = null;
   const smartSandboxPending = new Map();  // reqId -> {resolve, reject, timer, generation}
   let smartSandboxReqSeq = 0;
   const SMART_CALL_TIMEOUT_MS = 250;      // scripts only ever build small descriptor arrays -- generous
                                            // margin while still catching a hang almost instantly
 
-  // Waits for the worker's own {ready:true} ping (its first action, see SMART_WORKER_SRC) before
-  // sending it anything real. The HTML spec says a message posted to a worker before its script has
-  // even started running still queues correctly and is delivered once it does -- so in principle this
-  // handshake shouldn't be load-bearing. It's here anyway because that exact "arrives instantly for me,
-  // not for this one user, on Chrome specifically" gap is precisely the shape a real engine-level race
-  // in worker startup (a brand-new renderer process for the worker not yet fully spun up, a message
-  // posted into that gap genuinely lost rather than queued) would produce, and there is no way to
-  // confirm or rule that out without controlling the user's own browser -- so this makes the guarantee
-  // explicit and self-verified instead of resting on an engine behavior a dropped first message is, by
-  // definition, impossible to directly observe from here.
   function createSmartSandbox(){
     const gen = ++smartSandboxGeneration;
-    const blob = new Blob([SMART_WORKER_SRC], {type:'text/javascript'});
-    const url = URL.createObjectURL(blob);
-    const w = new Worker(url);
-    URL.revokeObjectURL(url);   // the worker already has the blob's bytes; the URL itself isn't needed after construction
-    smartSandboxWorker = w;
-    w.onerror = (e)=>{ e.preventDefault && e.preventDefault(); };   // a bug in SMART_WORKER_SRC itself
-                                                                      // would land here -- never a user
-                                                                      // script error, which compile()/
-                                                                      // the per-call try/catch contain
-    return new Promise(resolve=>{
-      w.onmessage = ()=>{   // the one and only message before the ready ping -- switch to the real handler
-        w.onmessage = (e)=>{
-          const data = e.data || {};
+    const frame = document.createElement('iframe');
+    frame.hidden = true; frame.tabIndex = -1; frame.setAttribute('aria-hidden','true');
+    frame.setAttribute('sandbox','allow-scripts');
+    smartSandboxFrame = frame;
+    const channel = new MessageChannel();
+    smartSandboxPort = channel.port1;
+    const bridge = `"use strict";
+      let port, worker, workerUrl, ready=false; const timers=new Map();
+      const emit = value => port && port.postMessage(JSON.stringify(value));
+      const stop = () => { if(worker) worker.terminate(); if(workerUrl){URL.revokeObjectURL(workerUrl);workerUrl=null;} for(const t of timers.values()) clearTimeout(t); timers.clear(); };
+      window.addEventListener('message', e => {
+        if(e.source!==parent || port || e.data!=='connect' || e.ports.length!==1) return;
+        port=e.ports[0];
+        port.onmessage = e => {
+          if(e.data && e.data.terminate){ stop(); return; }
+          if(!ready || !e.data || !Number.isSafeInteger(e.data.id)) return;
+          const id=e.data.id;
+          timers.set(id,setTimeout(()=>{stop();emit({fatal:true,error:'Smart shape timed out'});},250));
+          worker.postMessage(e.data);
+        };
+        port.start();
+        try{
+          workerUrl=URL.createObjectURL(new Blob([${JSON.stringify(SMART_WORKER_SRC)}],{type:'text/javascript'}));
+          worker=new Worker(workerUrl);
+          worker.onerror=e=>{e.preventDefault();stop();emit({fatal:true,error:'Smart shape worker failed: '+String(e.message||'startup error').slice(0,160)});};
+          worker.onmessage=e=>{
+            if(typeof e.data!=='string' || e.data.length>524288 || new TextEncoder().encode(e.data).length>524288){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
+            let data; try{data=JSON.parse(e.data);}catch(_){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
+            if(!data || typeof data!=='object' || Array.isArray(data)){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
+            if(!ready){if(data.ready!==true)return;ready=true;URL.revokeObjectURL(workerUrl);workerUrl=null;emit({ready:true});return;}
+            if(!Number.isSafeInteger(data.id) || !timers.has(data.id))return;
+            clearTimeout(timers.get(data.id));timers.delete(data.id);port.postMessage(e.data);
+          };
+        }catch(_){emit({fatal:true,error:'Smart shape sandbox unavailable'});}
+      });`;
+    frame.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; connect-src \'none\'; script-src \'unsafe-inline\' \'unsafe-eval\' blob:; worker-src blob:;">'
+      + '<script>'+bridge+'</scr'+'ipt>';
+    return new Promise((resolve,reject)=>{
+      smartSandboxStartupReject = reject;
+      const startupTimer = setTimeout(()=>{ if(gen===smartSandboxGeneration) regenerateSmartSandbox(); reject(new Error('Smart shape sandbox did not start')); },2000);
+      let ready = false;
+      channel.port1.onmessage = e=>{
+        if(gen!==smartSandboxGeneration) return;
+        try{
+          if(typeof e.data!=='string' || e.data.length>SMART_MAX_REPLY || new TextEncoder().encode(e.data).length>SMART_MAX_REPLY) throw new Error('Invalid smart shape response');
+          const data = JSON.parse(e.data);
+          if(!data || typeof data!=='object' || data.fatal) throw new Error(data && data.error || 'Smart shape sandbox failed');
+          if(!ready){
+            if(data.ready!==true) return;
+            ready=true; clearTimeout(startupTimer); smartSandboxStartupReject=null; resolve(gen); return;
+          }
           const pending = smartSandboxPending.get(data.id);
           if(!pending || pending.generation !== gen) return;
           smartSandboxPending.delete(data.id);
           clearTimeout(pending.timer);
-          pending.resolve(data);
-        };
-        resolve(gen);
+          try{ pending.resolve(validateSmartReply(data,pending.message)); }
+          catch(err){ reportSmartError(pending.message.src,pending.message.fn||'script',err.message); pending.reject(err); }
+        }catch(err){ clearTimeout(startupTimer); reject(err); regenerateSmartSandbox(); }
       };
+      frame.addEventListener('load',()=>{ if(gen===smartSandboxGeneration) frame.contentWindow.postMessage('connect','*',[channel.port2]); },{once:true});
+      document.body.appendChild(frame);
     });
   }
   function ensureSmartSandbox(){
@@ -1322,13 +1345,20 @@ self.onmessage = function(e){
   // call lazily spins up a fresh one, so one hostile/broken script can't permanently wedge every
   // future smart-shape call.
   function regenerateSmartSandbox(){
-    if(smartSandboxWorker) smartSandboxWorker.terminate();
-    smartSandboxWorker = null;
+    const frame=smartSandboxFrame, port=smartSandboxPort;
+    if(port){ try{port.postMessage({terminate:true});}catch(_){} setTimeout(()=>port.close(),50); }
+    if(frame) setTimeout(()=>frame.remove(),50);   // allow the trusted bridge to terminate its Worker first
+    smartSandboxFrame = null; smartSandboxPort = null;
     smartSandboxReady = null;
+    smartSandboxGeneration++;
+    if(smartSandboxStartupReject){ smartSandboxStartupReject(new Error('Smart shape sandbox stopped')); smartSandboxStartupReject=null; }
     for(const p of smartSandboxPending.values()){ clearTimeout(p.timer); p.reject(new Error('smart sandbox regenerated')); }
     smartSandboxPending.clear();
   }
   function requestSmartSandbox(message){
+    if(typeof message.src!=='string' || !message.src.trim() || message.src.length>MAX_SCRIPT ||
+       (message.method!=='caps' && (message.method!=='call' || !SMART_HOOKS.has(message.fn))))
+      return Promise.reject(new Error('Invalid smart shape request'));
     return ensureSmartSandbox().then(gen=>new Promise((resolve, reject)=>{
       if(gen !== smartSandboxGeneration){ reject(new Error('stale smart sandbox generation')); return; }
       const id = ++smartSandboxReqSeq;
@@ -1337,13 +1367,13 @@ self.onmessage = function(e){
         regenerateSmartSandbox();
         reject(new Error('smart sandbox timeout'));
       }, SMART_CALL_TIMEOUT_MS);
-      smartSandboxPending.set(id, {resolve, reject, timer, generation:gen});
-      smartSandboxWorker.postMessage({...message, id});
-    }));
+      smartSandboxPending.set(id, {resolve, reject, timer, generation:gen, message});
+      smartSandboxPort.postMessage({...message, id});
+    })).catch(err=>{reportSmartError(message.src,message.fn||'script',err.message);throw err;});
   }
   const scriptOf = s => typeof s === 'string' ? s : (s && s.script) || '';
   // Calls one hook (children/handles/hitEdit/dragEdit/initState/initStyle) inside the sandbox; resolves
-  // to its return value (already JSON-safe -- see `safe()` above), or null on any failure/timeout/
+  // to its centrally validated return value, or null on any failure/timeout/
   // missing hook -- a broken or hostile script can't crash rendering, same as before this sandbox
   // existed, just asynchronously now. `scriptOrItem` may be a plain script string (the "Add smart
   // shape" dialog, before an item even exists) or an item object (everywhere else).
@@ -1358,6 +1388,142 @@ self.onmessage = function(e){
     return requestSmartSandbox({method:'caps', src:scriptOf(scriptOrItem)})
       .then(r=>r.ok ? r.caps : null)
       .catch(()=>null);
+  }
+
+  // Every consumer, including callers that bypass requestSmartCall, receives this same contract.
+  const smartScriptErrors = new Map();
+  function reportSmartError(src,hook,message){
+    const key=src+'|'+hook+'|'+message;
+    if(smartScriptErrors.has(key)) return;
+    smartScriptErrors.set(key,true);
+    if(smartScriptErrors.size>128) smartScriptErrors.delete(smartScriptErrors.keys().next().value);
+    toast('Smart shape: '+hook+': '+message);
+  }
+  function smartNumber(v,label,min=-1000000,max=1000000){
+    if(!isNum(v) || v<min || v>max) throw new Error(label+' must be a finite number in range');
+    return v;
+  }
+  function normalizeSmartState(value){
+    if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('State must be a JSON object');
+    let count=0;
+    function copy(v,depth){
+      if(depth>16 || ++count>4000) throw new Error('State is too deeply nested or complex');
+      if(v===null || typeof v==='boolean' || typeof v==='string') return v;
+      if(typeof v==='number') return smartNumber(v,'State number',-Number.MAX_VALUE,Number.MAX_VALUE);
+      if(Array.isArray(v)) return v.map(x=>copy(x,depth+1));
+      if(!v || typeof v!=='object') throw new Error('State must contain only JSON data');
+      const out={};
+      for(const key of Object.keys(v)){
+        if(['__proto__','prototype','constructor'].includes(key)) throw new Error('Unsupported state key');
+        out[key]=copy(v[key],depth+1);
+      }
+      return out;
+    }
+    const out=copy(value,0);
+    if(JSON.stringify(out).length>MAX_STATE_JSON) throw new Error('State exceeds 4000 characters');
+    return out;
+  }
+  function normalizeSmartChild(raw,budget){
+    if(!raw || typeof raw!=='object' || Array.isArray(raw) || !['rect','ellipse','line','arrow','polygon','path','text'].includes(raw.type))
+      throw new Error('Unsupported child shape');
+    const out={type:raw.type};
+    const number=(key,min,max)=>out[key]=smartNumber(raw[key],key,min,max);
+    const point=p=>{
+      if(!p || typeof p!=='object') throw new Error('Invalid point');
+      const q={x:smartNumber(p.x,'Point x'),y:smartNumber(p.y,'Point y')};
+      for(const key of ['c1','c2']) if(p[key]) q[key]={x:smartNumber(p[key].x,key+' x'),y:smartNumber(p[key].y,key+' y')};
+      if(p.arcTo){
+        const a=p.arcTo;
+        q.arcTo={cx:smartNumber(a.cx,'Arc cx'),cy:smartNumber(a.cy,'Arc cy'),r:Math.max(0,smartNumber(a.r,'Arc radius')),
+          a1:smartNumber(a.a1,'Arc start'),a2:smartNumber(a.a2,'Arc end')};
+      }
+      return q;
+    };
+    if(raw.type==='line' || raw.type==='arrow') for(const key of ['x1','y1','x2','y2']) number(key);
+    else if(raw.type==='path' || raw.type==='polygon'){
+      if(!Array.isArray(raw.points) || raw.points.length<(raw.type==='path'?1:2)) throw new Error('Invalid points');
+      budget.points+=raw.points.length;
+      if(budget.points>MAX_POINTS) throw new Error('Point budget exceeded');
+      out.points=raw.points.map(point);
+      if(raw.type==='path') out.mode=['pen','marker','brush'].includes(raw.mode)?raw.mode:'pen';
+      else { out.closed=raw.closed!==false; if(out.closed && out.points.length<3) throw new Error('Closed polygon needs three points'); }
+    } else for(const key of ['x','y','w','h']) number(key);
+    for(const key of ['color','fillColor','textColor']) if(raw[key]!==undefined){
+      if(!isColor(raw[key])) throw new Error('Invalid '+key); out[key]=raw[key];
+    }
+    for(const key of ['fill','strokeOn','hs','he']) if(raw[key]!==undefined){
+      if(typeof raw[key]!=='boolean') throw new Error('Invalid '+key); out[key]=raw[key];
+    }
+    if(raw.size!==undefined) number('size',0,60);
+    if(raw.dash!==undefined){ if(!['solid','tight','wide'].includes(raw.dash)) throw new Error('Invalid dash'); if(raw.dash!=='solid') out.dash=raw.dash; }
+    for(const key of ['hsStyle','heStyle']) if(raw[key]!==undefined){ if(!HEAD_STYLES.has(raw[key])) throw new Error('Invalid arrowhead'); out[key]=raw[key]; }
+    if(raw.type==='text'){
+      if(typeof raw.text!=='string' || raw.text.length>MAX_TEXT) throw new Error('Text exceeds 2000 characters or is not text');
+      budget.text+=raw.text.length;
+      if(budget.text>20000) throw new Error('Text budget exceeded');
+      out.text=raw.text;
+      if(raw.align!==undefined){ if(!['left','center','right'].includes(raw.align)) throw new Error('Invalid alignment'); out.align=raw.align; }
+      const font=typeof raw.font==='string'?raw.font:'';
+      if(font.length>256 || /[;{}<>]/.test(font)) throw new Error('Invalid font');
+      const px=/(\d+(?:\.\d+)?)px/.exec(font);
+      const size=smartNumber(px?+px[1]:(raw.fontSize===undefined?16:raw.fontSize),'Font size',0,400);
+      const family=raw.fontFamily===undefined?familyOf({font}):raw.fontFamily;
+      if(!Object.hasOwn(FONTS,family)) throw new Error('Invalid font family');
+      const weight=/^(?:italic\s+)?(bold|[1-9]00)\s+/.exec(font);
+      out.font=(/^italic\s/.test(font)?'italic ':'')+(weight?weight[1]+' ':'600 ')+size+'px '+FONTS[family];
+    }
+    return out;
+  }
+  function validateSmartReply(data,message){
+    if(typeof data.ok!=='boolean' || !data.ok) throw new Error(typeof data.error==='string'?data.error.slice(0,160):'Script failed');
+    if(message.method==='caps'){
+      if(!data.caps || data.caps.children!==true) throw new Error('Script needs children()');
+      const caps={}; for(const hook of SMART_HOOKS) caps[hook]=data.caps[hook]===true;
+      return {ok:true,caps};
+    }
+    let value=data.result;
+    if(message.fn==='children'){
+      if(!Array.isArray(value)) throw new Error('Expected an array of child shapes');
+      if(value.length>1000) throw new Error('More than 1000 child shapes');
+      const budget={points:0,text:0}, kids=[];
+      value.forEach((raw,i)=>{
+        try{ kids.push(normalizeSmartChild(raw,budget)); }
+        catch(err){ if(/budget exceeded/.test(err.message)) throw err; reportSmartError(message.src,'children','Child '+(i+1)+': '+err.message); }
+      });
+      value=kids;
+    } else if(message.fn==='handles'){
+      if(value===null) value=[];   // optional hook
+      if(!Array.isArray(value) || value.length>128) throw new Error('Expected at most 128 handles');
+      const ids=new Set();
+      value=value.map(h=>{
+        if(!h || typeof h.id!=='string' || !h.id || h.id.length>64 || ids.has(h.id)) throw new Error('Invalid or duplicate handle ID');
+        ids.add(h.id);
+        if(h.kind!==undefined && h.kind!=='drag' && h.kind!=='click') throw new Error('Invalid handle kind');
+        return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag'};
+      });
+    } else if(message.fn==='hitEdit'){
+      if(value!==null && (typeof value!=='string' || !value || value.length>64)) throw new Error('Expected a handle ID or null');
+    } else if(message.fn==='initState' || message.fn==='dragEdit'){
+      value=value===null?null:normalizeSmartState(value);
+    } else if(message.fn==='initStyle'){
+      if(value!==null){
+        if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('Expected a style object');
+        const out={};
+        const field=(key,check)=>{
+          if(value[key]===undefined) return;
+          try{out[key]=check(value[key]);}catch(err){reportSmartError(message.src,'initStyle',err.message);}
+        };
+        for(const key of ['color','fillColor','textColor']) field(key,v=>{if(!isColor(v))throw new Error('Invalid '+key);return v;});
+        for(const key of ['fill','strokeOn']) field(key,v=>{if(typeof v!=='boolean')throw new Error('Invalid '+key);return v;});
+        for(const key of ['size','fontSize','w','h']) field(key,v=>{
+          smartNumber(v,key,-Number.MAX_VALUE,Number.MAX_VALUE);
+          return Math.min(key==='size'?60:key==='fontSize'?400:2000,Math.max(key==='size'?1:key==='fontSize'?6:20,key==='size'?v:Math.round(v)));
+        });
+        field('fontFamily',v=>{if(!Object.hasOwn(FONTS,v))throw new Error('Invalid font family');return v;});
+        value=out;
+      }
+    }
+    return {ok:true,result:value};
   }
   // ---------- Smart-shape children()/handles(): sync render-loop cache + true-async export ----------
   // shapeOps/render() need a children()/handles() result SYNCHRONOUSLY on every call (many times a
@@ -1385,7 +1551,7 @@ self.onmessage = function(e){
   const SMART_BACKOFF_MS = 3000;
   const smartBackoffUntil = new Map();
   function smartSig(it, extra){
-    return it.script.length+':'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+JSON.stringify(smartResolvedStyle(it))+(extra?'|'+extra:'');
+    return it.script+':'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+JSON.stringify(smartResolvedStyle(it))+(extra?'|'+extra:'');
   }
   // Deliberately calls requestSmartSandbox directly, NOT requestSmartCall -- requestSmartCall's own
   // contract collapses "the sandbox answered, this script has no children to show" and "the request
@@ -1429,16 +1595,16 @@ self.onmessage = function(e){
   // identity (not uid -- a library/clipboard item being exported may not have a stable one), into
   // smartExportCache; the synchronous paint pass that follows (unchanged shapeOps/drawItem/itemToSVG)
   // then finds every answer already waiting via smartChildrenFor's identity check above and never asks
-  // the sandbox itself. Does not recurse into a nested smart-in-smart child (SMART_SHAPES.md already
-  // flags that combination as untested/not recommended) -- such a child falls back to the live,
-  // uid-keyed cache, which being freshly asked only during THIS export, has nothing cached yet, and
-  // exports as empty rather than wrong.
+  // the sandbox itself. Child validation forbids nested smart shapes and asset-referencing images.
   let smartExportCache = null;
-  async function warmSmartExportCache(itemList){
+  async function warmSmartExportCache(itemList,strict=false){
     const map = new Map();
     for(const it of itemList){
       if(it.type !== 'smart') continue;
-      map.set(it, await requestSmartCall(it, 'children', [it.state||{}, smartResolvedStyle(it), it.w, it.h, false]) || []);
+      try{
+        const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]});
+        map.set(it,r.result);
+      }catch(err){ if(strict) throw err; map.set(it,smartChildrenCache.get(it.uid)?.kids || []); }
     }
     return map;
   }
@@ -3178,11 +3344,7 @@ self.onmessage = function(e){
       // whole-item drag -- same "a press must only ever move a handle" precedent as Point-Edit below.
       // A press elsewhere exits edit mode and falls through to normal selection/deselection.
       //
-      // hitEdit crosses the sandbox, so this decision can't be made inline anymore: smartHitPending
-      // pauses it (and everything below, in continueOnDownAfterSmartHitEdit) until the reply lands in
-      // onSmartHitEditReply, which then does exactly what this block used to do synchronously --
-      // still goes through requestSmartCall even if the script defines no hitEdit at all (that just
-      // resolves to a `null` handle, same as a miss).
+      // Each press retains its movement and release until its ordered hit-test/action completes.
       if(editingSmartIdx!=null){
         const sit = items[editingSmartIdx];
         if(sit){
@@ -3192,11 +3354,18 @@ self.onmessage = function(e){
           // the container's own position here.
           const wp = toLocal(sit, x, y);
           const lp = { x: wp.x - sit.x, y: wp.y - sit.y };
-          const pending = { idx: editingSmartIdx, releasedEarly: false };
+          const pending = {idx:editingSmartIdx,it:sit,tab:activeTabId,epoch:smartGestureEpoch,
+            x,y,lp,e,latest:null,released:false,mode:'pending',cancelled:false,sd:null};
+          pending.releaseDone=new Promise(resolve=>pending.release=resolve);
+          smartCurrentPress=pending;
+          smartGestureRecords.add(pending);
           smartHitPending = pending;
-          smartHitSettled = requestSmartCall(sit, 'hitEdit', [sit.state||{}, lp.x, lp.y, sit.w, sit.h, smartResolvedStyle(sit)])
-            .then(handle => onSmartHitEditReply(pending, handle, sit, lp, x, y, e))
-            .catch(()=> onSmartHitEditReply(pending, null, sit, lp, x, y, e));
+          smartGestureQueue=smartGestureQueue.then(()=>processSmartGesture(pending)).catch(()=>{}).finally(()=>{
+            smartGestureRecords.delete(pending);
+            if(smartCurrentPress===pending) smartCurrentPress=null;
+            if(smartHitPending===pending) smartHitPending=null;
+          });
+          smartHitSettled=smartGestureQueue;
           return;
         }
       }
@@ -3235,7 +3404,7 @@ self.onmessage = function(e){
   }
   // The rest of onDown's select-tool handling, run either synchronously (no smart object in edit
   // mode) or after hitEdit's async reply resolves "no handle, and not even a body hit" (see
-  // onSmartHitEditReply) -- a pure extraction, no logic changed from what used to follow inline here.
+  // processSmartGesture) -- normal selection uses the same code for immediate and delayed presses.
   function continueOnDownAfterSmartHitEdit(x, y, e){
       // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
       // any anchor square (clicking one makes it active AND starts dragging it)
@@ -3413,16 +3582,13 @@ self.onmessage = function(e){
   function onMove(e){
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
+    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
+      const press=smartCurrentPress;press.latest={...p,e};
+      if(press.mode==='pending' || press.mode==='body') return;
+      if(press.mode==='handle'){ runSmartDragMove(p.x,p.y,press.sd); return; }
+    }
     if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor && !smartDrag && !smartHitPending) return;
     const {x,y} = p;
-
-    // A press on a smart object's own body is still waiting on hitEdit's async reply (see onDown) --
-    // nothing is decided yet, so just remember where the pointer is NOW (overwrite, never a queue:
-    // dragEdit only ever needs "where is it right now") and replay it the instant the reply resolves
-    // what kind of gesture this actually is (see onSmartHitEditReply/runSmartDragMove).
-    if(smartHitPending){ pendingMoveDuringHit = {x, y, e}; return; }
-
-    if(smartDrag){ runSmartDragMove(x, y); return; }
 
     if(editingAnchor){
       if(!editingAnchor.moved && Math.hypot(x-editingAnchor.sx, y-editingAnchor.sy) < 3) return;
@@ -3635,15 +3801,16 @@ self.onmessage = function(e){
   // "send this instead, next" rather than firing a second parallel call. This caps in-flight requests
   // at exactly one regardless of mouse-move rate or round-trip latency; no reply is ever discarded
   // for being superseded, it just triggers sending the next (newest) one immediately afterward.
-  function runSmartDragMove(x, y){
-    smartDrag.moved = true;
+  function runSmartDragMove(x, y, sd=smartDrag){
+    if(!sd || !smartGestureValid(sd.press)) return;
+    sd.moved = true;
     // click-kind handles resolve exactly once, in onUp, regardless of how far the pointer
     // wanders while still pressed -- see onDown's kind lookup.
-    if(smartDrag.kind === 'click') return;
-    const it = items[smartDrag.idx];
+    if(sd.kind === 'click') return;
+    const it = sd.press.it;
     const wp = toLocal(it, x, y);
     const lp = { x: wp.x - it.x, y: wp.y - it.y };   // world (de-rotated) -> origin-relative, see onDown
-    requestSmartDragEdit(it, smartDrag, lp);
+    requestSmartDragEdit(it, sd, lp);
   }
   function requestSmartDragEdit(it, sd, lp){
     sd.latest = { lp, w: it.w, h: it.h, style: smartResolvedStyle(it) };
@@ -3660,105 +3827,81 @@ self.onmessage = function(e){
       .catch(()=> onSmartDragEditReply(it, sd, myToken, null));
   }
   function onSmartDragEditReply(it, sd, myToken, result){
-    if(sd.token !== myToken) return;   // this gesture was replaced by an entirely newer one -- drop
+    if(sd.token !== myToken || !smartGestureValid(sd.press)) return;
     sd.inFlight = false;
     if(result) it.state = result;
     render();
     if(sd.pendingAfterInFlight) sendNextSmartDragEdit(it, sd);
     else if(sd.onSettle){ const fn = sd.onSettle; sd.onSettle = null; fn(); }
   }
-  // Resolves a smartDrag exactly once, from its ORIGINAL press position, by calling dragEdit and
-  // committing only if the state actually changed (so landing back on the same value doesn't add a
-  // no-op undo step). Used for click-kind handles (which never fire from onMove at all -- see
-  // there) and for the "zero pointer movement" case of an ordinary drag-kind handle (which DOES fire
-  // from onMove, just never got the chance to if the pointer never actually moved) -- in both cases
-  // `sd.inFlight` is false, since runSmartDragMove was never called (or never got past the 'click'
-  // check) during the gesture, so this always issues its own single, fresh request.
-  async function resolveSmartDragOnce(sd){
-    const it = items[sd.idx];
-    if(!it){ historyBefore = null; render(); return; }
-    const before = JSON.stringify(it.state||{});
-    const next = await requestSmartCall(it, 'dragEdit', [it.state||{}, sd.handle, sd.lx, sd.ly, it.w, it.h, smartResolvedStyle(it)]);
-    if(next) it.state = next;
-    if(JSON.stringify(it.state||{}) !== before) commitHistory();
-    else historyBefore = null;
-    render();
-  }
-  // Resolves onDown's paused hitEdit decision -- see onDown for why this can't happen inline anymore.
-  // Reproduces the exact same three-way branch the old synchronous code had (grab a handle / absorb a
-  // body press / fall through to normal selection), just one async hop later, plus one case that only
-  // exists because of that hop: a release that happened before the reply even arrived (resolved with
-  // zero movement, same as a synchronous press-release always was). `pending` is the exact object
-  // onDown created for THIS press (identity, not a token) -- a second, overlapping press starting its
-  // OWN hitEdit request in the meantime (a real double-click's two presses can each have one
-  // outstanding at once) does NOT invalidate this one; each press's own resolution still runs
-  // independently, exactly as two real synchronous clicks always would have. The only thing that DOES
-  // invalidate it: editingSmartIdx or the item itself changing while this was in flight (clicked
-  // elsewhere, exited edit mode, undo/redo swapped the scene, ...).
-  function onSmartHitEditReply(pending, handle, sit, lp, x, y, e){
-    if(smartHitPending === pending) smartHitPending = null;   // this press's own hit-test is now settled
-    if(editingSmartIdx !== pending.idx || items[pending.idx] !== sit){ pendingMoveDuringHit = null; return; }
-    if(handle){
-      // kind comes from the render loop's own already-warm handles() cache (see smartHandlesFor) --
-      // avoids a second round-trip just to look this up, at the cost of it being one render-frame
-      // stale in a vanishingly unlikely edge case (self-healing on the very next paint either way).
-      let kind = 'drag';
-      const cachedHandles = smartHandlesCache.get(sit.uid);
-      if(cachedHandles){ const found = cachedHandles.hs.find(h=>h && h.id===handle); if(found && found.kind==='click') kind = 'click'; }
-      // A real handle resolved for this press -- suppress onDoubleClick's own generic exit-toggle on
-      // top of it (same precedent as editingAnchor/endDrag elsewhere); onDoubleClick awaits
-      // smartHitSettled before reading this, so it sees the final value even though it's set here,
-      // asynchronously, well after the native dblclick event itself already fired.
-      handledPointerUp = true;
-      const sd = { idx:pending.idx, handle, kind, moved:false, lx:lp.x, ly:lp.y,
-                   token:++smartDragToken, inFlight:false, latest:null, pendingAfterInFlight:false, onSettle:null };
-      if(pending.releasedEarly){
-        resolveSmartDragOnce(sd);   // never touches the live smartDrag var -- released before onMove/onUp could
-      } else {
-        beginHistory();
-        smartDrag = sd;
-        if(pendingMoveDuringHit){
-          const buffered = pendingMoveDuringHit;
-          pendingMoveDuringHit = null;
-          runSmartDragMove(buffered.x, buffered.y);
-        }
-      }
-      return;
+  function smartGestureValid(p){ return !p.cancelled && p.epoch===smartGestureEpoch && p.tab===activeTabId && items[p.idx]===p.it; }
+  function cancelSmartGestures(){
+    smartGestureEpoch++;
+    for(const p of smartGestureRecords){
+      p.cancelled=true;
+      if(p.sd && p.tab===activeTabId && items[p.idx]===p.it) p.it.state=clone(p.sd.originalState);
+      p.release();
+      if(p.sd?.onSettle){const settle=p.sd.onSettle;p.sd.onSettle=null;settle();}
     }
-    pendingMoveDuringHit = null;
-    if(pending.releasedEarly) return;   // missed every handle AND released early -- a no-op, same as a miss-then-click always was
-    if(hitTest(x,y)===pending.idx) return;   // missed every handle, still pressed this item's body
-    continueOnDownAfterSmartHitEdit(x, y, e);
+    smartCurrentPress=null;smartHitPending=null;smartDrag=null;
+  }
+  function replayPointer(e,x,y){
+    const r=canvas.getBoundingClientRect();
+    return {clientX:r.left+x,clientY:r.top+y,pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,
+      shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey};
+  }
+  async function processSmartGesture(p){
+    if(!smartGestureValid(p)) return;
+    const it=p.it;
+    let handle=null, hs=[];
+    if(editingSmartIdx===p.idx){
+      handle=await requestSmartCall(it,'hitEdit',[it.state||{},p.lp.x,p.lp.y,it.w,it.h,smartResolvedStyle(it)]);
+      if(handle) hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+    }
+    if(!smartGestureValid(p)) return;
+    const h=hs.find(h=>h.id===handle);
+    if(handle && !h){reportSmartError(it.script,'hitEdit','Unknown handle ID');handle=null;}
+    if(smartHitPending===p) smartHitPending=null;
+    handledPointerUp=!!handle;
+    if(handle){
+      const sd={press:p,handle,kind:h.kind,moved:false,lx:p.lp.x,ly:p.lp.y,token:++smartDragToken,
+        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,before:snap(),originalState:clone(it.state||{})};
+      p.sd=sd;p.mode='handle';
+      if(smartCurrentPress===p && !p.released) smartDrag=sd;
+      if(p.latest) runSmartDragMove(p.latest.x,p.latest.y,sd);
+      await p.releaseDone;
+      if(!smartGestureValid(p)) return;
+      if(sd.kind==='click' || !sd.moved){
+        const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,sd.lx,sd.ly,it.w,it.h,smartResolvedStyle(it)]);
+        if(!smartGestureValid(p)) return;
+        if(next) it.state=next;
+      } else {
+        if(sd.inFlight) await new Promise(resolve=>sd.onSettle=resolve);
+      }
+      if(!smartGestureValid(p)) return;
+      if(JSON.stringify(it.state||{})!==JSON.stringify(sd.originalState)){
+        historyBefore=sd.before;commitHistory();
+      }
+      p.sd=null;render();return;
+    }
+    if(editingSmartIdx===p.idx && hitTest(p.x,p.y)===p.idx){p.mode='body';await p.releaseDone;return;}
+    // A miss outside the body is a normal gesture, even when its release already happened.
+    editingSmartIdx=null;p.mode='normal';
+    smartMutationOwner=p;smartReplay=true;
+    try{
+      continueOnDownAfterSmartHitEdit(p.x,p.y,p.e);
+      if(p.latest) onMove(replayPointer(p.latest.e,p.latest.x,p.latest.y));
+      if(p.released) onUp(replayPointer(p.upEvent,p.upPoint.x,p.upPoint.y));
+    }finally{smartMutationOwner=null;smartReplay=false;}
+    await p.releaseDone;
   }
   function onUp(e){
-    if(smartHitPending){
-      // The mouse released before hitEdit even replied -- a click faster than the round trip. Tag it;
-      // the reply handler resolves the handle (if any) with zero movement once it lands, same as a
-      // synchronous zero-movement press-release always has -- no visual drag ever happened here, so
-      // there's nothing to lose by waiting for the answer. Deliberately does NOT set handledPointerUp
-      // here -- that's only earned once the reply confirms an actual handle (see onSmartHitEditReply);
-      // a plain body press must still let onDoubleClick's own generic exit-toggle run normally,
-      // exactly as it always could before a handle check needed an async round trip at all.
-      smartHitPending.releasedEarly = true;
-      return;
-    }
-    if(smartDrag){
-      // Same precedent as editingAnchor/endDrag below: resolving a script's own handle must not ALSO
-      // let the native dblclick event do something unrelated on top of it (e.g. a double-click on a
-      // click-kind cycle button was exiting smart-object edit mode entirely, on top of the button's
-      // own already-correct single advance) -- this was simply the one gesture here missing that flag.
-      handledPointerUp = true;
-      const sd = smartDrag;
-      smartDrag = null;   // detach immediately -- `sd` itself still resolves correctly below via its
-                           // own token/onSettle, it just no longer touches the live smartDrag variable
-      if(sd.kind === 'click') resolveSmartDragOnce(sd);
-      else if(sd.moved){
-        if(sd.inFlight) sd.onSettle = ()=>commitHistory();   // let the outstanding reply land and apply
-                                                               // it.state, THEN commit -- not before
-        else commitHistory();
-      }
-      else resolveSmartDragOnce(sd);
-      return;
+    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
+      const p=smartCurrentPress;
+      if(e.type==='pointercancel'){cancelSmartGestures();render();return;}
+      p.released=true;p.upEvent=e;p.upPoint=pos(e);p.release();
+      if(p.sd===smartDrag) smartDrag=null;
+      if(p.mode!=='normal') return;
     }
     if(erasing){
       if(erasing.removed) commitHistory(); else historyBefore=null;
@@ -4238,6 +4381,7 @@ self.onmessage = function(e){
   // drag/resize/rotate...) together with its pending history transaction, so that swapping the
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
+    cancelSmartGestures();editingSmartIdx=null;
     unbakeAfterGesture();   // never leave a group in the mid-gesture encoding
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
@@ -4256,6 +4400,7 @@ self.onmessage = function(e){
     selection = expandSelection(sel);
   }
   function undo(){
+    cancelSmartGestures();
     if(!undoStack.length) return;
     cancelGesture();
     const keep = selectedUids();
@@ -4265,6 +4410,7 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function redo(){
+    cancelSmartGestures();
     if(!redoStack.length) return;
     cancelGesture();
     const keep = selectedUids();
@@ -4543,6 +4689,78 @@ self.onmessage = function(e){
   let shapeLibraryRevision = 0;   // a late startup fetch must not replace an import or an edit
   let shapeLibraryImportSeq = 0;
   let managingShapes = false;
+  const shapePreviewJobs = new WeakMap();
+  const shapePreviewFailures = new WeakMap();
+  const smartPreviewConsent = new WeakSet();
+  const previewQuestionsOffered = new WeakSet();
+
+  // This fingerprint detects stale pictures, not trust. Imported PNGs remain untrusted images.
+  function shapePreviewKey(list){
+    const canonical=v=>Array.isArray(v)?v.map(canonical):v && typeof v==='object'
+      ? Object.fromEntries(Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>[k,canonical(v[k])])) : v;
+    const normalized=list.map(it=>{
+      const item=normalizeItem(it,{});
+      if(item) for(const key of ['uid','group','groupRotation']) delete item[key];
+      return item;
+    });
+    const json=JSON.stringify(canonical(normalized));
+    let a=2166136261,b=5381;
+    for(let i=0;i<json.length;i++){a=Math.imul(a^json.charCodeAt(i),16777619);b=Math.imul(b,33)^json.charCodeAt(i);}
+    return 'png1:'+json.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
+  }
+  function normalizeShapeThumbnail(raw,list){
+    if(!raw || raw.version!==1 || raw.source!==shapePreviewKey(list) || typeof raw.png!=='string' || raw.png.length>350000 ||
+       !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(raw.png)) return null;
+    try{
+      const bytes=atob(raw.png.slice(22));
+      if(bytes.length<33 || bytes.length>262144 || ![137,80,78,71,13,10,26,10].every((v,i)=>bytes.charCodeAt(i)===v) || bytes.slice(12,16)!=='IHDR') return null;
+      const n=at=>[0,1,2,3].reduce((v,i)=>v*256+bytes.charCodeAt(at+i),0);
+      if(n(8)!==13 || n(16)<1 || n(20)<1 || n(16)>256 || n(20)>256) return null;
+      return {version:1,source:raw.source,png:raw.png};
+    }catch(_){return null;}
+  }
+  function validShapeThumbnail(tpl){ return normalizeShapeThumbnail(tpl.thumbnail,tpl.items); }
+  async function createShapeThumbnail(list){
+    const svg=await shapeThumbSVGAsync(list);
+    const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
+    const img=new Image();
+    try{
+      await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(new Error('Preview image did not load')),2000);
+        img.onload=()=>{clearTimeout(timer);resolve();};
+        img.onerror=()=>{clearTimeout(timer);reject(new Error('Preview image could not be decoded'));};
+        img.src=url;
+      });
+      const off=document.createElement('canvas');off.width=off.height=128;
+      off.getContext('2d').drawImage(img,0,0,128,128);
+      return off.toDataURL('image/png');
+    }finally{URL.revokeObjectURL(url);}
+  }
+  function ensureShapeThumbnail(tpl){
+    if(validShapeThumbnail(tpl)) return Promise.resolve();
+    if(tpl.items.some(it=>it.type==='smart') && !smartPreviewConsent.has(tpl)) return Promise.resolve();
+    if(shapePreviewJobs.has(tpl)) return shapePreviewJobs.get(tpl);
+    const source=shapePreviewKey(tpl.items);
+    if(shapePreviewFailures.get(tpl)===source) return Promise.resolve();
+    const job=createShapeThumbnail(tpl.items).then(png=>{
+      if(!shapeLibrary?.shapes.includes(tpl) || source!==shapePreviewKey(tpl.items)) return;
+      tpl.thumbnail={version:1,source,png};shapeLibraryDirty=true;shapeLibraryRevision++;
+    }).catch(()=>{shapePreviewFailures.set(tpl,source);toast('Could not generate preview for '+tpl.name);})
+      .finally(()=>{shapePreviewJobs.delete(tpl);if(shapeLibrary?.shapes.includes(tpl))updateShapeLibraryUI();});
+    shapePreviewJobs.set(tpl,job);return job;
+  }
+  async function offerMissingSmartPreviews(lib,again=false){
+    if(!lib || lib!==shapeLibrary || (!again && previewQuestionsOffered.has(lib))) return;
+    const missing=lib.shapes.filter(tpl=>tpl.items.some(it=>it.type==='smart') && !validShapeThumbnail(tpl) && (again || !smartPreviewConsent.has(tpl)));
+    if(!missing.length) return;
+    previewQuestionsOffered.add(lib);
+    const answer=await askLibrary({title:'Generate missing previews?',
+      message:'Generating missing previews runs scripts included in this library. Only proceed if you trust its source. Cancel keeps placeholders and still lets you use the library.',
+      submit:'Generate previews',cancel:'Use placeholders'});
+    if(answer===null || lib!==shapeLibrary) return;
+    missing.forEach(tpl=>{smartPreviewConsent.add(tpl);shapePreviewFailures.delete(tpl);});
+    await Promise.all(missing.map(ensureShapeThumbnail));
+  }
 
   function selectionAsShapeItems(){
     if(ui.tool!=='select' || !selection.length){ toast('Select something on the canvas first'); return null; }
@@ -4592,6 +4810,7 @@ self.onmessage = function(e){
     if(name===null) return;
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
     shapeLibrary.shapes.push({name, savedAt:new Date().toISOString(), items:list});
+    smartPreviewConsent.add(shapeLibrary.shapes[shapeLibrary.shapes.length-1]);
     shapeLibraryChanged();
     managingShapes = false;
     setShapePicker(true);
@@ -4611,6 +4830,7 @@ self.onmessage = function(e){
     if(!await askLibrary({title:'Replace shape', message:'Replace "'+tpl.name+'" with the current canvas selection? Shapes already placed on the canvas will stay as they are.', submit:'Replace shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     tpl.items = list;
+    delete tpl.thumbnail; shapePreviewFailures.delete(tpl); smartPreviewConsent.add(tpl);
     tpl.savedAt = new Date().toISOString();
     shapeLibraryChanged();
     toast('Replaced "'+tpl.name+'" — export to keep the change');
@@ -4623,9 +4843,12 @@ self.onmessage = function(e){
     shapeLibraryChanged();
   }
 
-  function exportShapeLibrary(){
+  async function exportShapeLibrary(){
     if(!shapeLibrary){ toast('Add a shape or import a library first'); return; }
-    downloadJSON(SHAPE_LIBRARY_FILE, shapeLibrary);
+    const lib=shapeLibrary;
+    await Promise.all(lib.shapes.map(ensureShapeThumbnail));
+    if(lib!==shapeLibrary) return;
+    downloadJSON(SHAPE_LIBRARY_FILE, lib);
     shapeLibraryDirty = false;
     updateShapeLibraryUI();
     toast('Library download started — keep the file to use it next time');
@@ -4642,6 +4865,7 @@ self.onmessage = function(e){
       shapeLibrary = lib;
       shapeLibraryRevision++;
       updateShapeLibraryUI();
+      lib.shapes.filter(tpl=>!tpl.items.some(it=>it.type==='smart')).forEach(ensureShapeThumbnail);
     }catch(e){ /* drawing works even without a readable sibling library */ }
   }
 
@@ -4751,8 +4975,9 @@ self.onmessage = function(e){
     const m = 24, scale = 2;                              // margin (px) and export supersampling
     // See itemsToPngBlob's own comment: resolve every smart item's children() before `ctx` is ever
     // swapped to the offscreen canvas below.
+    const cache=await warmSmartExportCache(items);
     const prevExportCache = smartExportCache;
-    smartExportCache = await warmSmartExportCache(items);
+    smartExportCache = cache;
     try{
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       for(const it of items){
@@ -4900,8 +5125,9 @@ self.onmessage = function(e){
     // warmSmartExportCache resolves every smart item's children() up front so the synchronous loop
     // below (unchanged -- itemToSVG/shapeOps) never has to ask the sandbox itself. See its own comment
     // for why this two-phase "resolve everything, then paint" shape is required, not optional.
+    const cache=await warmSmartExportCache(itemList);
     const prevExportCache = smartExportCache;
-    smartExportCache = await warmSmartExportCache(itemList);
+    smartExportCache = cache;
     let body = '';
     try{ for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets); }
     finally{ smartExportCache = prevExportCache; }
@@ -4921,8 +5147,9 @@ self.onmessage = function(e){
     // offscreen canvas below, nothing may yield back to the event loop until it's restored, or a live
     // render() triggered by something else entirely (e.g. an unrelated mouse move) could interleave
     // and paint to the wrong canvas. See warmSmartExportCache's own comment.
+    const cache=await warmSmartExportCache(itemList);
     const prevExportCache = smartExportCache;
-    smartExportCache = await warmSmartExportCache(itemList);
+    smartExportCache = cache;
     try{
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       for(const it of itemList){
@@ -4942,7 +5169,7 @@ self.onmessage = function(e){
       ctx = octx;
       try { for(const it of itemList) drawItem(it); }
       finally { ctx = real; }
-      return await new Promise(resolve=>off.toBlob(blob=>resolve(blob), 'image/png'));
+      return new Promise(resolve=>off.toBlob(blob=>resolve(blob), 'image/png'));
     } finally { smartExportCache = prevExportCache; }
   }
   async function saveSvg(){
@@ -5152,6 +5379,7 @@ self.onmessage = function(e){
 
   // ---------- toolbar wiring ----------
   function setTool(t){
+    if(t!==ui.tool){cancelSmartGestures();editingSmartIdx=null;}
     if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
     document.querySelectorAll('[data-tool].btn').forEach(b=>{
@@ -5292,6 +5520,7 @@ self.onmessage = function(e){
     libraryNameInput.removeAttribute('aria-invalid');
     libraryNameInput.value = options.name || '';
     document.getElementById('libraryDialogSubmit').textContent = options.submit;
+    document.getElementById('libraryDialogCancel').textContent = options.cancel || 'Cancel';
     return new Promise(resolve=>{
       libraryQuestion = {...options, resolve};
       libraryDialog.showModal();
@@ -5369,6 +5598,7 @@ self.onmessage = function(e){
       renderShapeLibrary(); fitShapePicker();
       setStrokePicker(false); setFillPicker(false); setTextColorPicker(false);
       setSizePicker(false); setTablePicker(false); setMenu(false);
+      offerMissingSmartPreviews(shapeLibrary);
     }
   }
   function fitShapePicker(){
@@ -5407,6 +5637,7 @@ self.onmessage = function(e){
   });
   document.getElementById('importLibraryBtn').addEventListener('click', ()=>shapeLibraryInput.click());
   document.getElementById('exportLibraryBtn').addEventListener('click', exportShapeLibrary);
+  document.getElementById('generateShapePreviewsBtn').addEventListener('click',()=>offerMissingSmartPreviews(shapeLibrary,true));
 
   // ---------- smart-object authoring dialog ----------
   // Prefilled into a fresh dialog as a working, editable starting point -- see CLAUDE.md's smart-object
@@ -6095,6 +6326,7 @@ self.onmessage = function(e){
     };
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
     shapeLibrary.shapes.push({name, savedAt:new Date().toISOString(), items:[item]});
+    smartPreviewConsent.add(shapeLibrary.shapes[shapeLibrary.shapes.length-1]);
     shapeLibraryChanged();
     smartObjectDialog.close();
     managingShapes = false;
@@ -6130,7 +6362,8 @@ self.onmessage = function(e){
       for(const members of groups.values()) bakeGroupRotationLocal(members);
       const box = unionBoxOf(list);
       if(!Number.isFinite(box.x+box.y+box.w+box.h) || box.w<=0 || box.h<=0) throw new Error('Invalid geometry in shape: '+name);
-      return {name, ...(typeof entry.savedAt==='string' ? {savedAt:entry.savedAt} : {}), items:list};
+      const thumbnail=normalizeShapeThumbnail(entry.thumbnail,list);
+      return {name, ...(typeof entry.savedAt==='string' ? {savedAt:entry.savedAt} : {}), items:list,...(thumbnail?{thumbnail}:{})};
     });
     return {app:'SimpleCanvasShapeLibrary', version:1, shapes};
   }
@@ -6138,14 +6371,13 @@ self.onmessage = function(e){
   function shapeThumbSVGSync(list){
     const box = unionBoxOf(list, true);
     const inner = list.map(it=>itemToSVG(it,list,{})).join('');
-    return `<svg viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
+    return `<svg width="128" height="128" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
   }
-  // A shape containing a smart item needs its children() resolved through the sandbox first (see
-  // warmSmartExportCache) -- only taken for that case, so the overwhelmingly common plain-shape
-  // thumbnail keeps rendering synchronously with no flash of emptiness while a promise settles.
+  // Resolve smart children before creating the SVG image used to rasterize a bundled PNG preview.
   async function shapeThumbSVGAsync(list){
+    const cache=await warmSmartExportCache(list,true);
     const prevExportCache = smartExportCache;
-    smartExportCache = await warmSmartExportCache(list);
+    smartExportCache = cache;
     try{ return shapeThumbSVGSync(list); }
     finally{ smartExportCache = prevExportCache; }
   }
@@ -6156,10 +6388,16 @@ self.onmessage = function(e){
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'shape-thumb'; b.title = 'Place '+tpl.name;
     b.setAttribute('aria-label', 'Place '+tpl.name);
-    if(tpl.items.some(it=>it.type==='smart')){
-      shapeThumbSVGAsync(tpl.items).then(svg=>{ if(b.isConnected) b.innerHTML = svg; });
+    const thumbnail=validShapeThumbnail(tpl);
+    if(thumbnail){
+      const img=document.createElement('img');img.alt='';img.src=thumbnail.png;b.appendChild(img);
+      img.onerror=()=>{
+        delete tpl.thumbnail;shapePreviewFailures.set(tpl,shapePreviewKey(tpl.items));
+        if(b.isConnected){updateShapeLibraryUI();offerMissingSmartPreviews(shapeLibrary);}
+      };
     } else {
-      b.innerHTML = shapeThumbSVGSync(tpl.items);
+      const placeholder=document.createElement('span');placeholder.className='preview-placeholder';placeholder.textContent='?';b.appendChild(placeholder);
+      ensureShapeThumbnail(tpl);
     }
     b.addEventListener('click', ()=>armShapeForPlacement(tpl));
     const label = document.createElement('span');
@@ -6210,6 +6448,8 @@ self.onmessage = function(e){
     else manageShapesBtn.setAttribute('aria-pressed', String(managingShapes));
     document.getElementById('shapeLibraryStatus').hidden = !managingShapes;
     shapePickerManage.hidden = !managingShapes;
+    const missingSmart=entries.some(tpl=>tpl.items.some(it=>it.type==='smart') && !validShapeThumbnail(tpl));
+    document.getElementById('generateShapePreviews').hidden=!missingSmart;
     for(const tpl of entries) addShapeButton(tpl);
     if(!managingShapes) addAddSelectionTile();
   }
@@ -6660,7 +6900,7 @@ self.onmessage = function(e){
         if(activeAnchor!=null){ activeAnchor=null; render(); return; }
         pointEditIdx=null; render(); return;
       }
-      if(editingSmartIdx!=null){ editingSmartIdx=null; render(); return; }
+      if(editingSmartIdx!=null){ cancelSmartGestures();editingSmartIdx=null; render(); return; }
       if(editingGroupId!=null){ exitGroupEdit(); render(); return; }   // back out to the group as a whole
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
@@ -6726,9 +6966,11 @@ self.onmessage = function(e){
   async function onTapUp(e){   // registered after onUp, so the second tap's own vertex/selection has landed first
     if(e.pointerType==='mouse') return;
     const now = performance.now();
+    const epoch=smartGestureEpoch, tab=activeTabId;
     // handledPointerUp may still be settling (a smart object's own hitEdit crossing the sandbox
     // asynchronously -- see onDoubleClick's own identical await) -- wait for that before reading it.
     if(smartHitSettled) await smartHitSettled;
+    if(epoch!==smartGestureEpoch || tab!==activeTabId){lastTap=null;return;}
     if(handledPointerUp){lastTap=null;return;}
     if(lastTap && now-lastTap.t < 300 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 25){
       lastTap = null;
@@ -6757,14 +6999,16 @@ self.onmessage = function(e){
   canvas.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   async function onDoubleClick(e){
+    const epoch=smartGestureEpoch, tab=activeTabId;
     // A smart object's own hitEdit crosses the sandbox asynchronously now -- a real double-click's two
     // presses each kick one off (see onDown), and this native 'dblclick' event fires right after the
     // second press's onUp, before either request can possibly have resolved yet. Wait for the latest
     // one to settle before reading handledPointerUp, which it may still go on to set (see
-    // onSmartHitEditReply) -- otherwise a double-click on one of a smart object's own handles would
+    // processSmartGesture) -- otherwise a double-click on one of a smart object's own handles would
     // read this flag too early and run the generic exit-toggle below on top of the handle's own,
     // already-correct resolution (exactly the bug this flag exists to prevent).
     if(smartHitSettled) await smartHitSettled;
+    if(epoch!==smartGestureEpoch || tab!==activeTabId) return;
     if(handledPointerUp) return;
     if(performance.now() - polygonClosedByClickAt < 500){
       // the click/tap that started this gesture already closed the polygon by itself (it landed on

@@ -38,6 +38,17 @@ changes last only for the current visit and are separate from sketch saves and a
 An indicator shows unexported changes; importing another library or leaving the page warns
 before those changes are discarded. Import your exported file to use it on another visit.
 
+Libraries include PNG thumbnails, which display without running shape scripts. Ordinary missing
+previews are generated automatically. Smart shapes with missing previews show placeholders and ask
+before running their scripts to generate pictures; **Use placeholders** still loads the library.
+**Generate missing previews…** lets you generate them later. Export the library to retain new previews.
+
+**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock, Timer,
+Arrow, Arc and Chart. Double-click a placed smart shape to edit its handles, then double-click again
+or click outside to leave. Clicks and drags support undo/redo. Scripts run in an isolated Worker with
+blocked network access, and generated shapes are validated before rendering or export. The app still
+works as a single local HTML file. Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
+
 When hosted, an optional `shapes-library.json` beside the HTML supplies the initial library.
 It is read only once at startup. Opening the picker never reloads it, and custom file imports
 work whether the page is hosted or opened locally. The HTML works on its own without this file.

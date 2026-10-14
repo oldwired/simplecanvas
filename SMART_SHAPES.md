@@ -49,11 +49,13 @@ its own interactive state.
 | `dragEdit(state, handle, lx, ly, w, h, style)` | While dragging a handle (continuously), and once on a zero-movement click | state, the `id` returned by `hitEdit`, current pointer position (local coords), width/height, resolved style | the **new** state object |
 
 State is never mutated in place — `dragEdit` returns a fresh object (`{...state, ...}` is the
-usual pattern), which the app assigns back and pushes onto the undo stack.
+usual pattern). A completed click or drag creates one undo entry if its validated state differs.
+Quick clicks are processed in input order, including when release precedes the hook reply.
 
-Every hook call is wrapped in `try/catch` by the app. A throwing or missing hook never crashes
-the canvas — worst case, `children()` returning `[]` (or throwing) just means the container
-renders nothing visible that frame.
+Every hook reply is validated before rendering, export, preview generation, or state updates.
+`children()` returning `[]` is valid. A malformed result affects only that shape: a live refresh
+keeps the last valid drawing, or stays empty if none exists, and reports an error. Invalid state
+updates keep the previous state. Missing optional hooks return no handles or make no state change.
 
 ### `initState()`
 
@@ -94,8 +96,9 @@ whatever font/fill-color/text-color the toolbar currently has.
 ### `children(state, style, w, h, editing)` (required)
 
 Returns an array of plain **child shape descriptors** — the actual visible content. These are
-**never stored**; they're recomputed fresh every render from the container's current
-`x/y/w/h/state`. See [Child descriptors](#child-descriptors) below for their shape.
+**never stored in the scene**; they're cached for live rendering and refreshed when script,
+state, style, size, or edit mode changes. Exports request fresh children. See
+[Child descriptors](#child-descriptors) below for their shape.
 
 `editing` is `true` only for the one instance currently in interactive edit mode (by identity,
 not type) — `false`/`undefined` otherwise, including during PNG/SVG/HTML export. Use it to draw
@@ -108,6 +111,8 @@ Returns `[{id, x, y, kind}, ...]` — one entry per point `hitEdit`/`dragEdit` c
 same **local** coordinate frame as `children()` (container's own top-left as origin). Without
 this, edit mode gives no visual clue *where* to drag, only *that* you're in edit mode (the 4
 corner markers alone). The app draws a small solid-blue dot at each reported point.
+IDs are unique, nonempty strings of at most 64 characters. `hitEdit()` must return one of these
+IDs or `null`. A response can contain at most 128 handles.
 
 `kind` is optional, defaulting to `'drag'` (a continuous drag point, like a resize handle).
 Mark it `'click'` for a discrete, one-shot action — an add/delete button, a toggle — rather than
@@ -191,10 +196,12 @@ coordinates** — `(0,0)` is the container's own top-left, `(w,h)` its bottom-ri
 shifts every child into world coordinates for you; never add the container's own `x`/`y`
 yourself.
 
-Supported `type`s and their own fields (identical to a normal, top-level item of that type):
+Supported `type`s and their own fields (validated copies of the renderer's normal primitives):
 
 - **`rect`** / **`ellipse`**: `{type, x, y, w, h, color, fillColor, fill, strokeOn, size, dash}`
 - **`line`**: `{type, x1, y1, x2, y2, color, size, dash}`
+- **`arrow`**: line fields plus `hs`, `he`, `hsStyle`, `heStyle` for arrowheads.
+- **`path`**: `{type, points, mode, color, size}`; `mode` is `pen`, `marker`, or `brush`.
 - **`text`**: `{type, x, y, w, h, text, font, color, textColor, align, fill, strokeOn}` —
   `align` is `'left'`/`'center'`/`'right'`. A label that shouldn't draw its own box needs
   `strokeOn:false, fill:false` explicitly — the `text` type's own default is "box on unless
@@ -280,30 +287,46 @@ even though it renders fine on canvas.
 ## Constraints
 
 - **Script length**: 50,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
-  Both are enforced on save/load — an oversized script or state is silently rejected (the item
-  fails to load) rather than truncated. 50,000 comfortably fits an entire reference template file,
-  explanatory header comment included, the way "A complete worked example" below tells you to
-  paste one — the longest shipped one (`race-start-timer.js`) is already ~37,300 characters.
+  Both are enforced at execution as well as load. Oversized state updates are rejected, not
+  truncated. State contains only JSON data, has at most 16 levels, and cannot use the keys
+  `__proto__`, `prototype`, or `constructor`. The longest shipped script is about 37,300 characters.
+- **Result limits:** 1,000 children, 20,000 points across the whole result, 2,000 characters per
+  text child and 20,000 total text characters. A serialized reply is limited to 512 KiB. Geometry
+  must contain finite numbers between -1,000,000 and 1,000,000. Negative local coordinates and
+  signed box dimensions are allowed; finite negative arc radii normalize to zero. Stroke sizes
+  range from 0 to 60, including fractional sizes. Text fonts are rebuilt from supported families
+  and a size between 0 and 400. Colors use CSS hex notation; flags must be booleans. Unknown child
+  fields are discarded, an invalid child is skipped with an error, and an exceeded result budget
+  rejects the whole result rather than truncating it. Renderer guards remain in place.
 - **Sandboxed.** A smart shape's script is real JavaScript, but it never runs in the page's own
   scope — every hook (`children`/`handles`/`hitEdit`/`dragEdit`/`initState`/`initStyle`) is
-  called inside a single, shared, dedicated Worker with `fetch`/`XMLHttpRequest`/`WebSocket`/
-  `importScripts`/`Worker`/`indexedDB`/`caches`/`BroadcastChannel`/`Notification` all deleted
-  before any script runs in it. A Worker has no `document`/`window`/DOM and no
-  `localStorage`/cookies at all (not exposed in worker scope, regardless of origin), so none of
-  those are reachable either way. Every call crosses `postMessage` and is therefore async; the
-  app bridges that with a last-known-good cache for live rendering and a real await for export —
-  a script's own hooks don't need to know or care about this. An infinite loop in a script hangs
-  only that shared worker (never the page's own main thread), is caught by a timeout, and the
-  worker is torn down and recreated — the worst a hostile or broken script can do is make every
-  smart shape go temporarily blank for a few seconds (scripts aren't isolated from EACH OTHER,
-  only from the host page and your data), never crash or freeze the app, and never reach
-  anything outside the worker it runs in.
+  called inside a shared Worker created by a trusted hidden `srcdoc` frame with
+  `sandbox="allow-scripts"` and no same-origin permission. Its restrictive Content Security Policy
+  blocks network connections and external scripts, including native prototype API calls and
+  dynamic module imports. The Worker inherits that policy from its local Blob source. Script source
+  is sent as data; it is never inserted into the frame's HTML. The opaque origin separates it from
+  the app's storage, and a Worker exposes no page DOM. The frame and main app exchange messages over
+  a dedicated MessageChannel. Startup and hook requests have deadlines; a timeout terminates the
+  Worker and permits a fresh sandbox. Scripts share that Worker, so a hang can temporarily interrupt
+  sibling requests too. Browser-level memory exhaustion is not a resource quota this boundary can
+  enforce. The app remains one HTML file and supports hosted and local use.
 - Compiled once per distinct script string and cached (inside the sandbox, not the page) —
   editing a script's text (even by one character) recompiles it; identical text across
   different items reuses the same compiled function.
-- Untested and not recommended as children: nesting another smart shape, a table, or an image —
-  the rendering pipeline doesn't forbid them, but no shipped template uses them and they haven't
-  been exercised. Stick to `rect`/`ellipse`/`line`/`text`/`polygon`.
+- Children cannot be nested smart shapes, tables, or asset-referencing images. Use the documented
+  primitives above. Bézier controls (`c1`/`c2`) and polygon arcs (`arcTo`) are preserved.
+
+## Library previews
+
+Library exports include a 128×128 PNG thumbnail and a versioned fingerprint of its source items.
+The fingerprint detects stale previews; it does not certify a library's source or safety. PNG
+headers, dimensions, and size are checked on import, and decoding failures become missing previews.
+Ordinary shape previews are generated automatically. A missing smart-shape preview displays a
+placeholder until you approve script execution. Opening an automatically loaded library asks once;
+declining still lets you use the library. **Generate missing previews…** offers the choice again.
+Newly authored or replaced entries regenerate previews, and exporting retains generated PNGs so
+future imports can display them without running scripts. Placing/editing a smart shape still runs
+its hooks inside the sandbox. Renaming an entry does not require a new picture.
 
 ## A complete worked example
 
