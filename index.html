@@ -5962,7 +5962,6 @@ self.onmessage = function(e){
     if(!shapePicker.hidden && !shapePicker.contains(e.target) && !shapeLibBtn.contains(e.target)) setShapePicker(false);
   });
   manageShapesBtn.addEventListener('click', ()=>{
-    if(!shapeLibrary || !shapeLibrary.shapes.length){ shapeLibraryInput.click(); return; }
     managingShapes = !managingShapes;
     renderShapeLibrary(); fitShapePicker();
   });
@@ -6812,13 +6811,10 @@ self.onmessage = function(e){
   function renderShapeLibrary(){
     syncShapeLibraryEntries(true);missingSmartPreviews.clear();
     const entries = shapeLibrary ? shapeLibrary.shapes : [];
-    if(!entries.length) managingShapes = false;
     shapeGrid.innerHTML = '';
     shapeGrid.classList.toggle('managing', managingShapes);
-    const empty = !entries.length;
-    manageShapesBtn.textContent = empty ? 'Import' : (managingShapes ? 'Done' : 'Manage');
-    if(empty) manageShapesBtn.removeAttribute('aria-pressed');
-    else manageShapesBtn.setAttribute('aria-pressed', String(managingShapes));
+    manageShapesBtn.textContent = managingShapes ? 'Done' : 'Manage';
+    manageShapesBtn.setAttribute('aria-pressed', String(managingShapes));
     document.getElementById('shapeLibraryStatus').hidden = !managingShapes;
     shapePickerManage.hidden = !managingShapes;
     for(const tpl of entries) addShapeButton(tpl);
