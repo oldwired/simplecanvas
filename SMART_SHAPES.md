@@ -41,6 +41,9 @@ compiled with `new Function('"use strict";return (' + yourScript + ');')()`, so:
   correctly refers to your own script object.
 - The only thing your script ever gets handed is plain, already-computed data (state, style,
   width, height, pointer coordinates) — never `ctx`, `document`, or any other app internal.
+- Each placed instance has an independent JavaScript environment, including copies using identical
+  source. Methods may share helpers through `this`, but globals and object-local mutations are
+  disposable caches. Keep durable values in the returned state; idle Workers can be evicted.
 
 ## The script object
 
@@ -316,22 +319,27 @@ even though it renders fine on canvas.
   rejects the whole result rather than truncating it. Renderer guards remain in place.
 - **Sandboxed.** A smart shape's script is real JavaScript, but it never runs in the page's own
   scope — every hook (`children`/`handles`/`hitEdit`/`dragEdit`/`initState`/`initStyle`) is
-  called inside a shared Worker created by a trusted hidden `srcdoc` frame with
+  called inside an instance-owned Worker created by a trusted hidden `srcdoc` frame with
   `sandbox="allow-scripts"` and no same-origin permission. Its restrictive Content Security Policy
   blocks network connections and external scripts, including native prototype API calls and
   dynamic module imports. The Worker inherits that policy from its local Blob source. Script source
   is sent as data; it is never inserted into the frame's HTML. The opaque origin separates it from
   the app's storage, and a Worker exposes no page DOM. The frame and main app exchange messages over
-  a dedicated MessageChannel. Requests wait in a trusted queue, with one dispatched at a time. The
-  250 ms execution deadline begins at dispatch, so time spent waiting for earlier hooks does not
-  consume it. Startup has a separate deadline; a timeout terminates the
-  Worker and permits a fresh sandbox. Scripts share that Worker, so a hang can temporarily interrupt
-  sibling requests too. Browser-level memory exhaustion is not a resource quota this boundary can
-  enforce. The app remains one HTML file and supports hosted and local use.
-- Up to 64 compiled definitions are cached in the Worker, evicting the least recently used.
-  Identical scripts reuse a compiled function while cached; evicted scripts compile on their next
-  call. Live drawing/handle caches are released when an item leaves the active document or its
-  script is replaced. Late replies cannot recreate those removed entries.
+  a dedicated MessageChannel. The trusted manager binds replies to their originating Worker and
+  active request; a script's echoed identifiers cannot target another instance. Requests wait in a
+  trusted queue, with one dispatched at a time. Worker startup has a separate two-second deadline;
+  the 250 ms hook deadline begins after that Worker's startup, so queue wait does not consume it.
+  A timeout terminates only that instance's Worker and preserves healthy queued work. Failed live
+  drawings retain their last valid children and retry after a three-second backoff without requiring
+  another user interaction. Browser-level memory exhaustion is not a resource quota this boundary
+  can enforce. The app remains one HTML file and supports hosted and local use.
+- Workers start lazily. At most four instance Workers remain resident; the least recently used idle
+  Worker is terminated before its slot is assigned a fresh realm. A resident Worker reuses only its
+  own instance's compiled definition. Initialization, authoring and non-live previews/exports use
+  temporary owners, retired when their operation ends. App-owned state survives eviction, save/load,
+  and undo/redo; eviction does not rerun initialization. Live drawing/handle caches and execution
+  owners are retired when an item leaves the active document or its script is replaced. Late
+  replies cannot recreate removed entries or commit state from an old source generation.
 - Children cannot be nested smart shapes, tables, or asset-referencing images. Use the documented
   primitives above. Bézier controls (`c1`/`c2`) and polygon arcs (`arcTo`) are preserved.
 

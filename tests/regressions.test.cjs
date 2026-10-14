@@ -1249,19 +1249,7 @@ test('a hostile script cannot reach the host page\'s DOM, localStorage, network,
 }));
 
 test('an infinite loop in a script times out, recovers, and does not take down other smart shapes', async () => app(async ({page,run}) => {
-  // All smart scripts share ONE worker (an explicit, accepted trade-off -- see the sandbox's own
-  // comment: isolation is from the host, not between scripts), so a hung script temporarily blocks
-  // whatever else happened to be queued alongside it in that same worker too -- `ok1`'s own request,
-  // sent in the same render() pass as the hung one, is rejected right along with it when the timeout
-  // fires and the worker is torn down. A timed-out item also gets a backoff window (see
-  // smartBackoffUntil) so it isn't retried on literally the very next render() -- without that, a
-  // script that hangs EVERY time (not just once) would re-hang the shared worker on every single
-  // render() for as long as the canvas is used at all, repeatedly colliding with whatever else shares
-  // that pass. The guarantee under test: the hang never reaches the main thread (confirmed by this
-  // test, and the whole suite, simply completing at all); the sandbox itself recovers promptly
-  // (a fresh, unrelated call succeeds right after); and once the hung item is gone from the scene (the
-  // realistic resolution -- delete it, or undo its placement), an unrelated sibling that was only ever
-  // collateral damage renders correctly again.
+  // Keep the offender present: recovery must preserve healthy queued work without manual renders.
   const hangScript = `({ children(){ while(true){} } })`;
   const okScript = `({ children(state,style,w,h){ return [{type:'rect',x:0,y:0,w:w,h:h,color:style.color,strokeOn:true,fill:false}]; } } )`;
   await run(`items=[
@@ -1270,24 +1258,17 @@ test('an infinite loop in a script times out, recovers, and does not take down o
     {type:'smart',uid:'ok1',x:200,y:40,w:100,h:100,color:'#000',fillColor:'#fff',fill:false,strokeOn:false,
       textColor:'#000',size:2,fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script:${JSON.stringify(okScript)},state:{}}
   ];setTool('select');render();`);
-  // Give the hung request time to hit its own timeout and regenerate the sandbox (250ms + margin).
-  await page.waitForTimeout(500);
+  await page.waitForFunction(()=>__test.run("smartBackoffUntil.has('hang1') && smartChildrenCache.has('ok1')"));
   assert.equal(await run(`smartChildrenCache.has('hang1')`), false, 'the hung shape never got a result, but caused no crash');
-  // The sandbox must have actually recovered: a fresh, unrelated call (unrelated to either item above)
-  // succeeds normally.
   const fresh = await run(`requestSmartCall('({children(){return [{type:"rect",x:1,y:2,w:3,h:4}]}})', 'children', [{},{},10,10,false])`);
-  assert.deepEqual(fresh, [{type:'rect',x:1,y:2,w:3,h:4}], 'a normal call succeeds after the hang, proving the worker was regenerated');
-  // Remove the hung item (the realistic recovery path) so ok1's own retry isn't immediately paired
-  // with the same hang all over again. ok1's own request was collateral damage from that same
-  // worker-sharing, so it's under the same backoff (see smartBackoffUntil) -- wait that out too before
-  // expecting a retry, reading the real constant rather than duplicating its value here.
-  await run(`items = items.filter(it=>it.uid!=='hang1');`);
-  const backoffMs = await run('SMART_BACKOFF_MS');
-  await page.waitForTimeout(backoffMs + 200);
-  await run(`render()`);
-  await page.waitForTimeout(100);
+  assert.deepEqual(fresh, [{type:'rect',x:1,y:2,w:3,h:4}], 'a different owner still executes');
   const okKids = await run(`smartChildrenCache.get('ok1') && smartChildrenCache.get('ok1').kids`);
-  assert.ok(okKids && okKids.length, 'the other shape renders correctly once the hung one is gone from the scene');
+  assert.ok(okKids && okKids.length, 'the healthy shape renders while the offender remains');
+  assert.equal(await run('items.length'),2);
+  await run('selection=[1];render()');await page.keyboard.press('ArrowRight');
+  assert.equal(await run('items[1].x'),201);await run('undo()');assert.equal(await run('items[1].x'),200);
+  const svg=await run('itemsToSVGMarkup(items)');
+  assert.ok(svg.includes('x="200"'),'healthy content still exports beside a hanging owner');
 }));
 
 // Real bug, reported directly: a smart shape's polygon-type children (a flag pennant, a clock's own
@@ -1419,6 +1400,136 @@ const slowClickScript = `({
   hitEdit(s,x,y){const end=performance.now()+40;while(performance.now()<end){}return Math.hypot(x-50,y-50)<14?'inc':null;},
   dragEdit(s){const end=performance.now()+40;while(performance.now()<end){}return {n:(s.n||0)+1};}
 })`;
+
+test('per-instance Workers contain handler replacement and prototype tampering',async()=>app(async({run})=>{
+  const handler=`(self.onmessage=e=>postMessage(JSON.stringify({id:e.data.id,ok:true,result:{owned:true}})),{children(){return [];}})`;
+  const prototype=`(Object.prototype.workerPoison='attacker',{children(){return [];}})`;
+  const result=await run(`(async()=>{
+    const victim={script:'({children(){return [];},dragEdit(s){return {value:s.value+1,clean:!({}).workerPoison};}})'};
+    const results=[];
+    for(const script of ${JSON.stringify([handler,prototype])}){
+      await requestSmartCall({script},'children',[]);
+      results.push(await requestSmartCall(victim,'dragEdit',[{value:7}]));
+    }
+    return results;
+  })()`);
+  assert.deepEqual(result,[{value:8,clean:true},{value:8,clean:true}]);
+}));
+
+test('identical source instances do not observe each other through Worker globals',async()=>app(async({run})=>{
+  const script=`({children(s){self.lastInput=s.secret;return [];},dragEdit(){return {seen:self.lastInput||'clean'};}})`;
+  const result=await run(`(async()=>{
+    const a={script:${JSON.stringify(script)}}, b={script:${JSON.stringify(script)}};
+    await requestSmartCall(a,'children',[{secret:'instance A'}]);
+    const own=await requestSmartCall(a,'dragEdit',[]),other=await requestSmartCall(b,'dragEdit',[]);
+    return {own,other};
+  })()`);
+  assert.deepEqual(result,{own:{seen:'instance A'},other:{seen:'clean'}});
+}));
+
+test('idle malicious Workers cannot forge another owners active request with guessed IDs',async()=>app(async({run})=>{
+  const attacker=`({children(){setTimeout(()=>{for(let id=1;id<50;id++)postMessage(JSON.stringify({id,owner:'instance-2',version:1,ok:true,result:{owned:true}}));},40);return [];}})`;
+  const victim=`({children(){return [];},dragEdit(s){const end=performance.now()+100;while(performance.now()<end){}return {value:s.value+1};}})`;
+  const result=await run(`(async()=>{
+    await requestSmartCall({script:${JSON.stringify(attacker)}},'children',[]);
+    return requestSmartCall({script:${JSON.stringify(victim)}},'dragEdit',[{value:7}]);
+  })()`);
+  assert.deepEqual(result,{value:8});
+}));
+
+test('an oversized re-encoded reply retires only its originating Worker',async()=>app(async({run})=>{
+  const script=`({children(){postMessage('{"id":1,"ok":true,"result":[],"padding":"'+String.fromCharCode(0xd800).repeat(90000)+'"}');return [];}})`;
+  const result=await run(`Promise.all([
+    requestSmartCall({script:${JSON.stringify(script)}},'children',[]),
+    requestSmartCall({script:'({children(){return [{type:"rect",x:0,y:0,w:10,h:10}];}})'},'children',[])
+  ])`);
+  assert.equal(result[0],null);assert.equal(result[1]?.[0]?.type,'rect','healthy queued work survives malformed owner output');
+  assert.equal(await run('smartSandboxGeneration'),1,'the trusted frame was not regenerated');
+}));
+
+test('a malicious canvas instance cannot replace another shapes edit or undo history',async()=>app(async({page,run})=>{
+  const attacker=`(self.onmessage=e=>postMessage(JSON.stringify({id:e.data.id,ok:true,result:{owned:true}})),{children(){return [];}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(attacker))},uid:'attacker',x:500},${JSON.stringify(smartFixture(slowClickScript))}];
+    setTool('select');selection=[1];editingSmartIdx=1;undoStack=[];render();`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.has('attacker') && smartHandlesCache.has('smart-test')"));
+  const b=await page.locator('#canvas').boundingBox();await page.mouse.click(b.x+150,b.y+150);await run('smartHitSettled');
+  assert.deepEqual(await run('items[1].state'),{n:1});assert.equal(await run('undoStack.length'),1);
+  await run('undo()');assert.deepEqual(await run('items[1].state'),{});
+  await run('redo()');assert.deepEqual(await run('items[1].state'),{n:1});
+}));
+
+test('source replacement rejects in-flight state replies and creates a fresh execution owner',async()=>app(async({page,run})=>{
+  const delayed=slowClickScript.replace('performance.now()+40;while(performance.now()<end){}return {n:',
+    'performance.now()+150;while(performance.now()<end){}return {n:');
+  await run(`items=[${JSON.stringify(smartFixture(delayed))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];render();`);
+  const b=await page.locator('#canvas').boundingBox();await page.mouse.click(b.x+150,b.y+150);
+  await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='dragEdit');
+  await run(`items[0].script=${JSON.stringify(slowClickScript)};render();`);await run('smartHitSettled');
+  assert.deepEqual(await run('items[0].state'),{});assert.equal(await run('undoStack.length'),0);
+  await page.mouse.click(b.x+150,b.y+150);await run('smartHitSettled');
+  assert.deepEqual(await run('items[0].state'),{n:1});
+}));
+
+test('source replacement settles a released drag so later smart gestures still run',async()=>app(async({page,run})=>{
+  const script=`({children(){return [];},handles(){return [{id:'move',x:50,y:50}];},hitEdit(){return 'move';},
+    dragEdit(s,id,x){const end=performance.now()+180;while(performance.now()<end){}return {value:x};}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];render();`);
+  const b=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(b.x+150,b.y+150);await page.mouse.down();
+  await page.waitForFunction(()=>__test.run('smartCurrentPress?.mode')==='handle');
+  await page.mouse.move(b.x+170,b.y+150);await page.mouse.up();
+  await page.waitForFunction(()=>__test.run('[...smartGestureRecords].some(p=>!!p.sd?.onSettle)'));
+  await run(`items[0].script=${JSON.stringify(script.replace('performance.now()+180','performance.now()+1'))};render();`);
+  await page.waitForFunction(()=>__test.run('smartGestureRecords.size')===0);
+  assert.deepEqual(await run('items[0].state'),{});assert.equal(await run('undoStack.length'),0);
+  await page.mouse.click(b.x+150,b.y+150);await run('smartHitSettled');
+  assert.deepEqual(await run('items[0].state'),{value:50});assert.equal(await run('undoStack.length'),1);
+}));
+
+test('failed non-live exports cannot borrow another instances cached drawing through a copied UID',async()=>app(async({page,run})=>{
+  const script=`({children(){if(!self.privateValue)throw new Error('uninitialized realm');return [{type:'text',text:self.privateValue,x:0,y:0,w:180,h:40}];},
+    dragEdit(s){self.privateValue=s.secret;return {};}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];
+    (async()=>{await requestSmartCall(items[0],'dragEdit',[{secret:'INSTANCE PRIVATE'}]);setTool('select');render();})()`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")==='INSTANCE PRIVATE');
+  const cloneExport=await run('itemsToSVGMarkup([clone(items[0])])');
+  assert.ok(!cloneExport.includes('INSTANCE PRIVATE'),'a different execution owner gets no fallback from a UID collision');
+  assert.ok((await run('itemsToSVGMarkup(items)')).includes('INSTANCE PRIVATE'),'the original instance still exports its own drawing');
+}));
+
+test('cancelled initialization scopes cannot continue hooks or recreate a retired Worker',async()=>app(async({page,run})=>{
+  const script=`({children(){return [];},initState(){const end=performance.now()+120;while(performance.now()<end){}return {late:true};},initStyle(){return {w:900};}})`;
+  await run(`window.draft={script:${JSON.stringify(script)},state:{},w:100};window.draftValid=true;
+    window.draftOwner=createSmartExecution(draft,()=>draftValid);
+    void (window.draftResult=initializeSmartItem(draft,null,()=>draftValid,draftOwner).then(()=>false,e=>!!e.cancelled));`);
+  await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='initState');
+  await run('draftValid=false;disposeSmartExecution(draftOwner)');
+  assert.equal(await run('draftResult'),true);
+  const created=await run('smartRuntimeStats.created');
+  assert.equal(await run(`requestSmartCall(draft,'initStyle',[],draftOwner)`),null);
+  assert.deepEqual(await run('draft.state'),{});assert.equal(await run('draft.w'),100);
+  assert.equal(await run('smartRuntimeStats.created'),created);
+}));
+
+test('failed live children retry automatically without a user-triggered render',async()=>app(async({page,run})=>{
+  const script=`({children(s){if(!s.ready)throw new Error('not ready');return [{type:'rect',x:0,y:0,w:20,h:20,fill:true,fillColor:'#22c55e'}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];setTool('select');render();`);
+  await page.waitForFunction(()=>__test.run("smartBackoffUntil.has('smart-test')"));
+  await run('items[0].state.ready=true');
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.fillColor")==='#22c55e');
+  assert.equal(await run('smartRetryTimers.size'),0);
+}));
+
+test('persistent hook failures renew their backoff instead of entering a fast retry loop',async()=>app(async({page,run})=>{
+  const script=`({children(){throw new Error('permanent failure');}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];setTool('select');render();`);
+  await page.waitForFunction(()=>__test.run("smartBackoffUntil.has('smart-test')"));
+  const first=await run('smartSandboxReqSeq');
+  await page.waitForTimeout(await run('SMART_BACKOFF_MS+250'));
+  assert.equal(await run('smartSandboxReqSeq'),first+1,'only one automatic retry occurs in this window');
+  assert.ok(await run("smartBackoffUntil.get('smart-test')-Date.now()")>2000,'the next backoff has a fresh deadline');
+  assert.equal(await run('smartRetryTimers.size'),1);
+}));
 
 test('missing smart previews require consent; exported PNGs load without executing scripts', async()=>app(async({page,run})=>{
   const library={shapes:[{name:'Counter',items:[smartFixture(slowClickScript)]}]};
@@ -1716,9 +1827,9 @@ test('opaque Worker policy blocks recovered network APIs, imports and storage ov
     await app(async({page,run,context})=>{
       const requests=[];
       await context.route('https://blocked.test/**',route=>{requests.push(route.request().url());return route.fulfill({contentType:'text/javascript',body:'export const ok=1;'});});
-      await run(`requestSmartCall(${JSON.stringify(script)},'children',[])`);
+      await run(`window.policyProbe={script:${JSON.stringify(script)}};requestSmartCall(policyProbe,'children',[])`);
       await page.waitForTimeout(100);
-      const kids=await run(`requestSmartCall(${JSON.stringify(script)},'children',[])`);
+      const kids=await run(`requestSmartCall(policyProbe,'children',[])`);
       const r=JSON.parse(kids[0].text);
       for(const key of ['fetch','module','importScripts','storage']) assert.equal(r[key],'blocked',key+' on '+origin);
       assert.deepEqual(requests,[],'no blocked request reaches the network');
@@ -1981,7 +2092,7 @@ test('rapid smart placements keep their order and undo entries; cancellation dis
   await run('armShapeForPlacement(shapeLibrary.shapes[0])');
   const b=await page.locator('#canvas').boundingBox();await page.mouse.dblclick(b.x+400,b.y+300);
   await run('shapePlacementQueue');
-  assert.deepEqual(await run('items.map(it=>it.state.n)'),[1,2]);
+  assert.deepEqual(await run('items.map(it=>it.state.n)'),[1,1],'each placement owns a fresh definition realm');
   assert.equal(await run('undoStack.length'),2);await run('undo()');assert.equal(await run('items.length'),1);
   await run('undo()');assert.equal(await run('items.length'),0);
   for(const action of ['newTab()','undo()','setTool("pen")','cancelGesture()','Escape','clearAll()']){
@@ -2023,19 +2134,23 @@ test('removed smart shapes and replaced scripts are evicted, including late cach
   assert.equal(await run("smartChildrenCache.has('smart-test') || smartHandlesCache.has('smart-test')"),false,'old script data is released before a replacement reply');
 }));
 
-test('compiled smart definitions use a bounded cache and keep recently used scripts',async()=>app(async({run})=>{
-  const cold=`(()=>{const n=self.coldCompiles=(self.coldCompiles||0)+1;return {children(){return [{type:'text',text:String(n),x:0,y:0,w:40,h:30}];}}})()`;
-  const hot=cold.replaceAll('coldCompiles','hotCompiles');
+test('resident instance Workers are bounded and evicted realms never transfer globals',async()=>app(async({run})=>{
+  const script=`({children(s){self.calls=(self.calls||0)+1;return [{type:'text',text:s.value+':'+self.calls+':'+(self.poison||'clean'),x:0,y:0,w:120,h:30}];}})`;
   const result=await run(`(async()=>{
-    const cold=${JSON.stringify(cold)},hot=${JSON.stringify(hot)};
-    const read=async src=>(await requestSmartCall(src,'children',[]))[0].text;
+    const cold={script:${JSON.stringify(script)},state:{value:7}},hot={script:${JSON.stringify(script)},state:{value:9}};
+    const read=async it=>(await requestSmartCall(it,'children',[it.state]))[0].text;
     const first=await read(cold),again=await read(cold),hotValues=[];
-    for(let n=0;n<80;n++){
-      await requestSmartCall('({children(){return [];}}) /* revision '+n+' */','children',[]);
+    await requestSmartCall({script:'(self.poison="attacker",{children(){return [];}})'},'children',[]);
+    for(let n=0;n<SMART_MAX_RESIDENT_WORKERS+3;n++){
+      await requestSmartCall({script:${JSON.stringify(script)},state:{value:n}},'children',[{value:n}]);
       hotValues.push(await read(hot));
     }
-    return {first,again,hotValues,coldAfter:await read(cold)};
+    return {first,again,hotValues,coldAfter:await read(cold),state:cold.state,stats:{...smartRuntimeStats},limit:SMART_MAX_RESIDENT_WORKERS};
   })()`);
-  assert.equal(result.first,'1');assert.equal(result.again,'1');assert.ok(result.hotValues.every(n=>n==='1'));
-  assert.equal(result.coldAfter,'2','an unused definition is recompiled after eviction');
+  assert.equal(result.first,'7:1:clean');assert.equal(result.again,'7:2:clean');
+  assert.deepEqual(result.hotValues,result.hotValues.map((_,i)=>'9:'+(i+1)+':clean'));
+  assert.equal(result.coldAfter,'7:1:clean','an evicted instance gets a fresh realm');
+  assert.deepEqual(result.state,{value:7},'durable state remains app-owned');
+  assert.ok(result.stats.peak<=result.limit && result.stats.resident<=result.limit);
+  assert.ok(result.stats.retired>0,'the workload crosses the resident limit');
 }));

@@ -1219,10 +1219,8 @@
   // User scripts are messages, never interpolated into the frame's HTML. Only the Worker evaluates
   // them; the bridge remains responsive so it can terminate a hung Worker.
   //
-  // A Worker (not a sandboxed iframe) is essential for a second, equally important reason, confirmed
-  // empirically during development: a dedicated Worker always runs on a genuinely separate OS thread,
-  // so an infinite loop in a hostile/broken script only ever hangs ITS OWN thread, and
-  // `Worker.terminate()` forcibly and immediately kills it mid-execution -- a hard platform guarantee.
+  // A Worker is also necessary for interruptible execution: an infinite loop must not block the
+  // trusted bridge's timer, and Worker.terminate() stops it independently of the page event loop.
   // A `<iframe sandbox>` built the same way was tried first and rejected: it still shares the page's
   // own main thread in this engine, so a synchronous infinite loop inside one freezes the entire tab,
   // including the parent's own "detect and kill it" timer -- which can never fire while that same
@@ -1237,9 +1235,11 @@
   const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle']);
   const SMART_WORKER_SRC = `
 "use strict";
+const stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);
+const encoder = new TextEncoder();
 const send = value => {
-  const json = JSON.stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});
-  postMessage(new TextEncoder().encode(json).length <= 524288 ? json : JSON.stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));
+  const json = stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});
+  transmit(encoder.encode(json).length <= 524288 ? json : stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));
 };
 send({ready:true});
 for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){
@@ -1247,23 +1247,21 @@ for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScript
   try{ self[g] = undefined; }catch(e){}
 }
 try{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}
-var cache = new Map();
+let source, compiled;
 function compile(src){
-  if(cache.has(src)){const def=cache.get(src);cache.delete(src);cache.set(src,def);return def;}
+  if(source!==undefined){if(source!==src)throw new Error('Worker source changed');return compiled;}
+  source=src;
   var def = null;
   try{
     def = new Function('"use strict";return ('+src+');')();
     if(!def || typeof def.children !== 'function') def = null;
   }catch(e){ def = null; }
-  cache.set(src, def);
-  if(cache.size>64) cache.delete(cache.keys().next().value);
-  return def;
+  return compiled=def;
 }
 self.onmessage = function(e){
   var msg = e.data || {};
   var id = msg.id;
-  var def = compile(msg.src || '');
-  try{ if(msg.method === 'caps'){
+  try{ var def = compile(msg.src || ''); if(msg.method === 'caps'){
     send({id:id, ok:!!def, caps: def ? {
       children: typeof def.children==='function', handles: typeof def.handles==='function',
       hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
@@ -1286,11 +1284,48 @@ self.onmessage = function(e){
   let smartSandboxGeneration = 0;
   let smartSandboxReady = null;
   let smartSandboxStartupReject = null;
+  let smartSandboxRetiring = Promise.resolve();
   const smartSandboxPending = new Map();  // queued and active requests, in input order
   let smartSandboxActive = null;
   let smartSandboxReqSeq = 0;
-  const SMART_CALL_TIMEOUT_MS = 250;      // scripts only ever build small descriptor arrays -- generous
-                                           // margin while still catching a hang almost instantly
+  const SMART_CALL_TIMEOUT_MS = 250;
+  const SMART_STARTUP_TIMEOUT_MS = 2000;
+  const SMART_MAX_RESIDENT_WORKERS = 4;
+  const smartItemExecutions = new WeakMap(); // object identity, never UID or script equality
+  let smartExecutionSeq = 0;
+  const smartRuntimeStats = {resident:0,peak:0,created:0,retired:0};
+
+  function smartCancelled(){const err=new Error('Smart shape operation cancelled');err.cancelled=true;return err;}
+  function createSmartExecution(subject,valid=()=>true){
+    return {id:'instance-'+(++smartExecutionSeq),subject,source:subject.script,valid,active:true,failedUntil:0};
+  }
+  function smartExecutionCurrent(owner){return owner.active && owner.subject.script===owner.source && owner.valid();}
+  function smartItemExecution(it){
+    const scene=items.includes(it)?items:null,tab=activeTabId;
+    let owner=smartItemExecutions.get(it);
+    if(owner && (!smartExecutionCurrent(owner) || owner.document!==scene)){disposeSmartExecution(owner);owner=null;}
+    if(!owner){
+      owner=createSmartExecution(it,()=>!scene || (items===scene && activeTabId===tab && scene.includes(it)));
+      owner.document=scene;
+      smartItemExecutions.set(it,owner);
+    }
+    return owner;
+  }
+  function stopSmartOwnerRequests(owner,error,cooldown=false){
+    if(cooldown) owner.failedUntil=Date.now()+SMART_BACKOFF_MS;
+    try{smartSandboxPort?.postMessage({retire:owner.id});}catch(_){}
+    for(const [id,p] of smartSandboxPending){
+      if(p.owner!==owner) continue;
+      clearTimeout(p.timer);smartSandboxPending.delete(id);
+      if(smartSandboxActive===id) smartSandboxActive=null;
+      p.reject(error);
+    }
+    dispatchSmartSandboxNext();
+  }
+  function disposeSmartExecution(owner){
+    if(!owner?.active) return;
+    owner.active=false;stopSmartOwnerRequests(owner,smartCancelled());
+  }
 
   function createSmartSandbox(){
     const gen = ++smartSandboxGeneration;
@@ -1301,57 +1336,115 @@ self.onmessage = function(e){
     const channel = new MessageChannel();
     smartSandboxPort = channel.port1;
     const bridge = `"use strict";
-      let port, worker, workerUrl, ready=false; const timers=new Map();
+      let port, workerUrl; const workers=new Map();
       const emit = value => port && port.postMessage(JSON.stringify(value));
-      const stop = () => { if(worker) worker.terminate(); if(workerUrl){URL.revokeObjectURL(workerUrl);workerUrl=null;} for(const t of timers.values()) clearTimeout(t); timers.clear(); };
+      const lifecycle = event => emit({version:1,lifecycle:event,resident:workers.size});
+      const stop = (slot,error) => {
+        if(workers.get(slot.owner)!==slot)return;
+        workers.delete(slot.owner);clearTimeout(slot.timer);slot.worker.terminate();lifecycle('retired');
+        if(error && slot.job)emit({version:1,owner:slot.owner,id:slot.job.id,error});
+        slot.job=null;
+      };
+      const send = slot => {
+        clearTimeout(slot.timer);
+        const job=slot.job;
+        slot.timer=setTimeout(()=>stop(slot,'Smart shape timed out'),${SMART_CALL_TIMEOUT_MS});
+        emit({version:1,owner:slot.owner,id:job.id,started:true});
+        try{slot.worker.postMessage({id:job.id,method:job.method,src:job.src,fn:job.fn,args:job.args});}
+        catch(_){stop(slot,'Smart shape request failed');}
+      };
+      const obtain = owner => {
+        let slot=workers.get(owner);
+        if(slot){workers.delete(owner);workers.set(owner,slot);return slot;}
+        if(workers.size>=${SMART_MAX_RESIDENT_WORKERS}){
+          const idle=[...workers.values()].find(s=>!s.job);
+          if(!idle)throw new Error('No idle execution slot');
+          stop(idle); // terminate the old realm before creating its replacement
+        }
+        const worker=new Worker(workerUrl);
+        slot={owner,worker,ready:false,job:null,timer:null};workers.set(owner,slot);lifecycle('created');
+        slot.timer=setTimeout(()=>stop(slot,'Smart shape Worker did not start'),${SMART_STARTUP_TIMEOUT_MS});
+        worker.onerror=e=>{e.preventDefault();stop(slot,'Smart shape Worker failed');};
+        worker.onmessage=e=>{
+          if(workers.get(owner)!==slot)return;
+          if(typeof e.data!=='string' || e.data.length>524288 || new TextEncoder().encode(e.data).length>524288){stop(slot,'Invalid smart shape response');return;}
+          let data;try{data=JSON.parse(e.data);}catch(_){stop(slot,'Invalid smart shape response');return;}
+          if(!data || typeof data!=='object' || Array.isArray(data)){stop(slot,'Invalid smart shape response');return;}
+          if(!slot.ready){
+            if(data.ready!==true)return;
+            slot.ready=true;clearTimeout(slot.timer);if(slot.job)send(slot);return;
+          }
+          const job=slot.job;
+          if(!job || data.id!==job.id)return;
+          const reply=JSON.stringify({version:1,owner,id:job.id,payload:data});
+          if(reply.length>${SMART_MAX_REPLY+1024} || new TextEncoder().encode(reply).length>${SMART_MAX_REPLY+1024}){
+            stop(slot,'Smart shape response exceeds transport limit');return;
+          }
+          clearTimeout(slot.timer);slot.job=null;
+          // Ownership comes from this Worker callback and its trusted active job, never the payload.
+          port.postMessage(reply);
+        };
+        return slot;
+      };
       window.addEventListener('message', e => {
         if(e.source!==parent || port || e.data!=='connect' || e.ports.length!==1) return;
         port=e.ports[0];
         port.onmessage = e => {
-          if(e.data && e.data.terminate){ stop(); return; }
-          if(!ready || !e.data || !Number.isSafeInteger(e.data.id)) return;
-          const id=e.data.id;
-          timers.set(id,setTimeout(()=>{stop();emit({fatal:true,error:'Smart shape timed out'});},250));
-          worker.postMessage(e.data);
+          const job=e.data;
+          if(job?.terminate){for(const slot of [...workers.values()])stop(slot);URL.revokeObjectURL(workerUrl);emit({stopped:true});return;}
+          if(job?.retire){const slot=workers.get(job.retire);if(slot)stop(slot);return;}
+          if(!job || job.version!==1 || !Number.isSafeInteger(job.id) || typeof job.owner!=='string')return;
+          try{
+            const slot=obtain(job.owner);
+            if(slot.job)throw new Error('Execution already active');
+            slot.job=job;if(slot.ready)send(slot);
+          }catch(_){emit({version:1,owner:job.owner,id:job.id,error:'Smart shape execution unavailable'});}
         };
         port.start();
         try{
           workerUrl=URL.createObjectURL(new Blob([${JSON.stringify(SMART_WORKER_SRC)}],{type:'text/javascript'}));
-          worker=new Worker(workerUrl);
-          worker.onerror=e=>{e.preventDefault();stop();emit({fatal:true,error:'Smart shape worker failed: '+String(e.message||'startup error').slice(0,160)});};
-          worker.onmessage=e=>{
-            if(typeof e.data!=='string' || e.data.length>524288 || new TextEncoder().encode(e.data).length>524288){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
-            let data; try{data=JSON.parse(e.data);}catch(_){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
-            if(!data || typeof data!=='object' || Array.isArray(data)){stop();emit({fatal:true,error:'Invalid smart shape response'});return;}
-            if(!ready){if(data.ready!==true)return;ready=true;URL.revokeObjectURL(workerUrl);workerUrl=null;emit({ready:true});return;}
-            if(!Number.isSafeInteger(data.id) || !timers.has(data.id))return;
-            clearTimeout(timers.get(data.id));timers.delete(data.id);port.postMessage(e.data);
-          };
+          emit({ready:true});
         }catch(_){emit({fatal:true,error:'Smart shape sandbox unavailable'});}
       });`;
     frame.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; connect-src \'none\'; script-src \'unsafe-inline\' \'unsafe-eval\' blob:; worker-src blob:;">'
       + '<script>'+bridge+'</scr'+'ipt>';
     return new Promise((resolve,reject)=>{
       smartSandboxStartupReject = reject;
-      const startupTimer = setTimeout(()=>{ if(gen===smartSandboxGeneration) regenerateSmartSandbox(); reject(new Error('Smart shape sandbox did not start')); },2000);
+      const startupTimer = setTimeout(()=>{ if(gen===smartSandboxGeneration) regenerateSmartSandbox(); reject(new Error('Smart shape sandbox did not start')); },SMART_STARTUP_TIMEOUT_MS);
       let ready = false;
       channel.port1.onmessage = e=>{
         if(gen!==smartSandboxGeneration) return;
         try{
-          if(typeof e.data!=='string' || e.data.length>SMART_MAX_REPLY || new TextEncoder().encode(e.data).length>SMART_MAX_REPLY) throw new Error('Invalid smart shape response');
+          if(typeof e.data!=='string' || e.data.length>SMART_MAX_REPLY+1024 || new TextEncoder().encode(e.data).length>SMART_MAX_REPLY+1024) throw new Error('Invalid smart shape response');
           const data = JSON.parse(e.data);
           if(!data || typeof data!=='object' || data.fatal) throw new Error(data && data.error || 'Smart shape sandbox failed');
           if(!ready){
             if(data.ready!==true) return;
             ready=true; clearTimeout(startupTimer); smartSandboxStartupReject=null; resolve(gen); return;
           }
+          if(data.version!==1) return;
+          if(data.lifecycle){
+            smartRuntimeStats.resident=data.resident;
+            smartRuntimeStats.peak=Math.max(smartRuntimeStats.peak,data.resident);
+            smartRuntimeStats[data.lifecycle==='created'?'created':'retired']++;
+            return;
+          }
           const pending = smartSandboxPending.get(data.id);
-          if(!pending || pending.generation !== gen || data.id!==smartSandboxActive) return;
+          if(!pending || pending.generation !== gen || data.id!==smartSandboxActive || data.owner!==pending.owner.id) return;
+          if(data.started){
+            clearTimeout(pending.timer);
+            pending.timer=setTimeout(()=>stopSmartOwnerRequests(pending.owner,new Error('Smart shape reply timed out'),true),SMART_CALL_TIMEOUT_MS+250);
+            return;
+          }
+          if(data.error){stopSmartOwnerRequests(pending.owner,new Error(data.error),true);return;}
           smartSandboxPending.delete(data.id);
           clearTimeout(pending.timer);
           smartSandboxActive=null;
-          try{ pending.resolve(validateSmartReply(data,pending.message)); }
-          catch(err){ reportSmartError(pending.message.src,pending.message.fn||'script',err.message); pending.reject(err); }
+          try{
+            if(!smartExecutionCurrent(pending.owner)){disposeSmartExecution(pending.owner);throw smartCancelled();}
+            pending.resolve(validateSmartReply(data.payload,pending.message));
+          }
+          catch(err){ if(!err.cancelled)reportSmartError(pending.message.src,pending.message.fn||'script',err.message); pending.reject(err); }
           dispatchSmartSandboxNext();
         }catch(err){ clearTimeout(startupTimer); reject(err); regenerateSmartSandbox(); }
       };
@@ -1360,17 +1453,22 @@ self.onmessage = function(e){
     });
   }
   function ensureSmartSandbox(){
-    if(!smartSandboxReady) smartSandboxReady = createSmartSandbox();
+    if(!smartSandboxReady) smartSandboxReady = smartSandboxRetiring.then(()=>createSmartSandbox());
     return smartSandboxReady;
   }
-  // Forcibly stops the current worker -- including mid-infinite-loop (see the comment above) -- and
-  // drops every outstanding request (they'll never get a reply from a terminated worker). The next
-  // call lazily spins up a fresh one, so one hostile/broken script can't permanently wedge every
-  // future smart-shape call.
+  // Whole-frame recovery is reserved for trusted bridge/transport failure. A script failure retires
+  // only its own Worker. Wait for bridge termination before a replacement frame can create Workers.
   function regenerateSmartSandbox(){
     const frame=smartSandboxFrame, port=smartSandboxPort;
-    if(port){ try{port.postMessage({terminate:true});}catch(_){} setTimeout(()=>port.close(),50); }
-    if(frame) setTimeout(()=>frame.remove(),50);   // allow the trusted bridge to terminate its Worker first
+    if(port && frame){
+      smartSandboxRetiring=new Promise(resolve=>{
+        let timer;
+        const finish=()=>{clearTimeout(timer);port.close();frame.remove();resolve();};
+        port.onmessage=e=>{try{if(JSON.parse(e.data).stopped)finish();}catch(_){}};
+        timer=setTimeout(finish,100);
+        try{port.postMessage({terminate:true});}catch(_){finish();}
+      });
+    }
     smartSandboxFrame = null; smartSandboxPort = null;
     smartSandboxReady = null;
     smartSandboxGeneration++;
@@ -1378,27 +1476,39 @@ self.onmessage = function(e){
     for(const p of smartSandboxPending.values()){ clearTimeout(p.timer); p.reject(new Error('smart sandbox regenerated')); }
     smartSandboxPending.clear();
     smartSandboxActive=null;
+    smartRuntimeStats.resident=0;
   }
-  // Queue in the trusted page, dispatching one request at a time. Waiting for earlier hooks does
-  // not consume this hook's deadline. The bridge enforces 250 ms; this timer covers lost replies.
+  // Queue waiting consumes neither startup nor execution time. Serial dispatch preserves input
+  // ordering; the bounded Worker set supplies instance isolation, not implicit shared state.
   function dispatchSmartSandboxNext(){
-    if(smartSandboxActive!==null || !smartSandboxPending.size) return;
-    const [id,pending]=smartSandboxPending.entries().next().value;
-    smartSandboxActive=id;
-    pending.timer=setTimeout(()=>regenerateSmartSandbox(),SMART_CALL_TIMEOUT_MS+250);
-    try{smartSandboxPort.postMessage({...pending.message,id});}
-    catch(_){regenerateSmartSandbox();}
+    if(smartSandboxActive!==null || !smartSandboxPending.size || !smartSandboxPort) return;
+    while(smartSandboxPending.size){
+      const [id,pending]=smartSandboxPending.entries().next().value;
+      if(!smartExecutionCurrent(pending.owner) || Date.now()<pending.owner.failedUntil){
+        smartSandboxPending.delete(id);pending.reject(smartCancelled());continue;
+      }
+      smartSandboxActive=id;
+      pending.timer=setTimeout(()=>stopSmartOwnerRequests(pending.owner,new Error('Smart shape Worker did not start'),true),SMART_STARTUP_TIMEOUT_MS+500);
+      try{smartSandboxPort.postMessage({...pending.message,version:1,owner:pending.owner.id,id});}
+      catch(_){regenerateSmartSandbox();}
+      return;
+    }
   }
-  function requestSmartSandbox(message){
+  function requestSmartSandbox(message,subject=null,execution=null){
     if(typeof message.src!=='string' || !message.src.trim() || message.src.length>MAX_SCRIPT ||
        (message.method!=='caps' && (message.method!=='call' || !SMART_HOOKS.has(message.fn))))
       return Promise.reject(new Error('Invalid smart shape request'));
+    const temporary=!subject && !execution;
+    const owner=execution || (subject ? smartItemExecution(subject) : createSmartExecution({script:message.src}));
+    if(!smartExecutionCurrent(owner) || owner.source!==message.src || Date.now()<owner.failedUntil) return Promise.reject(smartCancelled());
     return ensureSmartSandbox().then(gen=>new Promise((resolve, reject)=>{
       if(gen !== smartSandboxGeneration){ reject(new Error('stale smart sandbox generation')); return; }
+      if(!smartExecutionCurrent(owner)){reject(smartCancelled());return;}
       const id = ++smartSandboxReqSeq;
-      smartSandboxPending.set(id, {resolve, reject, timer:null, generation:gen, message});
+      smartSandboxPending.set(id, {resolve, reject, timer:null, generation:gen, message,owner});
       dispatchSmartSandboxNext();
-    })).catch(err=>{reportSmartError(message.src,message.fn||'script',err.message);throw err;});
+    })).catch(err=>{if(!err.cancelled)reportSmartError(message.src,message.fn||'script',err.message);throw err;})
+      .finally(()=>{if(temporary)disposeSmartExecution(owner);});
   }
   const scriptOf = s => typeof s === 'string' ? s : (s && s.script) || '';
   // Calls one hook (children/handles/hitEdit/dragEdit/initState/initStyle) inside the sandbox; resolves
@@ -1406,15 +1516,15 @@ self.onmessage = function(e){
   // missing hook -- a broken or hostile script can't crash rendering, same as before this sandbox
   // existed, just asynchronously now. `scriptOrItem` may be a plain script string (the "Add smart
   // shape" dialog, before an item even exists) or an item object (everywhere else).
-  function requestSmartCall(scriptOrItem, fn, args){
-    return requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args})
+  function requestSmartCall(scriptOrItem, fn, args,execution=null){
+    return requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args},typeof scriptOrItem==='object'?scriptOrItem:null,execution)
       .then(r=>r.ok ? r.result : null)
       .catch(()=>null);
   }
   // Which hooks a script defines -- replaces every `typeof def.xxx === 'function'` guard. Resolves to
   // null if the script doesn't even compile to a valid object.
-  function requestSmartCaps(scriptOrItem){
-    return requestSmartSandbox({method:'caps', src:scriptOf(scriptOrItem)})
+  function requestSmartCaps(scriptOrItem,execution=null){
+    return requestSmartSandbox({method:'caps', src:scriptOf(scriptOrItem)},typeof scriptOrItem==='object'?scriptOrItem:null,execution)
       .then(r=>r.ok ? r.caps : null)
       .catch(()=>null);
   }
@@ -1568,19 +1678,30 @@ self.onmessage = function(e){
   const smartHandlesCache = new Map();    // uid -> {sig, hs}
   const smartInFlight = new Set();        // uids with a children() request currently outstanding
   const smartHandlesInFlight = new Set();
-  // uid -> timestamp before which a timed-out item's request isn't retried, even though it has nothing
-  // cached and would otherwise look retryable on every single render(). Without this, a script that
-  // hangs EVERY time (left sitting on the canvas, not just a one-off glitch) would retry on literally
-  // the next render() -- and since render() fires on every pointermove during ANY drag, anywhere on the
-  // canvas, that means re-hanging the one shared worker (see the sandbox's own comment on why it's
-  // shared) every ~250ms for as long as the user keeps interacting with anything at all, repeatedly
-  // disrupting every sibling queued alongside it each time. 3 seconds bounds a hostile/broken script to
-  // one disruption per window instead of a continuous cycle, while still being short enough that fixing
-  // the script (replacing it, or just waiting) recovers promptly.
+  // Failure belongs to one instance. Keep its last valid drawing and schedule one retry after a
+  // backoff, without requiring unrelated user input or rejecting healthy owners' queued work.
   const SMART_BACKOFF_MS = 3000;
   const smartBackoffUntil = new Map();
+  const smartRetryTimers = new Map();
   const smartCacheOwners = new Map();  // only items in the active document, with their current source
+  function clearSmartRetry(uid){
+    clearTimeout(smartRetryTimers.get(uid));smartRetryTimers.delete(uid);smartBackoffUntil.delete(uid);
+  }
+  function retrySmartCache(it,owner){
+    if(!smartCacheOwnerCurrent(it,owner))return;
+    const now=Date.now(), previous=smartBackoffUntil.get(it.uid);
+    const until=previous>now ? previous : now+SMART_BACKOFF_MS;
+    smartBackoffUntil.set(it.uid,until);
+    if(smartRetryTimers.has(it.uid))return;
+    smartRetryTimers.set(it.uid,setTimeout(()=>{
+      smartRetryTimers.delete(it.uid);
+      if(smartCacheOwnerCurrent(it,owner))render();
+    },Math.max(0,until-Date.now())+10));
+  }
   function dropSmartCache(uid){
+    const it=smartCacheOwners.get(uid)?.item;
+    if(it)disposeSmartExecution(smartItemExecutions.get(it));
+    clearSmartRetry(uid);
     smartCacheOwners.delete(uid);smartChildrenCache.delete(uid);smartHandlesCache.delete(uid);
     smartInFlight.delete(uid);smartHandlesInFlight.delete(uid);smartBackoffUntil.delete(uid);
   }
@@ -1604,15 +1725,8 @@ self.onmessage = function(e){
   function smartSig(it, extra){
     return it.script+':'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+JSON.stringify(smartResolvedStyle(it))+(extra?'|'+extra:'');
   }
-  // Deliberately calls requestSmartSandbox directly, NOT requestSmartCall -- requestSmartCall's own
-  // contract collapses "the sandbox answered, this script has no children to show" and "the request
-  // never got an answer at all" into the same `null`, which is right for a one-shot caller that has
-  // nowhere else to turn. Here it would be wrong: a sibling queued behind a hung/timed-out script in
-  // the same shared worker has its OWN request rejected right along with it, and caching THAT as "this
-  // script legitimately draws nothing" would freeze it blank forever, since a matching signature never
-  // asks again. Only a validated reply is cached; a rejection clears in-flight, starts this item's
-  // own backoff window, and preserves its last valid drawing. After that window, a render retries
-  // the refresh against whatever worker is live by then.
+  // Cache only validated replies. The convenience wrapper's null-on-failure contract cannot
+  // distinguish an empty drawing from a failed request; failures need their own retry path.
   function smartChildrenFor(it, editing){
     if(smartExportCache && smartExportCache.has(it)) return smartExportCache.get(it);
     const owner=smartCacheOwner(it);
@@ -1621,9 +1735,9 @@ self.onmessage = function(e){
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
       smartInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children', args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing]})
-        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartChildrenCache.set(it.uid, {sig, kids:r.result}); smartInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
-        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
+      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children', args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing]},it)
+        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartChildrenCache.set(it.uid, {sig, kids:r.result}); smartInFlight.delete(it.uid); clearSmartRetry(it.uid); render(); })
+        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartInFlight.delete(it.uid); retrySmartCache(it,owner); });
     }
     return cached ? cached.kids : [];
   }
@@ -1634,9 +1748,9 @@ self.onmessage = function(e){
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartHandlesInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
       smartHandlesInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it)]})
-        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); smartBackoffUntil.delete(it.uid); render(); })
-        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesInFlight.delete(it.uid); smartBackoffUntil.set(it.uid, Date.now()+SMART_BACKOFF_MS); });
+      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it)]},it)
+        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); clearSmartRetry(it.uid); render(); })
+        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesInFlight.delete(it.uid); retrySmartCache(it,owner); });
     }
     return cached ? cached.hs : [];
   }
@@ -1654,14 +1768,17 @@ self.onmessage = function(e){
     const map = new Map();
     for(const it of itemList){
       if(it.type !== 'smart') continue;
+      const temporary=!items.includes(it);
+      const execution=temporary?createSmartExecution(it):smartItemExecution(it);
       try{
-        const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]});
+        const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]},it,execution);
         map.set(it,r.result);
       }catch(err){
         if(strict) throw err;
         const cached=smartChildrenCache.get(it.uid);
-        map.set(it,cached?.sig===smartSig(it)?cached.kids:[]);
-      }
+        const owner=smartCacheOwners.get(it.uid);
+        map.set(it,owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids:[]);
+      }finally{if(temporary)disposeSmartExecution(execution);}
     }
     return map;
   }
@@ -3420,7 +3537,7 @@ self.onmessage = function(e){
           // the container's own position here.
           const wp = toLocal(sit, x, y);
           const lp = { x: wp.x - sit.x, y: wp.y - sit.y };
-          const pending = {idx:editingSmartIdx,it:sit,tab:activeTabId,epoch:smartGestureEpoch,
+          const pending = {idx:editingSmartIdx,it:sit,script:sit.script,tab:activeTabId,epoch:smartGestureEpoch,
             x,y,lp,e,latest:null,released:false,mode:'pending',cancelled:false,sd:null};
           pending.releaseDone=new Promise(resolve=>pending.release=resolve);
           smartCurrentPress=pending;
@@ -3895,14 +4012,18 @@ self.onmessage = function(e){
       .catch(()=> onSmartDragEditReply(it, sd, myToken, null));
   }
   function onSmartDragEditReply(it, sd, myToken, result){
-    if(sd.token !== myToken || !smartGestureValid(sd.press)) return;
     sd.inFlight = false;
+    if(sd.token !== myToken || !smartGestureValid(sd.press)){
+      sd.pendingAfterInFlight=false;
+      if(sd.onSettle){const settle=sd.onSettle;sd.onSettle=null;settle();}
+      return;
+    }
     if(result) it.state = result;
     render();
     if(sd.pendingAfterInFlight) sendNextSmartDragEdit(it, sd);
     else if(sd.onSettle){ const fn = sd.onSettle; sd.onSettle = null; fn(); }
   }
-  function smartGestureValid(p){ return !p.cancelled && p.epoch===smartGestureEpoch && p.tab===activeTabId && items.includes(p.it); }
+  function smartGestureValid(p){ return !p.cancelled && p.it.script===p.script && p.epoch===smartGestureEpoch && p.tab===activeTabId && items.includes(p.it); }
   function cancelSmartGestures(preserveReleased=false){
     smartGestureEpoch++;
     for(const p of smartGestureRecords){
@@ -4258,13 +4379,17 @@ self.onmessage = function(e){
   }
   // Initialize a fresh copy; omitted/invalid optional results keep the definition's saved defaults.
   // The same ordering applies to authoring and placement: state first, then style/size.
-  async function initializeSmartItem(it,caps){
-    caps=caps || await requestSmartCaps(it);
-    if(!caps) throw new Error('Smart shape could not be initialized');
-    if(caps.initState){const state=await requestSmartCall(it,'initState',[]);if(state!==null)it.state=state;}
-    if(caps.initStyle) Object.assign(it,await requestSmartCall(it,'initStyle',[]) || {});
-    it.font=fontStr(it.fontFamily,it.fontSize);
-    return it;
+  async function initializeSmartItem(it,caps,valid=()=>true,execution=null){
+    const owner=execution || createSmartExecution(it,valid);
+    const check=()=>{if(!valid() || !smartExecutionCurrent(owner))throw smartCancelled();};
+    try{
+      check();caps=caps || await requestSmartCaps(it,owner);check();
+      if(!caps) throw new Error('Smart shape could not be initialized');
+      if(caps.initState){const state=await requestSmartCall(it,'initState',[],owner);check();if(state!==null)it.state=state;}
+      if(caps.initStyle){const style=await requestSmartCall(it,'initStyle',[],owner);check();Object.assign(it,style || {});}
+      it.font=fontStr(it.fontFamily,it.fontSize);
+      return it;
+    }finally{if(!execution)disposeSmartExecution(owner);}
   }
   function shapePlacementValid(p){return p.epoch===shapePlacementEpoch && p.tab===activeTabId && p.items===items;}
   function hasPendingShapePlacement(){return [...shapePlacementRequests].some(shapePlacementValid);}
@@ -4279,7 +4404,7 @@ self.onmessage = function(e){
     shapePlacementQueue=shapePlacementQueue.then(async()=>{
       for(const it of list){
         if(!shapePlacementValid(p)) return;
-        if(it.type==='smart') await initializeSmartItem(it);
+        if(it.type==='smart') await initializeSmartItem(it,null,()=>shapePlacementValid(p));
       }
       if(!shapePlacementValid(p)) return;
       shapePlacementOwner=true;
@@ -6420,9 +6545,10 @@ self.onmessage = function(e){
     const seq=++smartObjectSubmitSeq;
     const current=()=>seq===smartObjectSubmitSeq && smartObjectDialog.open && smartObjectEdit===edit &&
       smartObjectNameInput.value.trim()===name && smartObjectScriptInput.value===script;
+    const execution=createSmartExecution({script},current);
     smartObjectDialogSubmit.disabled=true;
     try{
-      const caps = await requestSmartCaps(script);
+      const caps = await requestSmartCaps(script,execution);
       if(!current()) return;
       if(!caps || !caps.children){
         smartObjectDialogError.textContent = 'The script must be a JS expression evaluating to an object with a children(state, style, w, h) function.';
@@ -6467,7 +6593,7 @@ self.onmessage = function(e){
         color:'#000000',fillColor:st.fillColor,fill:false,strokeOn:true,textColor:st.textColor,size:st.size,
         fontFamily:st.fontFamily,fontSize:st.fontSize,script,state:{},
       };
-      await initializeSmartItem(item,caps);
+      await initializeSmartItem(item,caps,current,execution);
       item.x=-item.w/2;item.y=-item.h/2;
       if(!current()) return;
       const latestNameErr=validateShapeName(name);
@@ -6480,7 +6606,8 @@ self.onmessage = function(e){
       managingShapes = false;
       setShapePicker(true);
       toast('Added "'+name+'" to the library — export to keep it');
-    }finally{if(seq===smartObjectSubmitSeq) smartObjectDialogSubmit.disabled=false;}
+    }catch(err){if(current() && !err.cancelled)smartObjectDialogError.textContent=err.message;}
+    finally{disposeSmartExecution(execution);if(seq===smartObjectSubmitSeq) smartObjectDialogSubmit.disabled=false;}
   });
   shapeLibraryInput.addEventListener('change', e=>{
     const file = e.target.files[0];
