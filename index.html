@@ -2045,7 +2045,9 @@ self.onmessage = function(e){
       else if(s[0]==='C') ctx.bezierCurveTo(s[1], s[2], s[3], s[4], s[5], s[6]);
       // stored angles are in this app's own 0=top/clockwise convention (see shapeOps' 'polygon'
       // case) -- canvas's own ctx.arc measures from 0=3-o'clock, so -90deg converts once, here.
-      else if(s[0]==='A') ctx.arc(s[1], s[2], s[3], s[4]-Math.PI/2, s[5]-Math.PI/2);
+      // a script can hand over a negative radius (e.g. a shape scaled down to almost nothing); canvas throws on
+      // that and would stop the whole render, so it is clamped here, as in svgArcD
+      else if(s[0]==='A') ctx.arc(s[1], s[2], Math.max(0, s[3]), s[4]-Math.PI/2, s[5]-Math.PI/2);
       else ctx.closePath();
     }
   }
@@ -4790,6 +4792,7 @@ self.onmessage = function(e){
   // in its own y-down coordinate system -- the same one this app already uses); large-arc-flag is 1
   // once the swept angle normalizes to more than half a turn; the endpoint is just the point at a2.
   function svgArcD(cx,cy,r,a1,a2){
+    r = Math.max(0, r);
     let sweep = ((a2-a1) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
     const largeArc = sweep > Math.PI ? 1 : 0;
     const ex = cx + r*Math.sin(a2), ey = cy - r*Math.cos(a2);
@@ -5666,7 +5669,8 @@ self.onmessage = function(e){
   // like any other item. w/h are 30% bigger than the generic 180x180 default (234x234, still
   // square) -- with 12 numbers plus 60 tick marks packed around the dial, the extra room reads
   // noticeably less cramped than the generic size, per explicit request.
-  initStyle(){ return { fontSize: 12, fillColor: '#dc2626', w: 234, h: 234 }; },
+  // h = the 234px dial plus room for the "N Minutes left" line under it (see _dial)
+  initStyle(){ return { fontSize: 12, fillColor: '#dc2626', w: 234, h: 278 }; },
 
   // Radial layout, innermost to outermost: the arc, then the tick ring (5-minute major ticks and
   // 1-minute minor ticks sharing the same outer edge), then the numbers -- sized off the ACTUAL
@@ -5690,12 +5694,27 @@ self.onmessage = function(e){
     const tickOuter = numR - labelH/2 - 4;
     const tickInnerMajor = tickOuter - Math.max(8, r*0.12);
     const tickInnerMinor = tickOuter - Math.max(4, r*0.06);
-    const wedgeR = tickInnerMajor - 6;
+    // never negative: scaled down far enough, the rings above eat the whole radius
+    const wedgeR = Math.max(0, tickInnerMajor - 6);
     return { r, labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR };
   },
 
+  // The box holds the dial on top and the "N Minutes left" line under it, so the readout stays inside
+  // the item's own selection rectangle. The readout scales with the box (twice the numbering font, at
+  // least 12% of the width) but is capped so the widest readout, "59 Minutes left" (about 7 em in this
+  // bold font, 8.6 leaves room for wider system fonts), fits the box's wrap width -- so it never wraps. D is the dial's diameter; every hook takes cx/cy from
+  // here so drawing and hit-testing agree.
+  _dial(style, w, h){
+    const fontSize = (style && style.fontSize) || 16;
+    const bigPx = Math.floor(Math.min(Math.max(fontSize*2, w*0.12), (w-12)/8.6));   // a text box wraps at w-12
+    const showText = bigPx >= 6;   // below the smallest font size the line is dropped, not squeezed
+    const textH = showText ? Math.ceil(bigPx*1.3) : 0, gap = showText ? Math.min(8, h*0.03) : 0;
+    const D = Math.max(0, Math.min(w, h - textH - gap));
+    return { bigPx, showText, textH, textY: D + gap, D, cx: w/2, cy: D/2 };
+  },
+
   children(state, style, w, h){
-    const cx = w/2, cy = h/2;
+    const { bigPx, showText, textH, textY, D, cx, cy } = this._dial(style, w, h);
     const minutesRemaining = Math.max(0, Math.min(60, -state.value));
     // SVG's endpoint-form arc command can't represent an EXACT full-circle sweep (start/end point
     // coincide, degenerating to nothing) -- clamped a hair short of 2*PI so "60 min remaining"
@@ -5708,18 +5727,18 @@ self.onmessage = function(e){
     // boundaryAngle+sweepLen is always exactly 2*PI (the top) by construction.
     const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
 
-    const { r, labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR } = this._layout(style, w, h);
+    const { r, labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR } = this._layout(style, D, D);
 
     const items = [
       // face, always visible, follows the container's own stroke color -- like the clock's face
-      { type:'ellipse', x:0, y:0, w, h, color: style.color, strokeOn:true, size: Math.max(1,(style.size||4)/2), fill:false },
+      { type:'ellipse', x:cx-D/2, y:0, w:D, h:D, color: style.color, strokeOn:true, size: Math.max(1,(style.size||4)/2), fill:false },
     ];
 
     // the wedge -- always filled regardless of the container's own Fill toggle (a timer showing no
     // color at all wouldn't make sense), but its COLOR follows the toolbar's Fill-color dropdown like
     // any other filled shape; only the STARTING value (red) is hard-set, via initStyle() above.
     // Skipped entirely at 0 (a zero-sweep arc is a degenerate sliver, not worth drawing).
-    if(minutesRemaining > 0){
+    if(minutesRemaining > 0 && wedgeR > 1){
       const arcStart = { x: cx+wedgeR*Math.sin(boundaryAngle), y: cy-wedgeR*Math.cos(boundaryAngle),
         arcTo:{cx, cy, r:wedgeR, a1:boundaryAngle, a2:boundaryAngle+sweepLen} };
       const arcEnd = { x: cx, y: cy-wedgeR };   // a2 == boundaryAngle+sweepLen == 2*PI exactly == the top
@@ -5756,6 +5775,13 @@ self.onmessage = function(e){
     items.push({ type:'line', x1:cx, y1:cy, x2: cx+Math.sin(boundaryAngle)*wedgeR, y2: cy-Math.cos(boundaryAngle)*wedgeR,
       color: style.color, size: style.size||4 });
 
+    // the big readout under the dial, inside the box -- sized in _dial so it never wraps
+    if(showText){
+      const bigFont = String(style.font || '').replace(/\\d+px/, bigPx+'px');
+      items.push({ type:'text', text: minutesRemaining + (minutesRemaining===1 ? ' Minute left' : ' Minutes left'),
+        x:0, y:textY, w, h:textH, align:'center', font: bigFont, color: style.textColor, strokeOn:false, fill:false });
+    }
+
     return items;
   },
 
@@ -5764,8 +5790,8 @@ self.onmessage = function(e){
   // shared _layout() above; without it the hand's hit-test/marker position would drift away from
   // where children() actually draws it the moment someone changes the toolbar's Font-size dropdown.
   handles(state, w, h, style){
-    const cx=w/2, cy=h/2;
-    const { wedgeR } = this._layout(style||{}, w, h);
+    const { cx, cy, D } = this._dial(style||{}, w, h);
+    const { wedgeR } = this._layout(style||{}, D, D);
     const minutesRemaining = Math.max(0, Math.min(60, -state.value));
     const sweepLen = (minutesRemaining/60) * 2*Math.PI;
     const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
@@ -5773,8 +5799,8 @@ self.onmessage = function(e){
   },
 
   hitEdit(state, lx, ly, w, h, style){
-    const cx=w/2, cy=h/2;
-    const { wedgeR } = this._layout(style||{}, w, h);
+    const { cx, cy, D } = this._dial(style||{}, w, h);
+    const { wedgeR } = this._layout(style||{}, D, D);
     const minutesRemaining = Math.max(0, Math.min(60, -state.value));
     const sweepLen = (minutesRemaining/60) * 2*Math.PI;
     const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
@@ -5793,9 +5819,9 @@ self.onmessage = function(e){
   // 'a' is the raw pointer angle (boundaryAngle's own convention); inverted back to minutesRemaining
   // to match the dial's reversed numbering -- dragging to the position labeled "N" now sets N
   // minutes remaining, not the raw clockwise angle directly like before the numbers were reversed.
-  dragEdit(state, handle, lx, ly, w, h){
+  dragEdit(state, handle, lx, ly, w, h, style){
     if(handle !== 'hand') return state;
-    const cx=w/2, cy=h/2;
+    const { cx, cy } = this._dial(style||{}, w, h);
     let a = Math.atan2(lx-cx, -(ly-cy)); if(a<0) a += 2*Math.PI;
     const minutes = Math.round(((2*Math.PI - a) % (2*Math.PI)) / (2*Math.PI) * 60) % 60;
     return { ...state, value: -minutes };

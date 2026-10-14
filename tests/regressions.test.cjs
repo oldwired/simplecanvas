@@ -1343,3 +1343,66 @@ test('a smart shape with a long reference-template script survives a save/load r
   assert.ok(parsed.scriptLength > 20000, 'the test script must actually exceed the OLD cap to be meaningful');
   assert.ok(parsed.survived, `a ${parsed.scriptLength}-character script must survive normalizeScene (a real save/load round-trip), not be silently dropped`);
 }));
+
+test('the Timer template shows a large "N Minutes left" readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(async()=>{
+    const script = SMART_TEMPLATES.timer.script;
+    const init = await requestSmartCall(script, 'initStyle', []);
+    const out = [];
+    for(const [w,h] of [[init.w, init.h], [160,190], [90,110], [70,84]]){
+      const it = {type:'smart', w, h, color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
+        size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12), script};
+      for(const value of [-45, -59, -1]){
+        const kids = await requestSmartCall(script, 'children', [{value}, smartResolvedStyle(it), w, h, false]);
+        const t = kids.find(c=>c.type==='text' && /left$/.test(c.text));
+        ctx.font = t.font;
+        out.push({w, h, text:t.text, bottom:t.y+t.h, px:+/(\\d+)px/.exec(t.font)[1], textW:ctx.measureText(t.text).width, boxW:t.w-12});
+      }
+    }
+    return JSON.stringify({init, out});
+  })()`));
+  assert.equal(r.init.h > r.init.w, true, 'a new Timer is taller than wide, to hold the readout');
+  const big = r.out[0];
+  assert.equal(big.text, '45 Minutes left');
+  assert.ok(big.px >= 24, `large type at the default size (${big.px}px)`);
+  assert.equal(r.out[2].text, '1 Minute left', 'singular at one minute');
+  for(const o of r.out){
+    assert.ok(o.bottom <= o.h + 0.5, `readout inside the box at ${o.w}x${o.h}`);
+    assert.ok(o.textW <= o.boxW, `"${o.text}" fits on one line at ${o.w}x${o.h} (${o.textW.toFixed(1)} <= ${o.boxW})`);
+  }
+}));
+
+test('a Timer scaled down to almost nothing, or any script arc with a negative radius, renders without errors', async () => app(async ({page,run}) => {
+  await run(`(async()=>{
+    const script = SMART_TEMPLATES.timer.script;
+    const base = {type:'smart', color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
+      size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12)};
+    items = [
+      ...[[30,36],[12,14],[4,5],[1,1]].map(([w,h],k)=>({...base, uid:'t'+k, x:40+k*60, y:40, w, h, script, state:{value:-45}})),
+      {...base, uid:'neg', x:400, y:40, w:50, h:50,
+       script:'({children(){return [{type:"polygon",closed:true,fill:true,fillColor:"#ff0000",color:"#ff0000",strokeOn:false,points:[{x:25,y:25},{x:25,y:20,arcTo:{cx:25,cy:25,r:-3,a1:0,a2:1}},{x:30,y:25}]}]}})'}];
+    render();
+  })()`);
+  await page.waitForTimeout(400);
+  await run('render()');
+  const svg = await run('itemsToSVGMarkup(items)');
+  assert.ok(!/A -/.test(svg), 'SVG export clamps a negative arc radius too');
+}));
+
+test('the race-start-timer example never hands a negative arc radius to the renderer, however small it is scaled', async () => app(async ({run}) => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'examples', 'race-start-timer.js'), 'utf8');
+  const radii = JSON.parse(await run(`(async()=>{
+    const script = ${JSON.stringify(script)};
+    const state = await requestSmartCall(script, 'initState', []);
+    const style = await requestSmartCall(script, 'initStyle', []) || {};
+    const it = {type:'smart', color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
+      size:2, fontFamily:'sans', fontSize:style.fontSize||12, font:fontStr('sans', style.fontSize||12), script};
+    const out = [];
+    for(const [w,h] of [[40,30],[12,10],[3,2],[1,1]]){
+      const kids = await requestSmartCall(script, 'children', [{...state, value:-3}, smartResolvedStyle(it), w, h, false]) || [];
+      for(const k of kids) for(const p of (k.points||[])) if(p.arcTo) out.push(p.arcTo.r);
+    }
+    return JSON.stringify(out);
+  })()`));
+  assert.ok(radii.every(r=>r>=0), `no negative radius: ${JSON.stringify(radii)}`);
+}));

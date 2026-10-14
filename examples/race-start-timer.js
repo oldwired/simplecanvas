@@ -310,7 +310,9 @@
     const tickOuter = numR - labelH/2 - 4;
     const tickInnerMajor = tickOuter - Math.max(6, clockR*0.12);
     const tickInnerMinor = tickOuter - Math.max(3, clockR*0.06);
-    const wedgeR = tickInnerMajor - 5;
+    // never negative: scaled down far enough, the rings above eat the whole radius (a negative arc
+    // radius used to stop the canvas from rendering at all)
+    const wedgeR = Math.max(0, tickInnerMajor - 5);
     return { clockR, clockCx, clockCy, mastX, mastTop, mastBottom, flagW, flagH,
       labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR };
   },
@@ -407,7 +409,7 @@
     const valueForDial = Math.max(-30, Math.min(30, state.value));
     const angle = this._dialAngle(state.value);
     items.push({ type:'ellipse', x:cx-r, y:cy-r, w:r*2, h:r*2, color:style.color, strokeOn:true, size:Math.max(1,(style.size||4)/2), fill:false });
-    if(valueForDial !== 0){
+    if(valueForDial !== 0 && L.wedgeR > 1){
       // Before the start, the wedge represents time REMAINING -- it always reaches the TOP (the
       // start instant), growing from the hand backward toward it as time passes. After the start, it
       // represents time ELAPSED -- it always STARTS at the top, growing forward toward the hand. Same
