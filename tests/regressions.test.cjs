@@ -26,10 +26,13 @@ async function app(fn, options={}){
     page.on('pageerror', e => errors.push(e.message));
     page.on('dialog', d => d.accept());
     const origin=options.origin || 'http://simplecanvas.test';
-    await page.route(origin+'/**', route => route.fulfill({
-      status:route.request().url().endsWith('index.html') ? 200 : 404,
-      contentType:'text/html', body:html
-    }));
+    await page.route(origin+'/**', route => {
+      const file = options.files?.[route.request().url().slice(origin.length+1)];
+      return route.fulfill({
+        status:file!==undefined || route.request().url().endsWith('index.html') ? 200 : 404,
+        contentType:file!==undefined ? 'application/json' : 'text/html', body:file ?? html
+      });
+    });
     await page.goto(origin+'/index.html');
     const run = code => page.evaluate(code => window.__test.run(code), code);
     await fn({page, run, context});
@@ -1839,6 +1842,91 @@ test('missing smart previews require consent; exported PNGs load without executi
     assert.equal(await page.locator('iframe[sandbox]').count(),0,'a stale PNG requires fresh consent');
     await page.locator('#libraryDialogCancel').click();
   }
+}));
+
+const demoLibrary = fs.readFileSync(path.join(__dirname,'..','demo-shapes-library.json'),'utf8');
+test('the bundled demo loads under a Pages subpath with inert previews and editable smart shapes',async()=>app(async({page,run})=>{
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
+  assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),2);
+  await page.locator('#shapeLibBtn').click();
+  await page.waitForFunction(()=>{
+    const images=[...document.querySelectorAll('#shapeGrid img')];
+    return images.length===8 && images.every(img=>img.complete && img.naturalWidth===128);
+  });
+  assert.equal(await page.locator('#libraryDialog[open]').count(),0,'saved previews need no script consent');
+  assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0,'browsing the demo runs no smart scripts');
+  assert.equal(await run('shapeLibraryDirty'),false);
+  let canvas=await page.locator('#canvas').boundingBox();
+  for(const [name,x] of [['Steuerbord Boot',180],['Clock (smart)',480],['Bar chart (smart)',820]]){
+    if(await page.locator('#shapePicker').isHidden()) await page.locator('#shapeLibBtn').click();
+    await page.getByRole('button',{name:'Place '+name,exact:true}).click();
+    canvas=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(canvas.x+x,canvas.y+240);
+    await run('shapePlacementQueue');
+  }
+  assert.deepEqual(await run('items.map(it=>it.type)'),['polygon','polygon','polygon','ellipse','line','smart','smart']);
+  canvas=await page.locator('#canvas').boundingBox();
+  const clock=await run('items[5]');
+  await page.mouse.dblclick(canvas.x+clock.x+clock.w/2,canvas.y+clock.y+clock.h/2);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===5);
+  const minute=await run(`requestSmartCall(items[5],'handles',[items[5].state,items[5].w,items[5].h,smartResolvedStyle(items[5])]).then(hs=>hs.find(h=>h.id==='minute'))`);
+  await page.mouse.move(canvas.x+clock.x+minute.x,canvas.y+clock.y+minute.y);
+  await page.mouse.down();
+  await page.waitForFunction(()=>__test.run('smartDrag?.handle')==='minute');
+  await page.mouse.move(canvas.x+clock.x+clock.w*.85,canvas.y+clock.y+clock.h/2,{steps:5});
+  await page.mouse.up();
+  await run('smartHitSettled');
+  assert.equal(await run('items[5].state.m'),15);
+  await run('undo()');assert.equal(await run('items[5].state.m'),10);
+  await run('redo()');assert.equal(await run('items[5].state.m'),15);
+  const chart=await run('items[6]');
+  await page.mouse.dblclick(canvas.x+chart.x+chart.w-40,canvas.y+chart.y+8);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===6);
+  const add=await run(`requestSmartCall(items[6],'handles',[items[6].state,items[6].w,items[6].h,smartResolvedStyle(items[6])]).then(hs=>hs.find(h=>h.id==='add'))`);
+  await page.mouse.click(canvas.x+chart.x+add.x,canvas.y+chart.y+add.y);
+  await run('smartHitSettled');
+  assert.equal(await run('items[6].state.values.length'),5);
+  await run('undo()');assert.deepEqual(await run('items[6].state.values'),[30,60,45,80]);
+  await page.reload();
+  assert.equal(await run('items[5].state.m'),15,'edited demo shapes survive autosave/reload');
+  assert.deepEqual(await run('items[6].state.values'),[30,60,45,80]);
+}, {origin:'http://simplecanvas.test/simplecanvas',files:{'shapes-library.json':demoLibrary},init:()=>{
+  const NativeWorker=window.Worker;
+  window.__smartWorkerStarts=0;
+  window.Worker=class extends NativeWorker{constructor(...args){super(...args);window.__smartWorkerStarts++;}};
+}}));
+
+test('a single HTML deployment works without a shape library',async()=>app(async({page,run})=>{
+  await page.waitForLoadState('networkidle');
+  assert.equal(await run('shapeLibrary'),null);
+  await page.locator('#shapeLibBtn').click();
+  assert.equal(await page.locator('#shapeGrid .shape-entry').count(),0);
+  await page.locator('#shapeLibBtn').click();
+  await page.locator('[data-tool="rect"]').click();
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvas.x+100,canvas.y+100);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});
+  await page.mouse.up();
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
+  await page.reload();
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect'],'drawing and autosave work without a library');
+}));
+
+test('a delayed demo response preserves a library imported during startup',async()=>app(async({page,run})=>{
+  let finishDemo,requestStarted;
+  const pendingDemo=new Promise(resolve=>{finishDemo=resolve;});
+  const responseReady=new Promise(resolve=>{requestStarted=resolve;});
+  await page.route('**/shapes-library.json',async route=>{
+    requestStarted();await pendingDemo;
+    await route.fulfill({contentType:'application/json',body:demoLibrary});
+  });
+  // Do not wait for the deliberately pending startup fetch's load event.
+  await page.reload({waitUntil:'domcontentloaded'});
+  await responseReady;
+  await importLibrary(page,{shapes:[{name:'My imported shape',items:[rectangle()]}]});
+  finishDemo();await page.waitForLoadState('networkidle');
+  assert.deepEqual(await run('shapeLibrary.shapes.map(t=>t.name)'),['My imported shape']);
 }));
 
 test('startup libraries keep missing smart previews inert until the library is opened and approved',async()=>app(async({page,run})=>{

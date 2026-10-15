@@ -32,6 +32,12 @@ width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
 
+The public demo includes eight shapes: the six sailing shapes from [Bauka](https://bauka.com/)
+(two boats, start and finish lines, a course mark, and a wind arrow), plus a smart **Clock** and
+**Bar chart**. Open the shape library in the toolbar, choose a shape, then click the canvas to place
+it. Double-click the clock to drag its hands, or the chart to drag bars and add/remove them with
+the +/− controls. All demo entries include saved previews.
+
 The shape library is optional. Open the library picker and choose **Add selection** to save
 selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
 available even before a library exists, including **Add smart shape…**. Click a saved shape to
@@ -69,8 +75,23 @@ blocked network access, and generated shapes are validated before rendering or e
 works as a single local HTML file. Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 
 When hosted, an optional `shapes-library.json` beside the HTML supplies the initial library.
-It is read only once at startup. Opening the picker never reloads it, and custom file imports
-work whether the page is hosted or opened locally. The HTML works on its own without this file.
+The file is read only at startup; opening the picker never reloads it. File imports work when
+hosted or opened locally, including importing the demo file via **Manage → Import…**.
+For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
+if needed. The HTML works on its own without a library file.
+
+The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
+exactly two public files: `index.html` and `shapes-library.json`. It copies the tracked
+`demo-shapes-library.json` to that conventional library name, so the existing loader picks it up.
+Only that directory is uploaded to Pages.
+
+To activate this workflow, merge it into `main`, then open the repository's **Settings → Pages**
+and set **Build and deployment → Source** to **GitHub Actions**, replacing the branch-based source.
+Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
+or workflow on `main` deploy automatically.
+
+To update the demo, import `demo-shapes-library.json`, edit it in **Manage**, export the library,
+and save the download back as `demo-shapes-library.json`.
 
 ## Releases
 
@@ -83,8 +104,8 @@ git push origin v1.0.0
 ```
 
 Tag a commit that includes `.github/workflows/release.yml`. Each release attaches
-`README.md` and `index.html` from that tag. GitHub also provides the usual source
-archives as ZIP and tar.gz downloads. The workflow uses the built-in `GITHUB_TOKEN`;
+`README.md`, `index.html`, and the demo library renamed to `shapes-library.json`. GitHub also provides
+the usual source archives as ZIP and tar.gz downloads. The workflow uses the built-in `GITHUB_TOKEN`;
 no additional secrets or build step are needed.
 
 Licensed under the MIT License.

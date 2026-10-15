@@ -35,6 +35,9 @@ PNG decodes, grid rebuilds, and elapsed time; timings depend on hardware and are
 The preview scenario supplies synthetic PNG jobs to isolate picker work from script execution and
 rasterization. The normal regression suite covers actual generation, consent, source-edit races,
 canvas/SVG/PNG output, and retaining focus while previews complete.
+It also checks the shipped demo under a GitHub Pages subpath, inert bundled previews, smart-shape
+editing and undo, drawing with only the HTML file deployed, and an import arriving before a delayed
+library response.
 
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
