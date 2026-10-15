@@ -2327,7 +2327,7 @@ test('printing preserves physical ruler scale, assets and pending text on the ac
   await page.locator('#printDialogCancel').click();await page.waitForFunction(()=>__test.run('printSnapshot')===null);
 }));
 
-test('actual-size printing blocks oversized artwork while Fit to page and orientation changes resolve it',async()=>app(async({page,run})=>{
+test('oversized actual-size printing requires clipping consent, retains scale, and resets consent when the layout changes',async()=>app(async({page,run,context})=>{
   await run(`items=[{...${JSON.stringify(rectangle())},w:940,h:450}];save();render();`);
   await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();await printFrameReady(page);
   await page.locator('#printMode').selectOption('fit');await page.locator('#printOrientation').selectOption('portrait');await printFrameReady(page);
@@ -2339,17 +2339,64 @@ test('actual-size printing blocks oversized artwork while Fit to page and orient
   await page.locator('#printMode').selectOption('actual');
   await page.locator('#printWarning').waitFor({state:'visible'});
   assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  assert.equal(await page.locator('#printClip').isChecked(),false);
   assert.match(await page.locator('#printWarning').textContent(),/exceeds.*printable area/);
+  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls=String(+(frame.dataset.printCalls||0)+1);};});
+  await page.keyboard.press('Control+p');
+  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),null,'the shortcut cannot bypass clipping consent');
+  await page.locator('#printClip').check();await printFrameReady(page);
+  assert.equal(await page.locator('#printDialogSubmit').isEnabled(),true);
+  const clipped=await page.locator('#printPreview').evaluate(async frame=>{
+    const doc=frame.contentDocument,svg=doc.querySelector('body>svg'),art=doc.querySelector('#printArtwork>svg');
+    const clip=doc.querySelector('clipPath rect'),paper=svg.viewBox.baseVal;
+    const canvas=document.createElement('canvas');canvas.width=paper.width;canvas.height=paper.height;
+    const image=new Image(),url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));
+    try{
+      await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+      const cx=canvas.getContext('2d');cx.drawImage(image,0,0,canvas.width,canvas.height);
+      const x=+clip.getAttribute('x') + +clip.getAttribute('width'),y=paper.height/2;
+      return {ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
+        inside:Array.from(cx.getImageData(x-3,y,1,1).data),outside:Array.from(cx.getImageData(x+3,y,1,1).data)};
+    }finally{URL.revokeObjectURL(url);}
+  });
+  assert.ok(Math.abs(clipped.ratio-25.4/96)<1e-10,'allowing clipping preserves the physical scale');
+  assert.deepEqual(clipped.inside,[255,209,102,255],'artwork reaches the clipping edge');
+  assert.deepEqual(clipped.outside,[255,255,255,255],'overflow is clipped before the page margin');
+  if(engine==='chromium'){
+    const output=await context.newPage();
+    try{
+      await output.setContent(await page.locator('#printPreview').getAttribute('srcdoc'));
+      const pdf=await output.pdf({preferCSSPageSize:true});
+      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length,1,'clipped artwork prints on one page');
+    }finally{await output.close();}
+  }
+  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls=String(+(frame.dataset.printCalls||0)+1);};});
+  await page.locator('#printDialogSubmit').click();
+  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1','the override prints the prepared document');
+  await page.locator('#printClip').uncheck();
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true,'revoking consent blocks printing again');
   await page.locator('#printOrientation').selectOption('landscape');await printFrameReady(page);
   assert.equal(await page.locator('#printWarning').isVisible(),false);
   await page.locator('#printMargin').fill('50');await page.locator('#printWarning').waitFor({state:'visible'});
   assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  await page.locator('#printClip').check();await printFrameReady(page);
+  await page.locator('#printReference').check();
+  assert.equal(await page.locator('#printClip').isChecked(),false,'changing the layout requires fresh clipping consent');
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  await page.locator('#printClip').check();await printFrameReady(page);
   await page.locator('#printMargin').fill('');assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
   assert.match(await page.locator('#printDialogError').textContent(),/margins/);
   await page.locator('#printMargin').fill('10');await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
   assert.equal(await page.locator('#printDialogError').textContent(),'');
   await page.keyboard.press('Escape');assert.equal(await page.locator('#printDialog').isVisible(),false);
   assert.equal(await run('items.length'),1);
+  await page.keyboard.press('Control+p');await printFrameReady(page);
+  await page.locator('#printMode').selectOption('actual');await page.locator('#printOrientation').selectOption('portrait');
+  await page.locator('#printClip').check();await printFrameReady(page);
+  await page.keyboard.press('Escape');await page.keyboard.press('Control+p');
+  await page.locator('#printWarning').waitFor({state:'visible'});
+  assert.equal(await page.locator('#printClip').isChecked(),false,'reopening the dialog requires fresh clipping consent');
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
 }));
 
 test('print previews freeze live shapes and a cancelled snapshot cannot reopen or replace a later preview',async()=>app(async({page,run})=>{

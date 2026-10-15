@@ -134,8 +134,11 @@ See [Smart Shapes](SMART_SHAPES.md#html-export-behavior) for script permissions 
 
 **File → Print** or **Ctrl/Cmd+P** opens a paper preview of the active sketch, defaulting to
 **Actual size (100%)** and **Landscape**. Select A4/Letter, orientation, and margins in millimeters,
-or choose **Fit to page** to scale the drawing. Actual size blocks printing when the drawing exceeds
-the available area; change the settings or choose Fit to page. The optional 50 mm reference mark
+or choose **Fit to page** to scale the drawing. If the actual-size drawing exceeds the printable
+area, the preview shows what will be cut off. Change the settings, choose Fit to page, or check
+**Print anyway at 100% and clip to the printable area** to print the visible portion on one page
+without shrinking it. Clipping permission resets when you change the layout or reopen the dialog.
+The optional 50 mm reference mark
 lets you check the physical output. The preview is a frozen snapshot with editor controls removed.
 In the browser print dialog, use the same paper and orientation, **100% / Actual size**, no extra
 margins, and headers/footers off. The preview already includes margins and any Fit to page scaling;

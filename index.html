@@ -188,6 +188,8 @@
   #printSummary{min-height:20px;margin:12px 0 8px;color:var(--muted)}
   #printWarning{padding:10px;border:1px solid #d97706;border-radius:7px;background:#fffbeb;color:#78350f}
   #printWarning[hidden]{display:none}
+  #printWarning p{margin:0}
+  #printWarning .print-reference{margin:10px 0 0}
   #printDialogSubmit:disabled{opacity:.45;cursor:default}
   #iconDialog{width:560px;max-height:calc(100dvh - 32px);overflow-y:auto}
   #iconImportPreview[hidden],#iconResults[hidden],#iconLoadMore[hidden]{display:none}
@@ -731,7 +733,10 @@
     </div>
     <label class="print-reference"><input id="printReference" type="checkbox"> Include a 50 mm reference mark</label>
     <p id="printSummary" role="status" aria-live="polite">Preparing snapshot…</p>
-    <p id="printWarning" role="alert" hidden></p>
+    <div id="printWarning" hidden>
+      <p id="printWarningText" role="alert"></p>
+      <label class="print-reference"><input id="printClip" type="checkbox"> Print anyway at 100% and clip to the printable area</label>
+    </div>
     <iframe id="printPreview" class="print-preview" title="Print preview" sandbox="allow-same-origin allow-modals" tabindex="-1"></iframe>
     <p>In the browser print dialog, use the same paper and orientation, <strong>100% / Actual size</strong>, no additional margins, and headers and footers off. The preview already includes your margins and any Fit to page scaling.</p>
     <p class="dialog-error" id="printDialogError" role="alert"></p>
@@ -6265,6 +6270,8 @@ self.onmessage = function(e){
   const printSubmit=document.getElementById('printDialogSubmit');
   const printSummary=document.getElementById('printSummary');
   const printWarning=document.getElementById('printWarning');
+  const printWarningText=document.getElementById('printWarningText');
+  const printClip=document.getElementById('printClip');
   const printError=document.getElementById('printDialogError');
   const PRINT_PAPERS={a4:[210,297],letter:[215.9,279.4]};
   const MM_PER_PX=25.4/96;
@@ -6320,14 +6327,15 @@ self.onmessage = function(e){
     const mm=n=>n.toFixed(2), percent=(output.scale*100).toFixed(1).replace(/\.0$/,'');
     printSummary.textContent=mm(output.naturalW)+' × '+mm(output.naturalH)+' mm at actual size · Print scale '+percent+'%';
     printWarning.hidden=!output.tooLarge;
-    printWarning.textContent=output.tooLarge
-      ? 'This sketch exceeds the '+mm(output.areaW)+' × '+mm(output.areaH)+' mm printable area at actual size. Change paper, orientation or margins, turn off the reference mark, or choose Fit to page.' : '';
+    if(!output.tooLarge)printClip.checked=false;
+    printWarningText.textContent=output.tooLarge
+      ? 'This sketch exceeds the '+mm(output.areaW)+' × '+mm(output.areaH)+' mm printable area at actual size. Anything outside the printable area shown in the preview will be cut off. Change the settings, choose Fit to page, or allow clipping below.' : '';
     printPreview.onload=async()=>{
       const doc=printPreview.contentDocument;
       if(doc?.body?.dataset.printRevision!==String(revision)) return;
       await doc.fonts.ready;
       if(!printDialog.open || revision!==printPreviewSeq || printPreview.contentDocument!==doc) return;
-      printPreviewReady=!output.tooLarge;
+      printPreviewReady=!output.tooLarge || printClip.checked;
       printSubmit.disabled=!printPreviewReady;
     };
     printPreview.srcdoc=output.html;
@@ -6339,7 +6347,7 @@ self.onmessage = function(e){
     if(textInput.style.display==='block') commitText();
     cancelSmartGestures(true);
     const seq=++printSnapshotSeq, tab=activeTabId;
-    printSnapshot=null;printPreviewReady=false;printSubmit.disabled=true;
+    printSnapshot=null;printPreviewReady=false;printSubmit.disabled=true;printClip.checked=false;
     printPreview.onload=null;printPreview.removeAttribute('srcdoc');
     printSummary.textContent='Preparing snapshot…';printError.textContent='';printWarning.hidden=true;
     printDialog.showModal();
@@ -6358,7 +6366,11 @@ self.onmessage = function(e){
       if(seq===printSnapshotSeq && printDialog.open){printSummary.textContent='';printError.textContent=err.message;}
     }
   }
-  printForm.addEventListener('input',updatePrintPreview);
+  printForm.addEventListener('input',event=>{
+    // Clipping consent applies to the current layout, not a later paper or scale choice.
+    if(event.target!==printClip)printClip.checked=false;
+    updatePrintPreview();
+  });
   printForm.addEventListener('submit',e=>{
     e.preventDefault();
     if(!printPreviewReady || printSubmit.disabled) return;

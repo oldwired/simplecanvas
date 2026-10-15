@@ -44,8 +44,8 @@ Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive do
 unchanged history/storage, live clock updates, stopwatch controls and timestamp recovery, matching
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
 tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
-Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and oversize
-blocking, paper/orientation and margin changes, reference marks, image assets and pending text, frozen smart shapes, retained drawing
+Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and the
+oversize clipping override, paper/orientation and margin changes, reference marks, image assets and pending text, frozen smart shapes, retained drawing
 and history/storage, and close/reopen races. Native printer-driver scaling still requires a physical
 print check at 100% / Actual size.
 
