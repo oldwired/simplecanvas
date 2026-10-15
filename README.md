@@ -35,10 +35,11 @@ width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
 
-The public demo library includes ten shapes: the six sailing shapes from [Bauka](https://bauka.com/)
+The public demo library includes thirteen shapes: the six sailing shapes from [Bauka](https://bauka.com/)
 (two boats, start and finish lines, a course mark, and a wind arrow), plus smart **Clock**,
-**Bar chart**, **Drill template**, and **Race start timer** shapes. Open the shape library in the
-toolbar, choose a shape, then click the canvas to place it. Double-click the clock to drag its
+**Bar chart**, **Drill template**, **Race start timer**, **Live clock**, **Stopwatch**, and **Ruler**
+shapes. Open the shape library in the toolbar, choose a shape, then click the canvas to place it.
+Double-click the clock to drag its
 hands, or the chart to drag bars and add/remove them with
 the +/− controls. All demo entries include saved previews.
 
@@ -46,6 +47,23 @@ The contributor's [drilling template](examples/drill-template.js) and
 [race-start timer](examples/race-start-timer.js) are also included as smart shapes. The drilling
 template has handles for hole diameter and position; resizing sets the hole spacing. The race-start
 timer has a draggable clock hand and clickable mast controls for changing flags.
+
+The [live clock](examples/live-clock.js) follows local time. The [stopwatch](examples/stopwatch.js)
+has Start/Pause and Reset controls in edit mode; a running stopwatch continues across tab switches
+and reloads. The [ruler](examples/ruler.js) reveals more markings as you extend it, keeping their
+spacing fixed. Double-click it, then click the unit label to cycle cm with mm divisions, inches
+with sixteenth-inch divisions, and pixels. These three shapes are also templates under
+**Manage → Add smart shape…**. The original **Clock** remains manually adjustable.
+
+The ruler and drilling template share a scale of **96 canvas px = 1 inch = 25.4 mm**. Resizing the
+drilling template changes hole spacing while its diameter stays fixed in millimeters. Export SVG
+and print at **Actual size / 100%**, with page fitting disabled, for physical templates. SVG keeps
+fractional dimensions to preserve this scale. PNG exports use 2× resolution: one inch spans 192
+image pixels, so use **192 pixels per inch** when placing/printing them at the intended size.
+Both exports include margins; the complete image width exceeds the ruler's marked length. Screen
+display size and the app's direct browser **Print** command do not guarantee physical dimensions.
+PNG, SVG, and exported HTML capture a static reading of live shapes; sketch/workspace JSON retains
+their scripts and timing state.
 
 The shape library is optional. Open the library picker and choose **Add selection** to save
 selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
@@ -77,8 +95,8 @@ previews are generated automatically. Smart shapes with missing previews show pl
 before running their scripts to generate pictures; **Use placeholders** still loads the library.
 **Generate missing previews…** lets you generate them later. Export the library to retain new previews.
 
-**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock, Timer,
-Arrow, Arc and Chart. Double-click a placed smart shape to edit its handles, then double-click again
+**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock, Live clock,
+Stopwatch, Ruler, Timer, Arrow, Arc and Chart. Double-click a placed smart shape to edit its handles, then double-click again
 or click outside to leave. Clicks and drags support undo/redo. Scripts run in an isolated Worker with
 blocked network access, and generated shapes are validated before rendering or export. The app still
 works as a single local HTML file. Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).

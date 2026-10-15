@@ -1849,6 +1849,165 @@ const demoLibrary = fs.readFileSync(path.join(__dirname,'..','examples','demo-sh
 const demoShapeCount = JSON.parse(demoLibrary).shapes.length;
 const settingsFile=features=>JSON.stringify({version:1,features});
 
+test('optional smart refresh redraws without changing state, history or saves, and follows document visibility and lifetime',async()=>app(async({page,run})=>{
+  const script=`({refreshMs(){return 100;},children(){return [{type:'text',x:0,y:0,w:180,h:30,text:String(Date.now())}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script,{keep:'saved'}))}];setTool('select');selection=[];save();render();`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.length")===1);
+  const first=await run(`({reading:smartChildrenCache.get('smart-test').kids[0].text,
+    saved:localStorage.getItem(docKey(activeTabId)),history:undoStack.length,tab:activeTabId})`);
+  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==first,first.reading);
+  assert.equal(await run('localStorage.getItem(docKey(activeTabId))'),first.saved);
+  assert.deepEqual(await run('items[0].state'),{keep:'saved'});assert.equal(await run('undoStack.length'),first.history);
+  await run('newTab()');
+  assert.equal(await run('smartRefreshTimer'),null);assert.equal(await run('smartChildrenCache.size'),0);
+  await run(`activateTab(${JSON.stringify(first.tab)})`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.length")===1);
+  await run(`Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));`);
+  await page.waitForFunction(()=>__test.run('smartInFlight.size')===0);
+  const hidden=await run("({requests:smartSandboxReqSeq,reading:smartChildrenCache.get('smart-test').kids[0].text})");
+  await page.waitForTimeout(250);
+  assert.equal(await run('smartSandboxReqSeq'),hidden.requests,'hidden documents stop refreshing');
+  assert.equal(await run('smartRefreshTimer'),null);
+  await run(`Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));`);
+  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==first,hidden.reading);
+  await run('selection=[0];deleteSelected()');
+  assert.equal(await run('smartRefreshTimer'),null);assert.equal(await run('smartChildrenCache.size'),0);
+}));
+
+test('refresh intervals are bounded and invalid requests keep a static, valid drawing',async()=>app(async({page,run})=>{
+  const script=`({refreshMs(s){return s.interval==='nonfinite'?Infinity:s.interval;},children(){return [{type:'rect',x:0,y:0,w:30,h:30,fill:true,fillColor:'#22c55e'}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script,{interval:1}))}];setTool('select');selection=[];render();`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.refreshMs")===100);
+  await run('items[0].state.interval=1000000;render()');
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.refreshMs")===60000);
+  await run('items[0].state.interval=-1;render()');
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.refreshMs")===0);
+  assert.equal(await run("smartChildrenCache.get('smart-test').kids[0].fillColor"),'#22c55e');
+  assert.equal(await run('smartRefreshTimer'),null);
+  assert.match(await page.locator('#toast').textContent(),/refreshMs/);
+  await run('items[0].state.interval="nonfinite";render()');
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.sig===smartSig(items[0])"));
+  assert.equal(await run("smartChildrenCache.get('smart-test').refreshMs"),0);
+  assert.equal(await run('smartBackoffUntil.size'),0,'a non-finite interval does not discard valid children');
+}));
+
+test('live clock, stopwatch and ruler are available as matching source templates and inert demo previews',async()=>app(async({page,run})=>{
+  const definitions=[['liveClock','live-clock.js','Live clock'],['stopwatch','stopwatch.js','Stopwatch'],['ruler','ruler.js','Ruler']];
+  const entries=JSON.parse(demoLibrary).shapes;
+  for(const [key,file,name] of definitions){
+    const source=fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8');
+    assert.equal(await run(`SMART_TEMPLATES[${JSON.stringify(key)}].script`),source);
+    assert.equal(entries.find(entry=>entry.name===name+' (smart)').items[0].script,source);
+    await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();await page.locator('#newSmartObjectBtn').click();
+    await page.locator('#smartTemplateSelect').selectOption(key);
+    assert.equal(await page.locator('#smartObjectNameInput').inputValue(),name);
+    assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),source);
+    await page.locator('#smartObjectDialogSubmit').click();
+    await page.locator('#smartObjectDialog').waitFor({state:'hidden'});
+    await page.waitForFunction(name=>__test.run('shapeLibrary.shapes.some(t=>t.name===\"'+name+'\")'),name);
+    assert.equal(await run(`shapeLibrary.shapes.find(t=>t.name===${JSON.stringify(name)}).items[0].script`),source);
+    await page.locator('#shapeLibBtn').click();
+  }
+  assert.equal(await run('SMART_TEMPLATES.clock.script.includes("h:10, m:10")'),true,'manual Clock remains a separate template');
+}));
+
+test('live clock advances on its own and stopwatch controls, exports, undo and reload preserve timestamp timing',async()=>app(async({page,run})=>{
+  await run(`(async()=>{
+    const clock={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.liveClock.script};
+    await initializeSmartItem(clock);items=[clock];setTool('select');selection=[];render();return clock;
+  })()`);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.some(c=>/^\\d{2}:\\d{2}:\\d{2}$/.test(c.text))"));
+  const first=await run("smartChildrenCache.get('smart-test').kids.find(c=>c.type==='text').text");
+  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids.find(c=>c.type==='text')?.text")!==first,first);
+  assert.deepEqual(await run('items[0].state'),{});
+  await run(`(async()=>{const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
+    items=[sw];selection=[0];editingSmartIdx=0;undoStack=[];redoStack=[];render();})()`);
+  await page.waitForFunction(()=>__test.run("smartHandlesCache.get('smart-test')?.hs.length")===2);
+  const click=async id=>{
+    const shape=await run('items[0]'),canvas=await page.locator('#canvas').boundingBox();
+    const handle=await run(`requestSmartCall(items[0],'handles',[items[0].state,items[0].w,items[0].h]).then(hs=>hs.find(h=>h.id===${JSON.stringify(id)}))`);
+    await page.mouse.click(canvas.x+shape.x+handle.x,canvas.y+shape.y+handle.y);await run('smartHitSettled');
+  };
+  await click('toggle');
+  const started=await run('items[0].state.startedAt');assert.equal(typeof started,'number');
+  await page.waitForFunction(()=>{
+    const reading=__test.run("smartChildrenCache.get('smart-test')?.kids[1]?.text");
+    return typeof reading==='string' && reading!=='00:00:00.0';
+  });
+  assert.equal(await run('undoStack.length'),1,'refreshes do not become undo steps');
+  // Model a delayed/background redraw: elapsed time must follow the saved timestamp, not tick count.
+  await run('items[0].state.startedAt=Date.now()-62300;render();save()');
+  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]/);
+  await page.reload();assert.equal(await run('typeof items[0].state.startedAt'),'number');
+  await run('setTool("select");selection=[0];editingSmartIdx=0;render()');
+  await click('toggle');assert.equal(await run('items[0].state.startedAt'),null);
+  const paused=await run('items[0].state.elapsedMs');assert.ok(paused>=62300 && paused<68000);
+  await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.refreshMs")===0);
+  const saved=await downloadedJSON(page,run,'exportProject()');assert.equal(saved.items[0].state.elapsedMs,paused);
+  await click('reset');assert.equal(await run('items[0].state.elapsedMs'),0);
+  await run('undo()');assert.equal(await run('items[0].state.elapsedMs'),paused);
+  await run('redo()');assert.equal(await run('items[0].state.elapsedMs'),0);
+  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null});
+}));
+
+test('ruler grows at a fixed drill-template scale and unit switching is undoable and survives saving',async()=>app(async({page,run})=>{
+  await run(`(async()=>{const ruler={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.ruler.script};await initializeSmartItem(ruler);
+    items=[ruler];setTool('select');selection=[0];editingSmartIdx=0;render();})()`);
+  const marks=await run(`(async()=>{
+    const get=async w=>requestSmartCall(items[0],'children',[{unit:'cm'},smartResolvedStyle(items[0]),w,76,false]);
+    const short=await get(96),long=await get(192);
+    const positions=kids=>kids.filter(c=>c.type==='rect' && c.fill && Math.abs(c.y+c.h-72)<1e-9)
+      .map(c=>c.x===0?0:c.x+c.w/2);
+    return {short:positions(short),long:positions(long)};
+  })()`);
+  assert.deepEqual(marks.long.slice(0,marks.short.length),marks.short,'extending adds marks without stretching existing divisions');
+  assert.ok(Math.abs(marks.short[1]-96/25.4)<1e-9,'one millimeter matches the drill template');
+  assert.ok(marks.long.length>marks.short.length);
+  const canvas=await page.locator('#canvas').boundingBox(),shape=await run('items[0]');
+  await page.mouse.click(canvas.x+shape.x+shape.w-44,canvas.y+shape.y+11);await run('smartHitSettled');
+  assert.equal(await run('items[0].state.unit'),'in');
+  const inch=await run(`requestSmartCall(items[0],'children',[items[0].state,smartResolvedStyle(items[0]),192,76,false])`);
+  const one=inch.find(c=>c.type==='text' && c.text==='1');assert.equal(one.x+one.w/2,96);
+  const print=await run(`(async()=>{
+    const ruler={...items[0],w:240.37};
+    const svg=await itemsToSVGMarkup([ruler]);
+    const doc=new DOMParser().parseFromString(svg,'image/svg+xml'),root=doc.documentElement;
+    const image=await createImageBitmap(await itemsToPngBlob([ruler],{background:false}));
+    const c=document.createElement('canvas');c.width=image.width;c.height=image.height;
+    const cx=c.getContext('2d');cx.drawImage(image,0,0);
+    // This row crosses only full-inch ticks, below the labels and above shorter half-inch ticks.
+    // Use the actual crop translation so stroke bounds are accounted for.
+    const crop=root.querySelector('g').transform.baseVal.consolidate().matrix;
+    const cropY=crop.f,zeroEdge=(ruler.x+crop.e)*2;
+    const row=cx.getImageData(0,Math.round((ruler.y+76-4-19+cropY)*2),c.width,1).data,groups=[];
+    for(let x=0;x<c.width;x++)if(row[x*4+3]>160){
+      if(!groups.length || x>groups.at(-1).at(-1)+1)groups.push([]);groups.at(-1).push(x);
+    }
+    const leftPixels=cx.getImageData(0,0,Math.floor(zeroEdge),c.height).data;
+    const overhang=leftPixels.some((value,index)=>index%4===3 && value>0);
+    image.close();
+    return {width:+root.getAttribute('width'),viewWidth:root.viewBox.baseVal.width,
+      height:+root.getAttribute('height'),viewHeight:root.viewBox.baseVal.height,
+      zeroEdge,overhang,centers:groups.map(xs=>(xs[0]+xs.at(-1))/2+.5)};
+  })()`);
+  assert.ok(Math.abs(print.width-print.viewWidth)<.0001 && Math.abs(print.height-print.viewHeight)<.0001,
+    'fractional SVG dimensions preserve a one-to-one physical scale');
+  assert.equal(print.centers.length,3);
+  assert.equal(print.overhang,false,'no painted pixels protrude to the left of zero');
+  assert.equal(print.centers[1]-print.zeroEdge,192,'one inch from the flush zero edge is 192 pixels in the default 2x PNG');
+  assert.equal(print.centers[2]-print.centers[1],192);
+  await run('undo()');assert.equal(await run('items[0].state.unit'),'cm');await run('redo()');
+  await run('editingSmartIdx=0;render()');
+  await page.mouse.click(canvas.x+shape.x+shape.w-44,canvas.y+shape.y+11);await run('smartHitSettled');
+  assert.equal(await run('items[0].state.unit'),'px');
+  const px=await run(`requestSmartCall(items[0],'children',[items[0].state,smartResolvedStyle(items[0]),192,76,false])`);
+  const fifty=px.find(c=>c.type==='text' && c.text==='50');assert.equal(fifty.x+fifty.w/2,50);
+  const wide=await run(`requestSmartCall(items[0],'children',[{unit:'cm'},smartResolvedStyle(items[0]),1000000,76,false])`);
+  assert.ok(wide.length>1 && wide.length<=1000,'very long rulers keep valid bounded geometry');
+  const exported=await downloadedJSON(page,run,'exportProject()');assert.equal(exported.items[0].state.unit,'px');
+  await page.reload();assert.equal(await run('items[0].state.unit'),'px');
+}));
+
 test('a custom deployment title is plain text and invalid titles do not partially apply settings',async()=>{
   const title='Team <b>sketchpad</b> & notes';
   await app(async({page,run})=>{
@@ -2053,7 +2212,7 @@ test('the standalone local HTML opens with defaults and no HTTP settings depende
 
 test('the bundled demo loads under a Pages subpath with inert previews and editable smart shapes',async()=>app(async({page,run})=>{
   await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
-  assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),4);
+  assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),7);
   await page.locator('#shapeLibBtn').click();
   await page.waitForFunction(count=>{
     const images=[...document.querySelectorAll('#shapeGrid img')];
@@ -2471,23 +2630,24 @@ test('malformed and oversized hook results cannot poison rendering, handles, sta
   await run('render()');
 }));
 
-test('all shipped templates and both examples retain arcs, zero-width outlines and outside labels',async()=>app(async({run})=>{
+test('all shipped templates and contributor examples retain arcs, zero-width outlines and outside labels',async()=>app(async({run})=>{
   const examples=['drill-template.js','race-start-timer.js'].map(name=>fs.readFileSync(path.join(__dirname,'..','examples',name),'utf8'));
   const result=await run(`(async()=>{
-    const scripts=[...Object.values(SMART_TEMPLATES).map(t=>t.script),...${JSON.stringify(examples)}];
+    const scripts=[...Object.entries(SMART_TEMPLATES).map(([name,t])=>({name,script:t.script})),
+      ...${JSON.stringify(examples)}.map((script,i)=>({name:'contributor-'+i,script}))];
     const outputs=[];
-    for(const script of scripts){
+    for(const {name,script} of scripts){
       const state=await requestSmartCall(script,'initState',[])||{};
       const init=await requestSmartCall(script,'initStyle',[])||{};
       const it={...${JSON.stringify(smartFixture(''))},...init,script,state,w:init.w||180,h:init.h||180};it.font=fontStr(it.fontFamily,it.fontSize);
       const r=await requestSmartSandbox({method:'call',src:script,fn:'children',args:[state,smartResolvedStyle(it),it.w,it.h,true]});
-      outputs.push(r.result);
+      outputs.push({name,kids:r.result});
     }
     return outputs;
   })()`);
-  assert.equal(result.length,9);
-  for(let i=0;i<result.length;i++) assert.ok(result[i].length || i===6,'template '+i+' remains visible');
-  const race=result[8];
+  assert.equal(result.length,12);
+  for(const {name,kids} of result) assert.ok(kids.length || name==='blank','template '+name+' remains visible');
+  const race=result.find(r=>r.name==='contributor-1').kids;
   assert.ok(race.some(c=>c.size===0 && c.strokeOn===false));
   assert.ok(race.some(c=>c.y<0),'label above the box remains valid');
   assert.ok(race.some(c=>c.points?.some(p=>p.arcTo)),'arc descriptors survive validation');

@@ -5,7 +5,7 @@ JavaScript script you write, instead of being fixed geometry. The container itse
 draws a box — it's a plain, styleable item (Fill/Stroke/Stroke-width/Text-color/Font all work
 on it normally), and your script decides which of the shapes it generates ("children") use
 that styling. Built-in examples: an analog clock, a block arrow, a bar chart, a countdown
-timer.
+timer, live clock, stopwatch, and ruler.
 
 This file is a reference for **writing** a smart shape's script — by hand, or by handing this
 file to an AI assistant along with a description of what you want. It does not cover using the
@@ -14,7 +14,7 @@ app as an end user; see [README.md](README.md) for that.
 ## Quick start
 
 1. Open the **Shape Library** panel → **Manage** → **Add smart shape…**.
-2. Pick a starting point from the **Template** dropdown (Clock / Arrow / Arc / Timer / Chart /
+2. Pick a starting point from the **Template** dropdown (Clock / Live clock / Stopwatch / Ruler / Arrow / Arc / Timer / Chart /
    Minimal / Blank), or just start typing your own script over it.
 3. Give it a name and click **Create**. The new shape appears in the library, ready to place.
 4. On the canvas, double-click a placed smart shape to enter its **edit mode** (solid blue
@@ -54,7 +54,8 @@ its own interactive state.
 |---|---|---|---|
 | `initState()` | When creating a definition for its preview, and afresh for each placement | — | a plain, JSON-safe state object |
 | `initStyle()` | After `initState()`, when creating a definition and for each placement | — | a partial style/size override (see below) |
-| `children(state, style, w, h, editing)` | Every render | current state, resolved style, container width/height, `true` only for the one instance currently in edit mode | array of child shape descriptors |
+| `children(state, style, w, h, editing)` | When inputs change or a refresh is due | current state, resolved style, container width/height, `true` only for the one instance currently in edit mode | array of child shape descriptors |
+| `refreshMs(state)` | After generating live children, in the same sandbox call | current state | desired refresh interval in milliseconds; `0` or `null` stops automatic refresh |
 | `handles(state, w, h, style)` | While in edit mode, to draw handle markers | state, width/height, resolved style | array of `{id, x, y, kind?}` |
 | `hitEdit(state, lx, ly, w, h, style)` | On press, while in edit mode | state, press position (**local** coords, see below), width/height, resolved style | a handle `id`, or `null`/falsy if the press missed every handle |
 | `dragEdit(state, handle, lx, ly, w, h, style)` | While dragging a handle (continuously), and once on a zero-movement click | state, the `id` returned by `hitEdit`, current pointer position (local coords), width/height, resolved style | the **new** state object |
@@ -115,13 +116,61 @@ saved style and size.
 
 Returns an array of plain **child shape descriptors** — the actual visible content. These are
 **never stored in the scene**; they're cached for live rendering and refreshed when script,
-state, style, size, or edit mode changes. Exports request fresh children. See
+state, style, size, or edit mode changes, or when an optional refresh interval expires. Exports request fresh children. See
 [Child descriptors](#child-descriptors) below for their shape.
 
 `editing` is `true` only for the one instance currently in interactive edit mode (by identity,
 not type) — `false`/`undefined` otherwise, including during PNG/SVG/HTML export. Use it to draw
 edit-only chrome (an add/delete control, say) that should never appear in a committed render or
 an export.
+
+### `refreshMs(state)` (optional)
+
+Requests periodic regeneration of this instance's children and edit handles. Existing scripts that
+omit this hook keep their ordinary cache behavior. Return a positive, finite number of milliseconds;
+the app clamps it to **100–60,000 ms**. Return `0`, `null`, or `undefined` to stop refreshing, for
+example when a stopwatch is paused. Invalid values disable refresh and report an error without
+discarding valid children. A throwing or unresponsive hook uses the normal sandbox failure/backoff
+path, retaining the last valid drawing.
+
+```js
+refreshMs(state){ return state.startedAt == null ? 0 : 100; },
+```
+
+The app owns one refresh timer for the active document and stops it while the browser document is
+hidden. Returning to a document refreshes live readings. Removing a shape, replacing its script,
+or changing tabs cancels its scheduling. Refreshes only redraw: they never mutate state, add undo
+entries, or autosave. Interactive controls remain available when smart-shape authoring is disabled.
+
+Derive readings from timestamps (`Date.now()` or `new Date()`), rather than incrementing counters
+on each call. Redraws can be delayed, and Worker-local variables are disposable. Store a stopwatch's
+accumulated elapsed time and start timestamp in state; Start/Pause/Reset are ordinary `dragEdit`
+actions. The shipped stopwatch continues elapsed time across tab switches and reloads, and starts
+stopped when placed afresh.
+
+Exports request fresh children once and do not start refresh timers or invoke `refreshMs`.
+PNG, SVG, exported HTML, and library thumbnails are static snapshots. JSON sketches and workspaces
+retain the script and state, so live shapes resume when opened in SimpleCanvas.
+
+### Fixed units and physical printing
+
+[Ruler](examples/ruler.js) and [Drill template](examples/drill-template.js) both use
+**96 canvas px = 1 inch = 25.4 mm**. Resizing the ruler changes how far its scale extends; it never
+stretches the unit spacing. Its edit-mode unit control cycles cm/mm, inches, and px. Fine divisions
+are omitted on exceptionally long rulers to stay within the child budget, preserving the scale.
+The `_scales` definitions in the example can be changed to make custom scales. The drill template
+uses the same conversion for hole diameter and offsets; resizing changes its hole spacing.
+
+SVG exports have matching physical dimensions and viewBox dimensions, including fractional pixels.
+Print SVG at **Actual size / 100%**, without fitting to the page. Default PNG exports are 2× resolution:
+**192 image pixels represent one inch**, so place/print at 192 pixels per inch for the same scale.
+Cropping includes margins and outside labels; do not treat the complete image width as the ruler's
+marked length. Screen display and direct browser printing may rescale the canvas and cannot
+guarantee a measured physical size. Check a known division on a printed template before use.
+
+The live-clock, stopwatch, and ruler scripts are included verbatim in the standalone HTML's
+authoring templates and in `examples/demo-shapes-library.json`. Keep those copies and the bundled
+PNG previews in sync when changing an example.
 
 ### `handles(state, w, h, style)` (optional)
 

@@ -40,6 +40,10 @@ editing and undo, drawing with only the HTML file deployed, and an import arrivi
 library response.
 The contributor shapes bundled into the demo must match their `.js` example sources; their actual
 handles, undo/redo, sketch exports, and saved state are exercised from the shipped library file.
+Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive document cleanup,
+unchanged history/storage, live clock updates, stopwatch controls and timestamp recovery, matching
+example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
+tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
 
 Deployment-settings checks cover the five switches independently, fixed-library smart handles,
 preservation and recovery of hidden tabs, active-sketch exports, delayed and invalid settings,
