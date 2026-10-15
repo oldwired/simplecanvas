@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "title": "SimpleCanvas — Quick Sketches",
+  "features": {
+    "workspace": true,
+    "shapeLibrary": true,
+    "shapeLibraryManagement": true,
+    "smartShapeAuthoring": true,
+    "iconify": true
+  }
+}

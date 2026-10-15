@@ -22,7 +22,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           cp demo-shapes-library.json "$RUNNER_TEMP/shapes-library.json"
-          gh release create "$GITHUB_REF_NAME" README.md index.html "$RUNNER_TEMP/shapes-library.json" \
+          gh release create "$GITHUB_REF_NAME" README.md index.html settings.example.json "$RUNNER_TEMP/shapes-library.json" \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
             --generate-notes

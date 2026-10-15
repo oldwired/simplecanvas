@@ -4,6 +4,9 @@ A small, zero-dependency browser sketching canvas.
 
 Demo: https://oldwired.github.io/simplecanvas/
 
+[Really Simple demo](https://oldwired.github.io/simplecanvas/reallysimple/): the same drawing app
+with all five optional features disabled and the page title **Really SimpleCanvas**.
+
 Open `index.html` in a browser to draw, add shapes or text, and save or load sketches as JSON.
 
 Use **Add tab** for independent drawings and **Save workspace…** to download all open tabs.
@@ -81,17 +84,71 @@ For a standard deployment, copy just `index.html`. Add your own library as `shap
 if needed. The HTML works on its own without a library file.
 
 The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
-exactly two public files: `index.html` and `shapes-library.json`. It copies the tracked
+`index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
 `demo-shapes-library.json` to that conventional library name, so the existing loader picks it up.
-Only that directory is uploaded to Pages.
+The workflow also publishes `reallysimple/index.html` (a copy of the same HTML) and
+`reallysimple/settings.json`, with all five optional features disabled. The variant settings are
+tracked in [reallysimple/settings.json](reallysimple/settings.json). Only the prepared directory
+is uploaded to Pages.
 
 To activate this workflow, merge it into `main`, then open the repository's **Settings → Pages**
 and set **Build and deployment → Source** to **GitHub Actions**, replacing the branch-based source.
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
-or workflow on `main` deploy automatically.
+either settings file, or workflow on `main` deploy automatically.
 
 To update the demo, import `demo-shapes-library.json`, edit it in **Manage**, export the library,
 and save the download back as `demo-shapes-library.json`.
+
+## Optional deployment settings
+
+For a hosted deployment, copy [settings.example.json](settings.example.json) to `settings.json`
+beside `index.html`, and change the feature switches you need. You can omit any switch: all five
+default to `true`. Without a settings file, or when opening the HTML directly as a local file,
+the standard features remain available. No settings file is required to run the app.
+
+The optional top-level `title` sets the browser tab's `<title>` as plain text. It must be a
+nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For example:
+
+```json
+{
+  "version": 1,
+  "title": "My sketchpad",
+  "features": {
+    "workspace": false
+  }
+}
+```
+
+| Feature | Effect when `false` |
+| --- | --- |
+| `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
+| `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
+| `shapeLibraryManagement` | Hides Manage and all library additions; blocks library import/export, rename, replace, and delete. Users can place shapes from the deployed library. |
+| `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
+| `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
+
+Disabling `shapeLibrary` also disables its management. Disabling management also disables smart-shape
+authoring and Iconify additions, regardless of their individual switches. A fixed library with a
+single-sketch interface therefore needs only:
+
+```json
+{
+  "version": 1,
+  "features": {
+    "workspace": false,
+    "shapeLibraryManagement": false
+  }
+}
+```
+
+Settings load once before the app accepts input. A missing file (HTTP 404) quietly uses defaults.
+An invalid file, unsupported version, invalid title, unknown switch, non-boolean switch, network
+failure, or request taking more than two seconds uses defaults and shows a persistent warning. Reload after changing
+settings. Deployment settings stay separate from saved sketches and workspaces.
+
+The storage-failure warning still offers a workspace recovery download when workspace controls are
+disabled, so existing tabs and unsaved changes can always be recovered. Opening a workspace through
+**Open sketch…** still lets users choose a single sketch from that file.
 
 ## Releases
 
@@ -104,7 +161,8 @@ git push origin v1.0.0
 ```
 
 Tag a commit that includes `.github/workflows/release.yml`. Each release attaches
-`README.md`, `index.html`, and the demo library renamed to `shapes-library.json`. GitHub also provides
+`README.md`, `index.html`, `settings.example.json`, and the demo library renamed to
+`shapes-library.json`. GitHub also provides
 the usual source archives as ZIP and tar.gz downloads. The workflow uses the built-in `GITHUB_TOKEN`;
 no additional secrets or build step are needed.
 

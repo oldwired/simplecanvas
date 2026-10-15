@@ -34,7 +34,8 @@ async function app(fn, options={}){
       });
     });
     await page.goto(origin+'/index.html');
-    const run = code => page.evaluate(code => window.__test.run(code), code);
+    const run = code => page.evaluate(async code => {await window.__test.run('appReady');return window.__test.run(code);}, code);
+    await run('appStarted');
     await fn({page, run, context});
     assert.deepEqual(errors, [], 'no uncaught application errors');
   } finally { await context.close(); }
@@ -1845,6 +1846,210 @@ test('missing smart previews require consent; exported PNGs load without executi
 }));
 
 const demoLibrary = fs.readFileSync(path.join(__dirname,'..','demo-shapes-library.json'),'utf8');
+const settingsFile=features=>JSON.stringify({version:1,features});
+
+test('a custom deployment title is plain text and invalid titles do not partially apply settings',async()=>{
+  const title='Team <b>sketchpad</b> & notes';
+  await app(async({page,run})=>{
+    assert.equal(await page.title(),title);
+    assert.equal(await page.locator('head title b').count(),0);
+    assert.equal(await run('features.workspace'),false);
+    assert.equal(await page.locator('#settingsWarning').isVisible(),false);
+  },{files:{'settings.json':JSON.stringify({version:1,title,features:{workspace:false}})}});
+  for(const title of ['',42]){
+    await app(async({page,run})=>{
+      assert.equal(await page.title(),'SimpleCanvas — Quick Sketches');
+      assert.equal(await run('features.workspace'),true,'invalid settings never partially disable features');
+      assert.equal(await page.locator('#settingsWarning').isVisible(),true);
+    },{files:{'settings.json':JSON.stringify({title,features:{workspace:false}})}});
+  }
+});
+
+test('the Really Simple deployment loads its own title and disables all five optional features',async()=>app(async({page,run})=>{
+  assert.equal(await page.title(),'Really SimpleCanvas');
+  assert.equal(await run('Object.values(features).every(value=>value===false)'),true);
+  assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
+  assert.equal(await run('performance.getEntriesByType("resource").some(e=>e.name.endsWith("shapes-library.json"))'),false);
+  await page.locator('#menuBtn').click();
+  for(const action of ['newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
+  await page.keyboard.press('Escape');await page.locator('[data-tool="rect"]').click();
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvas.x+100,canvas.y+100);await page.mouse.down();
+  await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});await page.mouse.up();
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
+  await page.reload();assert.equal(await page.title(),'Really SimpleCanvas');
+  assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
+},{origin:'http://simplecanvas.test/simplecanvas/reallysimple',files:{'settings.json':fs.readFileSync(path.join(__dirname,'..','reallysimple','settings.json'),'utf8')}}));
+
+test('workspace settings preserve saved tabs, restrict exports to the active sketch, and retain recovery',async()=>app(async({page,run})=>{
+  const first=await run(`applySketchToActiveTab([{...${JSON.stringify(rectangle('background'))},fillColor:'#ef4444'}],{});activeTabId`);
+  await run(`newTab();applySketchToActiveTab([{...${JSON.stringify(rectangle('active'))},fillColor:'#3b82f6'}],{});`);
+  const stored=await run(`({index:localStorage.getItem(TABS_KEY),background:localStorage.getItem(docKey(${JSON.stringify(first)})),active:activeTabId})`);
+  await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:settingsFile({workspace:false})}));
+  await page.reload();
+  assert.equal(await run('features.workspace'),false);
+  assert.equal(await page.locator('#tabbar').isHidden(),true);
+  await page.locator('#menuBtn').click();
+  for(const action of ['newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
+  await page.keyboard.press('Home');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('[data-act="png"]').evaluate(el=>el===document.activeElement),true,'menu navigation skips disabled workspace actions');
+  await page.keyboard.press('Escape');
+  await run(`newTab();activateTab(${JSON.stringify(first)});closeTab(${JSON.stringify(first)});renameTab(${JSON.stringify(first)});openWorkspaceFile(new File(['{}'],'workspace.json'));exportWorkspace();`);
+  assert.equal(await run('activeTabId'),stored.active);
+  assert.equal(await run('tabs.length'),2);
+  assert.equal(await page.locator('dialog[open]').count(),0);
+  const exported=await downloadedHTML(page,run);
+  assert.ok(exported.includes('#3b82f6') && !exported.includes('#ef4444'),'HTML exports only the active drawing');
+  await run('beginHistory();items[0].x+=1;commitHistory();');
+  await page.evaluate(()=>{window.originalSettingsSetItem=Storage.prototype.setItem;Storage.prototype.setItem=()=>{throw new Error('storage unavailable');};});
+  await run('items[0].x+=10;save();');
+  assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
+  const download=page.waitForEvent('download');await page.locator('#saveRecoveryWorkspace').click();
+  const recovery=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  assert.deepEqual(recovery.tabs.map(t=>t.items[0].uid),['background','active']);
+  assert.equal(recovery.tabs[1].items[0].x,111);
+  assert.equal(await run(`localStorage.getItem(docKey(${JSON.stringify(first)}))`),stored.background,'hidden documents remain untouched');
+  assert.equal(await run('localStorage.getItem(TABS_KEY)'),stored.index,'disabling tabs never rewrites their saved index');
+  await page.evaluate(()=>{Storage.prototype.setItem=window.originalSettingsSetItem;});await run('persistWorkspace()');
+  await page.unroute('**/settings.json');await page.reload();await run('appReady');
+  assert.equal(await page.locator('#tabbar').isVisible(),true);
+  assert.equal(await run('items[0].x'),111);
+  await run(`activateTab(${JSON.stringify(first)})`);assert.equal(await run('items[0].uid'),'background');
+}));
+
+test('fixed libraries block mutations and Iconify while existing smart handles still work',async()=>app(async({page,run})=>{
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
+  await page.locator('#shapeLibBtn').click();
+  assert.equal(await page.locator('#manageShapesBtn').isVisible(),false);
+  assert.equal(await page.locator('#shapePickerFooter').isVisible(),false);
+  const before=await run('JSON.stringify(shapeLibrary)');
+  let iconRequests=0;
+  await page.route('https://api.iconify.design/**',route=>{iconRequests++;return route.fulfill({contentType:'application/json',body:'{"icons":[]}'});});
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];
+    addSelectionToLibrary();renameLibraryShape(shapeLibrary.shapes[0]);replaceLibraryShape(shapeLibrary.shapes[0]);deleteLibraryShape(shapeLibrary.shapes[0]);
+    importShapeLibraryFile(new File(['{"shapes":[]}'],'other.json'));exportShapeLibrary();
+    document.getElementById('manageShapesBtn').click();document.getElementById('newSmartObjectBtn').click();
+    openIconDialog();searchIcons('boat');importIconToLibrary('mdi','anchor',{});`);
+  assert.equal(await run('JSON.stringify(shapeLibrary)'),before);
+  assert.equal(await page.locator('dialog[open]').count(),0);
+  assert.equal(iconRequests,0);
+  await page.locator('#shapeLibBtn').click();
+  await page.getByRole('button',{name:'Place Clock (smart)',exact:true}).click();
+  let canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+450,canvas.y+240);
+  await run('shapePlacementQueue');
+  canvas=await page.locator('#canvas').boundingBox();
+  const clock=await run('items[1]');
+  await page.mouse.dblclick(canvas.x+clock.x+clock.w/2,canvas.y+clock.y+clock.h/2);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  const minute=await run(`requestSmartCall(items[1],'handles',[items[1].state,items[1].w,items[1].h,smartResolvedStyle(items[1])]).then(hs=>hs.find(h=>h.id==='minute'))`);
+  await page.mouse.move(canvas.x+clock.x+minute.x,canvas.y+clock.y+minute.y);await page.mouse.down();
+  await page.waitForFunction(()=>__test.run('smartDrag?.handle')==='minute');
+  await page.mouse.move(canvas.x+clock.x+clock.w*.85,canvas.y+clock.y+clock.h/2,{steps:5});await page.mouse.up();await run('smartHitSettled');
+  assert.equal(await run('items[1].state.m'),15);
+  await run('undo()');assert.equal(await run('items[1].state.m'),10);
+}, {files:{'settings.json':settingsFile({shapeLibraryManagement:false}),'shapes-library.json':demoLibrary}}));
+
+test('smart authoring can be disabled independently while static library additions remain available',async()=>app(async({page,run})=>{
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
+  await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
+  assert.equal(await page.getByRole('button',{name:'Edit Clock (smart)',exact:true}).count(),0);
+  assert.equal(await page.locator('#newSmartObjectBtn').isVisible(),false);
+  assert.equal(await page.locator('#addIconBtn').isVisible(),true,'Iconify is independent of script authoring');
+  await run(`editLibrarySmartSource(shapeLibrary.shapes[6],shapeLibrary.shapes[6].items[0]);
+    document.getElementById('newSmartObjectBtn').click();document.getElementById('smartObjectDialogForm').dispatchEvent(new Event('submit',{cancelable:true}));`);
+  assert.equal(await page.locator('#smartObjectDialog').isVisible(),false);
+  await page.locator('#manageShapesBtn').click();
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];render();`);
+  await page.locator('#shapeLibBtn').click();
+  await page.locator('#addSelectionFooterBtn').click();await page.locator('#libraryNameInput').fill('Allowed static shape');
+  await page.locator('#libraryDialogSubmit').click();
+  await page.getByText('Allowed static shape',{exact:true}).waitFor();
+  await run('shapeLibraryDirty=false;');
+  await run(`items=[clone(shapeLibrary.shapes[6].items[0])];selection=[0];addSelectionToLibrary();
+    importShapeLibraryFile(new File([${JSON.stringify(demoLibrary)}],'smart-library.json'));`);
+  await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Importing smart shapes is disabled');
+  assert.equal(await run('shapeLibrary.shapes.length'),9);
+  assert.equal(await page.locator('#libraryDialog[open]').count(),0);
+}, {files:{'settings.json':settingsFile({smartShapeAuthoring:false}),'shapes-library.json':demoLibrary}}));
+
+test('Iconify can be disabled independently without blocking static shapes or smart authoring',async()=>app(async({page,run})=>{
+  let requests=0;
+  await page.route('https://api.iconify.design/**',route=>{requests++;return route.fulfill({contentType:'application/json',body:'{"icons":[]}'});});
+  await page.locator('#shapeLibBtn').click();
+  assert.equal(await page.locator('#addIconFooterBtn').isVisible(),false);
+  assert.equal(await page.locator('#addSelectionFooterBtn').isVisible(),true);
+  await page.locator('#manageShapesBtn').click();
+  assert.equal(await page.locator('#addIconBtn').isVisible(),false);
+  assert.equal(await page.locator('#newSmartObjectBtn').isVisible(),true);
+  await run(`openIconDialog();searchIcons('boat');loadIconBodies([{set:'mdi',name:'anchor'}]);importIconToLibrary('mdi','anchor',{});`);
+  assert.equal(requests,0);
+  assert.equal(await page.locator('#iconDialog').isVisible(),false);
+  await page.locator('#newSmartObjectBtn').click();assert.equal(await page.locator('#smartObjectDialog').isVisible(),true);
+}, {files:{'settings.json':settingsFile({iconify:false})}}));
+
+test('disabling the complete library skips its request and preserves smart drawings and exports',async()=>app(async({page,run})=>{
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
+  assert.equal(await run('performance.getEntriesByType("resource").some(e=>e.name.endsWith("shapes-library.json"))'),false);
+  await run(`setShapePicker(true);armShapeForPlacement(${JSON.stringify(JSON.parse(demoLibrary).shapes[6])});placeShapeAt(${JSON.stringify(JSON.parse(demoLibrary).shapes[6])},400,200);`);
+  assert.equal(await run('items.length'),0);
+  assert.equal(await page.locator('#shapePicker').isVisible(),false);
+  await run(`applySketchToActiveTab([normalizeItem({...${JSON.stringify(JSON.parse(demoLibrary).shapes[6].items[0])},uid:'saved-clock',x:100,y:100},{})],{});`);
+  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/<ellipse|<circle/);
+  await page.reload();assert.equal(await run('items[0].uid'),'saved-clock');
+}, {files:{'settings.json':settingsFile({shapeLibrary:false}),'shapes-library.json':demoLibrary}}));
+
+test('settings resolve before input, document restoration, or library loading',async()=>app(async({page,run})=>{
+  let finish,started;
+  const pending=new Promise(resolve=>{finish=resolve;}),requested=new Promise(resolve=>{started=resolve;});
+  await page.route('**/settings.json',async route=>{started();await pending;await route.fulfill({contentType:'application/json',body:settingsFile({workspace:false,shapeLibrary:false})});});
+  await page.reload({waitUntil:'domcontentloaded'});await requested;
+  assert.equal(await page.evaluate(()=>document.body.inert),true);
+  assert.equal(await page.evaluate(()=>__test.run('activeTabId')),null);
+  await page.keyboard.press('r');assert.equal(await page.evaluate(()=>__test.run('ui.tool')),'pen');
+  finish();await run('appReady');
+  assert.equal(await page.evaluate(()=>document.body.inert),false);
+  assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
+  assert.equal(await page.locator('[data-act="newTab"]').getAttribute('hidden'),'');
+}));
+
+test('invalid deployment settings warn and preserve working defaults',async()=>{
+  for(const contents of ['{',JSON.stringify({version:2}),settingsFile({workspace:'false'}),settingsFile({workspce:false}),JSON.stringify({features:null})]){
+    await app(async({page,run})=>{
+      assert.equal(await page.locator('#settingsWarning').isVisible(),true);
+      assert.equal(await run('features.workspace && features.shapeLibraryManagement && features.smartShapeAuthoring && features.iconify'),true);
+      await run('newTab()');assert.equal(await run('tabs.length'),2);
+    },{files:{'settings.json':contents}});
+  }
+});
+
+test('a stalled settings request times out and releases the standard app',async()=>app(async({page,run})=>{
+  await page.route('**/settings.json',async route=>{
+    await new Promise(resolve=>setTimeout(resolve,2200));
+    await route.fulfill({contentType:'application/json',body:settingsFile({workspace:false})}).catch(()=>{});
+  });
+  await page.reload();await run('appReady');
+  assert.equal(await page.locator('#settingsWarning').isVisible(),true);
+  assert.match(await page.locator('#settingsWarning').textContent(),/timed out/);
+  assert.equal(await run('features.workspace'),true);
+  assert.equal(await page.evaluate(()=>document.body.inert),false);
+}));
+
+test('the standalone local HTML opens with defaults and no HTTP settings dependency',async()=>{
+  const context=await browser.newContext();
+  try{
+    const page=await context.newPage(),requests=[],errors=[];
+    page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(require('node:url').pathToFileURL(path.join(__dirname,'..','index.html')).href);
+    await page.waitForFunction(()=>!document.body.inert);
+    assert.equal(await page.locator('#settingsWarning').isVisible(),false);
+    await page.locator('#menuBtn').click();await page.getByRole('menuitem',{name:'Add tab',exact:true}).click();
+    assert.equal(await page.locator('#tabbar .tab').count(),2);
+    assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
 test('the bundled demo loads under a Pages subpath with inert previews and editable smart shapes',async()=>app(async({page,run})=>{
   await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
   assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),2);

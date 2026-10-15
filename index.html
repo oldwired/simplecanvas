@@ -342,17 +342,20 @@
   #autosaveWarning{position:absolute;right:12px;bottom:12px;z-index:6;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;border:1px solid #d97706;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px;box-shadow:var(--shadow)}
   #autosaveWarning[hidden]{display:none}
   #autosaveWarning button{font:inherit;min-height:44px;padding:8px 12px;background:#fff;border:1px solid #d97706;border-radius:7px;color:inherit;cursor:pointer}
+  #settingsWarning{margin:8px 16px 0;padding:10px 12px;border:1px solid #d97706;border-radius:7px;background:#fffbeb;color:#78350f;font-size:13px}
+  #settingsWarning[hidden],button[hidden],.menu-sep[hidden],.shape-picker-footer[hidden],#shapeLibWrap[hidden]{display:none}
 
   @media print{
     body{background:#fff}
-    .toolbar,.tabbar,.hint,#toast,#autosaveWarning{display:none !important}
+    .toolbar,.tabbar,.hint,#toast,#autosaveWarning,#settingsWarning{display:none !important}
     .stage{padding:0}
     .wrap{box-shadow:none;border-radius:0;background:#fff}
   }
 </style>
 </head>
-<body>
+<body inert>
 
+<div id="settingsWarning" role="status" hidden></div>
 <header class="toolbar">
   <input type="file" id="projectInput" accept="application/json,.json" style="display:none">
   <div class="menu-wrap">
@@ -761,6 +764,44 @@
   // The migrated tab keeps its original key: migration never needs a second copy of a large sketch.
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
+  // Deployment settings are optional and never saved into a sketch or browser storage.
+  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true});
+  let features = DEFAULT_FEATURES;
+  let appStarted = false;
+  function normalizeFeatures(raw){
+    if(!raw || typeof raw!=='object' || Array.isArray(raw) || (raw.version!==undefined && raw.version!==1))
+      throw new Error('Expected settings version 1');
+    const overrides=raw.features===undefined ? {} : raw.features;
+    if(!overrides || typeof overrides!=='object' || Array.isArray(overrides)) throw new Error('Expected a features object');
+    for(const [name,value] of Object.entries(overrides)){
+      if(!Object.hasOwn(DEFAULT_FEATURES,name)) throw new Error('Unknown feature: '+name);
+      if(typeof value!=='boolean') throw new Error('Feature '+name+' must be true or false');
+    }
+    const flags={...DEFAULT_FEATURES,...overrides};
+    flags.shapeLibraryManagement=flags.shapeLibrary && flags.shapeLibraryManagement;
+    flags.smartShapeAuthoring=flags.shapeLibraryManagement && flags.smartShapeAuthoring;
+    flags.iconify=flags.shapeLibraryManagement && flags.iconify;
+    return Object.freeze(flags);
+  }
+  async function loadSettings(){
+    if(location.protocol!=='http:' && location.protocol!=='https:') return;
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),2000);
+    try{
+      const response=await fetch('settings.json',{cache:'no-store',signal:controller.signal});
+      if(response.status===404) return;
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      const settings=await response.json(), flags=normalizeFeatures(settings);
+      if(settings.title!==undefined && (typeof settings.title!=='string' || !settings.title.trim()))
+        throw new Error('Title must be a nonempty string');
+      features=flags;
+      if(settings.title!==undefined) document.title=settings.title.trim();
+    }catch(error){
+      const warning=document.getElementById('settingsWarning');
+      warning.textContent='Could not load settings.json. Using the standard features. '+
+        (error.name==='AbortError'?'The request timed out.':error.message);
+      warning.hidden=false;
+    }finally{clearTimeout(timer);}
+  }
   const BG = '#ffffff';
   const PRESETS = {   // swatch color -> its tooltip, in display order
     '#1f2937':'Dark', '#ef4444':'Red', '#f97316':'Orange', '#eab308':'Yellow', '#ffff00':'Neon Yellow', '#22c55e':'Green',
@@ -5026,6 +5067,7 @@ self.onmessage = function(e){
   // Ordinary shapes remain synchronous. Smart placements initialize in click order before opening
   // a history entry, so cancellation cannot add a late shape to another document or transaction.
   function placeShapeAt(tpl, x, y){
+    if(!features.shapeLibrary) return;
     if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
     const list=clone(tpl.items),name=tpl.name;
     if(!list.some(it=>it.type==='smart')){commitShapePlacement(list,name,x,y);return;}
@@ -5731,8 +5773,10 @@ self.onmessage = function(e){
   }
 
   async function addSelectionToLibrary(){
+    if(!features.shapeLibraryManagement) return;
     const list = selectionAsShapeItems();
     if(!list) return;
+    if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
     const name = await askLibrary({title:'Add selection to library', message:'This adds one reusable shape. Export the library when you want to keep your changes.', name:'', submit:'Add shape', validate:validateShapeName});
     if(name===null) return;
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
@@ -5745,6 +5789,7 @@ self.onmessage = function(e){
   }
 
   async function renameLibraryShape(tpl){
+    if(!features.shapeLibraryManagement) return;
     const name = await askLibrary({title:'Rename shape', message:'Choose a name for this library entry.', name:tpl.name, submit:'Rename', validate:name=>validateShapeName(name,tpl)});
     if(name===null || name===tpl.name || !shapeLibrary.shapes.includes(tpl)) return;
     tpl.name = name;
@@ -5752,8 +5797,10 @@ self.onmessage = function(e){
   }
 
   async function replaceLibraryShape(tpl){
+    if(!features.shapeLibraryManagement) return;
     const list = selectionAsShapeItems();
     if(!list) return;
+    if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
     if(!await askLibrary({title:'Replace shape', message:'Replace "'+tpl.name+'" with the current canvas selection? Shapes already placed on the canvas will stay as they are.', submit:'Replace shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     tpl.items = list;
@@ -5764,6 +5811,7 @@ self.onmessage = function(e){
   }
 
   async function deleteLibraryShape(tpl){
+    if(!features.shapeLibraryManagement) return;
     if(!await askLibrary({title:'Delete shape', message:'Delete "'+tpl.name+'" from the library? Shapes already on the canvas will stay.', submit:'Delete shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     shapeLibrary.shapes = shapeLibrary.shapes.filter(s=>s!==tpl);
@@ -5771,6 +5819,7 @@ self.onmessage = function(e){
   }
 
   async function exportShapeLibrary(){
+    if(!features.shapeLibraryManagement) return;
     if(!shapeLibrary){ toast('Add a shape or import a library first'); return; }
     const lib=shapeLibrary;
     await Promise.all(lib.shapes.map(ensureShapeThumbnail));
@@ -5782,6 +5831,7 @@ self.onmessage = function(e){
   }
 
   async function loadInitialShapeLibrary(){
+    if(!features.shapeLibrary) return;
     if(location.protocol!=='http:' && location.protocol!=='https:') return;
     const revision = shapeLibraryRevision;
     try{
@@ -6105,16 +6155,17 @@ self.onmessage = function(e){
     URL.revokeObjectURL(url);
     toast('Saved SVG');
   }
-  // Exports the WHOLE workspace, not just the active tab -- every tab, each as its own full-canvas
+  // With workspace controls enabled, exports every tab, each as its own full-canvas
   // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
   // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
   // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
   // Pass its own items/assets through serialization without modifying the active document's state.
-  // cssW/cssH are a single shared viewport size, not per-tab, so one size fits every tab.
+  // With workspace controls disabled, only the active sketch is exported. cssW/cssH are shared.
   async function exportHtml(){
     if(textInput.style.display==='block') commitText();
     rememberActiveTab();
-    const tabData = await Promise.all(tabs.map(async t=>{
+    const exportTabs=features.workspace ? tabs : tabs.filter(t=>t.id===activeTabId);
+    const tabData = await Promise.all(exportTabs.map(async t=>{
       const doc = tabDocument(t.id);
       const svg = await itemsToSVGMarkup(doc.items, {width:cssW, height:cssH, assets:doc.assets});
       return { id:t.id, name:t.name, items:doc.items, svg };
@@ -6169,7 +6220,9 @@ self.onmessage = function(e){
     toast('Sketch saved to file');
   }
   // Export working memory, including changes that could not be auto-saved.
-  function exportWorkspace(){
+  function exportWorkspace({recovery=false}={}){
+    // Recovery must also retain drawings in tabs hidden by deployment settings.
+    if(!features.workspace && !recovery) return;
     if(textInput.style.display==='block') commitText();
     rememberActiveTab();
     const tabEntries = tabs.map(t=>({name:t.name, ...documentForFile(tabDocument(t.id))}));
@@ -6208,6 +6261,7 @@ self.onmessage = function(e){
   // "Open Workspace…" — accepts either a workspace or a single-sketch file, always REPLACES the
   // whole current set of open tabs (a picked single-sketch file becomes the one resulting tab).
   function openWorkspaceFile(file){
+    if(!features.workspace) return;
     const r = new FileReader();
     r.onload = ()=>{
       let data;
@@ -6294,6 +6348,7 @@ self.onmessage = function(e){
 
   // ---------- toolbar wiring ----------
   function setTool(t){
+    if(t==='shape' && !features.shapeLibrary) return;
     if(t!==ui.tool){lastInsert=null;insertHover=null;if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
     if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
@@ -6516,6 +6571,7 @@ self.onmessage = function(e){
   }
 
   function setShapePicker(open){
+    if(open && !features.shapeLibrary) return;
     if(open) closeOtherPopovers(setShapePicker);
     shapePicker.hidden = !open;
     shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -6554,6 +6610,7 @@ self.onmessage = function(e){
     if(!shapePicker.hidden && !shapePicker.contains(e.target) && !shapeLibBtn.contains(e.target)) setShapePicker(false);
   });
   manageShapesBtn.addEventListener('click', ()=>{
+    if(!features.shapeLibraryManagement) return;
     managingShapes = !managingShapes;
     renderShapeLibrary(); fitShapePicker();
   });
@@ -7177,6 +7234,7 @@ self.onmessage = function(e){
     smartObjectDialogError.textContent='';
   }
   function editLibrarySmartSource(tpl,item){
+    if(!features.smartShapeAuthoring) return;
     if(!shapeLibrary?.shapes.includes(tpl) || !tpl.items.includes(item) || item.type!=='smart') return;
     configureSmartObjectDialog({library:shapeLibrary,entry:tpl,item,script:item.script});
     smartObjectNameInput.value=tpl.name;
@@ -7193,6 +7251,7 @@ self.onmessage = function(e){
   }
   smartTemplateSelect.addEventListener('change', ()=>selectSmartTemplate(smartTemplateSelect.value));
   document.getElementById('newSmartObjectBtn').addEventListener('click', ()=>{
+    if(!features.smartShapeAuthoring) return;
     configureSmartObjectDialog(null);
     selectSmartTemplate('clock');
     smartObjectDialog.showModal();
@@ -7204,6 +7263,7 @@ self.onmessage = function(e){
   smartObjectDialog.addEventListener('keydown', e=>e.stopPropagation());
   document.getElementById('smartObjectDialogForm').addEventListener('submit', async e=>{
     e.preventDefault();
+    if(!features.smartShapeAuthoring) return;
     if(smartObjectDialogSubmit.disabled) return;
     const edit=smartObjectEdit;
     const name = smartObjectNameInput.value.trim();
@@ -7314,6 +7374,7 @@ self.onmessage = function(e){
     updateIconLoadMore();
   }
   function openIconDialog(){
+    if(!features.iconify) return;
     if(iconDialog.open)return;
     iconSession++;iconSearchLoading=false;cancelIconPreview();
     iconStatus.textContent='Search the open Iconify collections by keyword (English works best).';
@@ -7345,6 +7406,7 @@ self.onmessage = function(e){
     if(iconLastSearch?.hasMore && !iconSearchLoading)searchIcons(iconLastSearch.query,true);
   });
   async function searchIcons(query,append=false){
+    if(!features.iconify) return;
     const previous=append?iconLastSearch:null;
     const request=++iconSearchSeq,session=iconSession;
     iconRenderSeq++;cancelIconPreview();iconSearchLoading=true;
@@ -7384,6 +7446,7 @@ self.onmessage = function(e){
     return vb.width>0 && vb.height>0 ? {body:icon.body,vb,animated:svgIconAnimated(doc)} : null;
   }
   async function loadIconBodies(list){
+    if(!features.iconify) return;
     const bySet = new Map();
     for(const {set, name} of list){
       if(iconBodies.has(set+':'+name)) continue;
@@ -7463,6 +7526,7 @@ self.onmessage = function(e){
     updateIconLoadMore();
   }
   async function importIconToLibrary(set,name,col){
+    if(!features.iconify) return;
     cancelIconPreview();iconRenderSeq++;
     const request=++iconImportSeq,session=iconSession,library=shapeLibrary;
     iconStatus.textContent='Adding "'+name+'"…';
@@ -7496,6 +7560,7 @@ self.onmessage = function(e){
     }catch(err){if(iconPendingImport===pending)iconStatus.textContent='Could not display both previews. Cancel and try another icon.';}
   }
   function finishIconImport(pending){
+    if(!features.iconify) return;
     if(!pending.ready || pending.request!==iconImportSeq || !iconSessionCurrent(pending.session))return;
     if(pending.library!==shapeLibrary){
       cancelIconPreview();iconStatus.textContent='The library changed — select the icon again to add it.';return;
@@ -7619,11 +7684,11 @@ self.onmessage = function(e){
       label.title += '\n' + credit;
     }
     entry.append(b, label);
-    if(managingShapes){
+    if(managingShapes && features.shapeLibraryManagement){
       const actions = document.createElement('div');
       actions.className = 'shape-entry-actions';
       const smartItems=tpl.items.filter(it=>it.type==='smart');
-      const editActions=smartItems.map((it,i)=>[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]);
+      const editActions=features.smartShapeAuthoring ? smartItems.map((it,i)=>[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]) : [];
       for(const [text, action] of [...editActions,['Rename', renameLibraryShape], ['Replace', replaceLibraryShape], ['Delete', deleteLibraryShape]]){
         const btn = document.createElement('button');
         btn.type = 'button'; btn.textContent = text;
@@ -7643,6 +7708,7 @@ self.onmessage = function(e){
 
 
   function renderShapeLibrary(){
+    if(!features.shapeLibraryManagement) managingShapes=false;
     syncShapeLibraryEntries(true);missingSmartPreviews.clear();
     const entries = shapeLibrary ? shapeLibrary.shapes : [];
     shapeGrid.innerHTML = '';
@@ -7655,9 +7721,9 @@ self.onmessage = function(e){
     document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
     // Icon search needs Iconify. navigator.onLine=false reliably means no network at all; true only
     // means "some network", so a LAN without internet still shows the button and the dialog reports it.
-    document.getElementById('addIconBtn').hidden = !navigator.onLine;
-    document.getElementById('addIconFooterBtn').hidden = !navigator.onLine;
-    document.getElementById('shapePickerFooter').hidden = managingShapes;
+    document.getElementById('addIconBtn').hidden = !features.iconify || !navigator.onLine;
+    document.getElementById('addIconFooterBtn').hidden = !features.iconify || !navigator.onLine;
+    document.getElementById('shapePickerFooter').hidden = managingShapes || !features.shapeLibraryManagement;
   }
   document.getElementById('addSelectionFooterBtn').addEventListener('click', addSelectionToLibrary);
   document.getElementById('addIconFooterBtn').addEventListener('click', ()=>openIconDialog());
@@ -7666,6 +7732,7 @@ self.onmessage = function(e){
 
 
   function importShapeLibraryFile(file){
+    if(!features.shapeLibraryManagement) return;
     const request = ++shapeLibraryImportSeq;
     const r = new FileReader();
     r.onload = async ()=>{
@@ -7673,6 +7740,7 @@ self.onmessage = function(e){
       let lib;
       try{ lib = normalizeShapeLibrary(JSON.parse(r.result)); }
       catch(err){ toast(err instanceof SyntaxError ? 'That file is not valid JSON' : err.message); return; }
+      if(!features.smartShapeAuthoring && lib.shapes.some(tpl=>tpl.items.some(it=>it.type==='smart'))){toast('Importing smart shapes is disabled');return;}
       if(shapeLibraryDirty && !await askLibrary({title:'Replace active library?', message:'The library has unexported changes. Importing will replace it and discard those changes. Cancel and export first if you want to keep them.', submit:'Discard and import'})) return;
       if(request!==shapeLibraryImportSeq) return;
       shapeLibrary = lib;
@@ -7690,6 +7758,7 @@ self.onmessage = function(e){
   }
 
   function armShapeForPlacement(tpl){
+    if(!features.shapeLibrary) return;
     ui.pendingShape = tpl;
     setTool('shape');
     setShapePicker(false);
@@ -7702,7 +7771,7 @@ self.onmessage = function(e){
     e.returnValue = '';   // browsers supply their own leave-page warning text
   }
   window.addEventListener('beforeunload', warnUnexportedLibrary);
-  document.getElementById('saveRecoveryWorkspace').addEventListener('click', exportWorkspace);
+  document.getElementById('saveRecoveryWorkspace').addEventListener('click', ()=>exportWorkspace({recovery:true}));
 
   // Icon buttons (stroke/fill/text-color), each opening a small swatch-only popover — no text labels,
   // no wide controls. Mirrors the existing table-size popover pattern.
@@ -8012,7 +8081,7 @@ self.onmessage = function(e){
     save: exportProject,
     open: ()=>{ pendingFileAction='open'; projectInput.click(); },
     saveWorkspace: exportWorkspace,
-    openWorkspace: ()=>{ pendingFileAction='openWorkspace'; projectInput.click(); },
+    openWorkspace: ()=>{ if(features.workspace){pendingFileAction='openWorkspace';projectInput.click();} },
     newTab: newTab,
     png: savePng,
     svg: saveSvg,
@@ -8020,7 +8089,7 @@ self.onmessage = function(e){
     print: ()=>window.print(),
     clear: clearAll,
   };
-  function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled)')]; }
+  function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled):not([hidden])')]; }
   function setMenu(open){
     if(open) closeOtherPopovers(setMenu);
     menu.hidden = !open;
@@ -8066,6 +8135,7 @@ self.onmessage = function(e){
   fileInput.addEventListener('change', e=>{ if(e.target.files[0]) readFile(e.target.files[0]); e.target.value=''; });
 
   window.addEventListener('paste', e=>{
+    if(!appStarted) return;
     if(textInput.style.display==='block') return;     // let the text editor handle pastes
     const text=e.clipboardData && e.clipboardData.getData('text/plain');
     if(text && pasteObjectPayload(text)){ e.preventDefault(); return; }
@@ -8086,6 +8156,7 @@ self.onmessage = function(e){
   }));
   wrap.addEventListener('drop', e=>{
     e.preventDefault();
+    if(!appStarted) return;
     const files = e.dataTransfer && e.dataTransfer.files;
     if(!files || !files.length) return;
     const r = canvas.getBoundingClientRect();
@@ -8103,6 +8174,7 @@ self.onmessage = function(e){
   const isControlTarget = el => !!el && (el.tagName==='INPUT' || el.tagName==='SELECT' || el.tagName==='BUTTON');
   const CONTROL_KEYS = /^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Enter|Tab| )$/;
   window.addEventListener('keydown', e=>{
+    if(!appStarted) return;
     if(textInput.style.display==='block' || isTextTarget(e.target)) return;
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
@@ -8445,6 +8517,7 @@ self.onmessage = function(e){
   }
 
   function activateTab(tabId){
+    if(!features.workspace) return;
     if(tabId===activeTabId || !tabs.some(t=>t.id===tabId)) return;
     if(textInput.style.display==='block') commitText();
     cancelGesture();
@@ -8454,6 +8527,7 @@ self.onmessage = function(e){
   }
 
   function newTab(){
+    if(!features.workspace) return;
     if(textInput.style.display==='block') commitText();
     cancelGesture();
     flushActiveTab();
@@ -8467,6 +8541,7 @@ self.onmessage = function(e){
   }
 
   function closeTab(tabId){
+    if(!features.workspace) return;
     const idx = tabs.findIndex(t=>t.id===tabId);
     if(idx<0) return;
     if(tabs.length===1){ toast('Can’t close the last tab'); return; }
@@ -8489,6 +8564,7 @@ self.onmessage = function(e){
   }
 
   async function renameTab(tabId){
+    if(!features.workspace) return;
     const tab = tabs.find(t=>t.id===tabId);
     if(!tab) return;
     const name = await askLibrary({ title:'Rename tab', message:'Choose a name for this tab.',
@@ -8502,7 +8578,7 @@ self.onmessage = function(e){
   }
 
   function renderTabs(){
-    tabbar.hidden = tabs.length < 2;   // a single tab needs no bar at all
+    tabbar.hidden = !features.workspace || tabs.length < 2;
     tabbarScroll.innerHTML = '';
     for(const tab of tabs){
       const row = document.createElement('div');
@@ -8538,12 +8614,31 @@ self.onmessage = function(e){
   // icons are decorative; the buttons' titles carry the meaning
   document.querySelectorAll('.toolbar svg').forEach(s=>s.setAttribute('aria-hidden','true'));
 
-  loadTabList();
-  enterTab(activeTabId);
-  tidySeps();
-
-  updateShapeLibraryUI();
-  loadInitialShapeLibrary();
+  const appReady=(async()=>{
+    // The body starts inert so delayed settings cannot expose usable, disabled features.
+    await loadSettings();
+    for(const button of menu.querySelectorAll('[data-act="newTab"],[data-act="openWorkspace"],[data-act="saveWorkspace"]')){
+      button.hidden=button.disabled=!features.workspace;
+    }
+    let previous=null;
+    for(const child of menu.children){
+      if(child.hidden) continue;
+      if(child.matches('.menu-sep') && (!previous || previous.matches('.menu-sep'))){child.hidden=true;continue;}
+      previous=child;
+    }
+    shapeLibWrap.hidden=!features.shapeLibrary;
+    manageShapesBtn.hidden=!features.shapeLibraryManagement;
+    document.getElementById('newSmartObjectBtn').hidden=!features.smartShapeAuthoring;
+    document.getElementById('addSelectionFooterBtn').hidden=!features.shapeLibraryManagement;
+    loadTabList();
+    enterTab(activeTabId);
+    tidySeps();
+    updateShapeLibraryUI();
+    renderShapeLibrary();
+    loadInitialShapeLibrary();
+    appStarted=true;
+    document.body.inert=false;
+  })();
 })();
 </script>
 </body>

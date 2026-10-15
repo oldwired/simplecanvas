@@ -39,6 +39,11 @@ It also checks the shipped demo under a GitHub Pages subpath, inert bundled prev
 editing and undo, drawing with only the HTML file deployed, and an import arriving before a delayed
 library response.
 
+Deployment-settings checks cover the five switches independently, fixed-library smart handles,
+preservation and recovery of hidden tabs, active-sketch exports, delayed and invalid settings,
+timeout recovery, custom titles, the Really Simple deployment, and opening the actual standalone
+HTML directly from disk.
+
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
 imports across Close, Escape and library replacement. Sketch format 3 retains polygon fill rules;

@@ -6,6 +6,8 @@ on:
     paths:
       - index.html
       - demo-shapes-library.json
+      - settings.json
+      - reallysimple/settings.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -36,6 +38,12 @@ jobs:
           mkdir _site
           cp index.html _site/index.html
           cp demo-shapes-library.json _site/shapes-library.json
+          if [ -f settings.json ]; then
+            cp settings.json _site/settings.json
+          fi
+          mkdir _site/reallysimple
+          cp index.html _site/reallysimple/index.html
+          cp reallysimple/settings.json _site/reallysimple/settings.json
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

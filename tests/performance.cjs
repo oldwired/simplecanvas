@@ -15,6 +15,7 @@ const fixture={type:'smart',x:20,y:20,w:330,h:200,color:'#000000',fillColor:'#dc
     const ctx=await browser.newContext({viewport:{width:1400,height:1000}}),page=await ctx.newPage();
     await page.route('http://bench.test/**',r=>r.fulfill({status:r.request().url().endsWith('index.html')?200:404,contentType:'text/html',body:html}));
     await page.goto('http://bench.test/index.html');
+    await page.evaluate(()=>run('typeof appReady!=="undefined" ? appReady : Promise.resolve()'));
     return {ctx,page,run:code=>page.evaluate(code=>run(code),code)};
    }
    let {ctx,page,run}=await open();

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "title": "Really SimpleCanvas",
+  "features": {
+    "workspace": false,
+    "shapeLibrary": false,
+    "shapeLibraryManagement": false,
+    "smartShapeAuthoring": false,
+    "iconify": false
+  }
+}
