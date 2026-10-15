@@ -987,7 +987,7 @@
       if(isOpenPath(it)){
         for(const key of ['hsStyle','heStyle']) if(HEAD_STYLES.has(raw[key]) && raw[key]!=='open') it[key]=raw[key];
       }
-      if(it.type === 'text' || it.type === 'table' || it.type === 'smart'){
+      if(FONTABLE(it.type)){
         if(isColor(raw.textColor)) it.textColor = raw.textColor;
         const fstr = typeof raw.font === 'string' ? raw.font : '';
         const m = /(\d+)px/.exec(fstr);   // the font string is what was actually rendered, so it wins over fontSize
@@ -5815,6 +5815,7 @@ self.onmessage = function(e){
   // shapes that can carry a fill (and so a second, fill color)
   const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text' || t==='smart';
   const STROKABLE = t => t !== 'image';   // everything but an image takes a stroke color; only FILLABLE shapes can switch the outline off
+  const FONTABLE = t => t==='text' || t==='table' || t==='smart';
   function strokeOn(it){ return it.strokeOn !== false; }   // default true, for old saved files without the field
   // selected items whose color can be edited (images have none); empty outside the select tool
   function colorableSelection(){
@@ -5838,7 +5839,7 @@ self.onmessage = function(e){
       // script via style.font/fontFamily/fontSize) -- alignment stays text/table-only separately
       // (smart objects have no align field, and script-drawn text positions itself however the
       // script wants).
-      const texts = sel.filter(it=>it.type==='text' || it.type==='table' || it.type==='smart');
+      const texts = sel.filter(it=>FONTABLE(it.type));
       const textColorable = texts;
       setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
       setDisp(dashPicker, dashable.length>0);
@@ -6427,11 +6428,19 @@ self.onmessage = function(e){
     const r = el.getBoundingClientRect();
     if(r.right > window.innerWidth - 4){ el.style.left = 'auto'; el.style.right = '0'; }
   }
+  // Close through each popover's setter so its accessibility state and local cleanup stay in sync.
+  // Setters call this only when opening; closing a peer therefore cannot recurse.
+  function closeOtherPopovers(active){
+    for(const set of [setStrokePicker,setFillPicker,setTextColorPicker,setSizePicker,setTablePicker,setShapePicker,setMenu]){
+      if(set!==active)set(false);
+    }
+  }
   function setTablePicker(open){
+    if(open) closeOtherPopovers(setTablePicker);
     tablePicker.hidden = !open;
     if(open) fitMenu(tablePicker);
     tableBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ highlightTablePicker(ui.tableRows, ui.tableCols); setShapePicker(false); }
+    if(open) highlightTablePicker(ui.tableRows, ui.tableCols);
   }
   function activateTableTool(){ setTool('table'); setTablePicker(true); }
   tableBtn.addEventListener('click', e=>{ e.stopPropagation(); activateTableTool(); });
@@ -6541,12 +6550,11 @@ self.onmessage = function(e){
   }
 
   function setShapePicker(open){
+    if(open) closeOtherPopovers(setShapePicker);
     shapePicker.hidden = !open;
     shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){
       renderShapeLibrary(); fitShapePicker();
-      setStrokePicker(false); setFillPicker(false); setTextColorPicker(false);
-      setSizePicker(false); setTablePicker(false); setMenu(false);
       offerMissingSmartPreviews(shapeLibrary);
     }
   }
@@ -7830,25 +7838,25 @@ self.onmessage = function(e){
   if(strokeNoneSwatch) strokeNoneSwatch.innerHTML = noneGlyph;
 
   function setStrokePicker(open){
+    if(open) closeOtherPopovers(setStrokePicker);
     strokePicker.hidden = !open;
     if(open) fitMenu(strokePicker);
     if(!open) strokePicker._panel.el.hidden = true;
     strokeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ setFillPicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); setShapePicker(false); }
   }
   function setFillPicker(open){
+    if(open) closeOtherPopovers(setFillPicker);
     fillPicker.hidden = !open;
     if(open) fitMenu(fillPicker);
     if(!open) fillPicker._panel.el.hidden = true;
     fillBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ setStrokePicker(false); setTextColorPicker(false); setSizePicker(false); setTablePicker(false); setShapePicker(false); }
   }
   function setTextColorPicker(open){
+    if(open) closeOtherPopovers(setTextColorPicker);
     textColorPicker.hidden = !open;
     if(open) fitMenu(textColorPicker);
     if(!open) textColorPicker._panel.el.hidden = true;
     textColorBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ setStrokePicker(false); setFillPicker(false); setSizePicker(false); setTablePicker(false); setShapePicker(false); }
   }
   strokeBtn.addEventListener('click', e=>{ e.stopPropagation(); setStrokePicker(strokePicker.hidden); });
   fillBtn.addEventListener('click', e=>{ e.stopPropagation(); setFillPicker(fillPicker.hidden); });
@@ -7882,7 +7890,7 @@ self.onmessage = function(e){
     });
     syncCustomSwatch(fillPicker, fillC);
     // text color: a separate attribute from stroke, only meaningful for text/table/smart
-    const textSrc = colorableSelection().find(it=>it.type==='text'||it.type==='table'||it.type==='smart');
+    const textSrc = colorableSelection().find(it=>FONTABLE(it.type));
     const textC = (textSrc ? textSrc.textColor : null) || ui.textColor;
     textColorBar.setAttribute('fill', textC);
     textColorPicker.querySelectorAll('.cswatch[data-c]').forEach(s=>s.classList.toggle('active', s.dataset.c===textC));
@@ -7918,7 +7926,7 @@ self.onmessage = function(e){
     refreshColorUI();
   }
   function applyTextColor(c, live){
-    const sel = colorableSelection().filter(it=>it.type==='text'||it.type==='table'||it.type==='smart');
+    const sel = colorableSelection().filter(it=>FONTABLE(it.type));
     if(sel.length){
       if(historyBefore===null) beginHistory();
       for(const it of sel) it.textColor = c;
@@ -7947,10 +7955,10 @@ self.onmessage = function(e){
   });
   window.addEventListener('resize',()=>{if(!sizePicker.hidden)fitSizePicker();});
   function setSizePicker(open){
+    if(open) closeOtherPopovers(setSizePicker);
     sizePicker.hidden = !open;
     if(open) fitSizePicker();
     sizeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ setStrokePicker(false); setFillPicker(false); setTextColorPicker(false); setTablePicker(false); setShapePicker(false); setMenu(false); }
   }
   sizeBtn.addEventListener('click', e=>{ e.stopPropagation(); setSizePicker(sizePicker.hidden); });
   document.addEventListener('click', e=>{
@@ -8008,9 +8016,9 @@ self.onmessage = function(e){
     fontSizeSel.value = px;
     [...fontSizeSel.options].forEach(o=>{ if(o.dataset.temp && +o.value!==px) o.remove(); });
   }
-  // font controls edit the selected text/smart items, or the defaults for the next one
+  // Font controls edit selected text, table and smart items, or the defaults for the next one.
   function applyFont(fn){
-    const texts = colorableSelection().filter(it=>it.type==='text' || it.type==='smart');
+    const texts = colorableSelection().filter(it=>FONTABLE(it.type));
     if(!texts.length){ fn(ui); return; }
     beginHistory();
     for(const it of texts){
@@ -8050,10 +8058,11 @@ self.onmessage = function(e){
   };
   function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled)')]; }
   function setMenu(open){
+    if(open) closeOtherPopovers(setMenu);
     menu.hidden = !open;
     menuBtn.classList.toggle('active', open);
     menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open){ menuItems()[0].focus(); setShapePicker(false); }
+    if(open) menuItems()[0].focus();
   }
   menuBtn.addEventListener('click', e=>{ e.stopPropagation(); setMenu(menu.hidden); });
   menuBtn.addEventListener('keydown', e=>{
