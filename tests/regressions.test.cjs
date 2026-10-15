@@ -2682,3 +2682,183 @@ test('search excludes animated icons while keeping static multicolor icons',asyn
   assert.deepEqual(await page.locator('#iconResults .shape-name').allTextContents(),['static']);
   assert.match(await page.locator('#iconStatus').textContent(),/2 animated icons excluded/);
 }));
+
+const pointEditSquare = {type:'polygon',uid:'sq',closed:true,color:'#1f2937',size:2,strokeOn:true,fill:true,fillColor:'#ffd166',
+  points:[{x:100,y:100},{x:300,y:100},{x:300,y:300},{x:100,y:300}]};
+
+test('Point-Edit: a click on the outline adds an anchor (undoable), click-drag adds and moves it', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box = await page.locator('#canvas').boundingBox();
+  const undoBefore = await run('undoStack.length');
+  await page.mouse.click(box.x+150, box.y+101);
+  assert.deepEqual(await run('items[0].points.map(p=>[p.x,p.y])'), [[100,100],[150,100],[300,100],[300,300],[100,300]]);
+  assert.equal(await run('activeAnchor'), 1, 'the new anchor is the active one');
+  assert.equal(await run('undoStack.length'), undoBefore+1, 'one undo entry');
+  await run('undo()');
+  assert.equal(await run('items[0].points.length'), 4);
+  await run('selection=[0];pointEditIdx=0;render()');
+  await page.mouse.move(box.x+300, box.y+200);
+  await page.mouse.down();
+  await page.mouse.move(box.x+330, box.y+200, {steps:4});
+  await page.mouse.move(box.x+350, box.y+200, {steps:4});
+  await page.mouse.up();
+  const pts = await run('items[0].points.map(p=>[p.x,p.y])');
+  assert.equal(pts.length, 5);
+  assert.deepEqual(pts[2], [350,200], 'inserted between the right-hand corners and dragged out');
+  assert.equal(await run('pointEditIdx'), 0, 'still in Point-Edit');
+}));
+
+test('Point-Edit: Delete, Alt+click and the x button remove an anchor, never below the minimum', async () => app(async ({page,run}) => {
+  const five = {...pointEditSquare, points:[...pointEditSquare.points, {x:50,y:200}]};
+  await run(`items=[${JSON.stringify(five)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box = await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+50, box.y+200);          // pick the extra anchor
+  assert.equal(await run('activeAnchor'), 4);
+  await page.keyboard.press('Delete');
+  assert.equal(await run('items.length'), 1, 'Delete removes the anchor, not the shape');
+  assert.equal(await run('items[0].points.length'), 4);
+  await run('undo(); selection=[0]; pointEditIdx=0; render()');
+  assert.equal(await run('items[0].points.length'), 5, 'undo restores it');
+  await page.keyboard.down('Alt');
+  await page.mouse.click(box.x+50, box.y+200);
+  await page.keyboard.up('Alt');
+  assert.equal(await run('items[0].points.length'), 4, 'Alt+click removes an anchor directly');
+  await page.mouse.click(box.x+300, box.y+300);          // pick a corner, then its x button
+  assert.equal(await run('activeAnchor'), 2);
+  await page.mouse.click(box.x+316, box.y+284);
+  assert.deepEqual(await run('items[0].points.map(p=>[p.x,p.y])'), [[100,100],[300,100],[100,300]], 'x button removes it');
+  await page.mouse.click(box.x+100, box.y+100);
+  assert.equal(await run('anchorDeleteButtonPos()'), null, 'no x button at the minimum');
+  await page.keyboard.press('Delete');
+  assert.equal(await run('items[0].points.length'), 3, 'a closed shape keeps at least 3 anchors');
+  assert.equal(await run('items.length'), 1);
+}));
+
+test('Point-Edit: a double-click on the outline still leaves the mode and adds no anchor; hover shows the + ghost', async () => app(async ({page,run}) => {
+  await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box = await page.locator('#canvas').boundingBox();
+  await page.mouse.move(box.x+200, box.y+102);
+  assert.ok(await run('insertHover!==null'), 'hovering the outline shows where a point would go');
+  await page.mouse.move(box.x+200, box.y+200);
+  assert.equal(await run('insertHover'), null, 'not inside the shape');
+  await page.mouse.move(box.x+100, box.y+100);
+  assert.equal(await run('insertHover'), null, 'not on an existing anchor');
+  const undoBefore = await run('undoStack.length');
+  await page.mouse.dblclick(box.x+150, box.y+101);
+  assert.equal(await run('pointEditIdx'), null, 'double-click left Point-Edit');
+  assert.equal(await run('items[0].points.length'), 4, 'and left no stray anchor behind');
+  assert.equal(await run('undoStack.length'), undoBefore, 'nor an undo entry');
+}));
+
+test('inserting an anchor into a curve keeps its exact shape', async () => app(async ({run}) => {
+  const worst = await run(`(()=>{
+    const it = {type:'polygon', closed:false, color:'#000000', size:2, strokeOn:true, fill:false,
+      points:[{x:0,y:0,c1:{x:40,y:-80}}, {x:200,y:0,c2:{x:160,y:90}}]};
+    const before = JSON.parse(JSON.stringify(it));
+    insertAnchor(it, 0, 0.37);
+    let worst = 0;
+    for(const s of polyCurveSegments(it)) for(let t=0; t<=1; t+=0.05){
+      const x = cubicPoint(s.a.x,s.c1.x,s.c2.x,s.b.x,t), y = cubicPoint(s.a.y,s.c1.y,s.c2.y,s.b.y,t);
+      worst = Math.max(worst, nearestOnOutline(before, x, y).d);
+    }
+    return worst;
+  })()`);
+  assert.ok(worst < 0.05, `split curve deviates ${worst}px from the original`);
+}));
+
+
+test('off-center insertion projects onto open diagonal edges and preserves rotated outlines',async()=>app(async({page,run})=>{
+  const open={...pointEditSquare,closed:false,fill:false,points:[{x:100,y:100},{x:500,y:300}]};
+  await run(`items=[${JSON.stringify(open)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+200,box.y+151);
+  const inserted=await run('items[0].points[1]');
+  assert.deepEqual(inserted,{x:200.4,y:150.2},'nearest point is the line projection, not cubic easing along it');
+  await run('undo()');assert.deepEqual(await run('items[0].points'),open.points);
+  const rotation=Math.PI/6,rotated={...pointEditSquare,rotation};
+  // Independent rigid transform around the known square center, not the app's hit-test helper.
+  const c=Math.cos(rotation),s=Math.sin(rotation),a={x:200-100*c+100*s,y:200-100*s-100*c};
+  // WebKit rounds dispatched mouse coordinates. Use an integer click and project that actual
+  // location onto the rotated edge, instead of expecting an undispatched fractional position.
+  const click={x:Math.round(a.x+50*c),y:Math.round(a.y+50*s)};
+  const along=(click.x-a.x)*c+(click.y-a.y)*s,expected={x:a.x+along*c,y:a.y+along*s};
+  await run(`items=[${JSON.stringify(rotated)}];selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  await page.mouse.click(box.x+click.x,box.y+click.y);
+  const points=await run('items[0].points');
+  assert.equal(points.length,5);
+  assert.ok(Math.hypot(points[1].x-expected.x,points[1].y-expected.y)<.03,`rotation baking keeps the anchor at the projected click: ${JSON.stringify({actual:points[1],expected})}`);
+  const remaining=[points[0],...points.slice(2)];
+  for(let i=0;i<remaining.length;i++){
+    const p=rotated.points[i],x=200+(p.x-200)*c-(p.y-200)*s,y=200+(p.x-200)*s+(p.y-200)*c;
+    assert.ok(Math.hypot(remaining[i].x-x,remaining[i].y-y)<.01,'the original anchors stay in place');
+  }
+  await run('undo()');assert.deepEqual(await run('items[0]'),rotated,'undo restores the original stored rotation and geometry');
+}));
+
+test('Delete and Backspace repeats stay within point editing after the selected anchor is removed',async()=>{
+  const shapes=[{...pointEditSquare,points:[...pointEditSquare.points,{x:50,y:200}]},
+    {...pointEditSquare,closed:false,fill:false,points:[{x:100,y:100},{x:200,y:150},{x:300,y:100}]}];
+  for(const key of ['Delete','Backspace'])for(const shape of shapes)await app(async({page,run})=>{
+    const index=shape.closed?4:1,p=shape.points[index];
+    await run(`items=[${JSON.stringify(shape)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+    const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+p.x,box.y+p.y);
+    await page.keyboard.down(key);await page.keyboard.down(key);await page.keyboard.up(key);
+    await page.keyboard.press(key);   // no active anchor: even a fresh press remains harmless in this mode
+    assert.equal(await run('items.length'),1,key+' does not change its target to the object');
+    assert.equal(await run('items[0].points.length'),shape.points.length-1);
+    assert.equal(await run('pointEditIdx'),0);
+    await run('undo()');assert.deepEqual(await run('items[0]'),shape,'anchor removal is exactly one undo step');
+    await page.keyboard.press(key);assert.equal(await run('items.length'),0,'whole-object deletion still works after leaving point editing');
+  });
+});
+
+test('double-click exit preserves Redo and the oldest Undo entry when history is full',async()=>{
+  for(const full of [false,true])await app(async({page,run})=>{
+    await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];
+      for(let i=0;i<${full?80:1};i++){beginHistory();items[0].fillColor=${full?"'#'+i.toString(16).padStart(6,'0')":"'#00ff00'"};commitHistory();}
+      ${full?'':'undo();'}selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+    const before=await run('({items:clone(items),undo:undoStack.slice(),redo:redoStack.slice()})');
+    const box=await page.locator('#canvas').boundingBox();await page.mouse.dblclick(box.x+150,box.y+101);
+    const after=await run('({items:clone(items),undo:undoStack.slice(),redo:redoStack.slice()})');
+    assert.deepEqual(after,before,'withdrawing an insertion restores geometry and both complete histories');
+    assert.equal(await run('pointEditIdx'),null);
+    if(full){
+      await run('for(let i=0;i<80;i++)undo()');
+      assert.equal(await run('items[0].fillColor'),pointEditSquare.fillColor,'even the oldest edit is still undoable');
+    }else{
+      await run('redo()');assert.equal(await run('items[0].fillColor'),'#00ff00','Redo still restores the real recolor');
+    }
+  });
+});
+
+test('a point insertion cannot withdraw a later nudge or survive undo into another edit session',async()=>app(async({page,run})=>{
+  await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+150,box.y+101);
+  await page.keyboard.press('ArrowRight');await page.mouse.click(box.x+151,box.y+100);
+  assert.equal(await run('pointEditIdx'),0,'an intervening edit retires the tentative double-click rollback');
+  assert.deepEqual(await run('items[0].points[1]'),{x:151,y:100},'the later nudge is retained');
+  await run('undo()');assert.equal(await run('items[0].points[1].x'),150);
+  await run('undo();togglePointEdit()');
+  await page.mouse.click(box.x+300,box.y+100);
+  assert.equal(await run('items[0].points.length'),4);
+  assert.equal(await run('pointEditIdx'),0,'a new edit session does not consume a stale insertion');
+}));
+
+test('touch adds an off-center anchor and double-tap exit restores the drawing and Redo',async()=>app(async({page,run})=>{
+  await run(`items=[${JSON.stringify(pointEditSquare)}];setTool('select');selection=[0];beginHistory();items[0].fillColor='#00ff00';commitHistory();undo();selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.touchscreen.tap(box.x+150,box.y+100);
+  assert.deepEqual(await run('items[0].points[1]'),{x:150,y:100});
+  await page.touchscreen.tap(box.x+150,box.y+100);
+  assert.equal(await run('pointEditIdx'),null);assert.equal(await run('items[0].points.length'),4);
+  await run('redo()');assert.equal(await run('items[0].fillColor'),'#00ff00');
+},{context:{viewport:{width:1024,height:768},hasTouch:true,isMobile:true}}));
+
+test('withdrawing an insertion retains unrelated smart-instance execution state',async()=>app(async({page,run})=>{
+  const script='({children(){return [];},initState(){self.calls=(self.calls||0)+1;return {n:self.calls};}})';
+  await run(`items=[${JSON.stringify(pointEditSquare)},{...${JSON.stringify(smartFixture(script))},x:500}];setTool('select');selection=[0];pointEditIdx=0;activeAnchor=null;render();`);
+  assert.deepEqual(await run("requestSmartCall(items[1],'initState',[])"),{n:1});
+  const box=await page.locator('#canvas').boundingBox();await page.mouse.dblclick(box.x+150,box.y+101);
+  assert.equal(await run('pointEditIdx'),null);
+  assert.deepEqual(await run("requestSmartCall(items[1],'initState',[])"),{n:2},'unrelated point edits do not replace another instance or reset its Worker');
+}));

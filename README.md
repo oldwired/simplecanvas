@@ -23,7 +23,11 @@ Select a line or open curve, then click or tap either endpoint to cycle its arro
 **None → Open → Filled → Open inverted → Filled inverted → None**. Each end cycles independently;
 inverted heads point back along the line. Dragging an endpoint moves it without changing its style.
 Double-click or double-tap the shape's body to enter or leave point editing. While editing points,
-endpoint taps select anchors. The **line-style** popover (the stroke-width value) controls stroke
+endpoint taps select anchors. Click or tap the outline between two anchors to add one there (the shape
+keeps its form; drag right away to move it). To remove an anchor, select it and press Delete, Alt/Option-click
+it, or tap the small × next to it. Delete/Backspace only target anchors while point editing; leave
+this mode to delete the whole shape. Double-clicking the outline to leave point editing preserves
+the drawing and its Undo/Redo history. The **line-style** popover (the stroke-width value) controls stroke
 width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
