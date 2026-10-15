@@ -244,6 +244,18 @@ hosted or opened locally, including importing the demo file via **Manage → Imp
 For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
 if needed. The HTML works on its own without a library file.
 
+### Optional plugins
+
+Place a classic JavaScript file named `plugins.js` beside `index.html` to add deployment-specific
+integrations. SimpleCanvas loads it after startup and calls `window.SimpleCanvasPlugins.init(api)`.
+The HTML still works by itself when the file is absent. Plugins also load when opening the HTML
+locally, subject to browser permissions.
+
+See [PLUGINS.md](PLUGINS.md) for the API and installation instructions. The
+[example plugin](examples/plugins.js) adds sketch information and snapshot-download actions to
+the File menu without using the network; copy it beside the HTML to try it. Plugins are trusted
+code with full access to the page. Exported HTML does not include them.
+
 ### Optional deployment settings
 
 For a hosted deployment, copy [examples/settings.example.json](examples/settings.example.json)
@@ -272,6 +284,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
+| `plugins` | Skips loading `plugins.js` and calling its initialization hook. |
 
 Disabling `shapeLibrary` also disables its management. Disabling management also disables smart-shape
 authoring and Iconify additions, regardless of their individual switches. A fixed library with a
@@ -299,9 +312,10 @@ disabled, so existing tabs and unsaved changes can always be recovered. Opening 
 ### GitHub Pages
 
 The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
-`index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
+`index.html` and `shapes-library.json`, plus `settings.json` and `plugins.js` if present. It copies the tracked
 `examples/demo-shapes-library.json` to that conventional library name, so the existing loader
-picks it up.
+picks it up. The example plugin is not installed automatically; additional files loaded by your
+plugin need their own deployment steps.
 The workflow also publishes `reallysimple/index.html` (a copy of the same HTML) and
 `reallysimple/settings.json`, with all optional features disabled. The variant settings are
 tracked in [reallysimple/settings.json](reallysimple/settings.json). Only the prepared directory
@@ -310,7 +324,7 @@ is uploaded to Pages.
 For a new deployment or fork, ensure the workflow is present on `main`, then open the
 repository's **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
-either settings file, or workflow on `main` deploy automatically.
+either settings file, root `plugins.js`, or workflow on `main` deploy automatically.
 
 ## Development and releases
 

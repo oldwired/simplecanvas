@@ -818,7 +818,7 @@
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
   // Deployment settings are optional and never saved into a sketch or browser storage.
-  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true});
+  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true,plugins:true});
   let features = DEFAULT_FEATURES;
   let appStarted = false;
   function normalizeFeatures(raw){
@@ -998,7 +998,7 @@
     redoStack = [];
     historyBefore = null;
     clickCycle = null;   // a scene mutation can invalidate both the hit stack and its array indices
-    save(); updateButtons();
+    save(); updateButtons(); notifyPluginChange();
   }
 
   // ---------- scene validation ----------
@@ -4349,7 +4349,7 @@ self.onmessage = function(e){
           undoStack=li.undo.slice();redoStack=li.redo.slice();
           pointEditIdx = null; activeAnchor = null; insertHover=null;
           handledPointerUp = true;   // this press is the dblclick's second half -- it must not re-enter Point-Edit
-          save(); updateButtons(); render();
+          save(); updateButtons(); render(); notifyPluginChange();
           return;
         }
         if(target && (target.handle==='delete' || (target.handle==='anchor' && e.altKey))){
@@ -4871,7 +4871,7 @@ self.onmessage = function(e){
         }
         undoStack.push(before);
         if(undoStack.length>80) undoStack.shift();
-        redoStack=[];clickCycle=null;save();updateButtons();
+        redoStack=[];clickCycle=null;save();updateButtons();notifyPluginChange();
       }
       p.sd=null;render();return;
     }
@@ -5382,6 +5382,7 @@ self.onmessage = function(e){
         ensureUids(doc.items);
         unsavedTabs.add(tabId);
         persistWorkspace();
+        notifyPluginChange(tabId,doc);
         return;
       }
       assets[id] = src;
@@ -5439,7 +5440,7 @@ self.onmessage = function(e){
     redoStack.push(snap());
     items = JSON.parse(undoStack.pop());
     selectByUids(keep);
-    save(); render(); updateButtons();
+    save(); render(); updateButtons(); notifyPluginChange();
   }
   function redo(){
     shapePlacementEpoch++;
@@ -5450,7 +5451,7 @@ self.onmessage = function(e){
     undoStack.push(snap());
     items = JSON.parse(redoStack.pop());
     selectByUids(keep);
-    save(); render(); updateButtons();
+    save(); render(); updateButtons(); notifyPluginChange();
   }
   function clearAll(){
     if(!items.length){shapePlacementEpoch++;return;}
@@ -6901,8 +6902,9 @@ self.onmessage = function(e){
   // Shared by the plain single-sketch path and the tab-picker's chosen entry — the original
   // (pre-multi-tab) importProject's own mutation: undoable, only ever touches the active tab, never
   // creates or removes a tab (an empty active tab needs no confirm — nothing to lose).
-  function applySketchToActiveTab(newItems, newAssets){
-    if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
+  function applySketchToActiveTab(newItems, newAssets, {confirmReplace=true}={}){
+    if(textInput.style.display==='block') commitText();
+    if(confirmReplace && items.length && !confirm('Replace the current sketch with the opened file?')) return false;
     cancelGesture();
     beginHistory();
     items = adoptImageAssets(newItems, newAssets);
@@ -6910,6 +6912,7 @@ self.onmessage = function(e){
     commitHistory();
     render();
     toast('Sketch opened');
+    return true;
   }
 
   // ---------- toolbar wiring ----------
@@ -9080,7 +9083,7 @@ self.onmessage = function(e){
         if(removed){
           items.length = cut;
           undoStack.length = Math.max(0, undoStack.length-removed);
-          save(); updateButtons();
+          save(); updateButtons(); notifyPluginChange();
         }
         if(hitTest(x,y)<0) setTool('select'); else render();
         return;
@@ -9237,6 +9240,7 @@ self.onmessage = function(e){
     refreshColorUI();
     updateButtons();
     renderTabs();
+    emitPluginEvent('tabchange',{tabId});
   }
 
   // save() captures the full live state before attempting browser persistence.
@@ -9329,6 +9333,82 @@ self.onmessage = function(e){
     resize();   // the tab bar's own height may have changed (shown/hidden, wrapped, grew/shrank) — re-measure the stage
   }
 
+  // ---------- optional deployment plugins (API v1; see PLUGINS.md) ----------
+  const pluginListeners = {change:new Set(),tabchange:new Set()};
+  let pluginMenuSeq = 0;
+  function callPlugin(callback){
+    try{ Promise.resolve(callback()).catch(error=>console.error('SimpleCanvas plugin:',error)); }
+    catch(error){ console.error('SimpleCanvas plugin:',error); }
+  }
+  function emitPluginEvent(type,detail){
+    // Deliver after the editor finishes its operation. Unsubscribing also cancels queued delivery.
+    for(const subscription of pluginListeners[type]){
+      const event=clone(detail);
+      queueMicrotask(()=>{
+        if(pluginListeners[type].has(subscription)) callPlugin(()=>subscription.listener(event));
+      });
+    }
+  }
+  function pluginSketch(doc={items,assets}){
+    return clone({app:'SimpleCanvas',version:FORMAT_VERSION,items:doc.items,
+      assets:assetsUsedBy(doc.items,doc.assets)});
+  }
+  function notifyPluginChange(tabId=activeTabId,doc){
+    if(pluginListeners.change.size) emitPluginEvent('change',{tabId,sketch:pluginSketch(doc)});
+  }
+  function createPluginAPI(){
+    return Object.freeze({
+      version:1,
+      getActiveTab:()=>({...tabs.find(tab=>tab.id===activeTabId)}),
+      getSketch:()=>{
+        if(textInput.style.display==='block') commitText();
+        return pluginSketch();
+      },
+      loadSketch:(data,{confirmReplace=true,tabId=activeTabId}={})=>{
+        if(tabId!==activeTabId) throw new Error('The destination tab is no longer active');
+        if(typeof confirmReplace!=='boolean') throw new TypeError('confirmReplace must be a boolean');
+        if(!data || data.app!=='SimpleCanvas' || !Array.isArray(data.items) ||
+           !Number.isInteger(data.version) || data.version<1 || data.version>FORMAT_VERSION)
+          throw new TypeError('Expected a SimpleCanvas sketch with a supported format version');
+        const scene=normalizeScene(data.items,data.assets,data.version);
+        if(scene.dropped) throw new TypeError('The sketch contains unreadable objects');
+        return applySketchToActiveTab(scene.items,scene.assets,{confirmReplace});
+      },
+      on:(type,listener)=>{
+        if(!Object.hasOwn(pluginListeners,type)) throw new TypeError('Unknown plugin event: '+type);
+        if(typeof listener!=='function') throw new TypeError('Expected an event listener');
+        const subscription={listener};
+        pluginListeners[type].add(subscription);
+        return ()=>pluginListeners[type].delete(subscription);
+      },
+      ui:Object.freeze({
+        addMenuItem:({label,onClick})=>{
+          if(typeof label!=='string' || !label.trim() || typeof onClick!=='function')
+            throw new TypeError('A menu item needs a label and onClick function');
+          const action='plugin-'+(++pluginMenuSeq), button=document.createElement('button');
+          button.type='button';button.dataset.act=action;button.setAttribute('role','menuitem');
+          button.textContent=label;
+          MENU_ACTIONS[action]=()=>callPlugin(onClick);
+          menu.appendChild(button);
+          return ()=>{button.remove();delete MENU_ACTIONS[action];};
+        }
+      })
+    });
+  }
+  function loadPlugins(){
+    if(!features.plugins) return;
+    const script=document.createElement('script');
+    script.src='./plugins.js';script.async=true;
+    script.onload=()=>callPlugin(()=>{
+      const plugin=window.SimpleCanvasPlugins;
+      if(!plugin || typeof plugin.init!=='function') throw new TypeError('plugins.js must define SimpleCanvasPlugins.init(api)');
+      return plugin.init(createPluginAPI());
+    });
+    // Absence is normal. Browsers may still show a failed request in developer tools.
+    script.onerror=()=>script.remove();
+    document.head.appendChild(script);
+  }
+
   // ---------- boot ----------
   // show the platform's own modifier in shortcut hints (⌘ on Mac, Ctrl elsewhere)
   const modKey = isMac ? '⌘' : 'Ctrl';
@@ -9367,6 +9447,7 @@ self.onmessage = function(e){
     loadInitialShapeLibrary();
     appStarted=true;
     document.body.inert=false;
+    loadPlugins();
   })();
 })();
 </script>

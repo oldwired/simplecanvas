@@ -58,6 +58,10 @@ active-sketch exports, delayed and invalid settings,
 timeout recovery, custom titles, the Really Simple deployment, and opening the actual standalone
 HTML directly from disk.
 
+Plugin regressions in `tests/plugins.test.cjs` cover optional, disabled, and failed loading,
+including opening the HTML through `file://`. They check detached API snapshots, replacement
+validation, undo with image assets, event delivery, and File-menu actions.
+
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
 imports across Close, Escape and library replacement. Sketch format 3 retains polygon fill rules;
