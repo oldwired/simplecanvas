@@ -137,7 +137,6 @@
   .shape-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .shape-entry{min-width:0}
   .shape-grid .shape-thumb{width:100%;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;justify-content:center}
-  .shape-grid .shape-thumb svg{width:100%;height:100%;display:block}
   .shape-grid .shape-thumb img{width:100%;height:100%;object-fit:contain;display:block}
   .shape-thumb .preview-placeholder{font-size:22px;color:var(--muted)}
   .shape-library-actions[hidden]{display:none}
@@ -195,7 +194,6 @@
   .library-dialog .icon-license-filter input{width:auto;margin:0}
   .library-dialog .icon-status{color:var(--muted);min-height:18px;margin:8px 0 4px}
   .icon-grid{grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;row-gap:14px;align-content:start;max-height:360px;overflow:auto;padding-right:2px}
-  .shape-grid .shape-thumb img{width:100%;height:100%;object-fit:contain;display:block}
   .icon-license{display:block;font-size:11px;line-height:16px;margin-top:2px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
   .icon-license:hover{text-decoration:underline}
   .icon-license.restricted{color:#b45309;font-weight:600}
@@ -2783,7 +2781,6 @@ self.onmessage = function(e){
     for(const it of list){ const b=worldBBoxOwn(it, padded); x0=Math.min(x0,b.x); y0=Math.min(y0,b.y); x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h); }
     return {x:x0,y:y0,w:x1-x0,h:y1-y0};
   }
-  function unionBoxOwn(idxs, padded=true){ return unionBoxOf(idxs.map(i=>items[i]), padded); }
   // a group's fixed pivot + its baseline (own-rotation-only) bounding box — the box a group's
   // outline/handle are drawn in before the outer groupRotation transform is applied.
   // The pivot comes from the members' bare geometry: with stroke padding in the mix, changing one
@@ -5799,7 +5796,7 @@ self.onmessage = function(e){
     }catch(e){ /* drawing works even without a readable sibling library */ }
   }
 
-  // shared Blob/<a download> pattern (also usable by exportProject's own inline version)
+  // Shared JSON file download for sketches, workspaces and shape libraries.
   function downloadJSON(filename, data){
     const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -5920,40 +5917,16 @@ self.onmessage = function(e){
   }
   async function savePng(){
     if(!items.length){ toast('Nothing to export yet'); return; }
-    const m = 24, scale = 2;                              // margin (px) and export supersampling
-    // See itemsToPngBlob's own comment: resolve every smart item's children() before `ctx` is ever
-    // swapped to the offscreen canvas below.
-    const cache=await warmSmartExportCache(items);
-    const prevExportCache = smartExportCache;
-    smartExportCache = cache;
+    const blob=await itemsToPngBlob(items);
+    if(!blob){ toast('Could not create PNG'); return; }
+    const url=URL.createObjectURL(blob);
     try{
-      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-      for(const it of items){
-        const b = paintedWorldBBox(it);
-        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
-        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
-      }
-      const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
-      const off = document.createElement('canvas');
-      off.width  = Math.max(1, Math.round(w*scale));
-      off.height = Math.max(1, Math.round(h*scale));
-      const octx = off.getContext('2d');
-      octx.setTransform(scale,0,0,scale,0,0);
-      octx.translate(-minX + m, -minY + m);                // shift content into the margin box
-      octx.fillStyle = BG;
-      octx.fillRect(minX - m, minY - m, w, h);
-
-      const real = ctx;
-      ctx = octx;
-      try { for(const it of items) drawItem(it); }
-      finally { ctx = real; }
-
       const a = document.createElement('a');
-      a.href = off.toDataURL('image/png');
+      a.href = url;
       a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.png';
       a.click();
       toast('Saved PNG');
-    } finally { smartExportCache = prevExportCache; }
+    } finally { URL.revokeObjectURL(url); }
   }
 
   // ---------- SVG exporter: the same shape description, as markup ----------
@@ -6084,11 +6057,10 @@ self.onmessage = function(e){
         + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
     }finally{smartExportCache = prevExportCache;}
   }
-  // Renders a list of items to an offscreen PNG canvas, as a Promise<Blob> -- reuses drawItem()
-  // itself (same technique as savePng(), just parameterized over an arbitrary item list instead of
-  // the whole canvas, and producing an in-memory Blob instead of triggering a download). This is the
-  // copy-to-clipboard PNG fallback: many apps (PowerPoint, Word, ...) don't render inline SVG from a
-  // pasted text/html clipboard entry at all (shows an empty box) but handle image/png perfectly.
+  // Renders any item list through drawItem() to a PNG Blob for downloads and clipboard output.
+  // The default background, 24px margin and 2x scale also define saved PNGs; clipboard callers
+  // request transparency. Apps such as PowerPoint and Word handle this PNG fallback when they
+  // cannot render an SVG clipboard entry.
   async function itemsToPngBlob(itemList, opts){
     opts = opts || {};
     const m = opts.margin!=null ? opts.margin : 24, scale = opts.scale!=null ? opts.scale : 2;
@@ -6193,13 +6165,7 @@ self.onmessage = function(e){
       items,
       assets: referencedAssets()
     };
-    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadJSON('sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json', data);
     toast('Sketch saved to file');
   }
   // Export working memory, including changes that could not be auto-saved.
@@ -7194,7 +7160,6 @@ self.onmessage = function(e){
     minimal: { name:'Minimal', script:MINIMAL_EXAMPLE_SCRIPT },
     blank: { name:'', script:BLANK_EXAMPLE_SCRIPT },
   };
-  let selectedSmartTemplate = 'clock';
   const smartObjectDialog = document.getElementById('smartObjectDialog');
   const smartObjectNameInput = document.getElementById('smartObjectNameInput');
   const smartObjectScriptInput = document.getElementById('smartObjectScriptInput');
@@ -7222,7 +7187,6 @@ self.onmessage = function(e){
   function selectSmartTemplate(key){
     const tpl = SMART_TEMPLATES[key];
     if(!tpl) return;
-    selectedSmartTemplate = key;
     smartObjectNameInput.value = tpl.name;
     smartObjectScriptInput.value = tpl.script;
     smartTemplateSelect.value = key;
