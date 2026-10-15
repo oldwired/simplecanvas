@@ -460,10 +460,12 @@ even though it renders fine on canvas.
 
 An HTML export is one offline file containing the drawing, scripts, saved state, sandbox, and runtime.
 Scripted controls work directly, without double-clicking to enter edit mode. Ordinary shapes and
-smart-shape containers stay fixed by default. There is no general selection or unrestricted resizing.
+smart-shape containers stay fixed by default. There is no unrestricted resizing.
 Authors can independently enable moving a smart shape by its body, rotating it using the round
 handle above it, changing its width from a right-edge handle, and changing its height from a
-bottom-edge handle.
+bottom-edge handle. The rotation handle appears after clicking the shape and hides when another
+shape or the page is clicked, **Escape** is pressed, or the tab changes. Scripted controls still
+respond to the first click.
 The corresponding flags are `move`, `rotate`, `resizeWidth`, and `resizeHeight`. Width and height
 changes regenerate children with the new `w` and `h`; they do not stretch the rendered drawing.
 For example, a ruler extends at its original tick spacing. Each resize preserves the opposite edge,

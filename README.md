@@ -125,6 +125,7 @@ rotating, or resizing either dimension. In the ruler's edit mode, **HTML: move /
 both moving and rotating; **HTML: extend** enables width changes for that instance. These
 authoring controls stay out of the export. Changes in an exported page stay in memory across
 its tab switches; reloading or reopening the file restores the exported state.
+Click a shape to show its rotation handle; click elsewhere or press **Escape** to hide it.
 Hold **Shift** while rotating to snap to 15° increments, just as in the editor.
 See [Smart Shapes](SMART_SHAPES.md#html-export-behavior) for script permissions and the
 `editorOnly` marker.

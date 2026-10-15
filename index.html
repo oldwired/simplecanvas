@@ -6400,9 +6400,17 @@ self.onmessage = function(e){
       if(errors.has(key))return;
       if(errors.size>=128)errors.clear();errors.add(key);console.warn('Smart shape: '+key);
     }
-    let entries=[],epoch=0,timer=null,currentPress=null,gestureQueue=Promise.resolve();
+    let entries=[],epoch=0,timer=null,currentPress=null,selected=null,gestureQueue=Promise.resolve();
     const presses=new Set();
     const current=e=>e.epoch===epoch && !document.hidden;
+    function select(entry){
+      if(selected===entry)return;
+      const previous=selected;selected=entry;
+      for(const e of [previous,selected]){
+        const handle=e?.local.querySelector('[data-rotate]');
+        if(handle)handle.style.display=e===selected?'':'none';
+      }
+    }
     function schedule(){
       clearTimeout(timer);timer=null;
       if(document.hidden)return;
@@ -6429,7 +6437,7 @@ self.onmessage = function(e){
         `<circle cx="${h.x}" cy="${h.y}" r="4" fill="#6366f1" stroke="#fff" stroke-width="1" pointer-events="none"/>`).join('');
       const resize=e.behavior.resizeWidth ? `<rect data-resize-width="true" x="${it.w-6}" y="${it.h/2-12}" width="12" height="24" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ew-resize"><title>Change width</title></rect>` : '';
       const resizeHeight=e.behavior.resizeHeight ? `<rect data-resize-height="true" x="${it.w/2-12}" y="${it.h-6}" width="24" height="12" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ns-resize"><title>Change height</title></rect>` : '';
-      const rotate=e.behavior.rotate ? `<g data-rotate="true" style="cursor:grab"><title>Rotate</title>
+      const rotate=e.behavior.rotate ? `<g data-rotate="true" style="cursor:grab${selected===e?'':';display:none'}"><title>Rotate</title>
         <line x1="${it.w/2}" y1="0" x2="${it.w/2}" y2="-30" stroke="#6366f1" pointer-events="none"/>
         <circle cx="${it.w/2}" cy="-30" r="16" fill="transparent"/>
         <circle cx="${it.w/2}" cy="-30" r="9" fill="#fff" stroke="#6366f1" stroke-width="2" pointer-events="none"/></g>` : '';
@@ -6547,7 +6555,7 @@ self.onmessage = function(e){
       if(valid(p))p.finished=true;
     }
     function activate(id){
-      cancelPresses();
+      cancelPresses();select(null);
       for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));
       epoch++;clearTimeout(timer);timer=null;activeTabId=id;
       const doc=documents.find(d=>d.id===id);entries=doc?.entries || [];items=entries.map(e=>e.item);
@@ -6565,6 +6573,7 @@ self.onmessage = function(e){
           const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
             resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
             rotate:!!event.target.closest('[data-rotate]'),released:false};
+          select(e);
           p.release=()=>{p.released=true;p.wake?.();p.wake=null;};
           currentPress=p;presses.add(p);host.setPointerCapture(event.pointerId);
           gestureQueue=gestureQueue.then(()=>processPress(p)).catch(()=>{}).finally(()=>presses.delete(p));
@@ -6572,6 +6581,9 @@ self.onmessage = function(e){
         return e;
       });
     }
+    window.addEventListener('pointerdown',event=>{
+      if(event.button===0 && !currentPress && !event.target.closest('[data-smart-index]'))select(null);
+    });
     window.addEventListener('pointermove',event=>{
       const p=currentPress;if(!p || p.pointerId!==event.pointerId)return;
       p.latest={clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey};p.update?.();
@@ -6583,7 +6595,7 @@ self.onmessage = function(e){
     window.addEventListener('pointercancel',event=>{
       if(currentPress?.pointerId===event.pointerId)cancelPresses();
     });
-    window.addEventListener('keydown',event=>{if(event.key==='Escape')cancelPresses();});
+    window.addEventListener('keydown',event=>{if(event.key==='Escape'){cancelPresses();select(null);}});
     document.addEventListener('visibilitychange',()=>{
       if(document.hidden){cancelPresses();for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));clearTimeout(timer);timer=null;}
       else for(const e of entries){e.epoch=epoch;void refresh(e);}
@@ -7802,7 +7814,7 @@ self.onmessage = function(e){
     if(w>180)items.push({type:'text',x:0,y:0,w:w-buttonW-8,h:20,align:'left',
       text:(w/scale.unitPx).toFixed(unit==='px'?0:2)+' '+(unit==='in'?'in':unit),
       font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false});
+    if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false,editorOnly:true});
     items.push({type:'text',x:buttonX,y:0,w:buttonW,h:22,text:scale.label+(editing?' ↻':''),
       align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
     if(editing){

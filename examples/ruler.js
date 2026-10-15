@@ -44,7 +44,7 @@
     if(w>180)items.push({type:'text',x:0,y:0,w:w-buttonW-8,h:20,align:'left',
       text:(w/scale.unitPx).toFixed(unit==='px'?0:2)+' '+(unit==='in'?'in':unit),
       font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false});
+    if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false,editorOnly:true});
     items.push({type:'text',x:buttonX,y:0,w:buttonW,h:22,text:scale.label+(editing?' ↻':''),
       align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
     if(editing){

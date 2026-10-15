@@ -1685,9 +1685,16 @@ test('ruler author controls bind moving and rotation; HTML extends opted-in inst
   assert.equal(await locked.locator('[data-resize-width]').count(),0);
   assert.equal(await locked.locator('[data-rotate]').count(),0);
   assert.equal(await ruler.locator('[data-rotate]').count(),1,'one ruler toggle enables both moving and rotation');
+  assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'rotation starts hidden');
   assert.equal(await ruler.locator('[data-resize-height]').count(),0,'the ruler does not enable height resizing');
   const lockedBox=await locked.boundingBox();await exportDrag(preview,locked,50,40,35,20);await preview.waitForTimeout(100);
   assert.deepEqual(await locked.boundingBox(),lockedBox);
+  await exportClick(preview,ruler,50,40);assert.equal(await ruler.locator('[data-rotate]').isVisible(),true);
+  await preview.mouse.click(20,20);assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'clicking the page clears selection');
+  await exportClick(preview,ruler,50,40);await exportClick(preview,locked,50,40);
+  assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'clicking another shape clears the old selection');
+  await exportClick(preview,ruler,50,40);await preview.keyboard.press('Escape');
+  assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'Escape clears selection');
   const initial=await exportedPoint(ruler,0,0),destination=await exportedPoint(ruler,45,20);
   await exportDrag(preview,ruler,50,40,45,20);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!=='translate(100 100)');
@@ -1755,8 +1762,8 @@ test('HTML rotation and height resizing work independently of movement and width
   const {preview,errors}=await openExport(page,run,context),shape=preview.locator('.tab-panel').nth(0).locator('[data-smart-index="0"]');
   await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
   assert.equal(await shape.locator('[data-resize-width]').count(),0);
-  const box=await shape.boundingBox();await exportDrag(preview,shape,70,70,30,20);await preview.waitForTimeout(100);
-  assert.deepEqual(await shape.boundingBox(),box,'rotation permission does not grant body movement');
+  const origin=await exportedPoint(shape,0,0);await exportDrag(preview,shape,70,70,30,20);await preview.waitForTimeout(100);
+  assert.deepEqual(await exportedPoint(shape,0,0),origin,'rotation permission does not grant body movement');
   const center=await exportedPoint(shape,90,50),corner=await exportedPoint(shape,0,0);
   await exportRotate(preview,shape,180,100,Math.PI/2);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
@@ -1782,6 +1789,7 @@ test('HTML rotation and height resizing work independently of movement and width
   const retained=await shape.locator(':scope>g').getAttribute('transform');
   await preview.locator('.tab-select').nth(1).click();await preview.locator('.tab-select').nth(0).click();
   assert.equal(await shape.locator(':scope>g').getAttribute('transform'),retained);
+  assert.equal(await shape.locator('[data-rotate]').isVisible(),false,'tab switches clear selection while keeping transforms');
   assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-150)<.1);
   assert.deepEqual(errors,[]);
 }));
@@ -1804,6 +1812,7 @@ test('editor and HTML Shift-rotation snap to absolute 15-degree steps, including
   await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
   const angle=()=>shape.evaluate(el=>{const m=el.firstElementChild.getScreenCTM();return Math.atan2(m.b,m.a)*180/Math.PI;});
   assert.ok(Math.abs(await angle()-35)<1e-4,'the export starts with the combined own and group rotation');
+  await exportClick(preview,shape,90,90);
   await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,3*Math.PI/180,false);
   assert.ok(Math.abs(await angle()-45)<1e-4,'HTML snaps the visible 38-degree angle to 45, rather than snapping its drag delta');
   await preview.keyboard.up('Shift');await preview.mouse.up();
