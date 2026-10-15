@@ -186,10 +186,17 @@
   #printDialog .print-reference input{width:auto;flex:none}
   .print-preview{display:block;width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#e5e7eb;pointer-events:none}
   #printSummary{min-height:20px;margin:12px 0 8px;color:var(--muted)}
+  #printSummary .print-page-count{display:block;color:var(--ink);font-weight:600}
   #printWarning{padding:10px;border:1px solid #d97706;border-radius:7px;background:#fffbeb;color:#78350f}
   #printWarning[hidden]{display:none}
   #printWarning p{margin:0}
   #printWarning .print-reference{margin:10px 0 0}
+  #printTileOptions{margin-top:12px}
+  #printTileOptions[hidden],#printPageNav[hidden],#printTileHelp[hidden]{display:none}
+  .print-page-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
+  .print-page-nav button{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
+  .print-page-nav button:disabled{opacity:.45;cursor:default}
+  #printPageLabel{font-size:12px;color:var(--muted)}
   #printDialogSubmit:disabled{opacity:.45;cursor:default}
   #iconDialog{width:560px;max-height:calc(100dvh - 32px);overflow-y:auto}
   #iconImportPreview[hidden],#iconResults[hidden],#iconLoadMore[hidden]{display:none}
@@ -726,10 +733,14 @@
   <form id="printDialogForm">
     <h2 id="printDialogTitle">Print sketch</h2>
     <div class="print-options">
-      <div><label for="printMode">Scale</label><select id="printMode"><option value="fit">Fit to page</option><option value="actual" selected>Actual size (100%)</option></select></div>
+      <div><label for="printMode">Scale</label><select id="printMode"><option value="fit">Fit to page</option><option value="actual" selected>Actual size (100%)</option><option value="tile">Tile at actual size</option></select></div>
       <div><label for="printPaper">Paper</label><select id="printPaper"><option value="a4">A4</option><option value="letter">Letter</option></select></div>
       <div><label for="printOrientation">Orientation</label><select id="printOrientation"><option value="portrait">Portrait</option><option value="landscape" selected>Landscape</option></select></div>
       <div><label for="printMargin">Margins (mm)</label><input id="printMargin" type="number" min="0" max="50" step="1" value="10" required></div>
+    </div>
+    <div id="printTileOptions" class="print-options" hidden>
+      <div><label for="printOverlap">Overlap (mm)</label><input id="printOverlap" type="number" min="0" max="50" step="1" value="10" required disabled></div>
+      <label class="print-reference"><input id="printAlignment" type="checkbox" checked> Include alignment marks</label>
     </div>
     <label class="print-reference"><input id="printReference" type="checkbox"> Include a 50 mm reference mark</label>
     <p id="printSummary" role="status" aria-live="polite">Preparing snapshot…</p>
@@ -738,6 +749,12 @@
       <label class="print-reference"><input id="printClip" type="checkbox"> Print anyway at 100% and clip to the printable area</label>
     </div>
     <iframe id="printPreview" class="print-preview" title="Print preview" sandbox="allow-same-origin allow-modals" tabindex="-1"></iframe>
+    <div id="printPageNav" class="print-page-nav" hidden>
+      <button type="button" id="printPagePrev" aria-label="Previous preview page">←</button>
+      <span id="printPageLabel" role="status" aria-live="polite"></span>
+      <button type="button" id="printPageNext" aria-label="Next preview page">→</button>
+    </div>
+    <p id="printTileHelp" hidden>Pages run left to right, then top to bottom. Trim the margins and join neighbouring sheets. Overlap and matching alignment marks help you line them up. All sheets print at 100%.</p>
     <p>In the browser print dialog, use the same paper and orientation, <strong>100% / Actual size</strong>, no additional margins, and headers and footers off. The preview already includes your margins and any Fit to page scaling.</p>
     <p class="dialog-error" id="printDialogError" role="alert"></p>
     <div class="library-dialog-actions"><button type="button" id="printDialogCancel">Close</button><button type="submit" class="primary" id="printDialogSubmit" disabled>Print…</button></div>
@@ -6273,59 +6290,116 @@ self.onmessage = function(e){
   const printWarningText=document.getElementById('printWarningText');
   const printClip=document.getElementById('printClip');
   const printError=document.getElementById('printDialogError');
+  const printTileOptions=document.getElementById('printTileOptions');
+  const printOverlap=document.getElementById('printOverlap');
+  const printPageNav=document.getElementById('printPageNav');
+  const printPagePrev=document.getElementById('printPagePrev');
+  const printPageNext=document.getElementById('printPageNext');
   const PRINT_PAPERS={a4:[210,297],letter:[215.9,279.4]};
-  const MM_PER_PX=25.4/96;
+  const MM_PER_PX=25.4/96, PRINT_MAX_PAGES=100;
   let printSnapshot=null, printSnapshotSeq=0, printPreviewSeq=0, printPreviewReady=false;
+  let printPageIndex=0, printPageCount=1, printPageColumns=1;
 
   function printSettings(){
     const paper=document.getElementById('printPaper').value;
     const orientation=document.getElementById('printOrientation').value;
     const mode=document.getElementById('printMode').value;
     const marginInput=document.getElementById('printMargin'), margin=marginInput.valueAsNumber;
-    if(!PRINT_PAPERS[paper] || !['portrait','landscape'].includes(orientation) || !['fit','actual'].includes(mode) ||
+    if(!PRINT_PAPERS[paper] || !['portrait','landscape'].includes(orientation) || !['fit','actual','tile'].includes(mode) ||
        !marginInput.validity.valid || !Number.isFinite(margin)) throw new Error('Enter margins between 0 and 50 mm.');
+    const overlap=mode==='tile'?printOverlap.valueAsNumber:0;
+    if(mode==='tile' && (!printOverlap.validity.valid || !Number.isFinite(overlap))) throw new Error('Enter overlap between 0 and 50 mm.');
     const [w,h]=PRINT_PAPERS[paper];
-    return {mode,margin,reference:document.getElementById('printReference').checked,
+    return {mode,margin,overlap,alignment:document.getElementById('printAlignment').checked,
+      reference:document.getElementById('printReference').checked,
       width:orientation==='landscape'?h:w,height:orientation==='landscape'?w:h};
   }
   function buildPrintDocument(snapshot,settings,revision){
-    const {width,height,margin,reference,mode}=settings;
-    const areaW=width-margin*2, areaH=height-margin*2-(reference?14:0);
+    const {width,height,margin,reference,mode,overlap=0,alignment=true}=settings,tiled=mode==='tile';
+    // Tile page numbers have their own strip, separate from artwork and calibration marks.
+    const areaW=width-margin*2, areaH=height-margin*2-(reference?14:0)-(tiled?8:0);
+    if(tiled && (overlap<0 || overlap>=Math.min(areaW,areaH))) throw new Error('Overlap must be smaller than the printable width and height.');
     const naturalW=snapshot.width*MM_PER_PX, naturalH=snapshot.height*MM_PER_PX;
     const scale=mode==='fit'?Math.min(areaW/naturalW,areaH/naturalH):1;
     const tooLarge=mode==='actual' && (naturalW>areaW+1e-7 || naturalH>areaH+1e-7);
+    const stepW=areaW-overlap,stepH=areaH-overlap;
+    const count=(length,area,step)=>Math.max(1,1+Math.ceil((length-area-1e-7)/step));
+    const columns=tiled?count(naturalW,areaW,stepW):1,rows=tiled?count(naturalH,areaH,stepH):1;
+    const pages=columns*rows;
+    if(pages>PRINT_MAX_PAGES) throw new Error('This layout needs '+pages+' pages (maximum '+PRINT_MAX_PAGES+'). Use larger paper, reduce margins or overlap, or choose Fit to page.');
     const artW=naturalW*scale, artH=naturalH*scale;
     const art=new DOMParser().parseFromString(snapshot.svg,'image/svg+xml').documentElement;
-    art.setAttribute('x',margin+Math.max(0,(areaW-artW)/2));
-    art.setAttribute('y',margin+Math.max(0,(areaH-artH)/2));
     art.setAttribute('width',artW);art.setAttribute('height',artH);
-    const calibration=reference?`<g id="printCalibration" fill="none" stroke="#000" stroke-width="0.25">
+    const calibration=reference?`<g class="print-calibration" fill="none" stroke="#000" stroke-width="0.25">
       <path d="M ${margin} ${height-margin-7} h 50 m -50 -2 v 4 m 50 -4 v 4"/>
       <text x="${margin}" y="${height-margin-10}" fill="#000" stroke="none" font-family="sans-serif" font-size="3">50 mm - check after printing</text></g>`:'';
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" aria-label="Sketch print page">
-      <rect width="${width}" height="${height}" fill="#fff"/>
-      <defs><clipPath id="printContentClip"><rect x="${margin}" y="${margin}" width="${areaW}" height="${areaH}"/></clipPath></defs>
-      <g id="printArtwork" clip-path="url(#printContentClip)">${new XMLSerializer().serializeToString(art)}</g>${calibration}</svg>`;
+    const sheets=[];
+    for(let index=0;index<pages;index++){
+      const column=index%columns,row=Math.floor(index/columns),clipId='printContentClip-'+index;
+      art.setAttribute('x',margin+(tiled?-column*stepW:Math.max(0,(areaW-artW)/2)));
+      art.setAttribute('y',margin+(tiled?-row*stepH:Math.max(0,(areaH-artH)/2)));
+      const marks=[];
+      if(tiled && alignment){
+        // Adjacent sheets place each cross at the same coordinate in the full drawing.
+        for(const x of [column>0?overlap/2:null,column<columns-1?areaW-overlap/2:null]) if(x!==null)
+          for(const y of [10,areaH-10])marks.push([margin+x,margin+y]);
+        for(const y of [row>0?overlap/2:null,row<rows-1?areaH-overlap/2:null]) if(y!==null)
+          for(const x of [10,areaW-10])marks.push([margin+x,margin+y]);
+      }
+      const crossPath=marks.map(([x,y])=>`M ${x-2} ${y} h 4 M ${x} ${y-2} v 4`).join(' ');
+      const registration=marks.length?`<g class="print-alignment" clip-path="url(#${clipId})" fill="none">
+        <path d="${crossPath}" stroke="#fff" stroke-width="1"/>
+        <path d="${crossPath}" stroke="#000" stroke-width="0.25"/></g>`:'';
+      const label=tiled?`<text class="print-page-number" x="${width/2}" y="${margin+areaH+5}" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="3">Page ${index+1} of ${pages} · Row ${row+1}, column ${column+1}</text>`:'';
+      sheets.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" data-page-index="${index}"${index?' data-preview-hidden="true"':''} aria-label="Sketch print page ${index+1} of ${pages}">
+        <rect width="${width}" height="${height}" fill="#fff"/>
+        <defs><clipPath id="${clipId}"><rect x="${margin}" y="${margin}" width="${areaW}" height="${areaH}"/></clipPath></defs>
+        <g class="print-artwork" clip-path="url(#${clipId})">${new XMLSerializer().serializeToString(art)}</g>${registration}${label}${calibration}</svg>`);
+    }
     const html=`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'">
       <title>${escXml(document.title)} - Print</title><style>
       @page{size:${width}mm ${height}mm;margin:0}
       html,body{margin:0;padding:0;background:#e5e7eb}
       body>svg{display:block;width:100vw;height:100vh}
-      @media print{html,body{width:${width}mm;height:${height}mm;background:#fff;overflow:hidden}
-        body>svg{width:${width}mm;height:${height}mm;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
-      </style></head><body data-print-revision="${revision}">${svg}</body></html>`;
-    return {html,tooLarge,scale,naturalW,naturalH,areaW,areaH};
+      @media screen{body>svg[data-preview-hidden]{display:none}}
+      @media print{html,body{width:${width}mm;background:#fff}
+        body>svg{width:${width}mm;height:${height}mm;overflow:hidden;break-inside:avoid;break-after:page;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+        body>svg:last-child{break-after:auto}}
+      </style></head><body data-print-revision="${revision}">${sheets.join('')}</body></html>`;
+    return {html,tooLarge,scale,naturalW,naturalH,areaW,areaH,pages,columns,rows,tiled};
+  }
+  function showPrintPage(index){
+    printPageIndex=Math.max(0,Math.min(printPageCount-1,index));
+    printPreview.contentDocument?.querySelectorAll('body>svg[data-page-index]').forEach((sheet,i)=>{
+      sheet.toggleAttribute('data-preview-hidden',i!==printPageIndex);
+    });
+    document.getElementById('printPageLabel').textContent='Page '+(printPageIndex+1)+' of '+printPageCount
+      +' · Row '+(Math.floor(printPageIndex/printPageColumns)+1)+', column '+(printPageIndex%printPageColumns+1);
+    printPagePrev.disabled=!printPreviewReady || printPageIndex===0;
+    printPageNext.disabled=!printPreviewReady || printPageIndex===printPageCount-1;
   }
   function updatePrintPreview(){
     printPreviewReady=false;printSubmit.disabled=true;printError.textContent='';
+    printPagePrev.disabled=printPageNext.disabled=true;printPageNav.hidden=true;
+    const tiled=document.getElementById('printMode').value==='tile';
+    printTileOptions.hidden=!tiled;printOverlap.disabled=!tiled;
+    document.getElementById('printTileHelp').hidden=!tiled;
     if(!printSnapshot) return;
     const revision=++printPreviewSeq;
     let output;
     try{output=buildPrintDocument(printSnapshot,printSettings(),revision);}
     catch(err){printError.textContent=err.message;return;}
     const mm=n=>n.toFixed(2), percent=(output.scale*100).toFixed(1).replace(/\.0$/,'');
+    printPageIndex=0;printPageCount=output.pages;printPageColumns=output.columns;
     printSummary.textContent=mm(output.naturalW)+' × '+mm(output.naturalH)+' mm at actual size · Print scale '+percent+'%';
+    if(output.tiled){
+      const count=document.createElement('span');count.className='print-page-count';
+      count.textContent=output.columns+(output.columns===1?' column':' columns')+' × '+output.rows+(output.rows===1?' row':' rows')
+        +' · '+output.pages+(output.pages===1?' page':' pages');
+      printSummary.append(count);
+    }
+    printPageNav.hidden=output.pages<=1;
     printWarning.hidden=!output.tooLarge;
     if(!output.tooLarge)printClip.checked=false;
     printWarningText.textContent=output.tooLarge
@@ -6337,6 +6411,7 @@ self.onmessage = function(e){
       if(!printDialog.open || revision!==printPreviewSeq || printPreview.contentDocument!==doc) return;
       printPreviewReady=!output.tooLarge || printClip.checked;
       printSubmit.disabled=!printPreviewReady;
+      showPrintPage(0);
     };
     printPreview.srcdoc=output.html;
   }
@@ -6348,6 +6423,7 @@ self.onmessage = function(e){
     cancelSmartGestures(true);
     const seq=++printSnapshotSeq, tab=activeTabId;
     printSnapshot=null;printPreviewReady=false;printSubmit.disabled=true;printClip.checked=false;
+    printPageNav.hidden=true;
     printPreview.onload=null;printPreview.removeAttribute('srcdoc');
     printSummary.textContent='Preparing snapshot…';printError.textContent='';printWarning.hidden=true;
     printDialog.showModal();
@@ -6371,6 +6447,8 @@ self.onmessage = function(e){
     if(event.target!==printClip)printClip.checked=false;
     updatePrintPreview();
   });
+  printPagePrev.addEventListener('click',()=>{if(printPreviewReady)showPrintPage(printPageIndex-1);});
+  printPageNext.addEventListener('click',()=>{if(printPreviewReady)showPrintPage(printPageIndex+1);});
   printForm.addEventListener('submit',e=>{
     e.preventDefault();
     if(!printPreviewReady || printSubmit.disabled) return;

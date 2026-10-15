@@ -45,8 +45,11 @@ unchanged history/storage, live clock updates, stopwatch controls and timestamp 
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
 tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
 Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and the
-oversize clipping override, paper/orientation and margin changes, reference marks, image assets and pending text, frozen smart shapes, retained drawing
-and history/storage, and close/reopen races. Native printer-driver scaling still requires a physical
+oversize clipping override, paper/orientation and margin changes, reference marks, image assets and
+pending text, frozen smart shapes, retained drawing and history/storage, and close/reopen races.
+Tiled-print checks cover physical scale, repeated overlap, matching alignment coordinates, page
+navigation and labels, exact tile boundaries, zero overlap, calibration on every sheet, excessive
+page counts, and including all sheets in actual Chromium PDF output. Native printer-driver scaling still requires a physical
 print check at 100% / Actual size.
 
 Deployment-settings checks cover the feature switches independently, native browser printing when

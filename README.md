@@ -147,6 +147,17 @@ also works when the app is opened directly from the local `index.html` file.
 Deployments can set `features.customPrinting` to `false` in `settings.json` to use regular browser
 printing for both the menu and keyboard shortcut.
 
+Choose **Tile at actual size** to print a larger drawing across several sheets at **100%**.
+The dialog shows the page count and grid dimensions; use the arrows below the preview to inspect
+each sheet. Printing includes every sheet, regardless of which preview page is selected.
+**Overlap (mm)** repeats part of the drawing on neighbouring sheets (10 mm by default, adjustable
+from 0 to 50 mm). **Include alignment marks** adds matching crosses in the shared area.
+Trim the paper margins, overlap the repeated artwork, and line up the crosses to assemble the drawing.
+With zero overlap, trim to the printed edges and join them. Sheets are numbered left to right,
+then top to bottom, with row and column labels below the artwork. The optional 50 mm reference mark
+is repeated on each sheet. Layouts support up to 100 pages; choose larger paper, smaller margins
+or overlap, or Fit to page if the drawing needs more.
+
 ### Physical scale
 
 The ruler and drilling template share a scale of **96 canvas px = 1 inch = 25.4 mm**. Resizing the

@@ -2305,10 +2305,10 @@ test('printing preserves physical ruler scale, assets and pending text on the ac
   const before=await run('({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:localStorage.getItem(docKey(activeTabId))})');
   await page.locator('#printReference').check();await printFrameReady(page);
   const result=await page.locator('#printPreview').evaluate(frame=>{
-    const doc=frame.contentDocument,page=doc.querySelector('body>svg'),art=doc.querySelector('#printArtwork>svg');
+    const doc=frame.contentDocument,page=doc.querySelector('body>svg'),art=doc.querySelector('.print-artwork>svg');
     return {paper:[page.getAttribute('width'),page.getAttribute('height')],ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
-      reference:doc.querySelector('#printCalibration path').getBBox().width,
-      images:doc.querySelectorAll('image').length,text:doc.body.textContent,markup:doc.querySelector('#printArtwork').innerHTML};
+      reference:doc.querySelector('.print-calibration path').getBBox().width,
+      images:doc.querySelectorAll('image').length,text:doc.body.textContent,markup:doc.querySelector('.print-artwork').innerHTML};
   });
   assert.deepEqual(result.paper,['297mm','210mm']);assert.ok(Math.abs(result.ratio-25.4/96)<1e-10);
   assert.equal(result.reference,50);assert.equal(result.images,1);assert.match(result.text,/Latest\s*print\s*note/);
@@ -2332,7 +2332,7 @@ test('oversized actual-size printing requires clipping consent, retains scale, a
   await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();await printFrameReady(page);
   await page.locator('#printMode').selectOption('fit');await page.locator('#printOrientation').selectOption('portrait');await printFrameReady(page);
   const fitted=await page.locator('#printPreview').evaluate(frame=>{
-    const doc=frame.contentDocument,art=doc.querySelector('#printArtwork>svg'),clip=doc.querySelector('clipPath rect');
+    const doc=frame.contentDocument,art=doc.querySelector('.print-artwork>svg'),clip=doc.querySelector('clipPath rect');
     return {w:+art.getAttribute('width'),h:+art.getAttribute('height'),maxW:+clip.getAttribute('width'),maxH:+clip.getAttribute('height')};
   });
   assert.ok(fitted.w<=fitted.maxW+1e-6 && fitted.h<=fitted.maxH+1e-6);
@@ -2347,7 +2347,7 @@ test('oversized actual-size printing requires clipping consent, retains scale, a
   await page.locator('#printClip').check();await printFrameReady(page);
   assert.equal(await page.locator('#printDialogSubmit').isEnabled(),true);
   const clipped=await page.locator('#printPreview').evaluate(async frame=>{
-    const doc=frame.contentDocument,svg=doc.querySelector('body>svg'),art=doc.querySelector('#printArtwork>svg');
+    const doc=frame.contentDocument,svg=doc.querySelector('body>svg'),art=doc.querySelector('.print-artwork>svg');
     const clip=doc.querySelector('clipPath rect'),paper=svg.viewBox.baseVal;
     const canvas=document.createElement('canvas');canvas.width=paper.width;canvas.height=paper.height;
     const image=new Image(),url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));
@@ -2397,6 +2397,90 @@ test('oversized actual-size printing requires clipping consent, retains scale, a
   await page.locator('#printWarning').waitFor({state:'visible'});
   assert.equal(await page.locator('#printClip').isChecked(),false,'reopening the dialog requires fresh clipping consent');
   assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+}));
+
+test('tiled printing keeps physical scale, matching overlap marks, numbered previews, and every sheet in the PDF',async()=>app(async({page,run,context})=>{
+  await run(`items=[{...${JSON.stringify(rectangle())},w:2000,h:1100}];save();render();`);
+  const before=await run('JSON.stringify({items,undoStack,redoStack,assets,storage:{...localStorage}})');
+  await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();
+  await page.locator('#printMode').selectOption('tile');await printFrameReady(page);
+  assert.equal(await page.locator('#printOverlap').inputValue(),'10');
+  assert.equal(await page.locator('#printAlignment').isChecked(),true);
+  assert.equal(await page.locator('#printWarning').isVisible(),false,'tiling preserves the whole drawing without a clipping override');
+  assert.match(await page.locator('#printSummary').textContent(),/100%.*2 columns × 2 rows.*4 pages/);
+  const sheets=await page.locator('#printPreview').evaluate(frame=>[...frame.contentDocument.querySelectorAll('body>svg')].map(sheet=>{
+    const art=sheet.querySelector('.print-artwork>svg'),clip=sheet.querySelector('clipPath rect');
+    const path=sheet.querySelector('.print-alignment path'),marks=[];
+    for(let distance=2;distance<path.getTotalLength();distance+=8){
+      const point=path.getPointAtLength(distance);marks.push([point.x-+art.getAttribute('x'),point.y-+art.getAttribute('y')]);
+    }
+    return {x:+art.getAttribute('x'),y:+art.getAttribute('y'),w:+art.getAttribute('width'),h:+art.getAttribute('height'),
+      ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
+      area:[+clip.getAttribute('width'),+clip.getAttribute('height')],marks,label:sheet.querySelector('.print-page-number').textContent};
+  }));
+  assert.equal(sheets.length,4);
+  for(const sheet of sheets){assert.ok(Math.abs(sheet.ratio-25.4/96)<1e-10);assert.deepEqual(sheet.area,[277,182]);}
+  assert.equal(sheets[0].x-sheets[1].x,267,'adjacent columns repeat 10 mm');
+  assert.equal(sheets[0].y-sheets[2].y,172,'adjacent rows repeat 10 mm');
+  assert.deepEqual(sheets[0].marks.slice(0,2),sheets[1].marks.slice(0,2),'horizontal neighbours share registration coordinates');
+  assert.deepEqual(sheets[0].marks.slice(2),sheets[2].marks.slice(2),'vertical neighbours share registration coordinates');
+  assert.ok(sheets[1].x+sheets[1].w<=10+277 && sheets[3].y+sheets[3].h<=10+182,'last column and row cover the remaining drawing');
+  assert.match(sheets[3].label,/Page 4 of 4.*Row 2, column 2/);
+  assert.equal(await page.locator('#printPagePrev').isDisabled(),true);
+  for(let i=0;i<3;i++)await page.locator('#printPageNext').click();
+  assert.match(await page.locator('#printPageLabel').textContent(),/Page 4 of 4.*Row 2, column 2/);
+  assert.equal(await page.locator('#printPageNext').isDisabled(),true);
+  const output=await context.newPage();
+  try{
+    await output.setContent(await page.locator('#printPreview').evaluate(frame=>frame.contentDocument.documentElement.outerHTML));
+    assert.equal(await output.locator('body>svg:visible').count(),1);
+    await output.emulateMedia({media:'print'});
+    assert.equal(await output.locator('body>svg:visible').count(),4,'printing includes every sheet regardless of the selected preview');
+    if(engine==='chromium'){
+      const pdf=await output.pdf({preferCSSPageSize:true});
+      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length,4,'the PDF contains exactly four physical sheets');
+    }
+  }finally{await output.close();}
+  await page.locator('#printOverlap').fill('50');await printFrameReady(page);
+  assert.match(await page.locator('#printSummary').textContent(),/3 columns × 2 rows.*6 pages/);
+  assert.match(await page.locator('#printPageLabel').textContent(),/Page 1 of 6/,'layout changes reset the preview page');
+  await page.locator('#printAlignment').uncheck();await printFrameReady(page);
+  assert.equal(await page.locator('#printPreview').evaluate(frame=>frame.contentDocument.querySelectorAll('.print-alignment').length),0);
+  await page.locator('#printOverlap').fill('0');await page.locator('#printReference').check();await printFrameReady(page);
+  assert.match(await page.locator('#printSummary').textContent(),/2 columns × 2 rows.*4 pages/);
+  assert.deepEqual(await page.locator('#printPreview').evaluate(frame=>[...frame.contentDocument.querySelectorAll('.print-calibration path')].map(p=>p.getPointAtLength(50).x-p.getPointAtLength(0).x)),[50,50,50,50]);
+  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls='1';};});
+  await page.keyboard.press('Control+p');
+  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1');
+  assert.equal(await run('JSON.stringify({items,undoStack,redoStack,assets,storage:{...localStorage}})'),before,'tiling never changes the drawing or saved state');
+  await page.locator('#printOverlap').fill('');assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  assert.match(await page.locator('#printDialogError').textContent(),/overlap/);
+  await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
+  assert.equal(await page.locator('#printTileOptions').isVisible(),false);
+  assert.equal(await page.locator('#printPageNav').isVisible(),false);
+}));
+
+test('tiled printing handles exact page boundaries, small drawings, portrait Letter, and excessive page counts',async()=>app(async({page,run})=>{
+  // Use exact physical geometry so rounding cannot add a spurious sheet at a tile boundary.
+  await run(`const tilePixel=document.createElement('canvas');tilePixel.width=tilePixel.height=1;
+    assets={exactTile:tilePixel.toDataURL()};items=[{type:'image',uid:'exactTile',id:'exactTile',x:0,y:0,w:544/MM_PER_PX,h:182/MM_PER_PX}];render();`);
+  await page.keyboard.press('Control+p');await page.locator('#printMode').selectOption('tile');await printFrameReady(page);
+  assert.match(await page.locator('#printSummary').textContent(),/2 columns × 1 row.*2 pages/);
+  await page.locator('#printDialogCancel').click();
+  await run(`items=[${JSON.stringify(rectangle())}];render();`);
+  await page.keyboard.press('Control+p');await printFrameReady(page);
+  assert.match(await page.locator('#printSummary').textContent(),/1 column × 1 row.*1 page$/);
+  await page.locator('#printPaper').selectOption('letter');await page.locator('#printOrientation').selectOption('portrait');await printFrameReady(page);
+  assert.deepEqual(await page.locator('#printPreview').evaluate(frame=>{
+    const sheet=frame.contentDocument.querySelector('body>svg');return [sheet.getAttribute('width'),sheet.getAttribute('height')];
+  }),['215.9mm','279.4mm']);
+  await page.locator('#printDialogCancel').click();
+  await run(`items=[{...${JSON.stringify(rectangle())},w:100000,h:100000}];render();`);
+  await page.keyboard.press('Control+p');await page.locator('#printDialogError').waitFor({state:'visible'});
+  await page.waitForFunction(()=>document.getElementById('printDialogError').textContent.includes('maximum 100'));
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true,'an excessive grid is rejected before creating all sheets');
+  await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
+  assert.equal(await page.locator('#printDialogError').textContent(),'');
 }));
 
 test('print previews freeze live shapes and a cancelled snapshot cannot reopen or replace a later preview',async()=>app(async({page,run})=>{
