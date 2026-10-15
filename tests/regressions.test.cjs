@@ -3148,6 +3148,14 @@ test('all shipped templates and contributor examples retain arcs, zero-width out
       ...${JSON.stringify(examples)}.map((script,i)=>({name:'contributor-'+i,script}))];
     const outputs=[];
     for(const {name,script} of scripts){
+      const caps=await requestSmartCaps(script);
+      if(caps.apiVersion===2){
+        const it={...${JSON.stringify(smartFixture(''))},script};ensureUids([it]);
+        await initializeSmartItem(it,caps);
+        const cache=await warmSmartExportCache([it],true);
+        outputs.push({name,kids:cache.get(it)});
+        continue;
+      }
       const state=await requestSmartCall(script,'initState',[])||{};
       const init=await requestSmartCall(script,'initStyle',[])||{};
       const it={...${JSON.stringify(smartFixture(''))},...init,script,state,w:init.w||180,h:init.h||180};it.font=fontStr(it.fontFamily,it.fontSize);
@@ -3156,7 +3164,7 @@ test('all shipped templates and contributor examples retain arcs, zero-width out
     }
     return outputs;
   })()`);
-  assert.equal(result.length,12);
+  assert.equal(result.length,14);
   for(const {name,kids} of result) assert.ok(kids.length || name==='blank','template '+name+' remains visible');
   const race=result.find(r=>r.name==='contributor-1').kids;
   assert.ok(race.some(c=>c.size===0 && c.strokeOn===false));

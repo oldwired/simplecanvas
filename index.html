@@ -168,6 +168,10 @@
   .library-dialog textarea{box-sizing:border-box;width:100%;font:12px ui-monospace,monospace;padding:9px;border:1px solid var(--line);border-radius:7px;resize:vertical}
   .library-dialog code{font:12px ui-monospace,monospace}
   #smartObjectDialog{width:520px}
+  #componentBindingsDialog{width:460px}
+  .component-input{margin:14px 0}
+  .component-input select{width:100%;margin-bottom:6px}
+  #componentBindingsBtn[hidden]{display:none}
   .smart-template-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
   .smart-template-row[hidden]{display:none}
   .smart-template-label{font-size:13px;color:var(--muted)}
@@ -610,6 +614,7 @@
 
   <!-- Arrange (z-order of the selection) — shown only when something is selected -->
   <div class="group" id="arrangeGroup" style="display:none">
+    <button class="btn ghost" id="componentBindingsBtn" title="Connect component inputs" hidden>Inputs…</button>
     <button class="btn ghost" id="toDup" title="Duplicate selection (⌘/Ctrl+D)">
       <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
@@ -666,6 +671,17 @@
 </div>
 
 <div id="toast"></div>
+<dialog class="library-dialog" id="componentBindingsDialog" aria-labelledby="componentBindingsTitle">
+  <form id="componentBindingsForm">
+    <h2 id="componentBindingsTitle">Component inputs</h2>
+    <label for="componentNameInput">Name</label><input id="componentNameInput" maxlength="100" autocomplete="off">
+    <p>Choose a value or an output from another component in this sketch.</p>
+    <div id="componentInputFields"></div>
+    <p id="componentOutputs" aria-live="polite"></p>
+    <p class="dialog-error" id="componentBindingsError" role="alert"></p>
+    <div class="library-dialog-actions"><button type="button" id="componentBindingsCancel">Cancel</button><button type="submit" class="primary" id="componentBindingsSave">Save</button></div>
+  </form>
+</dialog>
 <dialog class="library-dialog" id="libraryDialog" aria-labelledby="libraryDialogTitle" aria-describedby="libraryDialogMessage">
   <form id="libraryDialogForm">
     <h2 id="libraryDialogTitle"></h2>
@@ -686,6 +702,8 @@
         <option value="liveClock">Live clock</option>
         <option value="stopwatch">Stopwatch</option>
         <option value="ruler">Ruler</option>
+        <option value="numberControl">Number control</option>
+        <option value="gauge">Gauge</option>
         <option value="arrow">Arrow</option>
         <option value="arc">Arc</option>
         <option value="timer">Timer</option>
@@ -816,7 +834,7 @@
   const TABS_KEY = 'simplecanvas:tabs:v1';
   // The migrated tab keeps its original key: migration never needs a second copy of a large sketch.
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
-  const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
+  const FORMAT_VERSION = 4;     // 2: group pivots; 3: polygon fill rules; 4: connected smart components
   // Deployment settings are optional and never saved into a sketch or browser storage.
   const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true});
   let features = DEFAULT_FEATURES;
@@ -966,6 +984,13 @@
   let uidSeq = 0;
   const newUid = () => 'u' + Date.now().toString(36) + '-' + (uidSeq++).toString(36);
   function ensureUids(list){
+    // Before repairing duplicate IDs, retain the ambiguity of any component references.
+    // Otherwise a recovered import would silently connect to whichever duplicate came first.
+    const counts=new Map();
+    for(const it of list)if(typeof it.uid==='string')counts.set(it.uid,(counts.get(it.uid)||0)+1);
+    for(const it of list)for(const binding of Object.values(it.bindings||{})){
+      if(binding && typeof binding==='object' && counts.get(binding.uid)>1)binding.unresolved=true;
+    }
     const seen = new Set();
     for(const it of list){ if(typeof it.uid !== 'string' || seen.has(it.uid)) it.uid = newUid(); seen.add(it.uid); }
     return list;
@@ -1021,6 +1046,35 @@
   function legibleColor(color, fillOn, fillColor){
     const fillVisible = fillOn && fillColor !== '#ffffff';
     return (color==='#ffffff' && !fillVisible) ? '#000000' : color;
+  }
+  // Keep component metadata alongside its target item, so ordinary document/history snapshots
+  // also retain bindings. Invalid metadata disables the component without dropping its script.
+  function normalizeComponentFields(raw,it){
+    if(raw.componentApi!==undefined){
+      it.componentApi=(typeof raw.componentApi==='number' && Number.isFinite(raw.componentApi)) ||
+        (typeof raw.componentApi==='string' && raw.componentApi.length<=64) ? raw.componentApi : -1;
+    }
+    if(typeof raw.componentName==='string')it.componentName=raw.componentName.slice(0,100);
+    if(typeof raw.componentInvalid==='string')it.componentInvalid=raw.componentInvalid.slice(0,200);
+    for(const key of ['bindings','inputValues'])if(raw[key]!==undefined){
+      try{
+        let count=0;
+        const copy=(v,depth)=>{
+          if(depth>4 || ++count>1024)throw new Error('Component metadata is too complex');
+          if(v===null || typeof v==='boolean' || typeof v==='string')return v;
+          if(isNum(v))return v;
+          if(!v || typeof v!=='object' || Array.isArray(v))throw new Error('Invalid component metadata');
+          const out={};
+          for(const name of Object.keys(v)){
+            if(['__proto__','prototype','constructor'].includes(name))throw new Error('Invalid component metadata key');
+            out[name]=copy(v[name],depth+1);
+          }
+          return out;
+        };
+        if(JSON.stringify(raw[key]).length>16000)throw new Error('Component metadata exceeds 16000 characters');
+        it[key]=copy(raw[key],0);
+      }catch(err){it.componentInvalid=err.message;}
+    }
   }
   function normalizeItem(raw, assetsIn){
     if(!raw || typeof raw !== 'object' || ITEM_TYPES.indexOf(raw.type) < 0) return null;
@@ -1107,6 +1161,7 @@
         // Missing state keeps the legacy empty default. Supplied state obeys the same contract as
         // hook results, so an imported item cannot become permanently uneditable at its first reply.
         it.state = normalizeSmartState(raw.state===undefined ? {} : raw.state);
+        normalizeComponentFields(raw,it);
       }
       if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
       if(typeof raw.group === 'string' && raw.group.length <= 64){
@@ -1381,7 +1436,7 @@
   // three call shapes copes with that. Nothing outside this sandbox calls `new Function` on
   // `it.script` anywhere in the file.
   const SMART_MAX_REPLY = 524288;
-  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior']);
+  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior','compute']);
   const SMART_WORKER_SRC = `
 "use strict";
 const stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);
@@ -1410,12 +1465,18 @@ function compile(src){
 self.onmessage = function(e){
   var msg = e.data || {};
   var id = msg.id;
-  try{ var def = compile(msg.src || ''); if(msg.method === 'caps'){
+  try{ var def = compile(msg.src || '');
+  const apiVersion=def && def.apiVersion===undefined ? 1 : def && def.apiVersion;
+  if(def && apiVersion!==1 && apiVersion!==2){send({id,ok:false,error:'Unsupported component API version'});return;}
+  if(def && msg.componentApi!==undefined && msg.componentApi!==apiVersion){send({id,ok:false,error:'Component API marker does not match script'});return;}
+  if(def && msg.method==='call' && apiVersion===2 && msg.componentApi!==2){send({id,ok:false,error:'Component API 2 requires a saved componentApi marker'});return;}
+  if(msg.method === 'caps'){
     send({id:id, ok:!!def, caps: def ? {
       children: typeof def.children==='function', handles: typeof def.handles==='function',
       hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
       initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',
-      refreshMs: typeof def.refreshMs==='function',
+      refreshMs: typeof def.refreshMs==='function', compute: typeof def.compute==='function',
+      apiVersion, inputs:apiVersion===2 ? def.inputs : undefined, outputs:apiVersion===2 ? def.outputs : undefined,
       exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')
     } : null});
     return;
@@ -1424,7 +1485,7 @@ self.onmessage = function(e){
     const hook=def && def[msg.fn];
     const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook
       : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;
-    const reply={id:id, ok:true, result:result===undefined ? null : result};
+    const reply={id:id, ok:true, apiVersion, result:result===undefined ? null : result};
     if(msg.fn==='children' && msg.refresh===true){
       const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;
       // Invalid intervals must not prevent valid children from crossing the JSON-only transport.
@@ -1508,7 +1569,7 @@ self.onmessage = function(e){
         const job=slot.job;
         slot.timer=setTimeout(()=>stop(slot,'Smart shape timed out'),${SMART_CALL_TIMEOUT_MS});
         emit({version:1,owner:slot.owner,id:job.id,started:true});
-        try{slot.worker.postMessage({id:job.id,method:job.method,src:job.src,fn:job.fn,args:job.args,refresh:job.refresh===true});}
+        try{slot.worker.postMessage({id:job.id,method:job.method,src:job.src,fn:job.fn,args:job.args,refresh:job.refresh===true,componentApi:job.componentApi});}
         catch(_){stop(slot,'Smart shape request failed');}
       };
       const obtain = owner => {
@@ -1653,6 +1714,7 @@ self.onmessage = function(e){
     }
   }
   function requestSmartSandbox(message,subject=null,execution=null){
+    message={...message,...(subject?.componentApi!==undefined?{componentApi:subject.componentApi}:{})};
     if(typeof message.src!=='string' || !message.src.trim() || message.src.length>MAX_SCRIPT ||
        (message.method!=='caps' && (message.method!=='call' || !SMART_HOOKS.has(message.fn))))
       return Promise.reject(new Error('Invalid smart shape request'));
@@ -1675,9 +1737,19 @@ self.onmessage = function(e){
   // existed, just asynchronously now. `scriptOrItem` may be a plain script string (the "Add smart
   // shape" dialog, before an item even exists) or an item object (everywhere else).
   function requestSmartCall(scriptOrItem, fn, args,execution=null){
-    return requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args},typeof scriptOrItem==='object'?scriptOrItem:null,execution)
-      .then(r=>r.ok ? r.result : null)
-      .catch(()=>null);
+    const it=typeof scriptOrItem==='object'?scriptOrItem:null;
+    const connected=it?.componentApi===2 && ['children','handles','hitEdit','dragEdit','exportBehavior'].includes(fn);
+    const scene=items, signature=connected?componentGraphSignature(scene):null;
+    return Promise.resolve().then(async()=>{
+      if(connected){
+        const io=await resolveSmartComponentIo(it);
+        if(items!==scene || componentGraphSignature(scene)!==signature)throw smartCancelled();
+        args=[...args,io];
+      }
+      const r=await requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args},it,execution);
+      if(connected && (items!==scene || componentGraphSignature(scene)!==signature))throw smartCancelled();
+      return r.ok?r.result:null;
+    }).catch(()=>null);
   }
   // Which hooks a script defines -- replaces every `typeof def.xxx === 'function'` guard. Resolves to
   // null if the script doesn't even compile to a valid object.
@@ -1700,6 +1772,139 @@ self.onmessage = function(e){
     if(!isNum(v) || v<min || v>max) throw new Error(label+' must be a finite number in range');
     return v;
   }
+  function componentScalar(value,type){
+    if(!['number','string','boolean'].includes(type) || typeof value!==type ||
+       (type==='number' && !Number.isFinite(value)) || (type==='string' && value.length>2000))
+      throw new Error('Expected a finite number, boolean, or string of at most 2000 characters matching '+type);
+    return value;
+  }
+  function componentPortName(name){
+    return typeof name==='string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) && !['constructor','prototype','__proto__'].includes(name);
+  }
+  function normalizeComponentPorts(raw,label='input'){
+    if(raw===undefined)return {};
+    if(!raw || typeof raw!=='object' || Array.isArray(raw) || Object.keys(raw).length>32)throw new Error('Expected at most 32 '+label+' ports');
+    const ports={};
+    for(const [name,descriptor] of Object.entries(raw)){
+      if(!componentPortName(name) || !descriptor || typeof descriptor!=='object' || Array.isArray(descriptor) ||
+         !['number','string','boolean'].includes(descriptor.type))throw new Error('Invalid '+label+' port '+name);
+      const port={type:descriptor.type};
+      if(label==='input' && Object.hasOwn(descriptor,'default'))port.default=componentScalar(descriptor.default,port.type);
+      ports[name]=port;
+    }
+    if(JSON.stringify(ports).length>32000)throw new Error('Component port metadata exceeds 32000 characters');
+    return ports;
+  }
+  function normalizeComponentOutputs(value,ports=null){
+    if(!value || typeof value!=='object' || Array.isArray(value) || Object.keys(value).length>32)throw new Error('Expected at most 32 scalar outputs');
+    const out={};
+    for(const [name,v] of Object.entries(value)){
+      if(!componentPortName(name) || (ports && !Object.hasOwn(ports,name)))throw new Error('Unknown output '+name);
+      out[name]=componentScalar(v,ports?ports[name].type:typeof v);
+    }
+    if(ports)for(const name of Object.keys(ports))if(!Object.hasOwn(out,name))throw new Error('Missing output '+name);
+    if(JSON.stringify(out).length>32000)throw new Error('Component outputs exceed 32000 characters');
+    return out;
+  }
+  // Geometry, styling, and refresh deadlines do not invalidate computed values.
+  function componentGraphSignature(list){
+    const sources=componentGraphSignature.sources || (componentGraphSignature.sources=new WeakMap());
+    return JSON.stringify(list.filter(it=>it.type==='smart' && it.componentApi!==undefined).map(it=>{
+      let source=sources.get(it);
+      if(!source || source.script!==it.script){
+        source={script:it.script,revision:componentGraphSignature.revision=(componentGraphSignature.revision||0)+1};sources.set(it,source);
+      }
+      return [it.uid,it.componentApi,source.revision,it.state,it.bindings,it.inputValues,it.componentInvalid];
+    }));
+  }
+  // The host supplies validated sandbox calls. The graph owns no Workers, timers, DOM, or effects.
+  // Results are keyed by object identity so equal UIDs in different documents cannot share values.
+  async function evaluateComponentGraph(list,call,valid=()=>true){
+    const check=()=>{if(!valid())throw smartCancelled();};
+    const components=list.filter(it=>it.type==='smart' && it.componentApi!==undefined);
+    const records=new Map(), snapshots=new Map(), byUid=new Map(), duplicates=new Set(), status=new Map();
+    for(const it of components){
+      records.set(it,{caps:null,io:{inputs:{},outputs:{}}});
+      if(byUid.has(it.uid))duplicates.add(it.uid);else byUid.set(it.uid,it);
+      snapshots.set(it,{state:JSON.parse(JSON.stringify(it.state||{})),bindings:it.bindings||{},inputValues:it.inputValues||{}});
+    }
+    if(components.length>128){for(const record of records.values())record.error='A document supports at most 128 connected components';return records;}
+    for(const it of components){
+      const record=records.get(it);check();
+      try{
+        if(it.componentInvalid)throw new Error(it.componentInvalid);
+        if(it.componentApi!==2)throw new Error('Unsupported component API version '+it.componentApi);
+        if(typeof it.uid!=='string' || !it.uid || duplicates.has(it.uid))throw new Error('Missing or duplicate component ID');
+        record.caps=await call(it,'caps',[]);check();
+        if(record.caps?.apiVersion!==2)throw new Error('Component API marker does not match a valid v2 script');
+        const snapshot=snapshots.get(it);
+        for(const [kind,raw] of [['bindings',snapshot.bindings],['inputValues',snapshot.inputValues]]){
+          if(!raw || typeof raw!=='object' || Array.isArray(raw) || Object.keys(raw).length>32)throw new Error('Invalid component '+kind);
+          if(JSON.stringify(raw).length>16000)throw new Error('Component '+kind+' exceeds 16000 characters');
+          for(const name of Object.keys(raw))if(!Object.hasOwn(record.caps.inputs,name))throw new Error('Unknown input '+name);
+        }
+        // Detach wiring from mutable UI edits before the first compute await.
+        snapshot.bindings=JSON.parse(JSON.stringify(snapshot.bindings));
+        snapshot.inputValues=JSON.parse(JSON.stringify(snapshot.inputValues));
+      }catch(err){if(err.cancelled)throw err;record.error=err.message;}
+    }
+    async function visit(it){
+      check();const record=records.get(it);
+      if(record.error || status.get(it)===2)return record;
+      if(status.get(it)===1)throw new Error('Component bindings contain a cycle');
+      status.set(it,1);
+      try{
+        const snapshot=snapshots.get(it), inputs={};
+        for(const [name,port] of Object.entries(record.caps.inputs)){
+          if(Object.hasOwn(snapshot.bindings,name)){
+            const binding=snapshot.bindings[name];
+            if(!binding || typeof binding!=='object' || Array.isArray(binding) ||
+               Object.keys(binding).some(k=>!['uid','port','unresolved'].includes(k)) ||
+               typeof binding.uid!=='string' || !binding.uid || binding.uid.length>64 || !componentPortName(binding.port) ||
+               (binding.unresolved!==undefined && typeof binding.unresolved!=='boolean'))throw new Error('Invalid binding for '+name);
+            const source=byUid.get(binding.uid);
+            if(binding.unresolved || !source || duplicates.has(binding.uid))throw new Error('Missing source for '+name);
+            const producer=await visit(source);check();
+            if(producer.error)throw new Error('Input '+name+' unavailable: '+producer.error);
+            const output=producer.caps.outputs[binding.port];
+            if(!output)throw new Error('Missing output '+binding.port+' for '+name);
+            if(output.type!==port.type)throw new Error('Incompatible types for '+name);
+            inputs[name]=componentScalar(producer.io.outputs[binding.port],port.type);
+          }else if(Object.hasOwn(snapshot.inputValues,name))inputs[name]=componentScalar(snapshot.inputValues[name],port.type);
+          else if(Object.hasOwn(port,'default'))inputs[name]=port.default;
+          else throw new Error('Missing value or binding for '+name);
+        }
+        if(Object.keys(record.caps.outputs).length && !record.caps.compute)throw new Error('Declared outputs require compute()');
+        const outputs=record.caps.compute?await call(it,'compute',[inputs,snapshot.state]):{};check();
+        record.io={inputs,outputs:normalizeComponentOutputs(outputs,record.caps.outputs)};
+      }catch(err){if(err.cancelled)throw err;record.error=err.message;record.io={inputs:{},outputs:{}};}
+      status.set(it,2);return record;
+    }
+    for(const it of components)await visit(it);
+    check();return records;
+  }
+  let editorComponentEvaluation=null;
+  function ensureEditorComponentGraph(){
+    const scene=items,tab=activeTabId,signature=componentGraphSignature(scene);
+    if(editorComponentEvaluation?.scene===scene && editorComponentEvaluation.tab===tab && editorComponentEvaluation.signature===signature)
+      return editorComponentEvaluation.promise;
+    const entry={scene,tab,signature,records:null,promise:null};editorComponentEvaluation=entry;
+    const valid=()=>editorComponentEvaluation===entry && items===scene && activeTabId===tab && componentGraphSignature(scene)===signature;
+    entry.promise=Promise.resolve().then(()=>evaluateComponentGraph(scene,(it,fn,args)=>fn==='caps'?requestSmartCaps(it):requestSmartCall(it,fn,args),valid))
+      .then(records=>{
+        if(!valid())throw smartCancelled();
+        entry.records=records;
+        for(const [it,record] of records)if(record.error)reportSmartError(it.script,'component',record.error);
+        render();return records;
+      });
+    return entry.promise;
+  }
+  async function resolveSmartComponentIo(it){
+    const records=await ensureEditorComponentGraph(),record=records.get(it);
+    if(!record || record.error)throw new Error(record?.error || 'Component is not in the active document');
+    return record.io;
+  }
+  function componentGraphError(it){return editorComponentEvaluation?.records?.get(it)?.error || '';}
   function normalizeSmartRefresh(value,src){
     if(value==null || value===0) return 0;
     if(!isNum(value) || value<0){
@@ -1791,8 +1996,17 @@ self.onmessage = function(e){
     if(message.method==='caps'){
       if(!data.caps || data.caps.children!==true) throw new Error('Script needs children()');
       const caps={}; for(const hook of SMART_HOOKS) caps[hook]=data.caps[hook]===true;
+      caps.apiVersion=data.caps.apiVersion===undefined?1:data.caps.apiVersion;
+      if(![1,2].includes(caps.apiVersion))throw new Error('Unsupported component API version');
+      if(message.componentApi!==undefined && message.componentApi!==caps.apiVersion)throw new Error('Component API marker does not match script');
+      if(caps.apiVersion===2){
+        caps.inputs=normalizeComponentPorts(data.caps.inputs,'input');
+        caps.outputs=normalizeComponentPorts(data.caps.outputs,'output');
+      }
       return {ok:true,caps};
     }
+    if(message.componentApi!==undefined && data.apiVersion!==message.componentApi)throw new Error('Component API marker does not match script');
+    if(data.apiVersion===2 && message.componentApi!==2)throw new Error('Component API 2 requires a saved componentApi marker');
     let value=data.result;
     if(message.fn==='children'){
       if(!Array.isArray(value)) throw new Error('Expected an array of child shapes');
@@ -1826,7 +2040,15 @@ self.onmessage = function(e){
       });
     } else if(message.fn==='hitEdit'){
       if(value!==null && (typeof value!=='string' || !value || value.length>64)) throw new Error('Expected a handle ID or null');
+    } else if(message.fn==='compute'){
+      if(message.componentApi!==2)throw new Error('compute() requires component API 2');
+      value=normalizeComponentOutputs(value);
     } else if(message.fn==='initState' || message.fn==='dragEdit'){
+      if(message.fn==='dragEdit' && message.componentApi===2 && value!==null){
+        if(!value || typeof value!=='object' || Array.isArray(value) || !Object.hasOwn(value,'state') ||
+           Object.keys(value).some(key=>key!=='state'))throw new Error('Component API 2 dragEdit must return {state}; events and effects are not supported');
+        value=value.state;
+      }
       value=value===null?null:normalizeSmartState(value);
     } else if(message.fn==='initStyle'){
       if(value!==null){
@@ -1955,21 +2177,29 @@ self.onmessage = function(e){
     }
     // State can be edited in place. It is bounded by the hook contract, unlike the potentially
     // 50 KB source: serialize state, but retain source/style behind an instance-local revision.
-    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+(extra?'|'+extra:'');
+    const io=it.componentApi!==undefined?JSON.stringify(editorComponentEvaluation?.records?.get(it)?.io||null):'';
+    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+io+(extra?'|'+extra:'');
   }
   // Cache only validated replies. The convenience wrapper's null-on-failure contract cannot
   // distinguish an empty drawing from a failed request; failures need their own retry path.
   function smartChildrenFor(it, editing){
     if(smartExportCache && smartExportCache.has(it)) return smartExportCache.get(it);
     const owner=smartCacheOwner(it);
+    let component=null;
+    if(it.componentApi!==undefined){
+      void ensureEditorComponentGraph().catch(()=>{});
+      component=editorComponentEvaluation?.records?.get(it);
+      if(!component || component.error)return smartChildrenCache.get(it.uid)?.kids || [];
+    }
     const sig = smartSig(it, editing?'E':'');
     const cached = smartChildrenCache.get(it.uid);
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartInFlight.has(it.uid) && (!cached || cached.sig !== sig || cached.expired) && (backoff==null || Date.now()>=backoff)){
       smartInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children',refresh:true, args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing]},it)
+      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children',refresh:true, args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing,...(component?[component.io]:[])]},it)
         .then(r=>{
           if(!smartCacheOwnerCurrent(it,owner))return;
+          if(smartSig(it,editing?'E':'')!==sig){smartInFlight.delete(it.uid);render();return;}
           smartChildrenCache.set(it.uid,{sig,kids:r.result,refreshMs:r.refreshMs,nextRefresh:r.refreshMs?performance.now()+r.refreshMs:Infinity});
           smartInFlight.delete(it.uid);clearSmartRetry(it.uid);render();scheduleSmartRefresh();
         })
@@ -1979,13 +2209,19 @@ self.onmessage = function(e){
   }
   function smartHandlesFor(it){
     const owner=smartCacheOwner(it);
+    let component=null;
+    if(it.componentApi!==undefined){
+      void ensureEditorComponentGraph().catch(()=>{});
+      component=editorComponentEvaluation?.records?.get(it);
+      if(!component || component.error)return [];
+    }
     const sig = smartSig(it);
     const cached = smartHandlesCache.get(it.uid);
     const backoff = smartBackoffUntil.get(it.uid);
     if(!smartHandlesInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
       smartHandlesInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it)]},it)
-        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); clearSmartRetry(it.uid); render(); })
+      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it),...(component?[component.io]:[])]},it)
+        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;if(smartSig(it)!==sig){smartHandlesInFlight.delete(it.uid);render();return;}smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); clearSmartRetry(it.uid); render(); })
         .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesInFlight.delete(it.uid); retrySmartCache(it,owner); });
     }
     return cached ? cached.hs : [];
@@ -2000,23 +2236,40 @@ self.onmessage = function(e){
   // then finds every answer already waiting via smartChildrenFor's identity check above and never asks
   // the sandbox itself. Child validation forbids nested smart shapes and asset-referencing images.
   let smartExportCache = null;
-  async function warmSmartExportCache(itemList,strict=false){
-    const map = new Map();
-    for(const it of itemList){
-      if(it.type !== 'smart') continue;
-      const temporary=!items.includes(it);
-      const execution=temporary?createSmartExecution(it):smartItemExecution(it);
-      try{
-        const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]},it,execution);
-        map.set(it,r.result.filter(child=>!child.editorOnly));
-      }catch(err){
-        if(strict) throw err;
-        const cached=smartChildrenCache.get(it.uid);
-        const owner=smartCacheOwners.get(it.uid);
-        map.set(it,owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids.filter(child=>!child.editorOnly):[]);
-      }finally{if(temporary)disposeSmartExecution(execution);}
-    }
-    return map;
+  async function warmSmartExportCache(itemList,strict=false,componentContext=itemList){
+    // A clipboard image paints only the selection, but resolves its original inputs from a
+    // frozen whole-document context. Editable clipboard data keeps separate, remapped IDs.
+    const paintedByUid=new Map(itemList.map(it=>[it.uid,it]));
+    const scene=componentContext===itemList?itemList:componentContext.map(it=>paintedByUid.get(it.uid)||it);
+    const map=new Map(),executions=new Map(),temporary=new Set(),signature=componentGraphSignature(scene);
+    const ownerFor=it=>{
+      if(!executions.has(it)){
+        const isTemporary=!items.includes(it),owner=isTemporary?createSmartExecution(it):smartItemExecution(it);
+        executions.set(it,owner);if(isTemporary)temporary.add(owner);
+      }
+      return executions.get(it);
+    };
+    try{
+      const graph=await evaluateComponentGraph(scene,async(it,fn,args)=>{
+        const reply=await requestSmartSandbox({method:fn==='caps'?'caps':'call',src:it.script,fn,args},it,ownerFor(it));
+        return fn==='caps'?reply.caps:reply.result;
+      },()=>componentGraphSignature(scene)===signature);
+      for(const it of itemList){
+        if(it.type!=='smart')continue;
+        try{
+          const component=graph.get(it);
+          if(component?.error)throw new Error(component.error);
+          const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false,...(component?[component.io]:[])]},it,ownerFor(it));
+          map.set(it,r.result.filter(child=>!child.editorOnly));
+        }catch(err){
+          if(strict)throw err;
+          reportSmartError(it.script,'export',err.message);
+          const cached=smartChildrenCache.get(it.uid),owner=smartCacheOwners.get(it.uid);
+          map.set(it,it.componentApi===undefined && owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids.filter(child=>!child.editorOnly):[]);
+        }
+      }
+      return map;
+    }finally{for(const owner of temporary)disposeSmartExecution(owner);}
   }
   // The plain, resolved style a script's children() receives -- exactly the fields the toolbar's
   // Fill/Stroke/Stroke-width/Text-color dropdowns already write onto the container itself. A child
@@ -5180,6 +5433,8 @@ self.onmessage = function(e){
     try{
       check();caps=caps || await requestSmartCaps(it,owner);check();
       if(!caps) throw new Error('Smart shape could not be initialized');
+      if(caps.apiVersion===2)it.componentApi=2;
+      else delete it.componentApi;
       if(caps.initState){const state=await requestSmartCall(it,'initState',[],owner);check();if(state!==null)it.state=state;}
       if(caps.initStyle){const style=await requestSmartCall(it,'initStyle',[],owner);check();Object.assign(it,style || {});}
       it.font=fontStr(it.fontFamily,it.fontSize);
@@ -5214,11 +5469,12 @@ self.onmessage = function(e){
     const cx = box.x + box.w/2, cy = box.y + box.h/2;
     const dx = x - cx, dy = y - cy;
     beginHistory();
+    remapComponentCopies(list,list.map(it=>it.uid));
     const gmap = {};
     const newSel = [];
     for(const copy of list){
-      copy.uid = newUid();
       translateItem(copy, dx, dy);
+      if(copy.type==='smart' && copy.componentApi!==undefined && !copy.componentName)copy.componentName=name;
       if(copy.group != null){
         if(!gmap[copy.group]) gmap[copy.group] = 'g-' + Date.now() + '-' + (groupSeq++);
         copy.group = gmap[copy.group];
@@ -5510,12 +5766,11 @@ self.onmessage = function(e){
   // With `keepBrowsed`, members of the group currently being browsed stay in it (a duplicate made
   // inside the group is one more member of that group); the clipboard never keeps them, since a
   // paste may land anywhere, any time later.
-  function clonesOf(idxs, keepBrowsed){
+  function clonesOf(idxs, keepBrowsed, preserveComponentIds=false){
     const counts = {};
     for(const i of idxs){ const g = items[i].group; if(g!=null) counts[g] = (counts[g]||0)+1; }
-    return idxs.map(i=>{
+    const copies=idxs.map(i=>{
       const copy = clone(items[i]);
-      copy.uid = newUid();
       const g = copy.group;
       if(g!=null && !(keepBrowsed && g===editingGroupId) && counts[g]!==itemsInGroup(g).length){
         const piv = groupPivot(g);
@@ -5524,6 +5779,22 @@ self.onmessage = function(e){
       }
       return copy;
     });
+    if(!preserveComponentIds)remapComponentCopies(copies,idxs.map(i=>items[i].uid));
+    return copies;
+  }
+  // An external binding on a copied subset must never attach by accident in another sketch.
+  // Keep it explicitly unresolved until the author reconnects it through Inputs.
+  function remapComponentCopies(copies,oldIds){
+    const ids=new Map();
+    copies.forEach((it,i)=>{it.uid=newUid();if(typeof oldIds[i]==='string')ids.set(oldIds[i],it.uid);});
+    for(const it of copies){
+      if(!it.bindings || typeof it.bindings!=='object')continue;
+      for(const binding of Object.values(it.bindings)){
+        if(!binding || typeof binding!=='object')continue;
+        if(!binding.unresolved && ids.has(binding.uid))binding.uid=ids.get(binding.uid);
+        else binding.unresolved=true;
+      }
+    }
   }
   // Give every group among the copies a fresh id (a copy and its source must never share one) --
   // except `keepGroup`, the group being browsed, whose copies are meant to join it (see clonesOf).
@@ -5547,7 +5818,8 @@ self.onmessage = function(e){
   }
   // Add offset copies of `list` to the scene (no history/tool side effects); returns their indices.
   function insertClones(list, off, keepGroup){
-    const copies = list.map(it=>{ const copy = clone(it); copy.uid = newUid(); translateItem(copy, off, off); return copy; });
+    const copies = list.map(it=>{ const copy = clone(it); translateItem(copy, off, off); return copy; });
+    remapComponentCopies(copies,list.map(it=>it.uid));
     remapGroups(copies, keepGroup);
     const newSel = [];
     for(const copy of copies){ items.push(copy); newSel.push(items.length-1); }
@@ -5658,7 +5930,8 @@ self.onmessage = function(e){
   }
   function copySelection(){
     if(ui.tool!=='select' || !selection.length) return;
-    clipboard = clonesOf(selection.slice().sort((a,b)=>a-b), false);
+    const selected=selection.slice().sort((a,b)=>a-b);
+    clipboard = clonesOf(selected, false);
     clipboardAssets = assetsUsedBy(clipboard, assets);
     // Best-effort: also put the selection on the real OS clipboard, so pasting into another program
     // gets a usable representation instead of nothing. text/plain carries our own JSON (what our own
@@ -5668,10 +5941,13 @@ self.onmessage = function(e){
     if(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined'){
       const jsonPayload = { app:'SimpleCanvas', kind:'objects', version:FORMAT_VERSION,
                              items:clipboard, assets:clipboardAssets };
+      const picture=clonesOf(selected,false,true);
+      const componentContext=picture.some(it=>it.componentApi!==undefined)
+        ?clone(items.filter(it=>it.type==='smart' && it.componentApi!==undefined)):picture;
       navigator.clipboard.write([
         new ClipboardItem({
           'text/plain': new Blob([JSON.stringify(jsonPayload)], {type:'text/plain'}),
-          'image/png': itemsToPngBlob(clipboard, {background:false}),   // ClipboardItem accepts a Promise<Blob>
+          'image/png': itemsToPngBlob(picture, {background:false,componentContext}),   // ClipboardItem accepts a Promise<Blob>
         })
       ]).catch(()=>{});
     }
@@ -5863,12 +6139,13 @@ self.onmessage = function(e){
       return null;
     }
     const list = sel.map(i=>clone(items[i]));
+    remapComponentCopies(list,sel.map(i=>items[i].uid));
     const groups = new Map();
     for(const it of list){ if(it.group!=null){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); } }
     for(const members of groups.values()) bakeGroupRotationLocal(members);
     const gmap = new Map();
     for(const it of list){
-      delete it.uid;
+      if(!list.some(q=>q.componentApi!==undefined || q.bindings))delete it.uid;
       if(it.group!=null){
         if(!gmap.has(it.group)) gmap.set(it.group, 's' + (gmap.size+1));
         it.group = gmap.get(it.group);
@@ -5994,6 +6271,8 @@ self.onmessage = function(e){
   }
   function updateOrderButtons(){
     const active = ui.tool==='select' && selection.length>0;
+    document.getElementById('componentBindingsBtn').hidden=!(active && features.smartShapeAuthoring &&
+      selection.length===1 && items[selection[0]]?.type==='smart' && items[selection[0]].componentApi!==undefined);
     const disp = active ? '' : 'none';
     if(arrangeGroup.style.display !== disp){ arrangeGroup.style.display = disp; arrangeSep.style.display = disp; }
     if(ui.tool==='select'){
@@ -6243,7 +6522,7 @@ self.onmessage = function(e){
     // offscreen canvas below, nothing may yield back to the event loop until it's restored, or a live
     // render() triggered by something else entirely (e.g. an unrelated mouse move) could interleave
     // and paint to the wrong canvas. See warmSmartExportCache's own comment.
-    const cache=await warmSmartExportCache(itemList);
+    const cache=await warmSmartExportCache(itemList,false,opts.componentContext || itemList);
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
     try{
@@ -6491,8 +6770,38 @@ self.onmessage = function(e){
       if(errors.size>=128)errors.clear();errors.add(key);console.warn('Smart shape: '+key);
     }
     let entries=[],epoch=0,timer=null,currentPress=null,selected=null,gestureQueue=Promise.resolve();
+    let componentRevision=0,componentGraphPromise=null;
     const presses=new Set();
     const current=e=>e.epoch===epoch && !document.hidden;
+    function invalidateComponentGraph(){componentRevision++;componentGraphPromise=null;}
+    async function resolveSmartComponentIo(it){
+      const revision=componentRevision,generation=epoch,list=items;
+      const valid=()=>revision===componentRevision && generation===epoch && list===items && !document.hidden;
+      if(!componentGraphPromise){
+        componentGraphPromise=evaluateComponentGraph(list,(item,hook,args)=>hook==='caps'
+          ?requestSmartCaps(item):requestSmartCall(item,hook,args),valid);
+      }
+      const graph=await componentGraphPromise;
+      if(!valid())throw smartCancelled();
+      const node=graph.get(it);
+      if(!node || node.error)throw new Error(node?.error || 'Component inputs are unavailable');
+      return node.io;
+    }
+    function showComponentError(e,message){
+      e.error=message;e.host.dataset.componentError=message;delete e.host.dataset.smartReady;
+      if(!e.errorNote){
+        e.errorNote=document.createElementNS('http://www.w3.org/2000/svg','g');
+        e.errorNote.setAttribute('data-component-message','true');e.errorNote.setAttribute('pointer-events','none');
+        e.host.append(e.errorNote);
+      }
+      const label='Component unavailable: '+message;
+      e.errorNote.innerHTML=`<title>${escXml(label)}</title><rect x="0" y="0" width="${Math.max(180,e.item.w)}" height="30" rx="4" fill="#fff1f2" stroke="#be123c"/><text x="7" y="19" fill="#9f1239" font-family="sans-serif" font-size="12">${escXml(label.length>90?label.slice(0,87)+'…':label)}</text>`;
+      e.errorNote.setAttribute('transform',e.local.getAttribute('transform') || '');
+    }
+    function refreshComponents(){
+      invalidateComponentGraph();
+      for(const e of entries)if(e.item.componentApi!==undefined)void refresh(e);
+    }
     function select(entry){
       if(selected===entry)return;
       const previous=selected;selected=entry;
@@ -6506,7 +6815,12 @@ self.onmessage = function(e){
       if(document.hidden)return;
       const due=Math.min(...entries.map(e=>e.next));
       if(Number.isFinite(due))timer=setTimeout(()=>{
-        timer=null;for(const e of entries)if(e.next<=performance.now())void refresh(e);
+        timer=null;
+        const now=performance.now();
+        // A retry recomputes the same inputs. It must not cancel a healthy interaction that
+        // is already waiting for its hook reply; only document changes advance the revision.
+        if(entries.some(e=>e.error && e.next<=now))componentGraphPromise=null;
+        for(const e of entries)if(e.next<=now)void refresh(e);
         // Browser timers can fire before a fractional deadline; keep the nearest deadline armed.
         schedule();
       },Math.max(1,due-performance.now()));
@@ -6515,6 +6829,7 @@ self.onmessage = function(e){
       const it=e.item;
       e.local.setAttribute('transform',`translate(${it.x+e.offset.x} ${it.y+e.offset.y})`
         +(e.angle?` rotate(${e.angle*180/Math.PI} ${it.w/2} ${it.h/2})`:''));
+      if(e.errorNote)e.errorNote.setAttribute('transform',e.local.getAttribute('transform'));
     }
     function paint(e){
       const it=e.item,ops=[];
@@ -6539,21 +6854,36 @@ self.onmessage = function(e){
       if(!current(e))return;
       if(e.busy){e.dirty=true;return;}
       e.busy=true;e.dirty=false;e.next=Infinity;
-      const it=e.item,state=it.state,w=it.w,h=it.h;
+      const it=e.item,state=it.state,w=it.w,h=it.h,generation=epoch,revision=componentRevision;
+      const fresh=()=>current(e) && generation===epoch && (it.componentApi===undefined || revision===componentRevision);
       try{
+        if(it.componentInvalid)throw new Error(it.componentInvalid);
+        if(it.componentApi!==undefined && it.componentApi!==2)throw new Error('Unsupported component API version '+it.componentApi);
         const caps=e.caps || await requestSmartCaps(it);
         if(!caps)throw new Error('Smart shape unavailable');
         e.caps=caps;
+        const io=it.componentApi===2?await resolveSmartComponentIo(it):null;
+        if(!fresh()){if(current(e))e.dirty=true;return;}
         const behavior=(caps.exportBehavior ? await requestSmartCall(it,'exportBehavior',[state]) : null) || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};
-        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args:[state,smartResolvedStyle(it),w,h,true]},it);
+        const args=[state,smartResolvedStyle(it),w,h,true];if(io)args.push(io);
+        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args},it);
         const handles=caps.handles ? await requestSmartCall(it,'handles',[state,w,h,smartResolvedStyle(it)]) || [] : [];
-        if(!current(e))return;
+        if(!fresh()){if(current(e))e.dirty=true;return;}
         if(it.state!==state || it.w!==w || it.h!==h){e.dirty=true;return;}
+        e.error=null;delete e.host.dataset.componentError;e.errorNote?.remove();e.errorNote=null;
         e.behavior=behavior;e.kids=drawing.result.filter(c=>!c.editorOnly);
         e.handles=handles.filter(h=>!h.editorOnly);paint(e);
         e.host.dataset.smartReady='true';
         e.next=drawing.refreshMs?performance.now()+drawing.refreshMs:Infinity;
-      }catch(err){if(current(e))e.next=performance.now()+SMART_BACKOFF_MS;}
+      }catch(err){
+        if(current(e) && generation===epoch){
+          if(err.cancelled || !fresh())e.dirty=true;
+          else{
+            if(it.componentApi!==undefined)showComponentError(e,err.message || 'Component unavailable');
+            e.next=performance.now()+SMART_BACKOFF_MS;
+          }
+        }
+      }
       finally{
         e.busy=false;
         if(current(e) && e.dirty)void refresh(e);
@@ -6566,15 +6896,20 @@ self.onmessage = function(e){
     }
     function valid(p){return !p.cancelled && current(p.entry);}
     function cancelPresses(){
+      let changedComponents=false;
       for(const p of presses){
         p.cancelled=true;p.release();
         if(p.original && !p.finished){
           p.entry.item.state=p.original.state;p.entry.item.w=p.original.w;p.entry.item.h=p.original.h;
           p.entry.offset=p.original.offset;p.entry.angle=p.original.angle;
-          if(current(p.entry)){paint(p.entry);void refresh(p.entry);}
+          if(current(p.entry)){
+            paint(p.entry);
+            if(p.entry.item.componentApi!==undefined)changedComponents=true;else void refresh(p.entry);
+          }
         }
       }
       currentPress=null;
+      if(changedComponents)refreshComponents();
     }
     async function processPress(p){
       const e=p.entry,it=e.item;
@@ -6626,8 +6961,12 @@ self.onmessage = function(e){
           position(e);
           void refresh(e);
         }else{
+          const state=it.state,revision=componentRevision;
           const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,at.x,at.y,it.w,it.h,smartResolvedStyle(it)]);
-          if(valid(p) && next){it.state=next;void refresh(e);}
+          if(valid(p) && next && it.state===state && (it.componentApi===undefined || revision===componentRevision)){
+            it.state=next;
+            if(it.componentApi!==undefined)refreshComponents();else void refresh(e);
+          }
         }
       };
       // Coalesce moves while a hook runs, retaining the final position and processing quick
@@ -6648,6 +6987,7 @@ self.onmessage = function(e){
       cancelPresses();select(null);
       for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));
       epoch++;clearTimeout(timer);timer=null;activeTabId=id;
+      invalidateComponentGraph();
       const doc=documents.find(d=>d.id===id);entries=doc?.entries || [];items=entries.map(e=>e.item);
       for(const e of entries){e.epoch=epoch;e.next=Infinity;e.caps=null;void refresh(e);}
     }
@@ -6658,7 +6998,7 @@ self.onmessage = function(e){
         const e={item,host,local,offset:{x:0,y:0},angle:0,behavior:{move:false,rotate:false,resizeWidth:false,resizeHeight:false},kids:[],handles:[],epoch:-1,next:Infinity};
         host.style.touchAction='none';host.style.userSelect='none';
         host.addEventListener('pointerdown',event=>{
-          if(event.button!==0 || currentPress || document.hidden || event.target.closest('a'))return;
+          if(event.button!==0 || currentPress || document.hidden || e.error || event.target.closest('a'))return;
           event.preventDefault();
           const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
             resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
@@ -6687,6 +7027,7 @@ self.onmessage = function(e){
     });
     window.addEventListener('keydown',event=>{if(event.key==='Escape'){cancelPresses();select(null);}});
     document.addEventListener('visibilitychange',()=>{
+      invalidateComponentGraph();
       if(document.hidden){cancelPresses();for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));clearTimeout(timer);timer=null;}
       else for(const e of entries){e.epoch=epoch;void refresh(e);}
     });
@@ -6705,6 +7046,7 @@ self.onmessage = function(e){
     source+=`\nconst SMART_HOOKS=new Set(${JSON.stringify([...SMART_HOOKS])}),HEAD_STYLES=new Set(${JSON.stringify([...HEAD_STYLES])}),MD_INLINE_RE=${MD_INLINE_RE};\n`;
     source+=[isNum,isColor,norm,scriptOf,smartCancelled,createSmartExecution,smartExecutionCurrent,smartItemExecution,stopSmartOwnerRequests,
       disposeSmartExecution,createSmartSandbox,ensureSmartSandbox,regenerateSmartSandbox,dispatchSmartSandboxNext,requestSmartSandbox,requestSmartCall,requestSmartCaps,
+      componentScalar,componentPortName,normalizeComponentPorts,normalizeComponentOutputs,componentGraphSignature,evaluateComponentGraph,
       smartNumber,normalizeSmartRefresh,normalizeSmartState,normalizeSmartChild,validateSmartReply,smartResolvedStyle,snapRotation,
       strokeOn,strokeWidthOf,headsOf,headVariantOf,arrowHeadGeom,arrowHeadSegments,arrowHeadOp,fillOf,strokeOf,dashArrayFor,dashOf,boxStyle,
       nibWidths,chiselOps,smoothSegments,polyCurveSegments,polyBridgeSegments,curveEndFrom,primitiveShapeOps,
@@ -7934,7 +8276,68 @@ self.onmessage = function(e){
   },
 })
 `;
+  const NUMBER_CONTROL_EXAMPLE_SCRIPT = `// A v2 component that publishes a number for other shapes to consume.
+// Double-click to use its slider and +/- buttons; exported HTML exposes them directly.
+({
+  apiVersion: 2,
+  inputs: {},
+  outputs: { value: { type:'number' } },
+  initState(){ return { value:50 }; },
+  initStyle(){ return { w:240, h:110, fontSize:20, strokeOn:false }; },
+  compute(inputs, state){ return { value:Math.max(0,Math.min(100,Number(state.value)||0)) }; },
+  children(state, style, w, h, editing, io){
+    const value=io.outputs.value, pad=20, y=h*.52;
+    const children=[
+      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
+      {type:'text',x:0,y:0,w,h:h*.3,text:'Value: '+value,align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},
+      {type:'line',x1:pad,y1:y,x2:w-pad,y2:y,color:style.color,size:2},
+      {type:'ellipse',x:pad+(w-pad*2)*value/100-6,y:y-6,w:12,h:12,fill:true,fillColor:style.color,strokeOn:false}
+    ];
+    if(editing){
+      for(const [x,label] of [[0,'− 5'],[w/2,'+ 5']]){
+        children.push({type:'rect',x:x+4,y:h*.72,w:w/2-8,h:h*.25,strokeOn:true,color:style.color,size:1,fill:false});
+        children.push({type:'text',x,y:h*.72,w:w/2,h:h*.25,text:label,align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
+      }
+    }
+    return children;
+  },
+  handles(state,w,h,style,io){ return [
+    {id:'value',x:20+(w-40)*io.outputs.value/100,y:h*.52},
+    {id:'minus',x:w/4,y:h*.84,kind:'click'},
+    {id:'plus',x:w*.75,y:h*.84,kind:'click'}
+  ]; },
+  hitEdit(state,lx,ly,w,h){
+    if(ly>=h*.72 && ly<=h && lx>=0 && lx<=w)return lx<w/2?'minus':'plus';
+    if(Math.abs(ly-h*.52)<=18 && lx>=0 && lx<=w)return 'value';
+    return null;
+  },
+  dragEdit(state,handle,lx,ly,w,h,style,io){
+    const value=handle==='value'?Math.round((lx-20)/Math.max(1,w-40)*100)
+      :io.outputs.value+(handle==='plus'?5:handle==='minus'?-5:0);
+    return {state:{...state,value:Math.max(0,Math.min(100,value))}};
+  }
+})`;
+  const GAUGE_EXAMPLE_SCRIPT = `// Select this shape and choose Inputs to connect value to a Number control's value output.
+({
+  apiVersion: 2,
+  inputs: { value: { type:'number', default:0 } },
+  outputs: { percentage: { type:'number' } },
+  initState(){ return {}; },
+  initStyle(){ return { w:260, h:120, fontSize:24, strokeOn:false, fillColor:'#2563eb' }; },
+  compute(inputs,state){ return { percentage:Math.max(0,Math.min(100,inputs.value)) }; },
+  children(state,style,w,h,editing,io){
+    const value=io.outputs.percentage;
+    return [
+      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
+      {type:'text',x:0,y:0,w,h:h*.5,text:value+'%',align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},
+      {type:'rect',x:8,y:h*.6,w:Math.max(1,w-16),h:h*.25,fill:false,strokeOn:true,color:style.color,size:1},
+      {type:'rect',x:8,y:h*.6,w:Math.max(0,w-16)*value/100,h:h*.25,fill:true,fillColor:style.fillColor,strokeOn:false}
+    ];
+  }
+})`;
   const SMART_TEMPLATES = {
+    numberControl: { name:'Number control', script:NUMBER_CONTROL_EXAMPLE_SCRIPT },
+    gauge: { name:'Gauge', script:GAUGE_EXAMPLE_SCRIPT },
     clock: { name:'Clock', script:CLOCK_EXAMPLE_SCRIPT },
     liveClock: { name:'Live clock', script:LIVE_CLOCK_EXAMPLE_SCRIPT },
     stopwatch: { name:'Stopwatch', script:STOPWATCH_EXAMPLE_SCRIPT },
@@ -8020,6 +8423,9 @@ self.onmessage = function(e){
         edit.entry.name=name;
         if(script!==edit.item.script){
           edit.item.script=script;
+          if(caps.apiVersion===2)edit.item.componentApi=2;else delete edit.item.componentApi;
+          delete edit.item.componentInvalid;
+          if(caps.apiVersion===2)edit.item.componentName=name;
           invalidateShapePreview(edit.entry);smartPreviewConsent.add(edit.entry);
         }
         edit.entry.savedAt=new Date().toISOString();
@@ -8050,6 +8456,8 @@ self.onmessage = function(e){
         color:'#000000',fillColor:st.fillColor,fill:false,strokeOn:true,textColor:st.textColor,size:st.size,
         fontFamily:st.fontFamily,fontSize:st.fontSize,script,state:{},
       };
+      if(caps.apiVersion===2)item.componentName=name;
+      ensureUids([item]);
       await initializeSmartItem(item,caps,current,execution);
       item.x=-item.w/2;item.y=-item.h/2;
       if(!current()) return;
@@ -8070,6 +8478,119 @@ self.onmessage = function(e){
     const file = e.target.files[0];
     e.target.value = '';
     if(file) importShapeLibraryFile(file);
+  });
+
+  // ---------- component input authoring ----------
+  const componentBindingsDialog=document.getElementById('componentBindingsDialog');
+  const componentBindingsError=document.getElementById('componentBindingsError');
+  const componentBindingsSave=document.getElementById('componentBindingsSave');
+  const componentNameInput=document.getElementById('componentNameInput');
+  const componentInputFields=document.getElementById('componentInputFields');
+  let componentDialogSession=null,componentDialogSeq=0;
+  async function inspectComponentGraph(list,valid){
+    const owners=new Map();
+    const call=async(it,fn,args)=>{
+      if(!owners.has(it))owners.set(it,createSmartExecution(it,valid));
+      const owner=owners.get(it);
+      if(fn==='caps')return requestSmartCaps(it,owner);
+      const reply=await requestSmartSandbox({method:'call',src:it.script,fn,args,componentApi:it.componentApi},it,owner);
+      return reply.result;
+    };
+    try{return await evaluateComponentGraph(list,call,valid);}
+    finally{for(const owner of owners.values())disposeSmartExecution(owner);}
+  }
+  async function openComponentBindings(){
+    const it=selection.length===1?items[selection[0]]:null;
+    if(!features.smartShapeAuthoring || it?.type!=='smart' || it.componentApi===undefined)return;
+    const session={it,scene:items,tab:activeTabId,signature:componentGraphSignature(items),seq:++componentDialogSeq,rows:[]};
+    componentDialogSession=session;
+    const current=()=>componentDialogSession===session && componentBindingsDialog.open &&
+      items===session.scene && activeTabId===session.tab && items.includes(it);
+    const valid=()=>current() && componentGraphSignature(items)===session.signature;
+    const changedMessage='The drawing changed while editing inputs. Close this dialog and reopen Inputs to use the current values.';
+    session.valid=valid;session.current=current;session.changedMessage=changedMessage;
+    componentBindingsError.textContent='';componentInputFields.replaceChildren();
+    document.getElementById('componentOutputs').textContent='Loading inputs…';
+    componentNameInput.value=it.componentName||'Smart component';
+    componentBindingsSave.disabled=true;componentBindingsDialog.showModal();componentNameInput.focus();
+    try{
+      const graph=await inspectComponentGraph(items,valid);
+      if(!valid())throw smartCancelled();
+      const record=graph.get(it),caps=record?.caps;
+      if(!caps || caps.apiVersion!==2)throw new Error(record?.error||'This component uses an unsupported API version.');
+      const outputNames=Object.keys(caps.outputs);
+      document.getElementById('componentOutputs').textContent=outputNames.length
+        ? 'Outputs: '+outputNames.map(k=>k+(record.io?' = '+String(record.io.outputs[k]):'')).join(', ')
+        : 'This component has no outputs.';
+      if(record.error)componentBindingsError.textContent=record.error;
+      for(const [name,port] of Object.entries(caps.inputs)){
+        const row=document.createElement('div');row.className='component-input';
+        const id='component-input-'+session.rows.length;
+        const label=document.createElement('label');label.htmlFor=id;label.textContent=name+' ('+port.type+')';
+        const select=document.createElement('select');select.id=id;select.className='select';
+        select.add(new Option('Use a value',''));
+        for(const source of items){
+          if(source===it)continue;
+          const sourceRecord=graph.get(source);
+          for(const [output,descriptor] of Object.entries(sourceRecord?.caps?.outputs||{})){
+            if(descriptor.type!==port.type)continue;
+            const value=JSON.stringify({uid:source.uid,port:output});
+            select.add(new Option((source.componentName||'Component '+(items.indexOf(source)+1))+' · '+output,value));
+          }
+        }
+        const saved=it.bindings?.[name];
+        if(saved){
+          const value=JSON.stringify(saved.unresolved?{uid:saved.uid,port:saved.port,unresolved:true}:{uid:saved.uid,port:saved.port});
+          if(!Array.from(select.options).some(o=>o.value===value))select.add(new Option('Unavailable source — choose a replacement',value));
+          select.value=value;
+        }
+        const input=port.type==='boolean'?document.createElement('select'):document.createElement('input');
+        input.setAttribute('aria-label',name+' value');
+        if(port.type==='boolean'){
+          input.className='select';input.add(new Option('True','true'));input.add(new Option('False','false'));
+        }else{input.type=port.type==='number'?'number':'text';if(port.type==='number')input.step='any';else input.maxLength=2000;}
+        input.value=String(it.inputValues?.[name]??port.default??(port.type==='number'?0:port.type==='boolean'?false:''));
+        const toggle=()=>{input.hidden=select.value!=='';input.disabled=select.value!=='';};
+        select.addEventListener('change',toggle);toggle();
+        row.append(label,select,input);componentInputFields.append(row);
+        session.rows.push({name,port,select,input});
+      }
+      if(!session.rows.length)componentInputFields.textContent='No inputs. Other components can use the outputs listed below.';
+      componentBindingsSave.disabled=false;
+    }catch(err){if(current())componentBindingsError.textContent=valid()?err.message:changedMessage;}
+  }
+  document.getElementById('componentBindingsBtn').addEventListener('click',openComponentBindings);
+  document.getElementById('componentBindingsCancel').addEventListener('click',()=>componentBindingsDialog.close());
+  componentBindingsDialog.addEventListener('close',()=>{componentDialogSession=null;componentDialogSeq++;});
+  componentBindingsDialog.addEventListener('keydown',e=>e.stopPropagation());
+  componentBindingsDialog.addEventListener('click',e=>e.stopPropagation());
+  document.getElementById('componentBindingsForm').addEventListener('submit',async e=>{
+    e.preventDefault();const session=componentDialogSession;
+    if(!session?.current() || componentBindingsSave.disabled)return;
+    if(!session.valid()){componentBindingsError.textContent=session.changedMessage;componentBindingsSave.disabled=true;return;}
+    componentBindingsSave.disabled=true;componentBindingsError.textContent='';
+    try{
+      const proposal=clone(session.it);proposal.componentName=componentNameInput.value.trim()||'Smart component';
+      proposal.bindings={};proposal.inputValues={};delete proposal.componentInvalid;
+      for(const {name,port,select,input} of session.rows){
+        if(select.value)proposal.bindings[name]=JSON.parse(select.value);
+        else{
+          const value=port.type==='number'?Number(input.value):port.type==='boolean'?input.value==='true':input.value;
+          if(port.type==='number' && (!input.value.trim() || !Number.isFinite(value)))throw new Error(name+' needs a finite number.');
+          proposal.inputValues[name]=value;
+        }
+      }
+      const scene=session.scene.map(it=>it===session.it?proposal:clone(it));
+      const graph=await inspectComponentGraph(scene,session.valid);
+      if(!session.valid())throw smartCancelled();
+      const error=graph.get(proposal)?.error;
+      if(error)throw new Error(error);
+      beginHistory();
+      session.it.componentName=proposal.componentName;session.it.bindings=proposal.bindings;session.it.inputValues=proposal.inputValues;
+      delete session.it.componentInvalid;
+      commitHistory();componentBindingsDialog.close();render();
+    }catch(err){if(session.current())componentBindingsError.textContent=session.valid()?err.message:session.changedMessage;}
+    finally{if(session.valid())componentBindingsSave.disabled=false;}
   });
 
   // ---------- icon import dialog (Iconify) ----------
@@ -8342,10 +8863,12 @@ self.onmessage = function(e){
       if(entry.items.length>MAX_ITEMS) throw new Error('Too many objects in shape: '+name);
       const list = entry.items.map(r=>normalizeItem(r, {}));
       if(list.some(it=>!it)) throw new Error('Invalid object or unsupported image in shape: '+name);
+      const connected=list.some(it=>it.componentApi!==undefined || it.bindings);
+      if(connected)ensureUids(list);
       // Templates are independent of live canvas groups, including while rendering their thumbnails.
       const groups = new Map();
       for(const it of list){
-        delete it.uid;
+        if(!connected)delete it.uid;
         if(it.group!=null){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); }
       }
       for(const members of groups.values()) bakeGroupRotationLocal(members);

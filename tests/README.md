@@ -58,6 +58,13 @@ active-sketch exports, delayed and invalid settings,
 timeout recovery, custom titles, the Really Simple deployment, and opening the actual standalone
 HTML directly from disk.
 
+Connected-component regressions in `tests/components.test.cjs` cover the Number control → Gauge
+input-picker workflow, scalar computation, actual drawing/SVG results, JSON and undo/redo,
+duplicate/clipboard binding remapping, cross-tab UID isolation, and downloaded offline HTML.
+They check rapid changes, unsupported-version recovery, legacy raw-state compatibility, missing
+or incompatible ports, source deletion, cycles, and isolation of failed computations. Format 4
+retains component API markers and wiring; earlier drawing formats remain readable.
+
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
 imports across Close, Escape and library replacement. Sketch format 3 retains polygon fill rules;

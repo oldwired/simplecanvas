@@ -200,6 +200,29 @@ Scripts run in an isolated Worker with blocked network access, and generated sha
 validated before rendering or export. The app still works as a single local HTML file.
 Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 
+### Connected components
+
+Open [examples/connected-components.json](examples/connected-components.json) with
+**File → Open sketch…** to try a Number control connected to a separate Gauge. Double-click
+the control, then drag its slider or click **−5 / +5**. The gauge follows its value. **Export HTML**
+keeps that connection working offline; reopening the HTML restores the exported values.
+
+To build your own pair, create and place the **Number control** and **Gauge** smart-shape
+templates. Select the gauge, click **Inputs…**, choose **Number control · value** for its
+`value` input, and save. The same dialog can name an instance or set a literal input value.
+It lists compatible outputs from components in the active sketch.
+Give repeated instances distinct names in **Inputs…** so their outputs are easy to identify.
+
+Connections survive sketch/workspace saves, autosave, and undo/redo. Copy or duplicate both
+components to create an independently connected pair. Copying only a consumer leaves its
+external source unresolved; use **Inputs…** to reconnect it. Deleting a source also reports
+a missing connection, and undo restores it. Static PNG/SVG/print capture the computed result.
+Component authoring follows the `smartShapeAuthoring` deployment setting.
+
+This first version supports number, string, and boolean values within one sketch. See the
+[component scripting contract](SMART_SHAPES.md#connected-components-api-v2) for custom ports
+and computations. Datasets, events, and external actions remain future work.
+
 ### Demo library
 
 The public demo library includes thirteen shapes. Open the shape library in the toolbar,

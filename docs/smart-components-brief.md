@@ -1,7 +1,8 @@
 # From smart shapes to connected components
 
-Status: draft for discussion, updated 2026-10-16. Not an implementation spec.
-Baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
+Status: stage 1 implemented on `feature/smart-components`, updated 2026-10-16;
+later stages remain a design direction, not an implementation spec.
+Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
 ## Direction
@@ -16,9 +17,11 @@ HTML documents. Preserve the ordinary drawing workflow and make component author
 The existing deployment switches and Really SimpleCanvas variant provide a way to offer
 simpler interfaces without maintaining a separate application.
 
-The first milestone should be small: **one numeric control driving a separate gauge or chart,
-working in both the editor and an exported HTML file**. Data tables, events, downloads, and
-external integrations can follow in separate increments.
+The first milestone is **one numeric control driving a separate gauge,
+working in both the editor and an exported HTML file**. It is implemented with API v2,
+an **Inputs…** source picker, saved bindings, and independent instance IDs. Open
+[the connected example](../examples/connected-components.json) as a sketch to try it.
+Data tables, events, downloads, and external integrations can follow in separate increments.
 
 ## What has landed
 
@@ -29,6 +32,7 @@ Live shapes and interactive HTML followed on October 15.
 | Capability | Current behavior |
 | --- | --- |
 | Programmable shapes | Each `smart` item carries a script, JSON state, dimensions, and styling. Scripts return drawing primitives and interactive handles. |
+| Connected scalar values | API v2 scripts declare typed ports and compute outputs from inputs and state. Number control and Gauge templates demonstrate saved bindings, undo/redo, independent copies, and offline HTML. |
 | Isolated execution | Each instance runs in its own Worker, managed by an opaque-origin sandboxed frame. Network access is blocked, replies are validated, and hook timeouts terminate the offending Worker. HTML exports use the same isolation machinery. |
 | Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Live clock and stopwatch templates derive readings from timestamps. Refreshes do not mutate saved state or create undo entries. |
 | Interactive HTML | One offline file embeds the drawing, scripts, saved state, sandbox, and runtime. Controls work directly, without entering editor edit mode. An initial SVG remains visible before startup or when JavaScript is unavailable. |
@@ -38,7 +42,7 @@ Live shapes and interactive HTML followed on October 15.
 | Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
 
-The current hook contract is:
+The original, still-supported hook contract is:
 
 ```text
 initState()
@@ -50,6 +54,10 @@ handles(state, w, h, style)
 hitEdit(state, lx, ly, w, h, style)
 dragEdit(state, handle, lx, ly, w, h, style)
 ```
+
+API v2 adds `compute(inputs, state)`, resolved `io` on drawing/interaction hooks, and an
+explicit `{state}` return from `dragEdit`. The [scripting reference](../SMART_SHAPES.md#connected-components-api-v2)
+defines the implemented contract and budgets.
 
 Hooks return synchronously inside the Worker; requests and replies cross an asynchronous
 bridge. Globals and definition-local mutations are disposable because idle Workers can be
@@ -63,16 +71,16 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-- **Components remain independent.** Hooks receive their own state, style, size, and pointer
-  coordinates. There are no declared input/output ports, bindings, shared datasets, or routed events.
+- **Connections carry scalar values within one sketch.** Number, string, and boolean ports are
+  supported. Shared datasets, cross-tab connections, and routed events remain future work.
 - **A handle action changes local state.** There is no component API for downloading results,
   navigating the document, or calling a service. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
-  There is no component API version or state-migration contract. A document format version
-  already exists, but serves a different purpose.
+  Component API v2 is explicit and separate from document format 4. There is no state-migration
+  or automatic definition-upgrade contract.
 - **State is small.** Scripts are limited to 50,000 characters; state to 4,000 serialized JSON
   characters. Invalid state updates are rejected. Bulk datasets need a separate representation.
 - **Composition is geometric.** A library entry can contain multiple items, but a smart shape
@@ -105,20 +113,19 @@ The runtime owns the connections and executes operations. Components receive val
 and return values or requests; they do not locate siblings or mutate another instance directly.
 The document remains usable offline when it relies only on embedded data and local actions.
 
-## Proposed component contract
+## Component contract and future extensions
 
 ### Versioned extension
 
-Introduce an explicit component API version, recorded with the saved definition and validated
-by the runtime. Existing unversioned scripts retain today's contract. The exact field names
-below are illustrative and are not supported by the current runtime.
+API v2 is recorded as `apiVersion:2` in the script and `componentApi:2` on the saved item,
+and validated by the runtime. Existing unversioned scripts retain their original contract.
 
-A new version could add declared `inputs` and `outputs`, a `compute(inputs, state)` hook, and
-an extra `io` argument on drawing and interaction hooks containing resolved inputs and outputs.
-Begin with simple types such as `number`, `string`, and `boolean`. Table types can follow with
-the dataset model. Metadata must cross the same validated sandbox boundary as hook results.
+V2 adds declared `inputs` and `outputs`, a `compute(inputs, state)` hook, and an extra `io`
+argument on drawing and interaction hooks containing resolved inputs and outputs. It starts
+with `number`, `string`, and `boolean`. Table types can follow with the dataset model.
+Metadata crosses the same validated sandbox boundary as hook results.
 
-For a gauge, the proposed contract could look like this excerpt:
+For a gauge, the contract looks like this excerpt:
 
 ```js
 inputs: { value: { type: 'number', default: 0 } },
@@ -131,8 +138,7 @@ children(state, style, w, h, editing, io) {
 }
 ```
 
-Keep the first milestone limited to values, but fix its interaction return contract before
-shipping the new API version. For example, v2 could require an explicit `{state}` envelope
+The first milestone is limited to values. V2 requires an explicit `{state}` envelope
 from its first release, while legacy `dragEdit` continues to return bare state. Later `emit`
 and `effects` fields would require an explicitly supported contract revision. Never infer an
 envelope from its keys: an existing valid state object can already contain fields named
@@ -163,12 +169,13 @@ remain visible, but stale values must not silently drive further actions.
 
 ### Connections and authoring
 
-Store bindings as semantic document records, for example:
+Bindings are semantic records on each receiving item, for example:
 
 ```json
 {
-  "from": { "uid": "amount-control", "port": "value" },
-  "to": { "uid": "capacity-gauge", "port": "value" }
+  "uid": "capacity-gauge",
+  "componentApi": 2,
+  "bindings": { "value": { "uid": "amount-control", "port": "value" } }
 }
 ```
 
@@ -273,11 +280,11 @@ This should exercise the actual runtime rather than combine both behaviors insid
 - Existing unversioned shapes, independent live clocks, static exports, and ordinary drawings
   keep their behavior. There are no new network dependencies or actions in this milestone.
 
-## Decisions before implementation
+## Decisions for subsequent stages
 
-1. Set the component API version marker and its serialization rules, including legacy behavior.
-2. Agree on the first scalar types, missing-input behavior, and computation failure semantics.
-3. Choose the smallest binding UI and define ID remapping for document edits and imports.
+1. Define a new supported contract revision before adding table types, events, or effects.
+2. Set dataset storage, transfer, and computation budgets before accepting embedded tables.
+3. Choose the next authoring workflow beyond the input picker, based on real composed documents.
 4. Confirm that each stage ships in both the editor and offline HTML; keep reader persistence
    changes explicit rather than introducing them as an export side effect.
 5. Keep component authoring optional through deployment settings and preserve the simple drawing

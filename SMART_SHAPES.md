@@ -16,6 +16,7 @@ app as an end user; see [README.md](README.md) for that.
 - [Quick start](#quick-start)
 - [A complete worked example](#a-complete-worked-example)
 - [The script object and hooks](#the-script-object)
+- [Connected components (API v2)](#connected-components-api-v2)
 - [The style object](#the-style-object)
 - [Child descriptors](#child-descriptors)
 - [Arcs in a polygon child](#arcs-in-a-polygon-child)
@@ -29,7 +30,7 @@ app as an end user; see [README.md](README.md) for that.
 ## Quick start
 
 1. Open the **Shape Library** panel → **Manage** → **Add smart shape…**.
-2. Pick a starting point from the **Template** dropdown (Clock / Live clock / Stopwatch / Ruler / Arrow / Arc / Timer / Chart /
+2. Pick a starting point from the **Template** dropdown (Clock / Live clock / Stopwatch / Ruler / Number control / Gauge / Arrow / Arc / Timer / Chart /
    Minimal / Blank), or just start typing your own script over it.
 3. Give it a name and click **Create**. The new shape appears in the library, ready to place.
 4. On the canvas, double-click a placed smart shape to enter its **edit mode** (solid blue
@@ -124,8 +125,10 @@ It's compiled with `new Function('"use strict";return (' + yourScript + ');')()`
   source. Methods may share helpers through `this`, but globals and object-local mutations are
   disposable caches. Keep durable values in the returned state; idle Workers can be evicted.
 
-Only `children()` is required. Optional hooks initialize state or appearance, define interactions,
-request live updates, or configure behavior in an HTML export.
+Only `children()` is required for an unversioned smart shape. Optional hooks initialize state or
+appearance, define interactions, request live updates, or configure behavior in an HTML export.
+The table below describes the original contract, which remains supported. Components explicitly
+using `apiVersion:2` extend it as described under [Connected components](#connected-components-api-v2).
 
 | Hook | Called | Arguments | Returns |
 |---|---|---|---|
@@ -284,6 +287,93 @@ and the drawing hooks to keep its radius within the current box.
 Every completed click or drag creates one undo step only if its final validated state differs
 from the state at the start of the gesture (compared via `JSON.stringify`). A drag that returns
 to its starting value does not create a no-op undo entry.
+
+## Connected components (API v2)
+
+A component is a smart shape whose script declares `apiVersion:2`. It exchanges scalar values
+through host-resolved ports. Scripts receive data and return results; they cannot inspect siblings
+or mutate another component. Start from the **Number control** or **Gauge** templates, or open
+[the connected example](examples/connected-components.json) as a sketch.
+
+```js
+({
+  apiVersion: 2,
+  inputs: { value: { type: 'number', default: 0 } },
+  outputs: { percentage: { type: 'number' } },
+  initState(){ return {}; },
+  compute(inputs, state){
+    return { percentage: Math.max(0, Math.min(100, inputs.value)) };
+  },
+  children(state, style, w, h, editing, io){
+    return [{type:'text', x:0, y:0, w, h,
+      text:io.outputs.percentage+'%', textColor:style.textColor,
+      font:style.font, strokeOn:false, fill:false}];
+  },
+})
+```
+
+`inputs` and `outputs` are maps of port names to `{type}` descriptors. Types are `number`,
+`string`, and `boolean`; input descriptors may also include a matching `default`. Names start
+with an ASCII letter and contain up to 64 letters, digits, or underscores. Reserved object keys
+are rejected. Each side supports at most 32 ports. Numbers must be finite; strings are limited
+to 2,000 characters. Each port map and computed output object is limited to 32,000 serialized
+characters. A sketch supports at most 128 connected components.
+Saved bindings and literal-input maps are each limited to 16,000 serialized characters;
+the input dialog rejects changes that would exceed the save/load contract.
+
+`compute(inputs, state)` synchronously returns an object containing exactly the declared outputs
+with matching types. It is required when outputs are declared. Treat it as a pure computation:
+no state changes, actions, or dependence on definition-local mutations. The host evaluates the
+graph asynchronously in dependency order when component state, scripts, or wiring change, and
+discards superseded results. Size, style, and presentation refreshes do not recompute values.
+`refreshMs` remains a drawing refresh; it does not turn a clock into a connected time source.
+
+The host appends `{inputs, outputs}` as the final `io` argument to these v2 hooks:
+
+```text
+children(state, style, w, h, editing, io)
+handles(state, w, h, style, io)
+hitEdit(state, lx, ly, w, h, style, io)
+dragEdit(state, handle, lx, ly, w, h, style, io)
+exportBehavior(state, io)
+```
+
+V2 `dragEdit` must return **`{state: newState}`**. Only that envelope field is supported;
+events and effects are not part of v2. `initState()` still returns the raw state object.
+Unversioned scripts keep returning raw state from `dragEdit`, even when their state happens
+to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
+
+Select an instance and click **Inputs…** to name it, enter literal inputs, or bind inputs to
+compatible outputs in the same sketch. A binding takes precedence over a saved literal; an
+unbound input uses its literal, then its declared default. Missing required inputs, missing
+sources/ports, type mismatches, cycles, and failed computations report errors. Failed outputs
+are unavailable to consumers; healthy independent components continue working.
+
+Sketch format 4 stores the API marker on each component and bindings on the receiving item:
+
+```json
+{
+  "uid": "gauge",
+  "componentApi": 2,
+  "componentName": "Gauge",
+  "bindings": { "value": { "uid": "number-control", "port": "value" } },
+  "inputValues": {}
+}
+```
+
+This is an excerpt; the item also retains its normal geometry, script, and state. The saved
+`componentApi` must match the script's `apiVersion`. Unsupported versions keep their source and
+saved values but cannot execute. Formats 1–3 remain readable; older app versions should not be
+used to edit connected documents. Derived outputs are recomputed, not stored as authoritative data.
+
+Copying, duplicating, or saving a connected selection to the library remaps its internal IDs
+as a unit. References outside the selection remain explicitly unresolved, even if a target
+sketch contains the same UID. Reconnect those inputs in the dialog. Library placements still
+initialize fresh state. Undo/redo restores both state and bindings.
+
+Editor, static exports, library previews, and interactive HTML use the same validated computation
+contract. HTML keeps bindings working offline and retains changes across tabs; reopening restores
+the exported state. There are no cross-tab bindings, table values, events, or external actions.
 
 ## The `style` object
 
@@ -570,7 +660,7 @@ still rescale output. Check a known division on a printed template before use.
   fields are discarded, an invalid child is skipped with an error, and an exceeded result budget
   rejects the whole result rather than truncating it. Renderer guards remain in place.
 - **Sandboxed.** A smart shape's script is real JavaScript, but it never runs in the page's own
-  scope — every hook (`children`/`handles`/`hitEdit`/`dragEdit`/`initState`/`initStyle`/`refreshMs`/`exportBehavior`) is
+  scope — every hook (including `compute`, drawing, interaction, and initialization hooks) is
   called inside an instance-owned Worker created by a trusted hidden `srcdoc` frame with
   `sandbox="allow-scripts"` and no same-origin permission. Its restrictive Content Security Policy
   blocks network connections and external scripts, including native prototype API calls and
@@ -622,6 +712,8 @@ dropdown to load its full source into the script field.
 | **Live clock** | Local time from `new Date()` with `refreshMs(){return 1000;}`; stateless live readings and a digital label |
 | **Stopwatch** | Timestamp-based elapsed time, Start/Pause/Reset click handles, and refreshes only while running |
 | **Ruler** | Fixed physical units, resizing without stretching the scale, and `editorOnly` permission toggles for HTML movement/rotation/extension |
+| **Number control** | API v2 numeric output, slider and step buttons, and explicit `{state}` interaction results |
+| **Gauge** | API v2 numeric input, clamped computed output, and drawing from `io.outputs` |
 | **Arrow** | A single filled `polygon` child; *full* style inheritance (nothing hard-coded) |
 | **Arc** | Two independent drag handles sweeping a circular arc; the `arcTo` mechanism, fill-on-vs-off toggling a wedge vs. a bare bow |
 | **Timer** | A shared `_layout()` helper method reused by `children()`/`handles()`/`hitEdit()` so derived geometry can't drift out of sync; a manually set countdown dial with toolbar-controlled color; the full-turn SVG-arc clamp |
@@ -642,6 +734,9 @@ Standalone copies of [Live clock](examples/live-clock.js), [Stopwatch](examples/
 The live-clock, stopwatch, and ruler scripts are included verbatim in the standalone HTML's
 authoring templates and in `examples/demo-shapes-library.json`. Keep those copies and the bundled
 PNG previews in sync when changing an example.
+
+[Number control](examples/number-control.js) and [Gauge](examples/gauge.js) also match their
+authoring templates and the scripts in [the connected sketch](examples/connected-components.json).
 
 ## Asking an AI to write one for you
 

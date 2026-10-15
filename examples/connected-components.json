@@ -1,0 +1,55 @@
+{
+  "app": "SimpleCanvas",
+  "version": 4,
+  "items": [
+    {
+      "type": "smart",
+      "componentApi": 2,
+      "size": 2,
+      "color": "#1f2937",
+      "textColor": "#1f2937",
+      "fillColor": "#2563eb",
+      "strokeOn": false,
+      "fill": false,
+      "fontFamily": "sans",
+      "fontSize": 24,
+      "uid": "number-control",
+      "componentName": "Number control",
+      "x": 60,
+      "y": 100,
+      "w": 240,
+      "h": 110,
+      "script": "// A v2 component that publishes a number for other shapes to consume.\n// Double-click to use its slider and +/- buttons; exported HTML exposes them directly.\n({\n  apiVersion: 2,\n  inputs: {},\n  outputs: { value: { type:'number' } },\n  initState(){ return { value:50 }; },\n  initStyle(){ return { w:240, h:110, fontSize:20, strokeOn:false }; },\n  compute(inputs, state){ return { value:Math.max(0,Math.min(100,Number(state.value)||0)) }; },\n  children(state, style, w, h, editing, io){\n    const value=io.outputs.value, pad=20, y=h*.52;\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.3,text:'Value: '+value,align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},\n      {type:'line',x1:pad,y1:y,x2:w-pad,y2:y,color:style.color,size:2},\n      {type:'ellipse',x:pad+(w-pad*2)*value/100-6,y:y-6,w:12,h:12,fill:true,fillColor:style.color,strokeOn:false}\n    ];\n    if(editing){\n      for(const [x,label] of [[0,'− 5'],[w/2,'+ 5']]){\n        children.push({type:'rect',x:x+4,y:h*.72,w:w/2-8,h:h*.25,strokeOn:true,color:style.color,size:1,fill:false});\n        children.push({type:'text',x,y:h*.72,w:w/2,h:h*.25,text:label,align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});\n      }\n    }\n    return children;\n  },\n  handles(state,w,h,style,io){ return [\n    {id:'value',x:20+(w-40)*io.outputs.value/100,y:h*.52},\n    {id:'minus',x:w/4,y:h*.84,kind:'click'},\n    {id:'plus',x:w*.75,y:h*.84,kind:'click'}\n  ]; },\n  hitEdit(state,lx,ly,w,h){\n    if(ly>=h*.72 && ly<=h && lx>=0 && lx<=w)return lx<w/2?'minus':'plus';\n    if(Math.abs(ly-h*.52)<=18 && lx>=0 && lx<=w)return 'value';\n    return null;\n  },\n  dragEdit(state,handle,lx,ly,w,h,style,io){\n    const value=handle==='value'?Math.round((lx-20)/Math.max(1,w-40)*100)\n      :io.outputs.value+(handle==='plus'?5:handle==='minus'?-5:0);\n    return {state:{...state,value:Math.max(0,Math.min(100,value))}};\n  }\n})",
+      "state": {
+        "value": 50
+      }
+    },
+    {
+      "type": "smart",
+      "componentApi": 2,
+      "size": 2,
+      "color": "#1f2937",
+      "textColor": "#1f2937",
+      "fillColor": "#2563eb",
+      "strokeOn": false,
+      "fill": false,
+      "fontFamily": "sans",
+      "fontSize": 24,
+      "uid": "gauge",
+      "componentName": "Gauge",
+      "x": 370,
+      "y": 95,
+      "w": 260,
+      "h": 120,
+      "script": "// Select this shape and choose Inputs to connect value to a Number control's value output.\n({\n  apiVersion: 2,\n  inputs: { value: { type:'number', default:0 } },\n  outputs: { percentage: { type:'number' } },\n  initState(){ return {}; },\n  initStyle(){ return { w:260, h:120, fontSize:24, strokeOn:false, fillColor:'#2563eb' }; },\n  compute(inputs,state){ return { percentage:Math.max(0,Math.min(100,inputs.value)) }; },\n  children(state,style,w,h,editing,io){\n    const value=io.outputs.percentage;\n    return [\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.5,text:value+'%',align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},\n      {type:'rect',x:8,y:h*.6,w:Math.max(1,w-16),h:h*.25,fill:false,strokeOn:true,color:style.color,size:1},\n      {type:'rect',x:8,y:h*.6,w:Math.max(0,w-16)*value/100,h:h*.25,fill:true,fillColor:style.fillColor,strokeOn:false}\n    ];\n  }\n})",
+      "state": {},
+      "bindings": {
+        "value": {
+          "uid": "number-control",
+          "port": "value"
+        }
+      }
+    }
+  ],
+  "assets": {}
+}
