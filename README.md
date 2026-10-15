@@ -36,7 +36,7 @@ The shape library is optional. Open the library picker and choose **Add selectio
 selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
 available even before a library exists, including **Add smart shape…**. Click a saved shape to
 place it; **Manage** also lets you rename, delete, or replace an entry with the current selection.
-For smart shapes, **Edit source…** opens their existing script in the authoring dialog. Save changes,
+For smart shapes, **Edit** opens their existing script in the authoring dialog. Save changes,
 then export the library to keep the updated code and preview. Images cannot be included.
 
 **Add icon** searches Iconify when online and imports a result as editable native polygons, with

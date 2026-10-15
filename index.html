@@ -7651,7 +7651,7 @@ self.onmessage = function(e){
       const actions = document.createElement('div');
       actions.className = 'shape-entry-actions';
       const smartItems=tpl.items.filter(it=>it.type==='smart');
-      const editActions=smartItems.map((it,i)=>[smartItems.length===1?'Edit source…':'Edit source '+(i+1)+'…',()=>editLibrarySmartSource(tpl,it)]);
+      const editActions=smartItems.map((it,i)=>[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]);
       for(const [text, action] of [...editActions,['Rename', renameLibraryShape], ['Replace', replaceLibraryShape], ['Delete', deleteLibraryShape]]){
         const btn = document.createElement('button');
         btn.type = 'button'; btn.textContent = text;

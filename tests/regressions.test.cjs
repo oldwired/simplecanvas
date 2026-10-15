@@ -2267,8 +2267,8 @@ test('Manage opens existing smart source without executing it; cancelling an asy
   const original=smartFixture(slowClickScript,{n:7});
   await importLibrary(page,{shapes:[{name:'Counter',items:[original]},{name:'Box',items:[rectangle()]}]});
   await page.locator('#libraryDialogCancel').click();await page.locator('#manageShapesBtn').click();
-  assert.equal(await page.getByRole('button',{name:'Edit source… Box',exact:true}).count(),0);
-  await page.getByRole('button',{name:'Edit source… Counter',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Edit Box',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Edit Counter',exact:true}).click();
   assert.equal(await page.locator('#smartObjectNameInput').inputValue(),'Counter');
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),slowClickScript);
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),false);
@@ -2276,7 +2276,7 @@ test('Manage opens existing smart source without executing it; cancelling an asy
   await page.locator('#smartObjectScriptInput').fill('({children(){return [];}})');
   await page.locator('#smartObjectDialogCancel').click();
   assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);
-  await page.getByRole('button',{name:'Edit source… Counter',exact:true}).click();
+  await page.getByRole('button',{name:'Edit Counter',exact:true}).click();
   const delayed=`(()=>{const end=performance.now()+120;while(performance.now()<end){}return {children(){return [];}}})()`;
   await page.locator('#smartObjectScriptInput').fill(delayed);
   await page.locator('#smartObjectDialogSubmit').click();
@@ -2293,7 +2293,7 @@ test('source edits update the library and bundled PNG, survive export, and prese
   const before=await downloadedJSON(page,run,'exportShapeLibrary()');
   await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
-  await page.getByRole('button',{name:'Edit source… Color box',exact:true}).click();
+  await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
   await page.locator('#smartObjectScriptInput').fill('({initState(){return {};}})');
   await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>document.querySelector('#smartObjectDialogError').textContent.includes('children'));
@@ -2308,7 +2308,7 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.reload();await importLibrary(page,after);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the edited preview is bundled');
   await page.locator('#manageShapesBtn').click();
-  await page.getByRole('button',{name:'Edit source… Color box',exact:true}).click();
+  await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),newScript);
   await page.locator('#smartObjectDialogCancel').click();
   await page.locator('#newSmartObjectBtn').click();
@@ -2323,7 +2323,7 @@ test('composite library entries expose each smart script and edit only the chose
   const first=smartFixture(slowClickScript,{n:1}),second={...smartFixture('({children(){return [];}})',{n:2}),x:350};
   await importLibrary(page,{shapes:[{name:'Composite',items:[first,rectangle(),second]}]});
   await page.locator('#libraryDialogCancel').click();await page.locator('#manageShapesBtn').click();
-  await page.getByRole('button',{name:'Edit source 2… Composite',exact:true}).click();
+  await page.getByRole('button',{name:'Edit 2 Composite',exact:true}).click();
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),second.script);
   const updated='({children(){return [{type:"ellipse",x:0,y:0,w:50,h:50}];}})';
   await page.locator('#smartObjectScriptInput').fill(updated);await page.locator('#smartObjectDialogSubmit').click();
