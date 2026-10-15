@@ -44,9 +44,14 @@ Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive do
 unchanged history/storage, live clock updates, stopwatch controls and timestamp recovery, matching
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
 tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
+Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and oversize
+blocking, paper/orientation and margin changes, reference marks, image assets and pending text, frozen smart shapes, retained drawing
+and history/storage, and close/reopen races. Native printer-driver scaling still requires a physical
+print check at 100% / Actual size.
 
-Deployment-settings checks cover the five switches independently, fixed-library smart handles,
-preservation and recovery of hidden tabs, active-sketch exports, delayed and invalid settings,
+Deployment-settings checks cover the feature switches independently, native browser printing when
+custom printing is disabled, fixed-library smart handles, preservation and recovery of hidden tabs,
+active-sketch exports, delayed and invalid settings,
 timeout recovery, custom titles, the Really Simple deployment, and opening the actual standalone
 HTML directly from disk.
 

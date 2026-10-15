@@ -1818,7 +1818,8 @@ test('missing smart previews require consent; exported PNGs load without executi
   await importLibrary(page,library);
   await page.locator('#libraryDialog[open]').waitFor();
   assert.match(await page.locator('#libraryDialogMessage').textContent(),/runs scripts/);
-  assert.equal(await page.locator('iframe[sandbox]').count(),0,'import alone must not start script execution');
+  // The print preview has no script permission; only the Worker bridge can execute scripts.
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'import alone must not start script execution');
   await page.locator('#libraryDialogCancel').click();
   assert.equal(await page.locator('.shape-thumb img').count(),0);
   await page.locator('#generateShapePreviewsBtn').click();
@@ -1833,14 +1834,14 @@ test('missing smart previews require consent; exported PNGs load without executi
     await importLibrary(page,data);
     await page.locator('.shape-thumb img').waitFor();
     assert.equal(await page.locator('#libraryDialog[open]').count(),0);
-    assert.equal(await page.locator('iframe[sandbox]').count(),0,'bundled PNG must not run the smart script');
+    assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'bundled PNG must not run the smart script');
     const unchanged=await downloadedJSON(page,run,'exportShapeLibrary()');
     assert.equal(unchanged.shapes[0].thumbnail.png,data.shapes[0].thumbnail.png);
     const changed=JSON.parse(JSON.stringify(data));changed.shapes[0].items[0].state={group:2};
     await importLibrary(page,changed);
     await page.locator('#libraryDialog[open]').waitFor();
     assert.equal(await page.locator('.shape-thumb img').count(),0,'all script state participates in preview invalidation');
-    assert.equal(await page.locator('iframe[sandbox]').count(),0,'a stale PNG requires fresh consent');
+    assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'a stale PNG requires fresh consent');
     await page.locator('#libraryDialogCancel').click();
   }
 }));
@@ -2008,6 +2009,109 @@ test('ruler grows at a fixed drill-template scale and unit switching is undoable
   await page.reload();assert.equal(await run('items[0].state.unit'),'px');
 }));
 
+async function printFrameReady(page){
+  await page.waitForFunction(()=>__test.run('printPreviewReady'));
+}
+
+test('printing preserves physical ruler scale, assets and pending text on the active sketch without changing the drawing',async()=>app(async({page,run})=>{
+  await run(`(async()=>{items=[{...${JSON.stringify(rectangle())},fillColor:'#ef4444'}];save();newTab();
+    const ruler={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.ruler.script};
+    await initializeSmartItem(ruler);ruler.x=100;ruler.y=100;
+    const c=document.createElement('canvas');c.width=c.height=8;c.getContext('2d').fillRect(0,0,8,8);
+    assets={printImage:c.toDataURL()};items=[ruler,{...${JSON.stringify(wrappedText)},x:100,y:300,text:'old'},
+      {type:'image',id:'printImage',x:450,y:100,w:40,h:40}];
+    setTool('select');selection=[0];editingSmartIdx=0;render();openText(1);textInput.value='Latest print note';})()`);
+  await page.locator('#menuBtn').click();await page.locator('[data-act="print"]').click();
+  await page.locator('#printDialog[open]').waitFor();await printFrameReady(page);
+  assert.equal(await page.locator('#printMode').inputValue(),'actual');
+  assert.equal(await page.locator('#printOrientation').inputValue(),'landscape');
+  assert.equal(await run('items[1].text'),'Latest print note');
+  const before=await run('({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:localStorage.getItem(docKey(activeTabId))})');
+  await page.locator('#printReference').check();await printFrameReady(page);
+  const result=await page.locator('#printPreview').evaluate(frame=>{
+    const doc=frame.contentDocument,page=doc.querySelector('body>svg'),art=doc.querySelector('#printArtwork>svg');
+    return {paper:[page.getAttribute('width'),page.getAttribute('height')],ratio:+art.getAttribute('width')/+art.getAttribute('viewBox').split(/\s+/)[2],
+      reference:doc.querySelector('#printCalibration path').getBBox().width,
+      images:doc.querySelectorAll('image').length,text:doc.body.textContent,markup:doc.querySelector('#printArtwork').innerHTML};
+  });
+  assert.deepEqual(result.paper,['297mm','210mm']);assert.ok(Math.abs(result.ratio-25.4/96)<1e-10);
+  assert.equal(result.reference,50);assert.equal(result.images,1);assert.match(result.text,/Latest\s*print\s*note/);
+  assert.ok(!result.markup.includes('#ef4444'),'background tabs are not printed');
+  assert.ok(!result.text.includes('↻'),'edit-mode controls are not printed');
+  await page.locator('#printPaper').selectOption('letter');await page.locator('#printOrientation').selectOption('landscape');
+  await page.locator('#printMargin').fill('13');await printFrameReady(page);
+  assert.deepEqual(await page.locator('#printPreview').evaluate(frame=>{
+    const page=frame.contentDocument.querySelector('body>svg'),clip=frame.contentDocument.querySelector('clipPath rect');
+    return [page.getAttribute('width'),page.getAttribute('height'),clip.getAttribute('x')];
+  }),['279.4mm','215.9mm','13']);
+  await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls=String(+(frame.dataset.printCalls||0)+1);};});
+  await page.locator('#printDialogSubmit').click();
+  assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1','Print targets the prepared document');
+  assert.deepEqual(await run('({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:localStorage.getItem(docKey(activeTabId))})'),before);
+  await page.locator('#printDialogCancel').click();await page.waitForFunction(()=>__test.run('printSnapshot')===null);
+}));
+
+test('actual-size printing blocks oversized artwork while Fit to page and orientation changes resolve it',async()=>app(async({page,run})=>{
+  await run(`items=[{...${JSON.stringify(rectangle())},w:940,h:450}];save();render();`);
+  await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();await printFrameReady(page);
+  await page.locator('#printMode').selectOption('fit');await page.locator('#printOrientation').selectOption('portrait');await printFrameReady(page);
+  const fitted=await page.locator('#printPreview').evaluate(frame=>{
+    const doc=frame.contentDocument,art=doc.querySelector('#printArtwork>svg'),clip=doc.querySelector('clipPath rect');
+    return {w:+art.getAttribute('width'),h:+art.getAttribute('height'),maxW:+clip.getAttribute('width'),maxH:+clip.getAttribute('height')};
+  });
+  assert.ok(fitted.w<=fitted.maxW+1e-6 && fitted.h<=fitted.maxH+1e-6);
+  await page.locator('#printMode').selectOption('actual');
+  await page.locator('#printWarning').waitFor({state:'visible'});
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  assert.match(await page.locator('#printWarning').textContent(),/exceeds.*printable area/);
+  await page.locator('#printOrientation').selectOption('landscape');await printFrameReady(page);
+  assert.equal(await page.locator('#printWarning').isVisible(),false);
+  await page.locator('#printMargin').fill('50');await page.locator('#printWarning').waitFor({state:'visible'});
+  assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  await page.locator('#printMargin').fill('');assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
+  assert.match(await page.locator('#printDialogError').textContent(),/margins/);
+  await page.locator('#printMargin').fill('10');await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
+  assert.equal(await page.locator('#printDialogError').textContent(),'');
+  await page.keyboard.press('Escape');assert.equal(await page.locator('#printDialog').isVisible(),false);
+  assert.equal(await run('items.length'),1);
+}));
+
+test('print previews freeze live shapes and a cancelled snapshot cannot reopen or replace a later preview',async()=>app(async({page,run})=>{
+  const script=`({refreshMs(){return 100;},children(s,style,w,h,editing){return [{type:'text',x:0,y:0,w,h,text:String(Date.now())+(editing?' EDIT CONTROL':'')}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];setTool('select');selection=[0];editingSmartIdx=0;render();`);
+  await page.locator('#menuBtn').click();await page.locator('[data-act="print"]').click();await printFrameReady(page);
+  const snapshot=await run('printSnapshot.svg');assert.ok(!snapshot.includes('EDIT CONTROL'));
+  const live=await run("smartChildrenCache.get('smart-test')?.kids[0]?.text");
+  await page.waitForFunction(before=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==before,live);
+  await page.locator('#printMargin').fill('12');await printFrameReady(page);
+  assert.equal(await run('printSnapshot.svg'),snapshot,'layout changes reuse the frozen drawing');
+  await page.locator('#printDialogCancel').click();
+  const slow=`({children(){const start=performance.now();while(performance.now()-start<150){}return [{type:'text',x:0,y:0,w:180,h:30,text:'Old snapshot'}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(slow))}];selection=[];render();void openPrintDialog();`);
+  await page.locator('#printDialogCancel').click();
+  await run(`items=[${JSON.stringify(rectangle())}];render();openPrintDialog();`);await printFrameReady(page);
+  assert.ok(!(await run('printSnapshot.svg')).includes('Old snapshot'));
+  assert.equal(await page.locator('#printDialog[open]').count(),1);
+}));
+
+test('disabling custom printing uses native menu printing and leaves browser shortcuts untouched',async()=>app(async({page,run})=>{
+  await page.evaluate(()=>{window.nativePrintCalls=0;window.print=()=>{nativePrintCalls++;};});
+  await run(`items=[${JSON.stringify(rectangle())}];setTool('select');render();`);
+  await page.locator('#menuBtn').click();await page.locator('[data-act="print"]').click();
+  assert.equal(await page.evaluate(()=>nativePrintCalls),1);
+  assert.equal(await page.locator('#printDialog[open]').count(),0);
+  assert.equal(await run('printSnapshot'),null);
+  assert.equal(await page.locator('#printPreview').getAttribute('srcdoc'),null);
+  for(const modifier of ['ctrlKey','metaKey']){
+    const cancelled=await page.evaluate(modifier=>{
+      const event=new KeyboardEvent('keydown',{key:'p',[modifier]:true,bubbles:true,cancelable:true});
+      document.body.dispatchEvent(event);return event.defaultPrevented;
+    },modifier);
+    assert.equal(cancelled,false,modifier+' keeps the native print shortcut');
+  }
+  assert.equal(await run('ui.tool'),'select','native shortcuts do not switch drawing tools');
+},{files:{'settings.json':settingsFile({customPrinting:false})}}));
+
 test('a custom deployment title is plain text and invalid titles do not partially apply settings',async()=>{
   const title='Team <b>sketchpad</b> & notes';
   await app(async({page,run})=>{
@@ -2025,7 +2129,7 @@ test('a custom deployment title is plain text and invalid titles do not partiall
   }
 });
 
-test('the Really Simple deployment loads its own title and disables all five optional features',async()=>app(async({page,run})=>{
+test('the Really Simple deployment loads its own title and disables all optional features',async()=>app(async({page,run})=>{
   assert.equal(await page.title(),'Really SimpleCanvas');
   assert.equal(await run('Object.values(features).every(value=>value===false)'),true);
   assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
@@ -2339,12 +2443,12 @@ test('startup libraries keep missing smart previews inert until the library is o
   await page.route('**/shapes-library.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(library)}));
   await page.reload();
   await page.waitForFunction(()=>document.querySelector('#shapeLibraryStatus').textContent.includes('1 shape'));
-  assert.equal(await page.locator('iframe[sandbox]').count(),0);
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
   await page.locator('#shapeLibBtn').click();
   await page.locator('#libraryDialog[open]').waitFor();
   await page.locator('#libraryDialogCancel').click();
-  assert.equal(await page.locator('iframe[sandbox]').count(),0);
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0);
 }));
 
 test('ordinary previews are bundled automatically and replacing a shape invalidates its PNG',async()=>app(async({page,run})=>{
@@ -2379,7 +2483,7 @@ test('a rejected bundled PNG regenerates an ordinary preview without marking the
   });
   assert.equal(await run('shapeLibraryDirty'),false);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
-  assert.equal(await page.locator('iframe[sandbox]').count(),0,'ordinary recovery executes no smart code');
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'ordinary recovery executes no smart code');
   await page.locator('.shape-thumb img').evaluate(img=>{window.oldPreviewError=img.onerror;});
   await run(`items=[${JSON.stringify(rectangle())}];setTool('select');selection=[0];render();`);
   const replacing=run('replaceLibraryShape(shapeLibrary.shapes[0])');
@@ -2766,7 +2870,7 @@ test('Manage opens existing smart source without executing it; cancelling an asy
   assert.equal(await page.locator('#smartObjectNameInput').inputValue(),'Counter');
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),slowClickScript);
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),false);
-  assert.equal(await page.locator('iframe[sandbox]').count(),0,'reading code alone does not execute it');
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'reading code alone does not execute it');
   await page.locator('#smartObjectScriptInput').fill('({children(){return [];}})');
   await page.locator('#smartObjectDialogCancel').click();
   assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);

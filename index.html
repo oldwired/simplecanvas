@@ -179,6 +179,16 @@
   .library-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .library-dialog-actions button{padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
   .library-dialog-actions .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #printDialog{width:540px;max-height:calc(100dvh - 32px);overflow-y:auto;touch-action:pan-y}
+  .print-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .print-options select{width:100%;box-sizing:border-box;font:inherit;padding:9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink)}
+  #printDialog .print-reference{display:flex;align-items:center;gap:8px;margin:14px 0}
+  #printDialog .print-reference input{width:auto;flex:none}
+  .print-preview{display:block;width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#e5e7eb;pointer-events:none}
+  #printSummary{min-height:20px;margin:12px 0 8px;color:var(--muted)}
+  #printWarning{padding:10px;border:1px solid #d97706;border-radius:7px;background:#fffbeb;color:#78350f}
+  #printWarning[hidden]{display:none}
+  #printDialogSubmit:disabled{opacity:.45;cursor:default}
   #iconDialog{width:560px;max-height:calc(100dvh - 32px);overflow-y:auto}
   #iconImportPreview[hidden],#iconResults[hidden],#iconLoadMore[hidden]{display:none}
   .icon-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -710,6 +720,24 @@
   <div class="tab-picker-list" id="tabPickerList"></div>
   <div class="library-dialog-actions"><button type="button" id="tabPickerCancel">Cancel</button></div>
 </dialog>
+<dialog class="library-dialog" id="printDialog" aria-labelledby="printDialogTitle">
+  <form id="printDialogForm">
+    <h2 id="printDialogTitle">Print sketch</h2>
+    <div class="print-options">
+      <div><label for="printMode">Scale</label><select id="printMode"><option value="fit">Fit to page</option><option value="actual" selected>Actual size (100%)</option></select></div>
+      <div><label for="printPaper">Paper</label><select id="printPaper"><option value="a4">A4</option><option value="letter">Letter</option></select></div>
+      <div><label for="printOrientation">Orientation</label><select id="printOrientation"><option value="portrait">Portrait</option><option value="landscape" selected>Landscape</option></select></div>
+      <div><label for="printMargin">Margins (mm)</label><input id="printMargin" type="number" min="0" max="50" step="1" value="10" required></div>
+    </div>
+    <label class="print-reference"><input id="printReference" type="checkbox"> Include a 50 mm reference mark</label>
+    <p id="printSummary" role="status" aria-live="polite">Preparing snapshot…</p>
+    <p id="printWarning" role="alert" hidden></p>
+    <iframe id="printPreview" class="print-preview" title="Print preview" sandbox="allow-same-origin allow-modals" tabindex="-1"></iframe>
+    <p>In the browser print dialog, use the same paper and orientation, <strong>100% / Actual size</strong>, no additional margins, and headers and footers off. The preview already includes your margins and any Fit to page scaling.</p>
+    <p class="dialog-error" id="printDialogError" role="alert"></p>
+    <div class="library-dialog-actions"><button type="button" id="printDialogCancel">Close</button><button type="submit" class="primary" id="printDialogSubmit" disabled>Print…</button></div>
+  </form>
+</dialog>
 
 <script>
 (function(){
@@ -768,7 +796,7 @@
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
   // Deployment settings are optional and never saved into a sketch or browser storage.
-  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true});
+  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true});
   let features = DEFAULT_FEATURES;
   let appStarted = false;
   function normalizeFeatures(raw){
@@ -6148,7 +6176,7 @@ self.onmessage = function(e){
         // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
         // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
         // of surrounding empty canvas that happened to be visible at the time.
-        const m = 24;
+        const m = opts.margin!=null ? opts.margin : 24;
         let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
         for(const it of itemList){
           const b = paintedWorldBBox(it,itemList);
@@ -6213,6 +6241,131 @@ self.onmessage = function(e){
     URL.revokeObjectURL(url);
     toast('Saved SVG');
   }
+  // ---------- physical-size print preview ----------
+  const printDialog=document.getElementById('printDialog');
+  const printForm=document.getElementById('printDialogForm');
+  const printPreview=document.getElementById('printPreview');
+  const printSubmit=document.getElementById('printDialogSubmit');
+  const printSummary=document.getElementById('printSummary');
+  const printWarning=document.getElementById('printWarning');
+  const printError=document.getElementById('printDialogError');
+  const PRINT_PAPERS={a4:[210,297],letter:[215.9,279.4]};
+  const MM_PER_PX=25.4/96;
+  let printSnapshot=null, printSnapshotSeq=0, printPreviewSeq=0, printPreviewReady=false;
+
+  function printSettings(){
+    const paper=document.getElementById('printPaper').value;
+    const orientation=document.getElementById('printOrientation').value;
+    const mode=document.getElementById('printMode').value;
+    const marginInput=document.getElementById('printMargin'), margin=marginInput.valueAsNumber;
+    if(!PRINT_PAPERS[paper] || !['portrait','landscape'].includes(orientation) || !['fit','actual'].includes(mode) ||
+       !marginInput.validity.valid || !Number.isFinite(margin)) throw new Error('Enter margins between 0 and 50 mm.');
+    const [w,h]=PRINT_PAPERS[paper];
+    return {mode,margin,reference:document.getElementById('printReference').checked,
+      width:orientation==='landscape'?h:w,height:orientation==='landscape'?w:h};
+  }
+  function buildPrintDocument(snapshot,settings,revision){
+    const {width,height,margin,reference,mode}=settings;
+    const areaW=width-margin*2, areaH=height-margin*2-(reference?14:0);
+    const naturalW=snapshot.width*MM_PER_PX, naturalH=snapshot.height*MM_PER_PX;
+    const scale=mode==='fit'?Math.min(areaW/naturalW,areaH/naturalH):1;
+    const tooLarge=mode==='actual' && (naturalW>areaW+1e-7 || naturalH>areaH+1e-7);
+    const artW=naturalW*scale, artH=naturalH*scale;
+    const art=new DOMParser().parseFromString(snapshot.svg,'image/svg+xml').documentElement;
+    art.setAttribute('x',margin+Math.max(0,(areaW-artW)/2));
+    art.setAttribute('y',margin+Math.max(0,(areaH-artH)/2));
+    art.setAttribute('width',artW);art.setAttribute('height',artH);
+    const calibration=reference?`<g id="printCalibration" fill="none" stroke="#000" stroke-width="0.25">
+      <path d="M ${margin} ${height-margin-7} h 50 m -50 -2 v 4 m 50 -4 v 4"/>
+      <text x="${margin}" y="${height-margin-10}" fill="#000" stroke="none" font-family="sans-serif" font-size="3">50 mm - check after printing</text></g>`:'';
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" aria-label="Sketch print page">
+      <rect width="${width}" height="${height}" fill="#fff"/>
+      <defs><clipPath id="printContentClip"><rect x="${margin}" y="${margin}" width="${areaW}" height="${areaH}"/></clipPath></defs>
+      <g id="printArtwork" clip-path="url(#printContentClip)">${new XMLSerializer().serializeToString(art)}</g>${calibration}</svg>`;
+    const html=`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'">
+      <title>${escXml(document.title)} - Print</title><style>
+      @page{size:${width}mm ${height}mm;margin:0}
+      html,body{margin:0;padding:0;background:#e5e7eb}
+      body>svg{display:block;width:100vw;height:100vh}
+      @media print{html,body{width:${width}mm;height:${height}mm;background:#fff;overflow:hidden}
+        body>svg{width:${width}mm;height:${height}mm;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+      </style></head><body data-print-revision="${revision}">${svg}</body></html>`;
+    return {html,tooLarge,scale,naturalW,naturalH,areaW,areaH};
+  }
+  function updatePrintPreview(){
+    printPreviewReady=false;printSubmit.disabled=true;printError.textContent='';
+    if(!printSnapshot) return;
+    const revision=++printPreviewSeq;
+    let output;
+    try{output=buildPrintDocument(printSnapshot,printSettings(),revision);}
+    catch(err){printError.textContent=err.message;return;}
+    const mm=n=>n.toFixed(2), percent=(output.scale*100).toFixed(1).replace(/\.0$/,'');
+    printSummary.textContent=mm(output.naturalW)+' × '+mm(output.naturalH)+' mm at actual size · Print scale '+percent+'%';
+    printWarning.hidden=!output.tooLarge;
+    printWarning.textContent=output.tooLarge
+      ? 'This sketch exceeds the '+mm(output.areaW)+' × '+mm(output.areaH)+' mm printable area at actual size. Change paper, orientation or margins, turn off the reference mark, or choose Fit to page.' : '';
+    printPreview.onload=async()=>{
+      const doc=printPreview.contentDocument;
+      if(doc?.body?.dataset.printRevision!==String(revision)) return;
+      await doc.fonts.ready;
+      if(!printDialog.open || revision!==printPreviewSeq || printPreview.contentDocument!==doc) return;
+      printPreviewReady=!output.tooLarge;
+      printSubmit.disabled=!printPreviewReady;
+    };
+    printPreview.srcdoc=output.html;
+  }
+  async function openPrintDialog(){
+    if(!features.customPrinting){window.print();return;}
+    if(printDialog.open) return;
+    closeOtherPopovers();
+    if(textInput.style.display==='block') commitText();
+    cancelSmartGestures(true);
+    const seq=++printSnapshotSeq, tab=activeTabId;
+    printSnapshot=null;printPreviewReady=false;printSubmit.disabled=true;
+    printPreview.onload=null;printPreview.removeAttribute('srcdoc');
+    printSummary.textContent='Preparing snapshot…';printError.textContent='';printWarning.hidden=true;
+    printDialog.showModal();
+    try{
+      await smartHitSettled;await shapePlacementQueue;
+      if(seq!==printSnapshotSeq || !printDialog.open || activeTabId!==tab) return;
+      const scene=clone(items), imageAssets={...assetsUsedBy(scene,assets)};
+      if(!scene.length){printDialog.close();toast('Nothing to print yet');return;}
+      const svg=await itemsToSVGMarkup(scene,{margin:0,assets:imageAssets});
+      if(seq!==printSnapshotSeq || !printDialog.open || activeTabId!==tab) return;
+      const root=new DOMParser().parseFromString(svg,'image/svg+xml').documentElement;
+      const width=Number(root.getAttribute('width')),height=Number(root.getAttribute('height'));
+      if(!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0) throw new Error('Could not prepare this sketch for printing.');
+      printSnapshot={svg,width,height};updatePrintPreview();
+    }catch(err){
+      if(seq===printSnapshotSeq && printDialog.open){printSummary.textContent='';printError.textContent=err.message;}
+    }
+  }
+  printForm.addEventListener('input',updatePrintPreview);
+  printForm.addEventListener('submit',e=>{
+    e.preventDefault();
+    if(!printPreviewReady || printSubmit.disabled) return;
+    try{printPreview.contentWindow.focus();printPreview.contentWindow.print();}
+    catch(_){printError.textContent='The browser could not open printing. Please try again.';}
+    finally{printSubmit.focus();}
+  });
+  document.getElementById('printDialogCancel').addEventListener('click',()=>printDialog.close());
+  printDialog.addEventListener('close',()=>{
+    if(printDialog.open) return;   // a queued close event may belong to the previous opening
+    printSnapshotSeq++;printPreviewSeq++;printSnapshot=null;printPreviewReady=false;
+    printSubmit.disabled=true;printPreview.onload=null;printPreview.removeAttribute('srcdoc');
+  });
+  printDialog.addEventListener('keydown',e=>e.stopPropagation());
+  printDialog.addEventListener('click',e=>e.stopPropagation());
+  window.addEventListener('keydown',e=>{
+    if(!appStarted || !features.customPrinting || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase()!=='p' || e.altKey) return;
+    if(document.querySelector('dialog[open]') && !printDialog.open) return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(e.repeat) return;
+    if(printDialog.open){if(printPreviewReady)printForm.requestSubmit();}
+    else void openPrintDialog();
+  },true);
+
   // With workspace controls enabled, exports every tab, each as its own full-canvas
   // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
   // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
@@ -8288,7 +8441,7 @@ self.onmessage = function(e){
     png: savePng,
     svg: saveSvg,
     html: exportHtml,
-    print: ()=>window.print(),
+    print: openPrintDialog,
     clear: clearAll,
   };
   function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled):not([hidden])')]; }

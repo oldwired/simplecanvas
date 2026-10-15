@@ -165,8 +165,11 @@ SVG exports have matching physical dimensions and viewBox dimensions, including 
 Print SVG at **Actual size / 100%**, without fitting to the page. Default PNG exports are 2× resolution:
 **192 image pixels represent one inch**, so place/print at 192 pixels per inch for the same scale.
 Cropping includes margins and outside labels; do not treat the complete image width as the ruler's
-marked length. Screen display and direct browser printing may rescale the canvas and cannot
-guarantee a measured physical size. Check a known division on a printed template before use.
+marked length. The app's **File → Print** preview defaults to **Actual size (100%)** and **Landscape**,
+with paper selection, orientation, margins, an oversize warning, and an optional 50 mm reference mark. Print uses a frozen
+SVG snapshot with edit controls removed. Choose the same paper and orientation, **100% / Actual
+size**, no extra margins, and no headers/footers in the browser print dialog; its settings and the printer driver can
+still rescale output. Check a known division on a printed template before use.
 
 The live-clock, stopwatch, and ruler scripts are included verbatim in the standalone HTML's
 authoring templates and in `examples/demo-shapes-library.json`. Keep those copies and the bundled

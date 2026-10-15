@@ -6,6 +6,7 @@
     "shapeLibrary": true,
     "shapeLibraryManagement": true,
     "smartShapeAuthoring": true,
-    "iconify": true
+    "iconify": true,
+    "customPrinting": true
   }
 }

@@ -5,7 +5,7 @@ A small, zero-dependency browser sketching canvas.
 Demo: https://oldwired.github.io/simplecanvas/
 
 [Really Simple demo](https://oldwired.github.io/simplecanvas/reallysimple/): the same drawing app
-with all five optional features disabled and the page title **Really SimpleCanvas**.
+with all optional features disabled and the page title **Really SimpleCanvas**.
 
 Open `index.html` in a browser to draw, add shapes or text, and save or load sketches as JSON.
 
@@ -61,9 +61,20 @@ and print at **Actual size / 100%**, with page fitting disabled, for physical te
 fractional dimensions to preserve this scale. PNG exports use 2× resolution: one inch spans 192
 image pixels, so use **192 pixels per inch** when placing/printing them at the intended size.
 Both exports include margins; the complete image width exceeds the ruler's marked length. Screen
-display size and the app's direct browser **Print** command do not guarantee physical dimensions.
+display size does not guarantee physical dimensions.
 PNG, SVG, and exported HTML capture a static reading of live shapes; sketch/workspace JSON retains
 their scripts and timing state.
+
+**File → Print** or **Ctrl/Cmd+P** opens a paper preview of the active sketch, defaulting to
+**Actual size (100%)** and **Landscape**. Select A4/Letter, orientation, and margins in millimeters,
+or choose **Fit to page** to scale the drawing. Actual size blocks printing when the drawing exceeds
+the available area; change the settings or choose Fit to page. The optional 50 mm reference mark
+lets you check the physical output. The preview is a frozen snapshot with editor controls removed.
+In the browser print dialog, use the same paper and orientation, **100% / Actual size**, no extra
+margins, and headers/footers off. The preview already includes margins and any Fit to page scaling; browser or
+printer-driver scaling can still change the physical output. Printing works from the standalone HTML.
+Deployments can set `features.customPrinting` to `false` in `settings.json` to use regular browser
+printing for both the menu and keyboard shortcut.
 
 The shape library is optional. Open the library picker and choose **Add selection** to save
 selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
@@ -112,7 +123,7 @@ The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares 
 `examples/demo-shapes-library.json` to that conventional library name, so the existing loader
 picks it up.
 The workflow also publishes `reallysimple/index.html` (a copy of the same HTML) and
-`reallysimple/settings.json`, with all five optional features disabled. The variant settings are
+`reallysimple/settings.json`, with all optional features disabled. The variant settings are
 tracked in [reallysimple/settings.json](reallysimple/settings.json). Only the prepared directory
 is uploaded to Pages.
 
@@ -129,7 +140,7 @@ either example.
 ## Optional deployment settings
 
 For a hosted deployment, copy [examples/settings.example.json](examples/settings.example.json)
-to `settings.json` beside `index.html`, and change the feature switches you need. You can omit any switch: all five
+to `settings.json` beside `index.html`, and change the feature switches you need. You can omit any switch: all
 default to `true`. Without a settings file, or when opening the HTML directly as a local file,
 the standard features remain available. No settings file is required to run the app.
 
@@ -153,6 +164,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `shapeLibraryManagement` | Hides Manage and all library additions; blocks library import/export, rename, replace, and delete. Users can place shapes from the deployed library. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
+| `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 
 Disabling `shapeLibrary` also disables its management. Disabling management also disables smart-shape
 authoring and Iconify additions, regardless of their individual switches. A fixed library with a
