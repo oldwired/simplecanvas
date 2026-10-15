@@ -9,6 +9,16 @@ The branch/provenance notes below describe earlier development. The current app 
 PR #2 changes: complete working documents and image/history state live in `tabDocuments`, independently
 of browser storage. Failed autosave shows a persistent warning with a workspace-download action.
 
+HTML export retains smart-shape scripts/state in an offline SVG runtime using the same Worker
+sandbox, validators, and primitive/SVG renderers. Scripted controls run directly with `editing=true`;
+`editorOnly:true` marks authoring-only children AND handles. Static exports filter marked children too.
+`exportBehavior` is either `{move,rotate,resizeWidth,resizeHeight}` or a function of state returning
+that object; all permissions default off. The ruler's marked editor controls set per-instance state
+permissions, binding move and rotate to one toggle. The editor and export share Shift-to-15° rotation
+snapping, including original group/own angles.
+Rotation preserves script-local hit testing; resizing anchors the opposite edge.
+Keep example sources, embedded templates, and the demo library scripts in sync.
+
 PR #3 adds structured JSON plus PNG clipboard output, whole-workspace HTML export, and Markdown.
 Paste validates SimpleCanvas JSON before using the PNG fallback. HTML export reads working documents
 and passes each document's items/assets to SVG serialization; do not clear or swap the live asset pool.

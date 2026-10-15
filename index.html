@@ -1359,7 +1359,7 @@
   // three call shapes copes with that. Nothing outside this sandbox calls `new Function` on
   // `it.script` anywhere in the file.
   const SMART_MAX_REPLY = 524288;
-  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle','refreshMs']);
+  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior']);
   const SMART_WORKER_SRC = `
 "use strict";
 const stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);
@@ -1393,13 +1393,15 @@ self.onmessage = function(e){
       children: typeof def.children==='function', handles: typeof def.handles==='function',
       hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
       initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',
-      refreshMs: typeof def.refreshMs==='function'
+      refreshMs: typeof def.refreshMs==='function',
+      exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')
     } : null});
     return;
   }
   if(msg.method === 'call'){
-    if(!def || typeof def[msg.fn] !== 'function'){ send({id:id, ok:true, result:null}); return; }
-    const result = def[msg.fn].apply(def, msg.args || []);
+    const hook=def && def[msg.fn];
+    const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook
+      : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;
     const reply={id:id, ok:true, result:result===undefined ? null : result};
     if(msg.fn==='children' && msg.refresh===true){
       const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;
@@ -1739,7 +1741,7 @@ self.onmessage = function(e){
     for(const key of ['color','fillColor','textColor']) if(raw[key]!==undefined){
       if(!isColor(raw[key])) throw new Error('Invalid '+key); out[key]=raw[key];
     }
-    for(const key of ['fill','strokeOn','hs','he']) if(raw[key]!==undefined){
+    for(const key of ['fill','strokeOn','hs','he','editorOnly']) if(raw[key]!==undefined){
       if(typeof raw[key]!=='boolean') throw new Error('Invalid '+key); out[key]=raw[key];
     }
     if(raw.size!==undefined) number('size',0,60);
@@ -1779,6 +1781,14 @@ self.onmessage = function(e){
         catch(err){ if(/budget exceeded/.test(err.message)) throw err; reportSmartError(message.src,'children','Child '+(i+1)+': '+err.message); }
       });
       value=kids;
+    } else if(message.fn==='exportBehavior'){
+      if(value!==null && (!value || typeof value!=='object' || Array.isArray(value))) throw new Error('Expected an export behavior object');
+      const out={};
+      for(const key of ['move','rotate','resizeWidth','resizeHeight']){
+        if(value?.[key]!==undefined && typeof value[key]!=='boolean') throw new Error('Invalid export behavior '+key);
+        out[key]=value?.[key]===true;
+      }
+      value=out;
     } else if(message.fn==='refreshMs'){
       value=normalizeSmartRefresh(value,message.src);
     } else if(message.fn==='handles'){
@@ -1789,7 +1799,8 @@ self.onmessage = function(e){
         if(!h || typeof h.id!=='string' || !h.id || h.id.length>64 || ids.has(h.id)) throw new Error('Invalid or duplicate handle ID');
         ids.add(h.id);
         if(h.kind!==undefined && h.kind!=='drag' && h.kind!=='click') throw new Error('Invalid handle kind');
-        return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag'};
+        if(h.editorOnly!==undefined && typeof h.editorOnly!=='boolean') throw new Error('Invalid editorOnly marker');
+        return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag',...(h.editorOnly===true?{editorOnly:true}:{})};
       });
     } else if(message.fn==='hitEdit'){
       if(value!==null && (typeof value!=='string' || !value || value.length>64)) throw new Error('Expected a handle ID or null');
@@ -1975,12 +1986,12 @@ self.onmessage = function(e){
       const execution=temporary?createSmartExecution(it):smartItemExecution(it);
       try{
         const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]},it,execution);
-        map.set(it,r.result);
+        map.set(it,r.result.filter(child=>!child.editorOnly));
       }catch(err){
         if(strict) throw err;
         const cached=smartChildrenCache.get(it.uid);
         const owner=smartCacheOwners.get(it.uid);
-        map.set(it,owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids:[]);
+        map.set(it,owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids.filter(child=>!child.editorOnly):[]);
       }finally{if(temporary)disposeSmartExecution(execution);}
     }
     return map;
@@ -2551,7 +2562,7 @@ self.onmessage = function(e){
     const d = smoothSegments(edge(1)).concat(back, [['Z']]);
     return [{ kind:'path', d, style:{ fill:it.color, stroke:it.color, width:t, cap:'round', join:'round' } }];   // the stroke keeps it from vanishing along the nib
   }
-  function shapeOps(it, skipCell){
+  function primitiveShapeOps(it, skipCell){
     const ops = [];
     switch(it.type){
       case 'image':
@@ -2658,36 +2669,38 @@ self.onmessage = function(e){
         }
         break;
       }
-      case 'smart': {
-        // The container itself never renders a visible box -- its fill/fillColor/strokeOn/color/
-        // textColor/size fields exist purely as a style bus the toolbar writes to and a script reads
-        // from (via smartResolvedStyle below), not as its own drawable rect. A script decides which of
-        // ITS OWN children (e.g. the clock's face circle) actually show that fill/stroke.
-        // 2nd arg to smartChildrenFor: true only for the one instance currently in interactive edit
-        // mode (by identity, not just type/uid -- render() always calls shapeOps on the live items[]
-        // entries, so this correctly picks out just that one object). Lets a script show edit-only
-        // chrome (e.g. a delete/add control) that the committed render and SVG/PNG export never
-        // include -- see smartChildrenFor/warmSmartExportCache for why export always passes false.
-        const kids = smartChildrenFor(it, it===items[editingSmartIdx]);
-        const style=smartResolvedStyle(it);
-        let cached=smartPaintCache.get(it);
-        if(!cached || cached.kids!==kids || cached.style!==style){
-          const localOps=[];
-          for(const raw of kids){
-            // Geometry builders only read descriptors. Leave cached points, controls and arc
-            // centers in local coordinates; translate the paint group instead of cloning/mutating
-            // every child on every repaint. Only the universal defaults are inherited.
-            try{
-              const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
-              localOps.push(...shapeOps(child));
-            }catch(e){}
-          }
-          cached={kids,style,ops:localOps};smartPaintCache.set(it,cached);
-        }
-        ops.push({kind:'group',x:it.x,y:it.y,ops:cached.ops});
-        break;
-      }
     }
+    return ops;
+  }
+  function shapeOps(it, skipCell){
+    if(it.type!=='smart') return primitiveShapeOps(it,skipCell);
+    const ops=[];
+    // The container itself never renders a visible box -- its fill/fillColor/strokeOn/color/
+    // textColor/size fields exist purely as a style bus the toolbar writes to and a script reads
+    // from (via smartResolvedStyle below), not as its own drawable rect. A script decides which of
+    // ITS OWN children (e.g. the clock's face circle) actually show that fill/stroke.
+    // 2nd arg to smartChildrenFor: true only for the one instance currently in interactive edit
+    // mode (by identity, not just type/uid -- render() always calls shapeOps on the live items[]
+    // entries, so this correctly picks out just that one object). HTML uses true for operating
+    // controls; editorOnly children and handles distinguish authoring controls from those.
+    const kids = smartChildrenFor(it, it===items[editingSmartIdx]);
+    const style=smartResolvedStyle(it);
+    let cached=smartPaintCache.get(it);
+    if(!cached || cached.kids!==kids || cached.style!==style){
+      const localOps=[];
+      for(const raw of kids){
+        // Geometry builders only read descriptors. Leave cached points, controls and arc
+        // centers in local coordinates; translate the paint group instead of cloning/mutating
+        // every child on every repaint. Only the universal defaults are inherited.
+        try{
+          const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
+          localOps.push(...shapeOps(child));
+        }catch(e){}
+      }
+      cached={kids,style,ops:localOps};smartPaintCache.set(it,cached);
+    }
+    ops.push({kind:'group',x:it.x,y:it.y,ops:cached.ops});
+
     return ops;
   }
 
@@ -2887,6 +2900,10 @@ self.onmessage = function(e){
   //    own (own-rotation-only) baseline bounding box center, applied OUTSIDE each member's own
   //    rotation — so rotating a group spins it as one rigid body without touching each member's
   //    individual spin.
+  function snapRotation(angle,shift){
+    const step=Math.PI/12;
+    return shift?Math.round(angle/step)*step:angle;
+  }
   function rotatePoint(x,y,cx,cy,ang){
     const s=Math.sin(ang), c=Math.cos(ang);
     const dx=x-cx, dy=y-cy;
@@ -4606,8 +4623,7 @@ self.onmessage = function(e){
     if(rotating){
       const ang = Math.atan2(y-rotating.cy, x-rotating.cx);
       const delta = ang - rotating.startAngle;
-      let newRot = rotating.startRotation + delta;
-      if(e.shiftKey){ const step = Math.PI/12; newRot = Math.round(newRot/step)*step; }  // snap to 15° steps from absolute zero
+      const newRot = snapRotation(rotating.startRotation + delta,e.shiftKey);
       for(const idx of rotating.members) items[idx][rotating.field] = newRot;
       rotating.moved = true;
       render();
@@ -6142,8 +6158,9 @@ self.onmessage = function(e){
     }
     return '';
   }
-  function itemToSVG(it, sceneItems=items, assetPool=assets){
-    const inner = shapeOps(it).map(op=>opToSVG(op,assetPool)).join('');
+  function itemToSVG(it, sceneItems=items, assetPool=assets, smartIndex=null){
+    let inner = shapeOps(it).map(op=>opToSVG(op,assetPool)).join('');
+    if(it.type==='smart' && smartIndex!==null) inner=`<g data-smart-index="${smartIndex}">${inner}</g>`;
     // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
     let transform = '';
     if(it.group!=null && it.groupRotation){
@@ -6187,7 +6204,7 @@ self.onmessage = function(e){
         ox = -minX + m; oy = -minY + m;
       }
       let body = '';
-      for(const it of itemList) body += itemToSVG(it,itemList,opts.assets || assets);
+      itemList.forEach((it,i)=>{body += itemToSVG(it,itemList,opts.assets || assets,opts.liveSmart?i:null);});
       const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
       return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
         + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
@@ -6366,27 +6383,259 @@ self.onmessage = function(e){
     else void openPrintDialog();
   },true);
 
+  // This function is shipped into HTML exports. Shared trusted helpers are inserted into its
+  // lexical scope below; shape source is JSON data and is evaluated only by the existing sandbox.
+  function htmlSmartRuntime(documents){
+    'use strict';
+    /* shared smart runtime */
+    let items=[],activeTabId=null;
+    const assets={},ctx=document.createElement('canvas').getContext('2d');
+    let smartSandboxFrame=null,smartSandboxPort=null,smartSandboxGeneration=0,smartSandboxReady=null;
+    let smartSandboxStartupReject=null,smartSandboxRetiring=Promise.resolve(),smartSandboxActive=null;
+    let smartSandboxReqSeq=0,smartExecutionSeq=0;
+    const smartSandboxPending=new Map(),smartItemExecutions=new WeakMap(),smartStyleCache=new WeakMap();
+    const smartRuntimeStats={resident:0,peak:0,created:0,retired:0},mdMaxDigitLabelCache=new Map(),errors=new Set();
+    function reportSmartError(src,hook,message){
+      const key=hook+': '+message;
+      if(errors.has(key))return;
+      if(errors.size>=128)errors.clear();errors.add(key);console.warn('Smart shape: '+key);
+    }
+    let entries=[],epoch=0,timer=null,currentPress=null,gestureQueue=Promise.resolve();
+    const presses=new Set();
+    const current=e=>e.epoch===epoch && !document.hidden;
+    function schedule(){
+      clearTimeout(timer);timer=null;
+      if(document.hidden)return;
+      const due=Math.min(...entries.map(e=>e.next));
+      if(Number.isFinite(due))timer=setTimeout(()=>{
+        timer=null;for(const e of entries)if(e.next<=performance.now())void refresh(e);
+        // Browser timers can fire before a fractional deadline; keep the nearest deadline armed.
+        schedule();
+      },Math.max(1,due-performance.now()));
+    }
+    function position(e){
+      const it=e.item;
+      e.local.setAttribute('transform',`translate(${it.x+e.offset.x} ${it.y+e.offset.y})`
+        +(e.angle?` rotate(${e.angle*180/Math.PI} ${it.w/2} ${it.h/2})`:''));
+    }
+    function paint(e){
+      const it=e.item,ops=[];
+      for(const raw of e.kids){
+        const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
+        ops.push(...primitiveShapeOps(child));
+      }
+      const target=`<rect width="${it.w}" height="${it.h}" fill="transparent" pointer-events="all"/>`;
+      const handles=e.handles.filter(h=>h.kind==='drag').map(h=>
+        `<circle cx="${h.x}" cy="${h.y}" r="4" fill="#6366f1" stroke="#fff" stroke-width="1" pointer-events="none"/>`).join('');
+      const resize=e.behavior.resizeWidth ? `<rect data-resize-width="true" x="${it.w-6}" y="${it.h/2-12}" width="12" height="24" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ew-resize"><title>Change width</title></rect>` : '';
+      const resizeHeight=e.behavior.resizeHeight ? `<rect data-resize-height="true" x="${it.w/2-12}" y="${it.h-6}" width="24" height="12" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ns-resize"><title>Change height</title></rect>` : '';
+      const rotate=e.behavior.rotate ? `<g data-rotate="true" style="cursor:grab"><title>Rotate</title>
+        <line x1="${it.w/2}" y1="0" x2="${it.w/2}" y2="-30" stroke="#6366f1" pointer-events="none"/>
+        <circle cx="${it.w/2}" cy="-30" r="16" fill="transparent"/>
+        <circle cx="${it.w/2}" cy="-30" r="9" fill="#fff" stroke="#6366f1" stroke-width="2" pointer-events="none"/></g>` : '';
+      e.local.innerHTML=target+ops.map(op=>opToSVG(op)).join('')+handles+resize+resizeHeight+rotate;
+      position(e);
+      e.host.style.cursor=e.behavior.move?'grab':'default';
+    }
+    async function refresh(e){
+      if(!current(e))return;
+      if(e.busy){e.dirty=true;return;}
+      e.busy=true;e.dirty=false;e.next=Infinity;
+      const it=e.item,state=it.state,w=it.w,h=it.h;
+      try{
+        const caps=e.caps || await requestSmartCaps(it);
+        if(!caps)throw new Error('Smart shape unavailable');
+        e.caps=caps;
+        const behavior=(caps.exportBehavior ? await requestSmartCall(it,'exportBehavior',[state]) : null) || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};
+        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args:[state,smartResolvedStyle(it),w,h,true]},it);
+        const handles=caps.handles ? await requestSmartCall(it,'handles',[state,w,h,smartResolvedStyle(it)]) || [] : [];
+        if(!current(e))return;
+        if(it.state!==state || it.w!==w || it.h!==h){e.dirty=true;return;}
+        e.behavior=behavior;e.kids=drawing.result.filter(c=>!c.editorOnly);
+        e.handles=handles.filter(h=>!h.editorOnly);paint(e);
+        e.host.dataset.smartReady='true';
+        e.next=drawing.refreshMs?performance.now()+drawing.refreshMs:Infinity;
+      }catch(err){if(current(e))e.next=performance.now()+SMART_BACKOFF_MS;}
+      finally{
+        e.busy=false;
+        if(current(e) && e.dirty)void refresh(e);
+        schedule();
+      }
+    }
+    function point(e,event,parent=false){
+      const matrix=(parent?e.host:e.local).getScreenCTM();
+      return matrix?new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix.inverse()):null;
+    }
+    function valid(p){return !p.cancelled && current(p.entry);}
+    function cancelPresses(){
+      for(const p of presses){
+        p.cancelled=true;p.release();
+        if(p.original && !p.finished){
+          p.entry.item.state=p.original.state;p.entry.item.w=p.original.w;p.entry.item.h=p.original.h;
+          p.entry.offset=p.original.offset;p.entry.angle=p.original.angle;
+          if(current(p.entry)){paint(p.entry);void refresh(p.entry);}
+        }
+      }
+      currentPress=null;
+    }
+    async function processPress(p){
+      const e=p.entry,it=e.item;
+      if(!valid(p))return;
+      p.original={state:it.state,w:it.w,h:it.h,offset:{...e.offset},angle:e.angle};
+      const start=point(e,p.down),parentStart=point(e,p.down,true);
+      if(!start || !parentStart)return;
+      const center={x:it.x+e.offset.x+it.w/2,y:it.y+e.offset.y+it.h/2};
+      const startAngle=Math.atan2(parentStart.y-center.y,parentStart.x-center.x);
+      let handle=null;
+      if(p.rotate){if(e.behavior.rotate)p.mode='rotate';}
+      else if(p.resize){if(e.behavior[p.resize==='width'?'resizeWidth':'resizeHeight'])p.mode=p.resize;}
+      else{
+        const id=await requestSmartCall(it,'hitEdit',[it.state||{},start.x,start.y,it.w,it.h,smartResolvedStyle(it)]);
+        if(!valid(p))return;
+        // Resolve fresh descriptors, including editorOnly handles, before considering body movement.
+        const hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+        if(!valid(p))return;
+        const hit=hs.find(h=>h.id===id);
+        if(hit?.editorOnly)return;
+        handle=hit;
+        if(handle)p.mode='handle';else if(e.behavior.move)p.mode='move';
+      }
+      if(!p.mode)return;
+      let sequence=0,applied=-1;
+      p.update=()=>{sequence++;p.wake?.();p.wake=null;};
+      const apply=async event=>{
+        if(!valid(p))return;
+        const at=point(e,event),parentAt=point(e,event,true);
+        if(!at || !parentAt)return;
+        if(p.mode==='move'){
+          e.offset={x:p.original.offset.x+parentAt.x-parentStart.x,y:p.original.offset.y+parentAt.y-parentStart.y};
+          position(e);
+        }else if(p.mode==='rotate'){
+          const delta=Math.atan2(parentAt.y-center.y,parentAt.x-center.x)-startAngle;
+          // Snap the visible angle, including the rotations encoded in the frozen SVG wrappers.
+          const base=(it.rotation||0)+(it.group!=null?(it.groupRotation||0):0);
+          const angle=base+p.original.angle+Math.atan2(Math.sin(delta),Math.cos(delta));
+          e.angle=snapRotation(angle,event.shiftKey)-base;
+          position(e);
+        }else if(p.mode==='width' || p.mode==='height'){
+          const c=Math.cos(p.original.angle),s=Math.sin(p.original.angle);
+          const dx=parentAt.x-parentStart.x,dy=parentAt.y-parentStart.y;
+          if(p.mode==='width')it.w=Math.max(20,Math.min(1000000,p.original.w+c*dx+s*dy));
+          else it.h=Math.max(20,Math.min(1000000,p.original.h-s*dx+c*dy));
+          // Preserve the opposite edge as the center pivot shifts with the new dimensions.
+          const halfW=(it.w-p.original.w)/2,halfH=(it.h-p.original.h)/2;
+          e.offset={x:p.original.offset.x+(c-1)*halfW-s*halfH,y:p.original.offset.y+s*halfW+(c-1)*halfH};
+          position(e);
+          void refresh(e);
+        }else{
+          const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,at.x,at.y,it.w,it.h,smartResolvedStyle(it)]);
+          if(valid(p) && next){it.state=next;void refresh(e);}
+        }
+      };
+      // Coalesce moves while a hook runs, retaining the final position and processing quick
+      // released clicks in order. Click-kind handles run exactly once on release.
+      while(valid(p) && !p.released){
+        if(handle?.kind!=='click' && p.latest && sequence!==applied){
+          applied=sequence;await apply(p.latest);
+        }else await new Promise(resolve=>{p.wake=resolve;});
+      }
+      if(!valid(p))return;
+      // Like the editor, preserve the last moved angle if Shift is released before pointerup.
+      if(p.mode==='rotate'){if(p.latest)await apply(p.latest);}
+      else if(handle?.kind==='click' || (handle && !p.latest))await apply(p.down);
+      else if(p.latest || p.up)await apply(p.up || p.latest);
+      if(valid(p))p.finished=true;
+    }
+    function activate(id){
+      cancelPresses();
+      for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));
+      epoch++;clearTimeout(timer);timer=null;activeTabId=id;
+      const doc=documents.find(d=>d.id===id);entries=doc?.entries || [];items=entries.map(e=>e.item);
+      for(const e of entries){e.epoch=epoch;e.next=Infinity;e.caps=null;void refresh(e);}
+    }
+    for(const doc of documents){
+      const panel=documents.length===1?document.body:[...document.querySelectorAll('.tab-panel')].find(p=>p.dataset.tabId===doc.id);
+      doc.entries=doc.shapes.map(({index,item})=>{
+        const host=panel.querySelector(`[data-smart-index="${index}"]`),local=host.firstElementChild;
+        const e={item,host,local,offset:{x:0,y:0},angle:0,behavior:{move:false,rotate:false,resizeWidth:false,resizeHeight:false},kids:[],handles:[],epoch:-1,next:Infinity};
+        host.style.touchAction='none';host.style.userSelect='none';
+        host.addEventListener('pointerdown',event=>{
+          if(event.button!==0 || currentPress || document.hidden || event.target.closest('a'))return;
+          event.preventDefault();
+          const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
+            resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
+            rotate:!!event.target.closest('[data-rotate]'),released:false};
+          p.release=()=>{p.released=true;p.wake?.();p.wake=null;};
+          currentPress=p;presses.add(p);host.setPointerCapture(event.pointerId);
+          gestureQueue=gestureQueue.then(()=>processPress(p)).catch(()=>{}).finally(()=>presses.delete(p));
+        });
+        return e;
+      });
+    }
+    window.addEventListener('pointermove',event=>{
+      const p=currentPress;if(!p || p.pointerId!==event.pointerId)return;
+      p.latest={clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey};p.update?.();
+    });
+    window.addEventListener('pointerup',event=>{
+      const p=currentPress;if(!p || p.pointerId!==event.pointerId)return;
+      p.up={clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey};currentPress=null;p.release();
+    });
+    window.addEventListener('pointercancel',event=>{
+      if(currentPress?.pointerId===event.pointerId)cancelPresses();
+    });
+    window.addEventListener('keydown',event=>{if(event.key==='Escape')cancelPresses();});
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden){cancelPresses();for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));clearTimeout(timer);timer=null;}
+      else for(const e of entries){e.epoch=epoch;void refresh(e);}
+    });
+    window.addEventListener('pagehide',()=>{cancelPresses();clearTimeout(timer);regenerateSmartSandbox();});
+    window.addEventListener('pageshow',event=>{if(event.persisted)activate(activeTabId);});
+    document.querySelectorAll('.tab-select').forEach(btn=>btn.addEventListener('click',()=>activate(btn.dataset.tabId)));
+    activate(documents[0].id);
+  }
+  function htmlSmartSource(documents){
+    // Share the actual sandbox, validators and drawing primitives. No second implementation of
+    // the script contract, text layout, arcs or style inheritance is maintained for exports.
+    const values={SMART_MAX_REPLY,SMART_WORKER_SRC,SMART_CALL_TIMEOUT_MS,SMART_STARTUP_TIMEOUT_MS,SMART_MAX_RESIDENT_WORKERS,SMART_BACKOFF_MS,
+      MAX_SCRIPT,MAX_STATE_JSON,MAX_POINTS,MAX_TEXT,FONTS,NIB_ANGLE,NIB_THICK,NIB_SPEED_EASE,MD_HEADING_SCALE,MD_LINK_COLOR,MD_TOP_PAD,
+      smartStyleFields,smartPresetColors};
+    let source=Object.entries(values).map(([key,value])=>`const ${key}=${JSON.stringify(value)};`).join('\n');
+    source+=`\nconst SMART_HOOKS=new Set(${JSON.stringify([...SMART_HOOKS])}),HEAD_STYLES=new Set(${JSON.stringify([...HEAD_STYLES])}),MD_INLINE_RE=${MD_INLINE_RE};\n`;
+    source+=[isNum,isColor,norm,scriptOf,smartCancelled,createSmartExecution,smartExecutionCurrent,smartItemExecution,stopSmartOwnerRequests,
+      disposeSmartExecution,createSmartSandbox,ensureSmartSandbox,regenerateSmartSandbox,dispatchSmartSandboxNext,requestSmartSandbox,requestSmartCall,requestSmartCaps,
+      smartNumber,normalizeSmartRefresh,normalizeSmartState,normalizeSmartChild,validateSmartReply,smartResolvedStyle,snapRotation,
+      strokeOn,strokeWidthOf,headsOf,headVariantOf,arrowHeadGeom,arrowHeadSegments,arrowHeadOp,fillOf,strokeOf,dashArrayFor,dashOf,boxStyle,
+      nibWidths,chiselOps,smoothSegments,polyCurveSegments,polyBridgeSegments,curveEndFrom,primitiveShapeOps,
+      fontStr,familyOf,fontPxOf,textAnchorX,wrapTextToWidth,layoutWrappedText,markdownBodyOf,parseInline,parseMarkdownBlocks,safeHref,mdBlockFontPx,mdFontString,
+      MD_MAX_DIGIT_LABEL_W,tokenizeRuns,isListBlock,mdBlockGapAfter,layoutMarkdownBlocks,escXml,svgArcD,pathD,styleAttrs,opToSVG]
+      .map(fn=>`const ${fn.name}=${fn.toString()};`).join('\n');
+    const data=JSON.stringify(documents).replace(/</g,'\\u003c');
+    return `(${htmlSmartRuntime.toString().replace('/* shared smart runtime */',()=>source)})(${data});`.replace(/<\/script/gi,'<\\/script');
+  }
+
   // With workspace controls enabled, exports every tab, each as its own full-canvas
   // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
-  // (view-only: click to switch, no rename/close -- there's nothing to edit in a static export).
+  // (click to switch, without renaming or closing). Smart shapes retain their scripted controls.
   // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
   // Pass its own items/assets through serialization without modifying the active document's state.
   // With workspace controls disabled, only the active sketch is exported. cssW/cssH are shared.
   async function exportHtml(){
     if(textInput.style.display==='block') commitText();
+    cancelSmartGestures(true);
+    await smartHitSettled;await shapePlacementQueue;
     rememberActiveTab();
     const exportTabs=features.workspace ? tabs : tabs.filter(t=>t.id===activeTabId);
     const tabData = await Promise.all(exportTabs.map(async t=>{
-      const doc = tabDocument(t.id);
-      const svg = await itemsToSVGMarkup(doc.items, {width:cssW, height:cssH, assets:doc.assets});
-      return { id:t.id, name:t.name, items:doc.items, svg };
+      const doc = tabDocument(t.id),scene=clone(doc.items);
+      const svg = await itemsToSVGMarkup(scene, {width:cssW, height:cssH, assets:doc.assets,liveSmart:true});
+      return { id:t.id, name:t.name, items:scene, svg };
     }));
 
     if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
 
     let html;
     if(tabData.length < 2){
-      // Unchanged from before this feature -- a single plain SVG, no tab bar, no extra markup.
+      // A single sketch needs no tab bar. Its SVG also provides the no-JavaScript fallback.
       html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${tabData[0].svg}</body></html>`;
     } else {
       const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
@@ -6408,6 +6657,10 @@ self.onmessage = function(e){
         });
       });`;
       html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
+    }
+    if(tabData.some(t=>t.items.some(it=>it.type==='smart'))){
+      const data=tabData.map(t=>({id:t.id,shapes:t.items.flatMap((item,index)=>item.type==='smart'?[{index,item}]:[])}));
+      html=html.replace('</body>',()=>`<script>${htmlSmartSource(data)}<\/script></body>`);
     }
     const blob = new Blob([html], {type:'text/html'});
     const url = URL.createObjectURL(blob);
@@ -7420,7 +7673,7 @@ self.onmessage = function(e){
   },
 })`;
   const LIVE_CLOCK_EXAMPLE_SCRIPT = `// Live local time. The app calls refreshMs after a live drawing and schedules the next refresh.
-// No interval, mutable counter, or persistent Worker is needed. Exports are static snapshots.
+// No interval, mutable counter, or persistent Worker is needed. Image exports are static snapshots; HTML stays live.
 ({
   initState(){ return {}; },
   initStyle(){ return { w:180, h:208, strokeOn:false, fontSize:14 }; },
@@ -7457,7 +7710,7 @@ self.onmessage = function(e){
 `;
   const STOPWATCH_EXAMPLE_SCRIPT = `// Double-click to reveal Start/Pause and Reset. Time is derived from saved timestamps, rather than
 // counting redraws. A running stopwatch continues across tab switches, backgrounding, and reloads.
-// Placement starts a fresh, stopped instance. Exported images/HTML capture the current reading.
+// Placement starts a fresh, stopped instance. Exported images capture the current reading; HTML keeps the controls and live timing.
 ({
   initState(){ return { elapsedMs:0, startedAt:null }; },
   initStyle(){ return { w:260, h:110, fontSize:24, strokeOn:false }; },
@@ -7506,9 +7759,11 @@ self.onmessage = function(e){
   const RULER_EXAMPLE_SCRIPT = `// The same physical scale as drill-template.js: 96 canvas px = 1 inch = 25.4 mm.
 // Extending the ruler reveals more divisions without stretching them. Resize vertically to change
 // its height. Double-click, then click the unit label to cycle cm/mm, inch, and px.
+// In edit mode, the two HTML controls opt this instance into moving/rotating and/or extending in HTML.
 // Physical size is reliable in SVG printed at actual size; screens and browser printing may scale.
 ({
-  initState(){ return { unit:'cm' }; },
+  initState(){ return { unit:'cm', allowMove:false, allowExtend:false }; },
+  exportBehavior(state){ return {move:state.allowMove===true,rotate:state.allowMove===true,resizeWidth:state.allowExtend===true}; },
   initStyle(){ return { w:378, h:76, fontSize:12, strokeOn:false }; },
   // Adjust these definitions to make a custom scale. minor is the spacing of the smallest tick;
   // unitPx is the distance represented by one numbered unit. Both are in canvas pixels.
@@ -7550,11 +7805,28 @@ self.onmessage = function(e){
     if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false});
     items.push({type:'text',x:buttonX,y:0,w:buttonW,h:22,text:scale.label+(editing?' ↻':''),
       align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
+    if(editing){
+      for(const [x,label,on] of [[0,'HTML: move / rotate',state.allowMove],[w/2,'HTML: extend',state.allowExtend]]){
+        items.push({type:'rect',x,y:h+6,w:w/2-4,h:24,strokeOn:true,color:style.color,size:1,
+          fill:true,fillColor:on?'#eef2ff':'#ffffff',editorOnly:true});
+        items.push({type:'text',x,y:h+6,w:w/2-4,h:24,text:label+(on?' ✓':' □'),align:'center',
+          font:style.font,color:style.textColor,strokeOn:false,fill:false,editorOnly:true});
+      }
+    }
     return items;
   },
-  handles(state, w){ return [{id:'units',x:w-Math.min(88,w)/2,y:11,kind:'click'}]; },
-  hitEdit(state, lx, ly, w){ return lx>=w-Math.min(88,w) && lx<=w && ly>=0 && ly<=22?'units':null; },
+  handles(state, w, h){ return [
+    {id:'units',x:w-Math.min(88,w)/2,y:11,kind:'click'},
+    {id:'htmlMove',x:w/4,y:h+18,kind:'click',editorOnly:true},
+    {id:'htmlExtend',x:w*.75,y:h+18,kind:'click',editorOnly:true}
+  ]; },
+  hitEdit(state, lx, ly, w, h){
+    if(ly>=h+6 && ly<=h+30 && lx>=0 && lx<=w)return lx<w/2?'htmlMove':'htmlExtend';
+    return lx>=w-Math.min(88,w) && lx<=w && ly>=0 && ly<=22?'units':null;
+  },
   dragEdit(state, handle){
+    if(handle==='htmlMove')return {...state,allowMove:!state.allowMove};
+    if(handle==='htmlExtend')return {...state,allowExtend:!state.allowExtend};
     if(handle!=='units') return state;
     const units=['cm','in','px'];return {...state,unit:units[(units.indexOf(this._unit(state))+1)%units.length]};
   },

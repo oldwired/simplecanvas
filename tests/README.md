@@ -68,5 +68,12 @@ Point-edit checks cover off-center insertion on straight, diagonal and rotated o
 mouse/touch double-click exit; held Delete/Backspace; Undo/Redo preservation including a full
 history stack; intervening edits; and retaining unrelated smart-instance execution state.
 
+Live HTML regressions open actual downloads from disk with no network dependencies. They cover live
+clocks and stopwatch controls, locked layouts, ruler permission controls and persistence, rotated
+movement, independent rotation permissions, rotation cancellation, absolute Shift-to-15° snapping
+shared with the editor, independent height resizing, and width extension at fixed scale,
+editor-only visuals/actions, static script permissions,
+state across tabs with colliding UIDs, script/source escaping, and hung-script fallback and isolation.
+
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.

@@ -1,5 +1,5 @@
 // Live local time. The app calls refreshMs after a live drawing and schedules the next refresh.
-// No interval, mutable counter, or persistent Worker is needed. Exports are static snapshots.
+// No interval, mutable counter, or persistent Worker is needed. Image exports are static snapshots; HTML stays live.
 ({
   initState(){ return {}; },
   initStyle(){ return { w:180, h:208, strokeOn:false, fontSize:14 }; },

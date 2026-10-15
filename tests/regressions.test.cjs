@@ -1601,6 +1601,273 @@ const slowClickScript = `({
   dragEdit(s){const end=performance.now()+40;while(performance.now()<end){}return {n:(s.n||0)+1};}
 })`;
 
+
+async function openExport(page,run,context,{init}={}){
+  const download=page.waitForEvent('download');await run('exportHtml()');
+  const file=await(await download).path(),directory=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'simplecanvas-html-'));
+  const htmlFile=path.join(directory,'sketch.html');fs.copyFileSync(file,htmlFile);
+  context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const preview=await context.newPage(),errors=[],requests=[];
+  preview.on('pageerror',error=>errors.push(error.message));
+  preview.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  if(init)await preview.addInitScript(init);
+  await preview.goto(require('node:url').pathToFileURL(htmlFile).href);
+  return {preview,errors,requests,source:fs.readFileSync(file,'utf8')};
+}
+async function exportedPoint(host,x,y,parent=false){
+  return host.evaluate((el,{x,y,parent})=>{
+    const p=new DOMPoint(x,y).matrixTransform((parent?el:el.firstElementChild).getScreenCTM());
+    return {x:p.x,y:p.y};
+  },{x,y,parent});
+}
+async function exportClick(preview,host,x,y){const p=await exportedPoint(host,x,y);await preview.mouse.click(p.x,p.y);}
+async function exportDrag(preview,host,x,y,dx,dy){
+  const a=await exportedPoint(host,x,y),b=await exportedPoint(host,x+dx,y+dy);
+  await preview.mouse.move(a.x,a.y);await preview.mouse.down();
+  await preview.mouse.move(b.x,b.y,{steps:5});await preview.mouse.up();
+}
+async function exportRotate(preview,host,w,h,angle,release=true){
+  const radius=h/2+30,a=await exportedPoint(host,w/2,-30);
+  const b=await exportedPoint(host,w/2+Math.sin(angle)*radius,h/2-Math.cos(angle)*radius);
+  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
+  if(release)await preview.mouse.up();
+}
+
+test('HTML smart shapes run offline with live timing, direct ordered controls and a locked layout',async()=>app(async({page,run,context})=>{
+  await run(`items=[{...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script,w:260,h:110,state:{elapsedMs:0,startedAt:null}},
+    {...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.liveClock.script,x:500,h:208}];setTool('select');selection=[];render();save();`);
+  const before=await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})');
+  const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
+    // Force early callbacks, as can occur naturally when browsers round fractional delays.
+    const timeout=window.setTimeout.bind(window);
+    window.setTimeout=(fn,delay,...args)=>timeout(fn,delay>10?delay-2:delay,...args);
+  }});
+  const sw=preview.locator('[data-smart-index="0"]'),clock=preview.locator('[data-smart-index="1"]');
+  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
+  assert.match(await sw.textContent(),/Start.*Reset/,'operating buttons are visible immediately');
+  const firstClock=await clock.textContent();
+  await preview.waitForFunction(first=>document.querySelector('[data-smart-index="1"]').textContent!==first,firstClock);
+  await exportClick(preview,sw,65,88);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Pause'));
+  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.0'));
+  await exportClick(preview,sw,65,88);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
+  const paused=await sw.textContent();await preview.waitForTimeout(250);assert.equal(await sw.textContent(),paused);
+  // Quick released clicks still execute in order. Reset, Start, Pause must end stopped.
+  await exportClick(preview,sw,195,88);await exportClick(preview,sw,65,88);await exportClick(preview,sw,65,88);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
+  const box=await sw.boundingBox();await exportDrag(preview,sw,20,20,60,40);await preview.waitForTimeout(100);
+  assert.deepEqual(await sw.boundingBox(),box,'the body cannot be moved');
+  assert.equal(await sw.locator('[data-resize-width]').count(),0,'no regular resize controls');
+  assert.equal(await sw.locator('[data-resize-height],[data-rotate]').count(),0,'rotation and height resizing also default off');
+  assert.equal(await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})'),before,'export interactions never edit the source workspace');
+  assert.deepEqual(requests,[],'the downloaded file needs no server or network');assert.deepEqual(errors,[]);
+}));
+
+test('ruler author controls bind moving and rotation; HTML extends opted-in instances at fixed scale',async()=>app(async({page,run,context})=>{
+  await run(`(async()=>{const ruler={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.ruler.script};await initializeSmartItem(ruler);
+    items=[ruler];setTool('select');selection=[0];editingSmartIdx=0;render();save();})()`);
+  await page.waitForFunction(()=>__test.run("smartHandlesCache.get('smart-test')?.hs.length")===3);
+  const shape=await run('items[0]'),canvas=await page.locator('#canvas').boundingBox();
+  for(const x of [shape.w/4,shape.w*.75]){
+    await page.mouse.click(canvas.x+shape.x+x,canvas.y+shape.y+shape.h+18);await run('smartHitSettled');
+  }
+  assert.deepEqual(await run('items[0].state'),{unit:'cm',allowMove:true,allowExtend:true});
+  await run('undo()');assert.equal(await run('items[0].state.allowExtend'),false);await run('redo()');
+  const saved=await downloadedJSON(page,run,'exportProject()');assert.equal(saved.items[0].state.allowExtend,true);
+  await page.reload();
+  await run(`items.push({...clone(items[0]),uid:'locked',x:650,state:{unit:'cm'}});items[0].rotation=.2;
+    items[0].group='rotated';items[0].groupRotation=.3;items.push({...${JSON.stringify(rectangle('sibling'))},x:200,y:300,group:'rotated',groupRotation:.3});render();`);
+  const {preview,errors,requests}=await openExport(page,run,context);
+  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
+  const ruler=preview.locator('[data-smart-index="0"]'),locked=preview.locator('[data-smart-index="1"]');
+  assert.doesNotMatch(await ruler.textContent(),/HTML: move|HTML: extend/);
+  assert.equal(await locked.locator('[data-resize-width]').count(),0);
+  assert.equal(await locked.locator('[data-rotate]').count(),0);
+  assert.equal(await ruler.locator('[data-rotate]').count(),1,'one ruler toggle enables both moving and rotation');
+  assert.equal(await ruler.locator('[data-resize-height]').count(),0,'the ruler does not enable height resizing');
+  const lockedBox=await locked.boundingBox();await exportDrag(preview,locked,50,40,35,20);await preview.waitForTimeout(100);
+  assert.deepEqual(await locked.boundingBox(),lockedBox);
+  const initial=await exportedPoint(ruler,0,0),destination=await exportedPoint(ruler,45,20);
+  await exportDrag(preview,ruler,50,40,45,20);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!=='translate(100 100)');
+  const moved=await exportedPoint(ruler,0,0);assert.ok(Math.abs(moved.x-destination.x)<.1 && Math.abs(moved.y-destination.y)<.1,'rotated body follows the pointer');
+  const oldWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
+  await exportDrag(preview,ruler,oldWidth,shape.h/2,96,0);
+  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+95,oldWidth);
+  const newWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
+  assert.ok(Math.abs(newWidth-oldWidth-96)<.1);
+  assert.equal(await ruler.locator('rect[pointer-events="all"]').getAttribute('height'),String(shape.h));
+  const tickPositions=await ruler.locator('rect').evaluateAll(rects=>rects.filter(r=>+r.getAttribute('y')>45 && +r.getAttribute('height')<23 && +r.getAttribute('height')>0)
+    .map(r=>+r.getAttribute('x') + +r.getAttribute('width')/2));
+  assert.ok(tickPositions.length>100);assert.ok(Math.abs(tickPositions[3]-tickPositions[2]-96/25.4)<.001,'extension retains millimeter spacing');
+  const center=await exportedPoint(ruler,newWidth/2,shape.h/2),edge=await exportedPoint(ruler,0,0);
+  await exportRotate(preview,ruler,newWidth,shape.h,Math.PI/2);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
+  const turnedCenter=await exportedPoint(ruler,newWidth/2,shape.h/2),turnedEdge=await exportedPoint(ruler,0,0);
+  assert.ok(Math.hypot(turnedCenter.x-center.x,turnedCenter.y-center.y)<.1,'rotation keeps the ruler center fixed');
+  assert.ok(Math.hypot(turnedEdge.x-(center.x-(edge.y-center.y)),turnedEdge.y-(center.y+(edge.x-center.x)))<.1);
+  await exportDrag(preview,ruler,newWidth,shape.h/2,60,0);
+  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+59,newWidth);
+  const extendedEdge=await exportedPoint(ruler,0,0);
+  assert.ok(Math.hypot(extendedEdge.x-turnedEdge.x,extendedEdge.y-turnedEdge.y)<.1,'extending after rotation anchors the left edge');
+  await exportClick(preview,ruler,newWidth+60-44,11);await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('inch'));
+  assert.ok(await ruler.locator('[data-resize-width]').count());assert.ok(initial.x!==moved.x);
+  assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+}));
+
+test('HTML uses static script permissions, filters editor-only controls and handles, and retains tab instance state',async()=>app(async({page,run,context})=>{
+  const script=`({exportBehavior:{move:true,resizeWidth:false},
+    children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#ffd166'},
+      {type:'text',x:0,y:0,w,h:30,text:String(s.n||0),strokeOn:false},
+      {type:'text',x:0,y:50,w,h:30,text:'AUTHOR ONLY',editorOnly:true}];},
+    handles(){return [{id:'inc',x:40,y:20,kind:'click'},{id:'author',x:40,y:65,kind:'click',editorOnly:true}];},
+    hitEdit(s,x,y){return y<40?'inc':y<90?'author':null;},
+    dragEdit(s,id){return {n:(s.n||0)+(id==='inc'?1:100)};}})`;
+  await run(`items=[${JSON.stringify(smartFixture(script))}];save();newTab();items=[${JSON.stringify(smartFixture(script,{n:9}))}];render();save();`);
+  const snapshot=await run('itemsToSVGMarkup(items)');assert.doesNotMatch(snapshot,/AUTHOR ONLY/,'even unconditional author children stay out of static exports');
+  const {preview,errors}=await openExport(page,run,context);
+  const panels=preview.locator('.tab-panel'),first=panels.nth(0).locator('[data-smart-index]'),second=panels.nth(1).locator('[data-smart-index]');
+  await preview.waitForFunction(()=>document.querySelector('.tab-panel [data-smart-ready="true"]'));
+  assert.equal(await first.locator('[data-rotate]').count(),0,'move permission alone does not implicitly grant rotation');
+  assert.equal(await first.textContent(),'0');await exportClick(preview,first,40,20);
+  await preview.waitForFunction(()=>document.querySelector('.tab-panel [data-smart-index]').textContent==='1');
+  await exportClick(preview,first,40,65);await preview.waitForTimeout(100);assert.equal(await first.textContent(),'1','author-only handles never run');
+  const start=await exportedPoint(first,0,0),end=await exportedPoint(first,30,25);
+  await exportDrag(preview,first,60,110,30,25);await preview.waitForTimeout(100);
+  const moved=await exportedPoint(first,0,0);assert.ok(Math.abs(moved.x-end.x)<.1 && Math.abs(moved.y-end.y)<.1);assert.notEqual(start.x,moved.x);
+  await preview.locator('.tab-select').nth(1).click();
+  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
+  assert.equal(await second.textContent(),'9');await exportClick(preview,second,40,20);
+  await preview.waitForFunction(()=>document.querySelectorAll('.tab-panel [data-smart-index]')[1].textContent==='10');
+  await preview.locator('.tab-select').nth(0).click();assert.equal(await first.textContent(),'1');assert.deepEqual(await exportedPoint(first,0,0),moved);
+  assert.deepEqual(errors,[]);
+}));
+
+test('HTML rotation and height resizing work independently of movement and width, cancel cleanly, and survive tab switches',async()=>app(async({page,run,context})=>{
+  const script=`({exportBehavior:{rotate:true,resizeHeight:true},
+    children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#dbeafe'},
+      {type:'text',x:0,y:0,w,h:30,text:String(s.n||0),strokeOn:false}];},
+    handles(){return [{id:'inc',x:40,y:40,kind:'click'}];},
+    hitEdit(s,x,y){return Math.hypot(x-40,y-40)<14?'inc':null;},
+    dragEdit(s){return {n:(s.n||0)+1};}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(script))},x:350,y:220,h:100,rotation:.25}];save();newTab();items=[${JSON.stringify(rectangle())}];render();save();`);
+  const {preview,errors}=await openExport(page,run,context),shape=preview.locator('.tab-panel').nth(0).locator('[data-smart-index="0"]');
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
+  assert.equal(await shape.locator('[data-resize-width]').count(),0);
+  const box=await shape.boundingBox();await exportDrag(preview,shape,70,70,30,20);await preview.waitForTimeout(100);
+  assert.deepEqual(await shape.boundingBox(),box,'rotation permission does not grant body movement');
+  const center=await exportedPoint(shape,90,50),corner=await exportedPoint(shape,0,0);
+  await exportRotate(preview,shape,180,100,Math.PI/2);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
+  const rotatedCorner=await exportedPoint(shape,0,0);
+  assert.ok(Math.hypot(rotatedCorner.x-(center.x-(corner.y-center.y)),rotatedCorner.y-(center.y+(corner.x-center.x)))<.1);
+  const transform=await shape.locator(':scope>g').getAttribute('transform');
+  await exportRotate(preview,shape,180,100,Math.PI/4,false);
+  await preview.waitForFunction(t=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!==t,transform);
+  await preview.keyboard.press('Escape');await preview.mouse.up();
+  assert.equal(await shape.locator(':scope>g').getAttribute('transform'),transform,'Escape restores rotation');
+  await exportDrag(preview,shape,90,100,0,50);
+  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>149);
+  assert.equal(await shape.locator('rect[pointer-events="all"]').getAttribute('width'),'180');
+  const resizedCorner=await exportedPoint(shape,0,0);
+  assert.ok(Math.hypot(resizedCorner.x-rotatedCorner.x,resizedCorner.y-rotatedCorner.y)<.1,'height resizing after rotation anchors the top edge');
+  const start=await exportedPoint(shape,90,150),end=await exportedPoint(shape,90,180);
+  await preview.mouse.move(start.x,start.y);await preview.mouse.down();await preview.mouse.move(end.x,end.y);
+  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>179);
+  await preview.keyboard.press('Escape');await preview.mouse.up();
+  await preview.waitForFunction(()=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-150)<.1);
+  await exportClick(preview,shape,40,40);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"] text').textContent==='1');
+  const retained=await shape.locator(':scope>g').getAttribute('transform');
+  await preview.locator('.tab-select').nth(1).click();await preview.locator('.tab-select').nth(0).click();
+  assert.equal(await shape.locator(':scope>g').getAttribute('transform'),retained);
+  assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-150)<.1);
+  assert.deepEqual(errors,[]);
+}));
+
+test('editor and HTML Shift-rotation snap to absolute 15-degree steps, including pre-rotated groups',async()=>app(async({page,run,context})=>{
+  await run(`items=[{...${JSON.stringify(rectangle())},rotation:20*Math.PI/180}];setTool('select');selection=[0];render();`);
+  const pivot=await run(`rotationPivotFor(selection)`),canvas=await page.locator('#canvas').boundingBox();
+  const radius=pivot.cy-pivot.handleY;
+  await page.mouse.move(canvas.x+pivot.cx+Math.sin(pivot.rotation)*radius,canvas.y+pivot.cy-Math.cos(pivot.rotation)*radius);
+  await page.mouse.down();await page.keyboard.down('Shift');
+  await page.mouse.move(canvas.x+pivot.cx+Math.sin(38*Math.PI/180)*radius,canvas.y+pivot.cy-Math.cos(38*Math.PI/180)*radius,{steps:5});
+  assert.ok(Math.abs(await run('items[0].rotation')-Math.PI/4)<1e-6,'the editor snaps 38 degrees to 45 degrees');
+  await page.keyboard.up('Shift');await page.mouse.up();
+  assert.ok(Math.abs(await run('items[0].rotation')-Math.PI/4)<1e-6,'releasing Shift without moving retains the editor angle');
+
+  const script=`({exportBehavior:{rotate:true},children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#dbeafe'}];}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(script))},x:350,y:220,rotation:20*Math.PI/180,group:'snap',groupRotation:15*Math.PI/180},
+    {...${JSON.stringify(rectangle('sibling'))},x:650,group:'snap',groupRotation:15*Math.PI/180}];selection=[];render();`);
+  const {preview,errors}=await openExport(page,run,context),shape=preview.locator('[data-smart-index="0"]');
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
+  const angle=()=>shape.evaluate(el=>{const m=el.firstElementChild.getScreenCTM();return Math.atan2(m.b,m.a)*180/Math.PI;});
+  assert.ok(Math.abs(await angle()-35)<1e-4,'the export starts with the combined own and group rotation');
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,3*Math.PI/180,false);
+  assert.ok(Math.abs(await angle()-45)<1e-4,'HTML snaps the visible 38-degree angle to 45, rather than snapping its drag delta');
+  await preview.keyboard.up('Shift');await preview.mouse.up();
+  assert.ok(Math.abs(await angle()-45)<1e-4,'pointerup keeps the last snapped angle when Shift has been released');
+  await exportRotate(preview,shape,180,180,-7*Math.PI/180);
+  assert.ok(Math.abs(await angle()-38)<1e-4,'rotation stays free without Shift');
+  await preview.keyboard.down('Shift');await exportClick(preview,shape,90,-30);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle()-38)<1e-4,'a stationary handle click does not change the angle');
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,-76*Math.PI/180);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle()+45)<1e-4,'negative angles use the same absolute snapping grid');
+  await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,43*Math.PI/180);await preview.keyboard.up('Shift');
+  assert.ok(Math.abs(await angle())<1e-4,'snapping also crosses zero cleanly');
+  assert.deepEqual(errors,[]);
+}));
+
+test('HTML scripted drags use rotated local coordinates, coalesce replies, and cancel cleanly; touch clicks work',async()=>app(async({page,run,context})=>{
+  const script=`({children(s,style,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#ffffff'},
+    {type:'text',x:0,y:0,w,h:35,text:String(s.value||50),strokeOn:false}];},
+    handles(){return [{id:'value',x:50,y:60}];},
+    hitEdit(s,x,y){return Math.hypot(x-50,y-60)<14?'value':null;},
+    dragEdit(s,id,x){const end=performance.now()+35;while(performance.now()<end){}return {value:Math.round(x)};}})`;
+  await run(`items=[{...${JSON.stringify(smartFixture(script,{value:50}))},rotation:.35}];render();`);
+  const {preview,errors}=await openExport(page,run,context),shape=preview.locator('[data-smart-index="0"]');
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
+  const box=await shape.boundingBox();await exportDrag(preview,shape,50,60,70,25);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  assert.deepEqual(await shape.boundingBox(),box,'dragging a scripted control changes state, not the container');
+  const a=await exportedPoint(shape,50,60),b=await exportedPoint(shape,90,80);
+  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y);
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='90');
+  await preview.keyboard.press('Escape');await preview.mouse.up();
+  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  const frozen=await shape.textContent();
+  await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
+  await preview.waitForTimeout(100);assert.equal(await shape.textContent(),frozen);
+  await preview.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+  await exportDrag(preview,shape,50,60,30,0);await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='80');
+  assert.deepEqual(errors,[]);
+  // Use the same file and runtime on a touch device. Taps need no double-tap edit gesture.
+  const touch=await browser.newContext({viewport:{width:1280,height:900},hasTouch:true});
+  try{
+    const tp=await touch.newPage();await tp.goto(preview.url());
+    await tp.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
+    const handle=await exportedPoint(tp.locator('[data-smart-index]'),60,60);await tp.touchscreen.tap(handle.x,handle.y);
+    await tp.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='60');
+  }finally{await touch.close();}
+}));
+
+test('HTML isolates hostile or hung scripts, preserves frozen fallback, and escapes embedded source and state',async()=>app(async({page,run,context})=>{
+  const attack="</script><script>window.exportEscaped=true</script> $& $` $'";
+  const hostile=`({children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:s.text+' '+typeof document+' '+typeof fetch,strokeOn:false}];}})`;
+  const hang=`({children(s,style,w,h,editing){if(editing)while(true){}return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#22c55e'}];}})`;
+  await run(`items=[${JSON.stringify(smartFixture(hostile,{text:attack}))},{...${JSON.stringify(smartFixture(hang))},uid:'hang',x:400},
+    {...${JSON.stringify(smartFixture(''))},uid:'clock',script:SMART_TEMPLATES.liveClock.script,x:700,h:208}];render();`);
+  const {preview,errors,requests}=await openExport(page,run,context);
+  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
+  assert.equal(await preview.evaluate(()=>window.exportEscaped),undefined);
+  const text=await preview.locator('[data-smart-index="0"]').textContent();assert.equal(text.replace(/\s/g,''),(attack+' undefined undefined').replace(/\s/g,''));
+  assert.equal(await preview.locator('[data-smart-index="1"] rect').getAttribute('fill'),'#22c55e','a failed live rendering retains the static drawing');
+  const clock=preview.locator('[data-smart-index="2"]'),first=await clock.textContent();
+  await preview.waitForFunction(first=>document.querySelector('[data-smart-index="2"]').textContent!==first,first);
+  assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+}));
+
 test('cached smart drawings follow moves, rotations, state, style and size edits in canvas and SVG',async()=>app(async({page,run,context})=>{
   const script='/*'+'long source '.repeat(2800)+'*/'+`({children(s,style,w,h,editing){return [
     {type:'rect',x:s.offset||0,y:0,w,h,fill:true,fillColor:editing?'#0000ff':style.color,strokeOn:false}];}})`;

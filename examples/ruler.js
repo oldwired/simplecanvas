@@ -1,9 +1,11 @@
 // The same physical scale as drill-template.js: 96 canvas px = 1 inch = 25.4 mm.
 // Extending the ruler reveals more divisions without stretching them. Resize vertically to change
 // its height. Double-click, then click the unit label to cycle cm/mm, inch, and px.
+// In edit mode, the two HTML controls opt this instance into moving/rotating and/or extending in HTML.
 // Physical size is reliable in SVG printed at actual size; screens and browser printing may scale.
 ({
-  initState(){ return { unit:'cm' }; },
+  initState(){ return { unit:'cm', allowMove:false, allowExtend:false }; },
+  exportBehavior(state){ return {move:state.allowMove===true,rotate:state.allowMove===true,resizeWidth:state.allowExtend===true}; },
   initStyle(){ return { w:378, h:76, fontSize:12, strokeOn:false }; },
   // Adjust these definitions to make a custom scale. minor is the spacing of the smallest tick;
   // unitPx is the distance represented by one numbered unit. Both are in canvas pixels.
@@ -45,11 +47,28 @@
     if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false});
     items.push({type:'text',x:buttonX,y:0,w:buttonW,h:22,text:scale.label+(editing?' ↻':''),
       align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
+    if(editing){
+      for(const [x,label,on] of [[0,'HTML: move / rotate',state.allowMove],[w/2,'HTML: extend',state.allowExtend]]){
+        items.push({type:'rect',x,y:h+6,w:w/2-4,h:24,strokeOn:true,color:style.color,size:1,
+          fill:true,fillColor:on?'#eef2ff':'#ffffff',editorOnly:true});
+        items.push({type:'text',x,y:h+6,w:w/2-4,h:24,text:label+(on?' ✓':' □'),align:'center',
+          font:style.font,color:style.textColor,strokeOn:false,fill:false,editorOnly:true});
+      }
+    }
     return items;
   },
-  handles(state, w){ return [{id:'units',x:w-Math.min(88,w)/2,y:11,kind:'click'}]; },
-  hitEdit(state, lx, ly, w){ return lx>=w-Math.min(88,w) && lx<=w && ly>=0 && ly<=22?'units':null; },
+  handles(state, w, h){ return [
+    {id:'units',x:w-Math.min(88,w)/2,y:11,kind:'click'},
+    {id:'htmlMove',x:w/4,y:h+18,kind:'click',editorOnly:true},
+    {id:'htmlExtend',x:w*.75,y:h+18,kind:'click',editorOnly:true}
+  ]; },
+  hitEdit(state, lx, ly, w, h){
+    if(ly>=h+6 && ly<=h+30 && lx>=0 && lx<=w)return lx<w/2?'htmlMove':'htmlExtend';
+    return lx>=w-Math.min(88,w) && lx<=w && ly>=0 && ly<=22?'units':null;
+  },
   dragEdit(state, handle){
+    if(handle==='htmlMove')return {...state,allowMove:!state.allowMove};
+    if(handle==='htmlExtend')return {...state,allowExtend:!state.allowExtend};
     if(handle!=='units') return state;
     const units=['cm','in','px'];return {...state,unit:units[(units.indexOf(this._unit(state))+1)%units.length]};
   },

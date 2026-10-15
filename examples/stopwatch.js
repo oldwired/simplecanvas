@@ -1,6 +1,6 @@
 // Double-click to reveal Start/Pause and Reset. Time is derived from saved timestamps, rather than
 // counting redraws. A running stopwatch continues across tab switches, backgrounding, and reloads.
-// Placement starts a fresh, stopped instance. Exported images/HTML capture the current reading.
+// Placement starts a fresh, stopped instance. Exported images capture the current reading; HTML keeps the controls and live timing.
 ({
   initState(){ return { elapsedMs:0, startedAt:null }; },
   initStyle(){ return { w:260, h:110, fontSize:24, strokeOn:false }; },
