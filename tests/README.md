@@ -48,3 +48,6 @@ verify that the confirmed native geometry is what library export preserves.
 Point-edit checks cover off-center insertion on straight, diagonal and rotated outlines;
 mouse/touch double-click exit; held Delete/Backspace; Undo/Redo preservation including a full
 history stack; intervening edits; and retaining unrelated smart-instance execution state.
+
+Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
+exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.

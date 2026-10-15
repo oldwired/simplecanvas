@@ -2862,3 +2862,59 @@ test('withdrawing an insertion retains unrelated smart-instance execution state'
   assert.equal(await run('pointEditIdx'),null);
   assert.deepEqual(await run("requestSmartCall(items[1],'initState',[])"),{n:2},'unrelated point edits do not replace another instance or reset its Worker');
 }));
+
+test('font controls edit selected tables and mixed text selections with undo and file persistence',async()=>app(async({page,run})=>{
+  const table={type:'table',uid:'table',x:100,y:100,w:240,h:160,rows:1,cols:1,size:2,color:'#000000',
+    fontFamily:'sans',fontSize:28,texts:[['Table']]};
+  await run(`items=[${JSON.stringify(table)},${JSON.stringify(wrappedText)},${JSON.stringify(smartFixture('({children(){return [];}})'))},${JSON.stringify(rectangle())}];
+    setTool('select');selection=[0];render();`);
+  const defaults=await run('({family:ui.fontFamily,size:ui.fontSize})');
+  await page.locator('#fontSize').selectOption('48');
+  assert.equal(await run('items[0].fontSize'),48,'the selected table changes, rather than drawing defaults');
+  assert.equal(await run('undoStack.length'),1);
+  await page.locator('#fontFamily').selectOption('serif');
+  assert.equal(await run('items[0].fontFamily'),'serif');
+  await run('undo()');assert.equal(await run('items[0].fontFamily'),'sans');
+  assert.equal(await run('items[0].fontSize'),48);
+  await run('redo()');assert.equal(await run('items[0].fontFamily'),'serif');
+  await run('selection=[0,1,2,3];render()');
+  await page.locator('#fontFamily').selectOption('mono');
+  await page.locator('#fontSize').selectOption('36');
+  for(const it of await run('items.slice(0,3)')){
+    assert.equal(it.fontFamily,'mono');assert.equal(it.fontSize,36);
+    assert.match(it.font,/36px .*monospace/);
+  }
+  assert.equal(await run('items[3].font'),undefined,'non-text shapes do not acquire font fields');
+  assert.deepEqual(await run('({family:ui.fontFamily,size:ui.fontSize})'),defaults,'editing a selection preserves drawing defaults');
+  const exported=await downloadedJSON(page,run,'exportProject()');
+  await page.reload();await run(`applySketchToActiveTab(${JSON.stringify(exported.items)},${JSON.stringify(exported.assets)})`);
+  assert.deepEqual(await run('items.slice(0,3).map(it=>[it.fontFamily,it.fontSize])'),[['mono',36],['mono',36],['mono',36]]);
+}));
+
+test('toolbar popovers stay exclusive and retain color-panel, accessibility and menu keyboard behavior',async()=>app(async({page,run})=>{
+  await run("setTool('table')");
+  const popovers={strokeBtn:'strokePicker',fillBtn:'fillPicker',textColorBtn:'textColorPicker',sizeBtn:'sizePicker',
+    tableBtn:'tablePicker',shapeLibBtn:'shapePicker',menuBtn:'menu'};
+  async function onlyOpen(button){
+    const state=await page.evaluate(popovers=>Object.entries(popovers).map(([button,id])=>({button,
+      open:!document.getElementById(id).hidden,expanded:document.getElementById(button).getAttribute('aria-expanded')})),popovers);
+    assert.deepEqual(state.filter(p=>p.open).map(p=>p.button),button?[button]:[]);
+    for(const p of state)assert.equal(p.expanded,String(p.button===button),p.button+' reflects the open state');
+    assert.equal(await page.locator('#menuBtn').evaluate(b=>b.classList.contains('active')),button==='menuBtn');
+  }
+  await page.locator('#strokeBtn').click();await onlyOpen('strokeBtn');
+  await page.locator('#strokePicker .cswatch.custom').click();
+  assert.equal(await page.locator('#strokePicker .cpanel').isVisible(),true);
+  for(const button of ['tableBtn','menuBtn','fillBtn','textColorBtn','sizeBtn','shapeLibBtn','strokeBtn']){
+    await page.locator('#'+button).click();await onlyOpen(button);
+  }
+  assert.equal(await page.locator('#strokePicker .cpanel').isVisible(),false,'opening another popover resets the custom-color panel');
+  await page.mouse.click(1,1);await onlyOpen(null);
+  await page.locator('#tableBtn').click();
+  await page.locator('#menuBtn').focus();await page.keyboard.press('ArrowDown');await onlyOpen('menuBtn');
+  const actions=page.locator('#menu button[data-act]');
+  assert.equal(await actions.first().evaluate(b=>b===document.activeElement),true);
+  await page.keyboard.press('ArrowDown');assert.equal(await actions.nth(1).evaluate(b=>b===document.activeElement),true);
+  await page.keyboard.press('Escape');await onlyOpen(null);
+  assert.equal(await page.locator('#menuBtn').evaluate(b=>b===document.activeElement),true);
+}));
