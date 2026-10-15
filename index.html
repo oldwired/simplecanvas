@@ -180,7 +180,14 @@
   .library-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .library-dialog-actions button{padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
   .library-dialog-actions .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-  #iconDialog{width:560px}
+  #iconDialog{width:560px;max-height:calc(100dvh - 32px);overflow-y:auto}
+  #iconImportPreview[hidden],#iconResults[hidden],#iconLoadMore[hidden]{display:none}
+  .icon-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .icon-comparison figure{margin:0;min-width:0}
+  .icon-comparison figcaption{font-size:13px;margin-bottom:6px}
+  .icon-comparison img{display:block;width:100%;height:140px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #iconImportLosses{font-size:13px;padding-left:20px}
+  #iconLoadMore{margin:10px auto 0;padding:8px 16px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
   .icon-search-row{display:flex;gap:8px}
   .icon-search-row input{flex:1}
   .icon-search-row button{padding:8px 13px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-size:13px;cursor:pointer}
@@ -679,6 +686,16 @@
     <label class="icon-license-filter"><input type="checkbox" id="iconPermissiveOnly" checked> Only permissive licenses (MIT, Apache, ISC, BSD, CC0)</label>
     <p class="icon-status" id="iconStatus" role="status"></p>
     <div class="shape-grid icon-grid" id="iconResults"></div>
+    <button type="button" id="iconLoadMore" hidden>Load more</button>
+    <section id="iconImportPreview" aria-labelledby="iconImportPreviewTitle" hidden>
+      <h3 id="iconImportPreviewTitle">Review simplified import</h3>
+      <div class="icon-comparison">
+        <figure><figcaption>Original</figcaption><img id="iconOriginalPreview" alt="Original icon"></figure>
+        <figure><figcaption>After import</figcaption><img id="iconConvertedPreview" alt="Simplified icon"></figure>
+      </div>
+      <ul id="iconImportLosses"></ul>
+      <div class="library-dialog-actions"><button type="button" id="iconImportCancel">Cancel</button><button type="button" class="primary" id="iconImportConfirm">Import simplified</button></div>
+    </section>
     <p class="icon-note">Icons via <a href="https://iconify.design" target="_blank" rel="noopener">Iconify</a> — each icon set keeps its own license, shown below each icon.</p>
     <div class="library-dialog-actions"><button type="button" id="iconDialogCancel">Close</button></div>
   </form>
@@ -3230,32 +3247,73 @@ self.onmessage = function(e){
   const ICON_TARGET_SIZE = 120;
   const ICON_INK = '#1f2937';   // what a monochrome icon's currentColor becomes, in previews and on import
   const iconColorProbe = document.createElement('canvas').getContext('2d');
-  // Converts an icon's SVG body (Iconify's `body`, i.e. the content inside <svg>) into native polygon
-  // items, grouped if more than one, scaled so the longer viewBox side is ICON_TARGET_SIZE and centered
-  // on (0,0) like a Shape Library template. Returns {items} or {error}. Holes are folded into their
-  // compound polygon and translucent layers become tints; masks, gradients and transforms are refused
-  // instead of drawn wrong.
-  function svgIconToItems(body, vb){
+  // Animation is deliberately outside the static importer, including animation hidden in defs/styles.
+  function svgIconAnimated(doc){
+    const animationCSS=/@(?:-\w+-)?keyframes\b|(?:^|[;{])\s*(?:-\w+-)?(?:animation|transition)(?:-[\w-]+)?\s*:/i;
+    return Array.from(doc.querySelectorAll('*')).some(el=>
+      /^(animate|animatecolor|animatemotion|animatetransform|set|discard)$/i.test(el.localName) ||
+      animationCSS.test(el.getAttribute('style')||'') ||
+      (el.localName==='style' && animationCSS.test(el.textContent)));
+  }
+  // Only native polygon data leaves this parser. The original SVG is used solely as an <img> preview.
+  // Exact transforms are baked into anchors/controls. Lossy conversion is explicit and reports each
+  // approximation; callers must preview and confirm any result with warnings before adding it.
+  function svgIconToItems(body, vb, {simplify=false}={}){
     const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">'+body+'</svg>', 'image/svg+xml');
     if(doc.querySelector('parsererror')) return {error:'This icon could not be read.'};
+    if(svgIconAnimated(doc))return {error:'Animated icons are not supported yet.'};
+    if(Array.from(doc.querySelectorAll('*')).some(el=>el.localName==='script' || Array.from(el.attributes).some(a=>/^on/i.test(a.name))))
+      return {error:'Icons with scripts or event handlers are not supported.'};
     const SHAPES = new Set(['path','circle','ellipse','rect','line','polyline','polygon']);
-    const IGNORE = new Set(['title','desc','metadata']);
+    const IGNORE = new Set(['title','desc','metadata','style','defs','linearGradient','radialGradient','pattern','mask','clipPath','filter']);
+    const warnings=new Set();
+    const loss=message=>{if(!simplify)throw Object.assign(new Error(message),{canSimplify:true});warnings.add(message);};
+    const fail=e=>({error:e.message || 'This icon could not be converted.',...(e.canSimplify?{canSimplify:true}:{})});
+    const identity={a:1,b:0,c:0,d:1,e:0,f:0};
+    const multiply=(m,n)=>({a:m.a*n.a+m.c*n.b,b:m.b*n.a+m.d*n.b,c:m.a*n.c+m.c*n.d,d:m.b*n.c+m.d*n.d,e:m.a*n.e+m.c*n.f+m.e,f:m.b*n.e+m.d*n.f+m.f});
+    const attrs=['fill','stroke','stroke-width','fill-rule','fill-opacity','stroke-opacity','color','visibility','stroke-linecap','stroke-linejoin','stroke-dasharray','stroke-dashoffset'];
     const elems = [];
-    const visit = (node, inherited)=>{
+    const visit = (node, inherited, parentMatrix)=>{
       for(const el of node.children){
         const tag = el.localName;
         if(IGNORE.has(tag)) continue;
-        if(tag!=='g' && !SHAPES.has(tag)) throw new Error('unsupported');
-        if(el.hasAttribute('transform') || el.hasAttribute('mask') || el.hasAttribute('clip-path') || el.hasAttribute('filter') || el.hasAttribute('style')) throw new Error('unsupported');
+        if(tag!=='g' && !SHAPES.has(tag)){
+          loss(tag==='style'?'Stylesheet rules were omitted.':'Unsupported elements (such as text, images or references) were omitted.');
+          continue;
+        }
         const st = {...inherited};
-        for(const a of ['fill','stroke','stroke-width','fill-rule','opacity','fill-opacity','stroke-opacity']) if(el.hasAttribute(a)) st[a] = el.getAttribute(a).trim();
-        if(el.hasAttribute('opacity')) st.alpha = (inherited.alpha==null ? 1 : inherited.alpha) * opacityOf(el.getAttribute('opacity'));
-        for(const a of ['fill','stroke']) if(st[a] && /url\(/i.test(st[a])) throw new Error('unsupported');   // gradients/patterns
-        if(tag==='g') visit(el, st); else elems.push({el, tag, st});
+        for(const a of attrs)if(el.hasAttribute(a))st[a]=el.getAttribute(a).trim();
+        let ownOpacity=el.getAttribute('opacity');
+        if(el.hasAttribute('style')){
+          for(const a of Array.from(el.style)){
+            const value=el.style.getPropertyValue(a).trim();
+            if(attrs.includes(a))st[a]=value;
+            else if(a==='opacity')ownOpacity=value;
+            else if(a==='display' && value==='none')st.display='none';
+            else if(a==='transform' || a==='transform-origin')throw new Error('CSS transforms cannot be converted; SVG transform attributes are supported.');
+            else if(['mask','clip-path','filter'].includes(a) && value!=='none')loss(a==='filter'?'Visual effects were omitted.':'Masks and clipping were removed.');
+            else loss('Some inline styling was omitted.');
+          }
+        }
+        if(el.getAttribute('display')==='none' || st.display==='none')continue;
+        for(const a of ['mask','clip-path','filter'])if(el.hasAttribute(a) && el.getAttribute(a)!=='none')
+          loss(a==='filter'?'Visual effects were omitted.':'Masks and clipping were removed.');
+        if(/^currentcolor$/i.test(st.color||''))st.color=inherited.color||ICON_INK;
+        st.alpha=(inherited.alpha==null?1:inherited.alpha)*opacityOf(ownOpacity);
+        let matrix=parentMatrix;
+        if(el.hasAttribute('transform')){
+          const local=el.transform?.baseVal?.consolidate()?.matrix;
+          if(!local || !['a','b','c','d','e','f'].every(k=>Number.isFinite(local[k])))throw new Error('This icon has an invalid transform.');
+          matrix=multiply(parentMatrix,local);
+        }
+        if(tag==='g')visit(el,st,matrix);
+        else if(st.visibility!=='hidden' && st.visibility!=='collapse')elems.push({el,tag,st,matrix});
       }
     };
-    try{ visit(doc.documentElement, {}); }
-    catch(e){ return {error:'This icon uses SVG features SimpleCanvas can\'t reproduce (masks, gradients or transforms).'}; }
+    try{
+      if(Array.from(doc.querySelectorAll('style')).some(el=>el.textContent.trim()))loss('Stylesheet rules were omitted.');
+      visit(doc.documentElement,{},identity);
+    }catch(e){return fail(e);}
     const g = (el,a)=>parseFloat(el.getAttribute(a)) || 0;
     const ellipseD = (cx,cy,rx,ry)=>`M${cx-rx} ${cy}A${rx} ${ry} 0 1 0 ${cx+rx} ${cy}A${rx} ${ry} 0 1 0 ${cx-rx} ${cy}Z`;
     const pointsD = (el, close)=>{
@@ -3265,19 +3323,38 @@ self.onmessage = function(e){
       for(let k=2; k+1<n.length; k+=2) s += 'L'+n[k]+' '+n[k+1];
       return close ? s+'Z' : s;
     };
-    // The icon keeps the colors its library preview shows, independent of the toolbar's current color:
-    // currentColor -> ICON_INK (what the preview renders it with), explicit colors as written.
-    const paint = v=>{
-      if(v==null || /^currentcolor$/i.test(v)) return ICON_INK;
-      iconColorProbe.fillStyle = '#000000';
-      iconColorProbe.fillStyle = v;   // the browser parses names/rgb()/#rgb; invalid input leaves black
-      const c = iconColorProbe.fillStyle;
-      return /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : ICON_INK;
+    // Gradients become one of their own stop colors, rather than unrelated default ink.
+    const paint=(value,current=ICON_INK)=>{
+      let alpha=1;
+      const ref=/^url\(\s*['"]?#([^)'"\s]+)['"]?\s*\)/i.exec(value||'');
+      if(/url\(/i.test(value||'')){
+        const definition=ref?doc.getElementById(ref[1]):null;
+        if(definition && ['linearGradient','radialGradient'].includes(definition.localName)){
+          loss('Gradients were replaced with solid colors.');
+          let gradient=definition;const seen=new Set();
+          while(!gradient.querySelector('stop') && !seen.has(gradient)){
+            seen.add(gradient);const href=gradient.getAttribute('href')||gradient.getAttribute('xlink:href')||'';
+            gradient=href.startsWith('#')?doc.getElementById(href.slice(1)):null;
+            if(!gradient)break;
+          }
+          const stops=gradient?Array.from(gradient.querySelectorAll('stop')):[];
+          const offset=el=>{const v=el.getAttribute('offset')||'0';return parseFloat(v)/(v.includes('%')?100:1);};
+          const stop=stops.sort((a,b)=>Math.abs(offset(a)-.5)-Math.abs(offset(b)-.5))[0];
+          value=stop?(stop.style.getPropertyValue('stop-color')||stop.getAttribute('stop-color')||'#000000'):current;
+          alpha=stop?opacityOf(stop.style.getPropertyValue('stop-opacity')||stop.getAttribute('stop-opacity')):1;
+        }else{loss('Patterns or unavailable paints were replaced with a solid color.');value=current;}
+      }
+      if(value==null || /^currentcolor$/i.test(value))value=current;
+      if(value==='none')return {color:current,alpha:0};
+      iconColorProbe.clearRect(0,0,1,1);iconColorProbe.fillStyle='#000000';iconColorProbe.fillStyle=value;
+      iconColorProbe.fillRect(0,0,1,1);
+      const rgba=iconColorProbe.getImageData(0,0,1,1).data;
+      return {color:'#'+Array.from(rgba).slice(0,3).map(v=>v.toString(16).padStart(2,'0')).join(''),alpha:alpha*rgba[3]/255};
     };
     const scale = ICON_TARGET_SIZE / Math.max(vb.width, vb.height);
     const list = [];
     try{
-      for(const {el, tag, st} of elems){
+      for(const {el, tag, st, matrix} of elems){
         let d;
         if(tag==='path') d = el.getAttribute('d') || '';
         else if(tag==='circle') d = ellipseD(g(el,'cx'), g(el,'cy'), g(el,'r'), g(el,'r'));
@@ -3297,19 +3374,28 @@ self.onmessage = function(e){
         // Translucent layers (duotone icons) become a lighter tint of the same color -- polygons have no
         // opacity of their own, and on the usual white canvas the tint looks the same.
         const alpha = st.alpha==null ? 1 : st.alpha;
-        const fillAlpha = alpha * opacityOf(st['fill-opacity']), strokeAlpha = alpha * opacityOf(st['stroke-opacity']);
-        const filled = (st.fill==null ? 'currentColor' : st.fill) !== 'none' && fillAlpha>0.02;   // SVG's default fill is black
-        const stroked = st.stroke!=null && st.stroke!=='none' && strokeAlpha>0.02;
-        if(!filled && !stroked) continue;
-        // SVG's default fill (attribute absent) is black; a stroke only exists when set explicitly
-        // (an unfilled outline icon still gets its stroke color as fillColor, for when fill is switched on)
-        const fillBase = st.fill==null ? '#000000' : paint(st.fill), strokeBase = stroked ? paint(st.stroke) : fillBase;
-        const fillColor = tintTowardWhite(filled ? fillBase : strokeBase, filled ? fillAlpha : 1);
-        const strokeColor = tintTowardWhite(strokeBase, stroked ? strokeAlpha : fillAlpha);
-        const sw = st['stroke-width']!=null ? parseFloat(st['stroke-width']) : 1;
-        // whole pixels, like every width the toolbar can set
-        const size = Math.min(60, Math.max(1, Math.round((Number.isFinite(sw) ? sw : 1)*scale)));
-        const tf = p=>({ x:norm((p.x-vb.left)*scale), y:norm((p.y-vb.top)*scale) });
+        const current=paint(st.color||ICON_INK).color;
+        const fillPaint=paint(st.fill==null?'#000000':st.fill,current),strokePaint=paint(st.stroke||'none',current);
+        const fillAlpha=alpha*opacityOf(st['fill-opacity'])*fillPaint.alpha,strokeAlpha=alpha*opacityOf(st['stroke-opacity'])*strokePaint.alpha;
+        const sw=st['stroke-width']!=null?parseFloat(st['stroke-width']):1;
+        const filled=(st.fill==null?'currentColor':st.fill)!=='none' && fillAlpha>0.02;
+        const stroked=st.stroke!=null && st.stroke!=='none' && strokeAlpha>0.02 && sw!==0;
+        if((fillAlpha>0 && fillAlpha<=0.02) || (st.stroke && st.stroke!=='none' && strokeAlpha>0 && strokeAlpha<=0.02))
+          warnings.add('Nearly transparent layers were omitted.');
+        if(!filled && !stroked)continue;
+        if((filled && fillAlpha<1) || (stroked && strokeAlpha<1))warnings.add('Transparency was approximated with solid colors on white.');
+        const fillBase=filled?fillPaint.color:strokePaint.color,strokeBase=stroked?strokePaint.color:fillPaint.color;
+        const fillColor=tintTowardWhite(fillBase,filled?fillAlpha:1),strokeColor=tintTowardWhite(strokeBase,stroked?strokeAlpha:fillAlpha);
+        const sx=Math.hypot(matrix.a,matrix.b),sy=Math.hypot(matrix.c,matrix.d);
+        if(stroked && (Math.abs(sx-sy)>1e-6 || Math.abs(matrix.a*matrix.c+matrix.b*matrix.d)>1e-6))
+          loss('Non-uniformly scaled strokes were approximated.');
+        const exactSize=(Number.isFinite(sw)?sw:1)*scale*Math.sqrt((sx*sx+sy*sy)/2);
+        const size=Math.min(60,Math.max(1,Math.round(exactSize)));
+        if(stroked && Math.abs(size-exactSize)>1e-6)warnings.add('Stroke widths were rounded or limited.');
+        if(stroked && ((st['stroke-dasharray'] && st['stroke-dasharray']!=='none') || st['stroke-dashoffset']))loss('Stroke dashes were removed.');
+        if(stroked && ((st['stroke-linecap']||'butt')!=='round' || (st['stroke-linejoin']||'miter')!=='round'))
+          warnings.add('Stroke caps and joins were changed to round.');
+        const tf=p=>({x:norm((matrix.a*p.x+matrix.c*p.y+matrix.e-vb.left)*scale),y:norm((matrix.b*p.x+matrix.d*p.y+matrix.f-vb.top)*scale)});
         const out = (points, closed, strokeOn, fill, fillRule)=>list.push({ type:'polygon', points:points.map(p=>{
           const q = tf(p);
           if(p.c1) q.c1 = tf(p.c1);
@@ -3340,19 +3426,20 @@ self.onmessage = function(e){
           if(outline.length>1)out(outline,sub.closed,true,false);
         }
       }
-    }catch(e){ return {error:'This icon could not be converted.'}; }
+    }catch(e){ return fail(e); }
     if(!list.length) return {error:'This icon has no drawable shapes.'};
     if(list.length>MAX_ITEMS) return {error:'This icon is too complex.'};
     const items = list.map(r=>normalizeItem(r, {}));
     if(items.some(it=>!it)) return {error:'This icon could not be converted.'};
     const box = unionBoxOf(items, false);
     if(!Number.isFinite(box.x+box.y+box.w+box.h) || (box.w<=0 && box.h<=0)) return {error:'This icon has no drawable shapes.'};   // a lone straight line is fine
+    const previewBox={x:-(box.x+box.w/2),y:-(box.y+box.h/2),w:vb.width*scale,h:vb.height*scale};
     for(const it of items){
       translateItem(it, -(box.x+box.w/2), -(box.y+box.h/2));
       delete it.uid;
       if(items.length>1){ it.group = 's1'; it.groupRotation = 0; }
     }
-    return {items};
+    return {items,warnings:[...warnings],previewBox};
   }
 
   // ---------- Point Edit (convert a shape into an editable bezier curve) ----------
@@ -7058,41 +7145,78 @@ self.onmessage = function(e){
   const iconPermissiveOnly = document.getElementById('iconPermissiveOnly');
   const iconStatus = document.getElementById('iconStatus');
   const iconResults = document.getElementById('iconResults');
-  let iconSearchSeq = 0, iconLastSearch = null;
+  const iconLoadMore=document.getElementById('iconLoadMore');
+  const iconImportPreview=document.getElementById('iconImportPreview');
+  const ICON_SEARCH_PAGE=96;
+  let iconSession=0,iconSearchSeq=0,iconRenderSeq=0,iconImportSeq=0;
+  let iconLastSearch=null,iconSearchLoading=false,iconPendingImport=null;
+  const iconSessionCurrent=session=>session===iconSession && iconDialog.open;
+  function updateIconLoadMore(){
+    iconLoadMore.hidden=!iconLastSearch?.hasMore || !!iconPendingImport;
+    iconLoadMore.disabled=iconSearchLoading;
+    iconLoadMore.textContent=iconSearchLoading?'Loading…':'Load more';
+  }
+  function cancelIconPreview(){
+    iconImportSeq++;iconPendingImport=null;iconImportPreview.hidden=true;iconResults.hidden=false;
+    document.getElementById('iconOriginalPreview').removeAttribute('src');
+    document.getElementById('iconConvertedPreview').removeAttribute('src');
+    updateIconLoadMore();
+  }
   function openIconDialog(){
-    iconSearchSeq++;   // reopening starts a new dialog session
-    iconStatus.textContent = iconLastSearch ? iconStatus.textContent : 'Search the open Iconify collections by keyword (English works best).';
+    if(iconDialog.open)return;
+    iconSession++;iconSearchLoading=false;cancelIconPreview();
+    iconStatus.textContent='Search the open Iconify collections by keyword (English works best).';
     iconDialog.showModal();
     if(iconLastSearch)renderIconResults(iconLastSearch);
-    iconSearchInput.focus(); iconSearchInput.select();
+    iconSearchInput.focus();iconSearchInput.select();
   }
-  document.getElementById('addIconBtn').addEventListener('click', openIconDialog);
-  document.getElementById('iconDialogCancel').addEventListener('click', ()=>iconDialog.close());
-  iconDialog.addEventListener('close', ()=>{if(!iconDialog.open)iconSearchSeq++;});
-  iconDialog.addEventListener('click', e=>e.stopPropagation());
-  iconDialog.addEventListener('keydown', e=>e.stopPropagation());
-  iconPermissiveOnly.addEventListener('change', ()=>{ if(iconLastSearch) renderIconResults(iconLastSearch); });
-  document.getElementById('iconSearchForm').addEventListener('submit', async e=>{
-    e.preventDefault();
-    const q = iconSearchInput.value.trim();
-    if(!q) return;
-    const request = ++iconSearchSeq;
-    iconStatus.textContent = 'Searching…';
-    let data;
-    try{
-      const res = await fetch(ICONIFY_API+'/search?query='+encodeURIComponent(q)+'&limit=96');
-      if(!res.ok) throw new Error(res.status===429 ? 'busy' : 'HTTP '+res.status);
-      data = await res.json();
-    }catch(err){
-      if(request===iconSearchSeq){ iconResults.innerHTML = ''; iconLastSearch = null;
-        iconStatus.textContent = err.message==='busy' ? 'Iconify is limiting requests right now — wait a minute and try again.'
-                                                      : 'Couldn\'t reach Iconify — check your connection.'; }
-      return;
-    }
-    if(request!==iconSearchSeq || !iconDialog.open) return;   // newer search or closed session
-    iconLastSearch = data;
-    renderIconResults(data);
+  document.getElementById('addIconBtn').addEventListener('click',openIconDialog);
+  document.getElementById('iconDialogCancel').addEventListener('click',()=>iconDialog.close());
+  iconDialog.addEventListener('close',()=>{
+    if(!iconDialog.open){iconSession++;iconSearchLoading=false;cancelIconPreview();}
   });
+  iconDialog.addEventListener('click',e=>e.stopPropagation());
+  iconDialog.addEventListener('keydown',e=>e.stopPropagation());
+  document.getElementById('iconImportCancel').addEventListener('click',()=>{
+    cancelIconPreview();if(iconLastSearch)renderIconResults(iconLastSearch);
+  });
+  document.getElementById('iconImportConfirm').addEventListener('click',()=>{
+    const pending=iconPendingImport;
+    if(pending?.ready)finishIconImport(pending);
+  });
+  iconPermissiveOnly.addEventListener('change',()=>{
+    cancelIconPreview();if(iconLastSearch)renderIconResults(iconLastSearch);
+  });
+  document.getElementById('iconSearchForm').addEventListener('submit',e=>{
+    e.preventDefault();const query=iconSearchInput.value.trim();if(query)searchIcons(query);
+  });
+  iconLoadMore.addEventListener('click',()=>{
+    if(iconLastSearch?.hasMore && !iconSearchLoading)searchIcons(iconLastSearch.query,true);
+  });
+  async function searchIcons(query,append=false){
+    const previous=append?iconLastSearch:null;
+    const request=++iconSearchSeq,session=iconSession;
+    iconRenderSeq++;cancelIconPreview();iconSearchLoading=true;
+    if(!append){iconLastSearch=null;iconResults.replaceChildren();}
+    updateIconLoadMore();iconStatus.textContent=append?'Loading more icons…':'Searching…';
+    try{
+      const start=previous?.nextStart||0;
+      const res=await fetch(ICONIFY_API+'/search?query='+encodeURIComponent(query)+'&limit='+ICON_SEARCH_PAGE+'&start='+start);
+      if(!res.ok)throw new Error(res.status===429?'busy':'HTTP '+res.status);
+      const data=await res.json();
+      if(!Array.isArray(data?.icons))throw new Error('Invalid search response');
+      if(request!==iconSearchSeq || !iconSessionCurrent(session))return;
+      iconLastSearch={query,icons:[...new Set([...(previous?.icons||[]),...data.icons])],
+        collections:{...(previous?.collections||{}),...(data.collections||{})},
+        nextStart:start+data.icons.length,hasMore:data.icons.length>=ICON_SEARCH_PAGE};
+      iconSearchLoading=false;updateIconLoadMore();renderIconResults(iconLastSearch,append);
+    }catch(err){
+      if(request!==iconSearchSeq || !iconSessionCurrent(session))return;
+      iconSearchLoading=false;updateIconLoadMore();
+      iconStatus.textContent=err.message==='busy'?'Iconify is limiting requests right now — wait a minute and try again.'
+        :append?'Could not load more icons — your results are kept. Try Load more again.':'Couldn\'t reach Iconify — check your connection.';
+    }
+  }
   // Icon bodies by 'set:name' (null = the set doesn't have it). Fetched one request per icon SET, not
   // per icon: Iconify rate-limits per IP, and ~90 separate thumbnail requests per search trip that limit
   // quickly. The same bodies draw the thumbnails and are reused on import, so a click needs no request.
@@ -7105,7 +7229,8 @@ self.onmessage = function(e){
     if(!icon || typeof icon.body!=='string') return null;
     const pick = (k, dflt)=>Number.isFinite(icon[k]) ? icon[k] : Number.isFinite(data[k]) ? data[k] : dflt;
     const vb = {left:pick('left',0), top:pick('top',0), width:pick('width',16), height:pick('height',16)};
-    return vb.width>0 && vb.height>0 ? {body:icon.body, vb} : null;
+    const doc=new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">'+icon.body+'</svg>','image/svg+xml');
+    return vb.width>0 && vb.height>0 ? {body:icon.body,vb,animated:svgIconAnimated(doc)} : null;
   }
   async function loadIconBodies(list){
     const bySet = new Map();
@@ -7136,7 +7261,7 @@ self.onmessage = function(e){
              url: typeof lic.url==='string' && /^https?:\/\//i.test(lic.url) ? lic.url : '',
              permissive: PERMISSIVE_LICENSES.has(spdx) };
   }
-  async function renderIconResults(data){
+  async function renderIconResults(data,preserveScroll=false){
     const cols = data && data.collections && typeof data.collections==='object' ? data.collections : {};
     const found = [];
     let hidden = 0;
@@ -7145,17 +7270,19 @@ self.onmessage = function(e){
       const [set, name] = full.split(':');
       const col = cols[set];
       if(!col || !ICON_ID.test(set||'') || !ICON_ID.test(name||'')) continue;
-      if(col.palette) continue;   // multicolor sets -- this app draws each shape in a single color
       const lic = iconLicenseOf(col);
       if(iconPermissiveOnly.checked && !lic.permissive){ hidden++; continue; }
       found.push({set, name, col, lic});
     }
-    const request = ++iconSearchSeq;
-    iconStatus.textContent = 'Loading previews…';
+    const request=++iconRenderSeq,session=iconSession;
+    iconStatus.textContent='Loading previews…';
     await loadIconBodies(found);
-    if(request!==iconSearchSeq || !iconDialog.open) return;
-    iconResults.innerHTML = '';
+    if(request!==iconRenderSeq || !iconSessionCurrent(session))return;
+    const scrollTop=preserveScroll?iconResults.scrollTop:0;
+    iconResults.innerHTML='';let animated=0,shown=0;
     for(const ic of found){
+      if(iconBodies.get(ic.set+':'+ic.name)?.animated){animated++;continue;}
+      shown++;
       const setName = typeof ic.col.name==='string' ? ic.col.name : ic.set;
       const entry = document.createElement('div');
       entry.className = 'shape-entry';
@@ -7179,23 +7306,51 @@ self.onmessage = function(e){
       entry.append(b, label, lic);
       iconResults.appendChild(entry);
     }
-    const more = hidden ? ' (' + hidden + ' more hidden by the license filter)' : '';
-    iconStatus.textContent = found.length ? found.length + ' icon' + (found.length===1?'':'s') + more + ' — click one to add it to the library.'
-                                          : 'No icons found' + more + '.';
+    iconResults.scrollTop=scrollTop;
+    const details=[hidden?hidden+' hidden by the license filter':'',animated?animated+' animated icons excluded':'',data.hasMore?'More results available':''].filter(Boolean);
+    iconStatus.textContent=shown+' icon'+(shown===1?'':'s')+' shown'+(details.length?' · '+details.join(' · '):'')+'.';
+    updateIconLoadMore();
   }
-  async function importIconToLibrary(set, name, col){
-    const request = ++iconSearchSeq;   // also supersedes any search still in flight
-    const library=shapeLibrary;
-    iconStatus.textContent = 'Adding "'+name+'"…';
-    const key = set+':'+name;
-    if(!iconBodies.has(key)) await loadIconBodies([{set, name}]);
-    if(request!==iconSearchSeq || !iconDialog.open) return;
+  async function importIconToLibrary(set,name,col){
+    cancelIconPreview();iconRenderSeq++;
+    const request=++iconImportSeq,session=iconSession,library=shapeLibrary;
+    iconStatus.textContent='Adding "'+name+'"…';
+    const key=set+':'+name;
+    if(!iconBodies.has(key))await loadIconBodies([{set,name}]);
+    if(request!==iconImportSeq || !iconSessionCurrent(session))return;
     if(library!==shapeLibrary){iconStatus.textContent='The library changed — select the icon again to add it.';return;}
-    if(!iconBodies.has(key)){ iconStatus.textContent = 'Couldn\'t reach Iconify — check your connection, or wait a minute and try again.'; return; }
-    const icon = iconBodies.get(key);
-    if(!icon){ iconStatus.textContent = 'That icon could not be loaded.'; return; }
-    const result = svgIconToItems(icon.body, icon.vb);
-    if(!result.items){ iconStatus.textContent = result.error; return; }
+    if(!iconBodies.has(key)){iconStatus.textContent='Couldn\'t reach Iconify — check your connection, or wait a minute and try again.';return;}
+    const icon=iconBodies.get(key);
+    if(!icon){iconStatus.textContent='That icon could not be loaded.';return;}
+    let result=svgIconToItems(icon.body,icon.vb);
+    if(!result.items && result.canSimplify)result=svgIconToItems(icon.body,icon.vb,{simplify:true});
+    if(!result.items){iconStatus.textContent=result.error;return;}
+    const pending={set,name,col,result,request,session,library,ready:!result.warnings.length};
+    if(!result.warnings.length){finishIconImport(pending);return;}
+    iconPendingImport=pending;
+    const original=document.getElementById('iconOriginalPreview'),converted=document.getElementById('iconConvertedPreview');
+    const box=result.previewBox;
+    original.src=iconThumbURL(icon);
+    converted.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="'+[box.x,box.y,box.w,box.h].join(' ')+'">'+result.items.map(it=>itemToSVG(it,result.items,{})).join('')+'</svg>');
+    const confirm=document.getElementById('iconImportConfirm');confirm.disabled=true;
+    const losses=document.getElementById('iconImportLosses');losses.replaceChildren();
+    for(const warning of result.warnings){const li=document.createElement('li');li.textContent=warning;losses.appendChild(li);}
+    iconResults.hidden=true;iconImportPreview.hidden=false;updateIconLoadMore();
+    iconStatus.textContent='Review "'+name+'" before adding it. The imported shape will differ from the original.';
+    document.getElementById('iconImportCancel').focus();
+    try{
+      await Promise.all([original.decode(),converted.decode()]);
+      if(iconPendingImport!==pending || !iconSessionCurrent(session))return;
+      pending.ready=true;confirm.disabled=false;
+    }catch(err){if(iconPendingImport===pending)iconStatus.textContent='Could not display both previews. Cancel and try another icon.';}
+  }
+  function finishIconImport(pending){
+    if(!pending.ready || pending.request!==iconImportSeq || !iconSessionCurrent(pending.session))return;
+    if(pending.library!==shapeLibrary){
+      cancelIconPreview();iconStatus.textContent='The library changed — select the icon again to add it.';return;
+    }
+    const {set,name,col,result}=pending;
+    cancelIconPreview();
     let shapeName = name, n = 2;
     while(validateShapeName(shapeName)) shapeName = name + ' ' + (n++);
     const lic = iconLicenseOf(col);

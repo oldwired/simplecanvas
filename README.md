@@ -36,9 +36,17 @@ For smart shapes, **Edit source…** opens their existing script in the authorin
 then export the library to keep the updated code and preview. Images cannot be included.
 
 **Add icon** searches Iconify when online and imports a result as editable native polygons, with
-its collection and license attached to the library entry. SVG cut-outs and curves are preserved.
+its collection and license attached to the library entry. SVG cut-outs, curves and flat multicolor
+artwork are preserved. **Load more** retrieves further matches even if the license filter hides a
+page. Animated icons are excluded.
 The license filter shows permissively licensed collections by default; each collection retains
 its own terms. Closing the dialog cancels a pending import.
+
+Static icons with unsupported features can be imported as a simplified drawing: compare the
+original and converted previews, review the listed changes, then choose **Import simplified**.
+Gradients become solid colors, masks/clipping and effects may be removed, and transparency is
+approximated on white. Transforms are applied to the native geometry. Cancel keeps the library
+unchanged; icons with no usable geometry cannot be imported.
 
 **Export library…** downloads the entire active library as `shapes-library.json`. Library
 changes last only for the current visit and are separate from sketch saves and autosave.
