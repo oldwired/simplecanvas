@@ -20,7 +20,9 @@ Open inverted, Filled inverted, then None. Endpoint drags retain the head style.
 the shape body to enter/leave point editing; anchor taps select points in that mode. A press on
 the outline inserts an anchor (exact de Casteljau split, `insertAnchor`); Delete/Backspace, Alt-click or the × button
 remove one (`removeAnchor`, min 3 closed / 2 open). A double-click on the outline must still leave the mode: its second
-click withdraws the just-inserted anchor (`lastInsert`). Keep rapid
+click withdraws the just-inserted anchor (`lastInsert`) and restores its prior Undo/Redo stacks.
+The pending insertion belongs to its original document/item and is invalidated by another edit.
+Delete/Backspace never delete the whole shape while Point-Edit is active, including auto-repeat. Keep rapid
 endpoint/anchor taps out of double-tap detection. The line-style popover only controls width/dashes.
 
 Group edit mode (double-click a grouped item; `editingGroupId`) browses one group's members

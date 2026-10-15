@@ -44,3 +44,7 @@ format 1 and 2 drawings remain readable.
 Icon search checks cover multicolor imports, filtered pagination with retry/stale responses,
 animation exclusion, and confirmation/cancellation of simplified static imports. Preview checks
 verify that the confirmed native geometry is what library export preserves.
+
+Point-edit checks cover off-center insertion on straight, diagonal and rotated outlines;
+mouse/touch double-click exit; held Delete/Backspace; Undo/Redo preservation including a full
+history stack; intervening edits; and retaining unrelated smart-instance execution state.

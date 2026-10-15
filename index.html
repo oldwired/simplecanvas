@@ -821,7 +821,7 @@
   let activeAnchor  = null;     // index into that polygon's points[] whose handles are shown/draggable
   let editingAnchor = null;     // {idx,pointIndex,handle:'anchor'|'c1'|'c2',sx,sy,moved} while dragging
   let insertHover = null;      // world point where a click on the outline would insert an anchor (mouse hover)
-  let lastInsert = null;       // {idx, pointIndex, at} of an anchor a plain click just inserted, unmoved
+  let lastInsert = null;       // unmoved insertion plus its item, document and before/after history snapshots
   let handledPointerUp = false; // a handle gesture must not also become a double-tap tool change
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
@@ -892,12 +892,14 @@
   };
 
   function beginHistory(){
+    lastInsert=null;
     if(!shapePlacementOwner) shapePlacementEpoch++;
     if(!smartMutationOwner) cancelSmartGestures(true);
     historyBefore = snap();
   }
   function commitHistory(){
     if(historyBefore === null) return;
+    lastInsert=null;
     ensureUids(items);
     undoStack.push(historyBefore);
     if(undoStack.length > 80) undoStack.shift();
@@ -2299,11 +2301,20 @@ self.onmessage = function(e){
   }
   // ---------- Point Edit: adding and removing anchors ----------
   // Nearest spot on a polygon's outline to a point in the item's LOCAL frame: {seg, t, x, y, d}.
-  // Each segment is sampled, then the best sample is refined by bisection -- well under a pixel on
-  // any curve this app can hold.
+  // Straight segments are projected directly. Curves are sampled, then the best sample is refined
+  // by bisection -- well under a pixel on any curve this app can hold.
   function nearestOnOutline(it, lx, ly){
     let best = null;
     polyCurveSegments(it).forEach((s, i)=>{
+      if(!s.a.c1 && !s.b.c2){
+        // Straight segments use linear t in insertAnchor; a degenerate cubic has a different
+        // speed along the same line, so its t would put the anchor away from the click.
+        const dx=s.b.x-s.a.x,dy=s.b.y-s.a.y,len2=dx*dx+dy*dy;
+        const t=len2?Math.max(0,Math.min(1,((lx-s.a.x)*dx+(ly-s.a.y)*dy)/len2)):0;
+        const x=s.a.x+dx*t,y=s.a.y+dy*t,d=Math.hypot(x-lx,y-ly);
+        if(!best || d<best.d)best={seg:i,t,x,y,d};
+        return;
+      }
       const at = t=>({x:cubicPoint(s.a.x,s.c1.x,s.c2.x,s.b.x,t), y:cubicPoint(s.a.y,s.c1.y,s.c2.y,s.b.y,t)});
       const dist = t=>{ const q = at(t); return Math.hypot(q.x-lx, q.y-ly); };
       let bt = 0, bd = Infinity;
@@ -2365,6 +2376,10 @@ self.onmessage = function(e){
     const w = toWorld(it, it.points[activeAnchor].x, it.points[activeAnchor].y);
     return {x:w.x+16, y:w.y-16};
   }
+  // Only withdraw a tentative insertion if nothing has changed its item or either history stack.
+  // Restoring just that polygon preserves unrelated smart instances and their Worker ownership.
+  const samePointEditHistory=(a,b)=>a.length===b.length && a.every((entry,i)=>entry===b[i]);
+
   // How close a press has to land to the outline to insert an anchor there.
   function outlineInsertRadius(it, pointerType){
     return Math.max(pointerType==='mouse' ? 6 : 14, (it.size||2)/2 + 3);
@@ -3598,6 +3613,7 @@ self.onmessage = function(e){
   function togglePointEdit(){
     const idx=pointEditableIdx();
     if(idx==null) return;
+    lastInsert=null;insertHover=null;
     if(pointEditIdx===idx){ pointEditIdx=null; activeAnchor=null; }
     else {
       if(items[idx].type!=='polygon'){
@@ -3692,6 +3708,7 @@ self.onmessage = function(e){
       pointEditIdx = null; activeAnchor = null;
     }
     if(activeAnchor!=null && (pointEditIdx==null || activeAnchor>=items[pointEditIdx].points.length)) activeAnchor = null;
+    if(pointEditIdx==null){lastInsert=null;insertHover=null;}
   }
   // Enter group edit mode for group g, with memberIdx (or nothing) individually picked.
   function enterGroupEdit(g, memberIdx){
@@ -4161,9 +4178,13 @@ self.onmessage = function(e){
         const li = lastInsert;
         lastInsert = null;
         if(target && target.handle==='anchor' && li && li.idx===pointEditIdx && li.pointIndex===target.pointIndex &&
-           performance.now()-li.at < 400 && undoStack.length){
-          items = JSON.parse(undoStack.pop());
-          pointEditIdx = null; activeAnchor = null;
+           li.scene===items && li.item===pit && li.tab===activeTabId && li.pointerType===e.pointerType &&
+           performance.now()-li.at<400 && Math.hypot(x-li.x,y-li.y)<=(e.pointerType==='mouse'?4:25) &&
+           historyBefore===null && JSON.stringify(pit)===li.after &&
+           samePointEditHistory(undoStack,li.undoAfter) && samePointEditHistory(redoStack,li.redoAfter)){
+          items[li.idx]=clone(li.before);
+          undoStack=li.undo.slice();redoStack=li.redo.slice();
+          pointEditIdx = null; activeAnchor = null; insertHover=null;
           handledPointerUp = true;   // this press is the dblclick's second half -- it must not re-enter Point-Edit
           save(); updateButtons(); render();
           return;
@@ -4178,12 +4199,14 @@ self.onmessage = function(e){
           const lp = toLocal(pit, x, y), near = nearestOnOutline(pit, lp.x, lp.y);
           if(near && near.d <= outlineInsertRadius(pit, e.pointerType)){
             beginHistory();
+            const insertHistory={item:pit,before:clone(pit),undo:undoStack.slice(),redo:redoStack.slice(),
+              scene:items,tab:activeTabId,pointerType:e.pointerType};
             bakeItemRotation(pit);
             const lp2 = toLocal(pit, x, y), near2 = nearestOnOutline(pit, lp2.x, lp2.y);
             const pi = insertAnchor(pit, near2.seg, near2.t);
             const w = toWorld(pit, pit.points[pi].x, pit.points[pi].y);
             activeAnchor = pi; insertHover = null;
-            editingAnchor = {idx:pointEditIdx,pointIndex:pi,handle:'anchor',sx:x,sy:y,moved:false,inserted:true,
+            editingAnchor = {idx:pointEditIdx,pointIndex:pi,handle:'anchor',sx:x,sy:y,moved:false,inserted:true,insertHistory,
               grabX:x-w.x,grabY:y-w.y,startX:x,startY:y,appliedDx:0,appliedDy:0,axisLock:null};
             render();
             return;
@@ -4743,8 +4766,10 @@ self.onmessage = function(e){
     if(editingAnchor){
       handledPointerUp = true;
       if(editingAnchor.moved || editingAnchor.inserted) commitHistory(); else historyBefore=null;
-      lastInsert = editingAnchor.inserted && !editingAnchor.moved
-        ? {idx:editingAnchor.idx, pointIndex:editingAnchor.pointIndex, at:performance.now()} : null;
+      lastInsert = editingAnchor.inserted && !editingAnchor.moved && e.type!=='pointercancel'
+        ? {...editingAnchor.insertHistory,idx:editingAnchor.idx,pointIndex:editingAnchor.pointIndex,at:performance.now(),
+           x:editingAnchor.startX,y:editingAnchor.startY,after:JSON.stringify(items[editingAnchor.idx]),
+           undoAfter:undoStack.slice(),redoAfter:redoStack.slice()} : null;
       editingAnchor=null;
       render();
       return;
@@ -5228,6 +5253,7 @@ self.onmessage = function(e){
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
     editingAnchor=null; pointEditIdx=null; activeAnchor=null; editingGroupId=null;
+    lastInsert=null;insertHover=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;
@@ -6301,7 +6327,7 @@ self.onmessage = function(e){
 
   // ---------- toolbar wiring ----------
   function setTool(t){
-    if(t!==ui.tool){if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
+    if(t!==ui.tool){lastInsert=null;insertHover=null;if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
     if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
     document.querySelectorAll('[data-tool].btn').forEach(b=>{
@@ -8134,8 +8160,12 @@ self.onmessage = function(e){
     if(mod) return;
     if(e.key==='Delete' || e.key==='Backspace'){
       e.preventDefault();
-      // in Point-Edit with an anchor picked, the key removes that anchor, never the whole shape
-      if(pointEditIdx!=null && activeAnchor!=null){ removeAnchor(pointEditIdx, activeAnchor); return; }
+      // Keep Delete/Backspace in point editing even after removal clears the active anchor:
+      // a held key must never switch its target from that anchor to the entire shape.
+      if(pointEditIdx!=null){
+        if(activeAnchor!=null)removeAnchor(pointEditIdx,activeAnchor);
+        return;
+      }
       deleteSelected(); return;
     }
     if(e.key===']'){ bringToFront(); return; }
