@@ -35,3 +35,12 @@ PNG decodes, grid rebuilds, and elapsed time; timings depend on hardware and are
 The preview scenario supplies synthetic PNG jobs to isolate picker work from script execution and
 rasterization. The normal regression suite covers actual generation, consent, source-edit races,
 canvas/SVG/PNG output, and retaining focus while previews complete.
+
+Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
+output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
+imports across Close, Escape and library replacement. Sketch format 3 retains polygon fill rules;
+format 1 and 2 drawings remain readable.
+
+Icon search checks cover multicolor imports, filtered pagination with retry/stale responses,
+animation exclusion, and confirmation/cancellation of simplified static imports. Preview checks
+verify that the confirmed native geometry is what library export preserves.

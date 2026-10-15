@@ -224,8 +224,9 @@ Supported `type`s and their own fields (validated copies of the renderer's norma
   `align` is `'left'`/`'center'`/`'right'`. A label that shouldn't draw its own box needs
   `strokeOn:false, fill:false` explicitly — the `text` type's own default is "box on unless
   told off."
-- **`polygon`**: `{type, points, closed, color, fill, fillColor, strokeOn}` — `points` is an
+- **`polygon`**: `{type, points, closed, color, fill, fillColor, strokeOn, fillRule}` — `points` is an
   array of `{x, y}` (see [Arcs](#arcs-in-a-polygon-child) below for curved segments).
+  Optional `fillRule` is `'nonzero'` (the default) or `'evenodd'`, matching SVG winding rules.
 
 ### Style inheritance — read this before your shape renders invisible
 

@@ -1330,6 +1330,197 @@ test('a smart shape with a long reference-template script survives a save/load r
   assert.ok(parsed.survived, `a ${parsed.scriptLength}-character script must survive normalizeScene (a real save/load round-trip), not be silently dropped`);
 }));
 
+// ---------- Iconify icon import ----------
+const SAILBOAT = '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></g>';
+
+test('SVG path parser handles arcs, compact numbers, and closing', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(()=>{
+    const arc = svgPathToSubpaths('M0 0 A10 10 0 0 1 20 0');
+    const a = arc[0].points, last = a[a.length-1];
+    const samples = [];
+    for(let k=0;k<a.length-1;k++){ const p=a[k], q=a[k+1]; for(let t=0;t<=1;t+=0.125)
+      samples.push({x:cubicPoint(p.x,p.c1?p.c1.x:p.x,q.c2?q.c2.x:q.x,q.x,t), y:cubicPoint(p.y,p.c1?p.c1.y:p.y,q.c2?q.c2.y:q.y,q.y,t)}); }
+    const top = samples.reduce((m,p)=>p.y<m.y?p:m);
+    const compact = svgPathToSubpaths('M1.5-.5.5.5l1e1 0a4 4 0 014 4z');
+    const two = svgPathToSubpaths('M0 0h10v10zm20 0h5v5z');
+    return JSON.stringify({last, top, compactFirst: compact[0].points[0], compactSecond: compact[0].points[1],
+      compactClosed: compact[0].closed, twoCount: two.length, secondStart: two[1].points[0], twoClosed: two.map(s=>s.closed)});
+  })()`));
+  assert.ok(Math.abs(r.last.x-20)<1e-6 && Math.abs(r.last.y)<1e-6, 'arc ends exactly at its endpoint');
+  assert.ok(Math.abs(r.top.x-10)<0.5 && Math.abs(r.top.y+10)<0.1, `arc apex near (10,-10), got ${JSON.stringify(r.top)}`);
+  assert.deepEqual([r.compactFirst.x, r.compactFirst.y], [1.5, -0.5]);
+  assert.deepEqual([r.compactSecond.x, r.compactSecond.y], [0.5, 0.5], 'a second pair after M is an implicit L');
+  assert.equal(r.compactClosed, true);
+  assert.equal(r.twoCount, 2);
+  assert.deepEqual([r.secondStart.x, r.secondStart.y], [20, 0], 'relative m after Z starts from the closed subpath start');
+  assert.deepEqual(r.twoClosed, [true, true]);
+}));
+
+test('SVG icon conversion: stroke icon, circle, and rejected features', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(()=>{
+    const boat = svgIconToItems(${JSON.stringify(SAILBOAT)}, {left:0,top:0,width:24,height:24});
+    const circle = svgIconToItems('<circle cx="12" cy="12" r="10" fill="currentColor"/>', {left:0,top:0,width:24,height:24});
+    const rej = [
+      '<mask id="m"><path d="M0 0h1v1z"/></mask><path d="M0 0h10v10z" mask="url(#m)"/>',
+      '<path fill="url(#g)" d="M0 0h10v10z"/>',
+    ].map(b=>svgIconToItems(b,{left:0,top:0,width:24,height:24}).error || null);
+    const duo = svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', {left:0,top:0,width:24,height:24});
+    const thin = svgIconToItems('<path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 2h20"/>', {left:0,top:0,width:24,height:24}).items[0].size;
+    ui.color = '#00ff00';   // the toolbar color must not leak into imported icons
+    const vb = {left:0,top:0,width:24,height:24};
+    const colors = {
+      current: svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      named: svgIconToItems('<path fill="red" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      hex: svgIconToItems('<path fill="#36c" d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      absent: svgIconToItems('<path d="M0 0h24v24H0z"/>', vb).items[0].fillColor,
+      outline: (it=>[it.color, it.fillColor])(svgIconToItems('<path fill="none" stroke="currentColor" d="M2 2h20v20H2z"/>', vb).items[0]),
+    };
+    return JSON.stringify({boat, circle, rej, thin, colors, duo:svgIconToItems('<path fill="currentColor" d="M0 0h24v24H0z" opacity=".4"/><path fill="currentColor" d="M8 8h8v8H8z"/>', vb).items.map(i=>i.fillColor), color:ICON_INK});
+  })()`));
+  assert.equal(r.thin, 8, 'a fractional stroke width (1.5 x 5 = 7.5) is rounded to whole pixels');
+  assert.deepEqual(r.colors, {current:r.color, named:'#ff0000', hex:'#3366cc', absent:'#000000', outline:[r.color, r.color]},
+    'icons keep their own colors (currentColor = preview ink), never the toolbar color');
+  assert.notEqual(r.duo[0], r.color, 'a translucent layer becomes a tint');
+  assert.equal(r.duo[1], r.color, 'an opaque layer keeps the drawing color');
+  assert.ok(r.boat.items, r.boat.error);
+  assert.equal(r.boat.items.length, 3);
+  assert.deepEqual(r.boat.items.map(i=>i.type), ['polygon','polygon','polygon']);
+  assert.deepEqual(r.boat.items.map(i=>i.closed), [true, true, false]);
+  assert.ok(r.boat.items.every(i=>i.strokeOn && !i.fill && i.group==='s1'), 'stroke icon -> grouped outline polygons');
+  assert.ok(Math.abs(r.boat.items[0].size-10)<0.01, 'stroke width 2 scales with the 24 -> 120 viewBox');
+  assert.equal(r.circle.items.length, 1);
+  const c = r.circle.items[0];
+  assert.ok(c.closed && c.fill && !c.strokeOn && c.points.length===4 && c.points.every(p=>p.c1 && p.c2), 'circle -> closed 4-anchor bezier');
+  assert.ok(c.group == null, 'a single item is not grouped');
+  assert.ok(r.rej.every(Boolean), `every unsupported icon is refused: ${JSON.stringify(r.rej)}`);
+}));
+
+async function routeIconify(page){
+  const cors = {'access-control-allow-origin':'*'};
+  await page.route('https://api.iconify.design/**', route => {
+    const url = new URL(route.request().url());
+    if(url.pathname==='/search') return route.fulfill({headers:cors, contentType:'application/json', body:JSON.stringify({
+      icons:['gplset:sailboat','lucide:sailboat','multi:sailboat'], total:3, limit:96, start:0,
+      collections:{
+        lucide:{name:'Lucide', author:{name:'Lucide Contributors', url:'https://github.com/lucide-icons/lucide'},
+          license:{title:'ISC', spdx:'ISC', url:'https://github.com/lucide-icons/lucide/blob/main/LICENSE'}, tags:['Uses Stroke'], palette:false},
+        gplset:{name:'GPL Icons', author:{name:'Someone'}, license:{title:'GPL 3.0', spdx:'GPL-3.0', url:'javascript:alert(1)'}, palette:false},
+        multi:{name:'Colorful', license:{title:'MIT', spdx:'MIT'}, palette:true},
+      }})});
+    if(url.pathname==='/multi.json') return route.fulfill({headers:cors,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{sailboat:{body:'<rect width="12" height="24" fill="red"/><rect x="12" width="12" height="24" fill="blue"/>'}}})});
+    if(url.pathname==='/lucide.json') return route.fulfill({headers:cors, contentType:'application/json',
+      body:JSON.stringify({prefix:'lucide', width:24, height:24, icons:{sailboat:{body:SAILBOAT}}})});
+    if(url.pathname.endsWith('.svg')) return route.fulfill({headers:cors, contentType:'image/svg+xml',
+      body:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>'});
+    return route.fulfill({status:404, headers:cors, body:''});
+  });
+}
+
+test('icon dialog filters licenses, imports an icon with its license, and places it as one group', async () => app(async ({page,run}) => {
+  await routeIconify(page);
+  const iconRequests = [];
+  page.on('request', r => { if(r.url().startsWith('https://api.iconify.design/')) iconRequests.push(new URL(r.url()).pathname); });
+  await run('openIconDialog()');
+  await page.fill('#iconSearchInput', 'sailboat');
+  await page.click('#iconSearchBtn');
+  await page.waitForSelector('#iconResults .shape-entry');
+  assert.equal(await page.locator('#iconResults .shape-entry').count(), 2, 'GPL hidden, multicolor included');
+  assert.match(await page.textContent('#iconStatus'), /1 hidden by the license filter/);
+  await page.uncheck('#iconPermissiveOnly');
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===3);
+  assert.equal(await page.locator('#iconResults .icon-license.restricted').count(), 1);
+  assert.equal(await page.locator('#iconResults [href^="javascript"]').count(), 0, 'non-http license links are not linked');
+  await page.check('#iconPermissiveOnly');
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===2);
+  assert.match(await page.locator('#iconResults .icon-license').first().textContent(), /Lucide/);
+  await page.locator('#iconResults .shape-thumb').first().click();
+  await page.waitForFunction(()=>__test.run('shapeLibrary && shapeLibrary.shapes.length')===1);
+  const lib = JSON.parse(await run(`JSON.stringify({open: iconDialog.open, entry: shapeLibrary.shapes[0],
+    roundTrip: normalizeShapeLibrary(JSON.parse(JSON.stringify(shapeLibrary))).shapes[0].source})`));
+  assert.equal(lib.open, false, 'dialog closes after import');
+  assert.equal(lib.entry.name, 'sailboat');
+  assert.equal(lib.entry.source.license.spdx, 'ISC');
+  assert.equal(lib.entry.source.setName, 'Lucide');
+  assert.deepEqual(lib.roundTrip, lib.entry.source, 'source survives export/import normalization');
+  assert.equal(lib.entry.items.length, 3);
+  await run('openIconDialog()');
+  await page.locator('#iconResults .shape-thumb').first().click();
+  await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
+  assert.equal(await run('shapeLibrary.shapes[1].name'), 'sailboat 2', 'a second import gets a unique name');
+  assert.ok(!iconRequests.some(p=>p.endsWith('.svg')), 'thumbnails are drawn from batched set data, not one request per icon');
+  assert.equal(iconRequests.filter(p=>p==='/lucide.json').length, 1, 'one request per set, reused for both imports');
+  assert.match(await page.locator('#iconResults img').first().getAttribute('src'), /^data:image\/svg\+xml,/);
+  const placed = JSON.parse(await run(`(async()=>{ await placeShapeAt(shapeLibrary.shapes[0], 400, 300);
+    return JSON.stringify(items.map(i=>({type:i.type, group:i.group}))); })()`));
+  assert.equal(placed.length, 3);
+  assert.ok(placed[0].group!=null && placed.every(i=>i.group===placed[0].group), 'placed icon is one group');
+}));
+
+test('hole bridges get no stroke, everything else strokes as before', async () => app(async ({run}) => {
+  const r = JSON.parse(await run(`(async ()=>{
+    const it = svgIconToItems('<path fill-rule="evenodd" d="M0 0h24v24H0zM6 6h12v12H6z"/>', {left:0,top:0,width:24,height:24}).items[0];
+    const summary = item=>shapeOps(item).filter(o=>o.kind==='path').map(o=>({stroke:o.style.stroke, fill:o.style.fill,
+      cmds:o.d.map(c=>c[0]).join('')}));
+    const stroked = {...it, strokeOn:true};
+    const moved = clone(stroked); const k = moved.points.findIndex((p,i)=>moved.points.some((q,j)=>j!==i && q.x===p.x && q.y===p.y));
+    moved.points[k] = {...moved.points[k], x:moved.points[k].x+7};
+    const plain = {type:'polygon', points:[{x:0,y:0},{x:100,y:0},{x:50,y:80}], closed:true, color:'#000000', size:4, strokeOn:true, fill:true, fillColor:'#ff0000'};
+    const spike = {...plain, points:[{x:0,y:0},{x:100,y:0},{x:150,y:40},{x:100,y:0},{x:50,y:80}]};
+    const svg = await itemsToSVGMarkup([stroked]);
+    return JSON.stringify({off:summary(it), on:summary(stroked), moved:summary(moved), plain:summary(plain), spike:summary(spike),
+      svgPaths:(svg.match(/<path /g)||[]).length});
+  })()`));
+  assert.equal(r.off.length, 1, 'stroke off: one path, unchanged');
+  assert.equal(r.plain.length, 1, 'an ordinary polygon: one path, unchanged');
+  assert.equal(r.spike.length, 1, 'a drawn spike (A->B directly followed by B->A) keeps its stroke');
+  assert.equal(r.on.length, 2, 'bridged polygon with stroke: fill path + stroke path');
+  assert.equal(r.on[0].stroke, 'none');
+  assert.match(r.on[0].cmds, /Z$/, 'the fill keeps the whole closed contour');
+  assert.equal(r.on[1].fill, 'none');
+  assert.ok(!r.on[1].cmds.includes('Z'), 'the stroke path is open runs');
+  assert.equal((r.on[1].cmds.match(/L/g)||[]).length, 8, 'outline 4 + hole 4 edges stroked, both bridge segments skipped');
+  assert.equal((r.on[1].cmds.match(/M/g)||[]).length, 2, 'two runs: outline and hole');
+  assert.equal(r.moved.length, 1, 'a bridge point moved apart is an ordinary edge again');
+  assert.equal(r.svgPaths, 2, 'SVG export follows the same split');
+}));
+
+test('library footer stays below a grid capped at four rows, and hides in Manage', async () => app(async ({page,run}) => {
+  await run(`shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:Array.from({length:20}, (_,k)=>({name:'s'+k,
+    items:[{type:'rect', x:-20, y:-20, w:40, h:40, color:'#000000', size:2, strokeOn:true, fill:false}]}))}; setShapePicker(true)`);
+  const m = JSON.parse(await run(`(()=>{ const g = shapeGrid.getBoundingClientRect(), f = shapePickerFooter.getBoundingClientRect(),
+    e = shapeGrid.querySelector('.shape-entry').getBoundingClientRect();
+    return JSON.stringify({gridH:g.height, rowH:e.height, scrolls:shapeGrid.scrollHeight>shapeGrid.clientHeight,
+      footerBelow:f.top>=g.bottom, footerVisible:!shapePickerFooter.hidden && f.height>0}); })()`));
+  assert.ok(m.scrolls, 'twenty shapes overflow the grid, which scrolls');
+  assert.ok(m.gridH < 5*m.rowH, `grid shows at most four rows (grid ${m.gridH}px, row ${m.rowH}px)`);
+  assert.ok(m.footerBelow && m.footerVisible, 'footer sits under the grid, outside its scroll area');
+  assert.equal(await run(`shapeGrid.querySelectorAll('.shape-entry').length`), 20, 'the grid holds only shapes, no add tiles');
+  await page.click('#manageShapesBtn');
+  assert.equal(await run('shapePickerFooter.hidden'), true, 'Manage has its own actions; footer is hidden');
+}));
+
+test('icon entry points hide while the browser is offline and return when it reconnects', async () => app(async ({run,context}) => {
+  const visible = ()=>run(`JSON.stringify({btn: !document.getElementById('addIconBtn').hidden,
+    tile: !document.getElementById('addIconFooterBtn').hidden})`).then(JSON.parse);
+  await run('renderShapeLibrary()');
+  assert.deepEqual(await visible(), {btn:true, tile:true});
+  await context.setOffline(true);
+  await run('new Promise(r=>setTimeout(r,50))');
+  assert.deepEqual(await visible(), {btn:false, tile:false});
+  await context.setOffline(false);
+  await run('new Promise(r=>setTimeout(r,50))');
+  assert.deepEqual(await visible(), {btn:true, tile:true});
+}));
+
+test('icon search offline shows a message instead of failing', async () => app(async ({page,run}) => {
+  await page.route('https://api.iconify.design/**', route => route.abort());
+  await run('openIconDialog()');
+  await page.fill('#iconSearchInput', 'anchor');
+  await page.click('#iconSearchBtn');
+  await page.waitForFunction(()=>/connection/.test(document.getElementById('iconStatus').textContent));
+  assert.equal(await page.locator('#iconResults .shape-entry').count(), 0);
+}));
+
 test('the Timer template shows a large "N Minutes left" readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
   const r = JSON.parse(await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
@@ -2240,4 +2431,254 @@ test('resident instance Workers are bounded and evicted realms never transfer gl
   assert.deepEqual(result.state,{value:7},'durable state remains app-owned');
   assert.ok(result.stats.peak<=result.limit && result.stats.resident<=result.limit);
   assert.ok(result.stats.retired>0,'the workload crosses the resident limit');
+}));
+
+
+// Compare production canvas/SVG/PNG output with the browser's own rendering of the source SVG.
+// These fixtures are centered in their viewBox, matching the library's centering policy.
+test('compound icon fills and short curved contours survive editing, persistence and image export',async()=>app(async({run})=>{
+  const cases=[
+    ['overlapping evenodd','<path fill-rule="evenodd" d="M0 0H16V24H0Z M8 0H24V24H8Z"/>',[[4,12],[12,12],[20,12]]],
+    ['overlapping opposite winding','<path d="M0 0H16V24H0Z M8 0V24H24V0Z"/>',[[4,12],[12,12],[20,12]]],
+    ['nested nonzero','<path d="M0 0H24V24H0Z M3 3H21V21H3Z M6 6V18H18V6Z M9 9V15H15V9Z"/>',[[1,12],[4,12],[7,12],[12,12]]],
+    ['evenodd island','<path fill-rule="evenodd" d="M0 0H24V24H0Z M6 6H18V18H6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
+    ['nonzero island','<path d="M0 0H24V24H0Z M6 6V18H18V6Z M10 10H14V14H10Z"/>',[[2,2],[7,7],[12,12]]],
+    ['disjoint contours','<path d="M0 0H8V24H0Z M16 0H24V24H16Z"/>',[[4,12],[12,12],[20,12]]],
+    ['transformed curves','<g transform="translate(12 12) rotate(30) scale(1 .6)"><path fill="#36c" d="M-12 0C-12 -12 12 -12 12 0C12 12 -12 12 -12 0Z"/></g>',[[1,1],[12,12],[23,23]]],
+    ['two-anchor lens','<path d="M0 12C0 0 24 0 24 12C24 24 0 24 0 12Z"/>',[[1,1],[12,4],[12,12],[12,20]]],
+    ['one-anchor loop','<path d="M12 24C-12 -8 36 -8 12 24Z"/>',[[2,12],[12,2],[12,12],[22,12]]],
+  ];
+  for(const [name,body,samples] of cases){
+    const r=await run(`(async()=>{
+      const body=${JSON.stringify(body)},samples=${JSON.stringify(samples)},vb={left:0,top:0,width:24,height:24};
+      const at=samples.map(([x,y])=>[x*5,y*5]);
+      async function raster(url,width,height,points){
+        const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+        const off=document.createElement('canvas');off.width=width;off.height=height;const x=off.getContext('2d');
+        x.fillStyle='#fff';x.fillRect(0,0,width,height);x.drawImage(image,0,0,width,height);
+        return points.map(([px,py])=>Array.from(x.getImageData(Math.round(px),Math.round(py),1,1).data));
+      }
+      const expected=await raster('data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24">'+body+'</svg>'),120,120,at);
+      const converted=svgIconToItems(body,vb);
+      if(!converted.items)return {error:converted.error};
+      const lib=normalizeShapeLibrary(JSON.parse(JSON.stringify({shapes:[{name:'Imported',items:converted.items}]})));
+      items=normalizeScene(lib.shapes[0].items,{},FORMAT_VERSION).items;ensureUids(items);
+      items.forEach(it=>translateItem(it,60,60));
+      items.forEach((_,i)=>convertToCurve(i));
+      setTool('select');selection=[];render();
+      const canvasPixels=at.map(([x,y])=>Array.from(ctx.getImageData(x*dpr,y*dpr,1,1).data));
+      const svg=await itemsToSVGMarkup(items,{width:120,height:120,background:false});
+      const svgPixels=await raster('data:image/svg+xml,'+encodeURIComponent(svg),120,120,at);
+      const bitmap=await createImageBitmap(await itemsToPngBlob(items,{background:false,scale:1,margin:0}));
+      const png=document.createElement('canvas');png.width=png.height=120;const px=png.getContext('2d');
+      px.fillStyle='#fff';px.fillRect(0,0,120,120);px.drawImage(bitmap,(120-bitmap.width)/2,(120-bitmap.height)/2);
+      const pngPixels=at.map(([x,y])=>Array.from(px.getImageData(x,y,1,1).data));
+      return {expected,canvasPixels,svgPixels,pngPixels};
+    })()`);
+    assert.equal(r.error,undefined,name+' converts');
+    assert.deepEqual(r.canvasPixels,r.expected,name+' matches the original on canvas after roundtrip and point-edit conversion');
+    assert.deepEqual(r.svgPixels,r.expected,name+' keeps its fill in SVG export');
+    assert.deepEqual(r.pngPixels,r.expected,name+' keeps its fill in PNG export');
+  }
+}));
+
+test('Close, Escape and library replacement invalidate pending icon imports',async()=>{
+  for(const action of ['close','escape','replace'])await app(async({page,run})=>{
+    let release,retryStarted,calls=0;
+    const response=new Promise(resolve=>release=resolve),retry=new Promise(resolve=>retryStarted=resolve);
+    const body='<rect width="24" height="24"/>';
+    await page.route('https://api.iconify.design/**',async route=>{
+      const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
+      if(url.pathname==='/search')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({
+        icons:['test:late'],collections:{test:{name:'Test',license:{title:'MIT',spdx:'MIT'}}}
+      })});
+      if(url.pathname==='/test.json'){
+        if(++calls===1)return route.fulfill({status:503,headers,body:''});
+        retryStarted();await response;
+        return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{late:{body}}})});
+      }
+      return route.fulfill({status:404,headers,body:''});
+    });
+    await run('openIconDialog()');await page.locator('#iconSearchInput').fill('late');await page.locator('#iconSearchBtn').click();
+    await page.locator('#iconResults .shape-thumb').waitFor();
+    assert.equal(await page.locator('#iconResults .shape-thumb').textContent(),'?');
+    await page.locator('#iconResults .shape-thumb').click();await retry;
+    if(action==='close')await page.locator('#iconDialogCancel').click();
+    if(action==='escape')await page.keyboard.press('Escape');
+    const replacement={shapes:[{name:'Replacement',items:[rectangle()]}]};
+    await importLibrary(page,replacement);
+    await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes[0]?.name')==='Replacement');
+    release();
+    await page.waitForFunction(()=>__test.run("iconBodies.has('test:late')"));
+    await run('new Promise(resolve=>setTimeout(resolve,30))');
+    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement'],action+' cannot append to the replacement library');
+    assert.equal(await run('shapeLibraryDirty'),false,'a cancelled import does not create unexported changes');
+    if(action==='replace')await page.locator('#iconDialogCancel').click();
+    await run('openIconDialog()');
+    await page.locator('#iconResults .shape-thumb').click();
+    await page.waitForFunction(()=>__test.run('shapeLibrary.shapes.length')===2);
+    assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement','late'],'a fresh explicit click can add the cached icon');
+  });
+});
+
+
+async function routeStaticIcons(page,icons){
+  await page.route('https://api.iconify.design/**',route=>{
+    const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
+    if(url.pathname==='/search')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({
+      icons:Object.keys(icons).map(name=>'test:'+name),collections:{test:{name:'Colorful test icons',palette:true,license:{title:'MIT',spdx:'MIT'}}}
+    })});
+    if(url.pathname==='/test.json')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({width:24,height:24,
+      icons:Object.fromEntries(Object.entries(icons).map(([name,body])=>[name,{body}]))})});
+    return route.fulfill({status:404,headers,body:''});
+  });
+}
+const SIMPLIFIED_ICON='<defs><linearGradient id="g"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient><clipPath id="c"><rect width="12" height="24"/></clipPath><filter id="f"><feGaussianBlur stdDeviation="1"/></filter></defs><g transform="translate(2 2)" clip-path="url(#c)" filter="url(#f)"><rect width="20" height="20" fill="url(#g)"/></g>';
+
+test('multicolor icons import directly and retain separate colors through library export and placement',async()=>app(async({page,run})=>{
+  await routeIconify(page);await run('openIconDialog()');await page.locator('#iconSearchInput').fill('sailboat');await page.locator('#iconSearchBtn').click();
+  await page.locator('#iconResults .shape-thumb[title*="Colorful"]').click();
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===1);
+  assert.equal(await page.locator('#iconImportPreview').isVisible(),false,'supported flat colors need no loss confirmation');
+  const saved=await downloadedJSON(page,run,'exportShapeLibrary()');
+  const entry=saved.shapes[0];assert.deepEqual(entry.items.map(it=>it.fillColor),['#ff0000','#0000ff']);
+  assert.equal(entry.source.set,'multi');
+  await run(`(async()=>{shapeLibrary=normalizeShapeLibrary(${JSON.stringify(saved)});await placeShapeAt(shapeLibrary.shapes[0],120,120);selection=[];render();})()`);
+  const svg=await run('itemsToSVGMarkup(items)');
+  assert.match(svg,/#ff0000/);assert.match(svg,/#0000ff/);
+  assert.deepEqual(await run('items.map(it=>it.fillColor)'),['#ff0000','#0000ff']);
+}));
+
+test('Load more advances over filtered results, keeps earlier pages and retries failed requests',async()=>app(async({page,run})=>{
+  const requests=[];let attempts=0;
+  const cols={closed:{name:'Restricted',license:{spdx:'GPL-3.0'}},test:{name:'Colors',palette:true,license:{spdx:'MIT'}}};
+  const first=Array.from({length:96},(_,i)=>'closed:icon-'+i);
+  await page.route('https://api.iconify.design/**',route=>{
+    const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
+    if(url.pathname==='/search'){
+      requests.push(Object.fromEntries(url.searchParams));const start=Number(url.searchParams.get('start'));
+      if(start===96 && ++attempts===1)return route.fulfill({status:503,headers,body:''});
+      return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({icons:start===0?first:['closed:icon-0','test:color'],collections:cols})});
+    }
+    if(url.pathname==='/test.json')return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({width:24,height:24,icons:{color:{body:'<rect width="24" height="24" fill="red"/>'}}})});
+    return route.fulfill({status:404,headers,body:''});
+  });
+  await run('openIconDialog()');await page.locator('#iconSearchInput').fill('boat');await page.locator('#iconSearchBtn').click();
+  await page.waitForFunction(()=>/96 hidden/.test(document.getElementById('iconStatus').textContent));
+  assert.equal(await page.locator('#iconResults .shape-entry').count(),0);
+  await page.locator('#iconLoadMore').click();await page.waitForFunction(()=>/results are kept/.test(document.getElementById('iconStatus').textContent));
+  await page.locator('#iconLoadMore').click();await page.locator('#iconResults .shape-thumb').waitFor();
+  assert.equal(await page.locator('#iconLoadMore').isVisible(),false,'short final page ends pagination');
+  assert.match(await page.locator('#iconStatus').textContent(),/1 icon shown.*96 hidden/);
+  assert.deepEqual(requests.map(r=>[r.query,r.start,r.limit]),[['boat','0','96'],['boat','96','96'],['boat','96','96']]);
+  await page.locator('#iconPermissiveOnly').uncheck();
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-entry').length===97);
+  assert.equal(new Set(await page.locator('#iconResults .shape-name').allTextContents()).size,97,'duplicate results do not create duplicate tiles');
+  assert.equal(requests.length,3,'filter changes reuse all loaded pages');
+}));
+
+test('a stale Load more response cannot replace a newer search or reopen a closed dialog',async()=>app(async({page,run})=>{
+  let release,started;
+  const response=new Promise(r=>release=r),pending=new Promise(r=>started=r);
+  await page.route('https://api.iconify.design/**',async route=>{
+    const url=new URL(route.request().url()),headers={'access-control-allow-origin':'*'};
+    if(url.pathname==='/search'){
+      const query=url.searchParams.get('query'),start=Number(url.searchParams.get('start'));
+      if(start){started();await response;}
+      const icons=query==='old' && !start?Array.from({length:96},(_,i)=>'test:old-'+i):['test:'+(start?'late':'new')];
+      return route.fulfill({headers,contentType:'application/json',body:JSON.stringify({icons,collections:{test:{name:'Test',license:{spdx:'MIT'}}}})});
+    }
+    return route.fulfill({status:404,headers,body:''});
+  });
+  await run('openIconDialog()');await page.locator('#iconSearchInput').fill('old');await page.locator('#iconSearchBtn').click();
+  await page.locator('#iconResults .shape-entry').first().waitFor();await page.locator('#iconLoadMore').click();await pending;
+  await page.locator('#iconSearchInput').fill('new');await page.locator('#iconSearchBtn').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#iconResults .shape-name').length===1 && document.querySelector('#iconResults .shape-name').textContent==='new');
+  await page.locator('#iconDialogCancel').click();release();
+  await run('new Promise(r=>setTimeout(r,50))');await run('openIconDialog()');
+  await page.waitForFunction(()=>document.querySelector('#iconResults .shape-name')?.textContent==='new');
+  assert.deepEqual(await page.locator('#iconResults .shape-name').allTextContents(),['new']);
+  assert.equal(await page.locator('#iconLoadMore').isVisible(),false);
+}));
+
+test('simplified imports preview the actual static result and require confirmation before changing the library',async()=>app(async({page,run})=>{
+  await routeStaticIcons(page,{gradient:SIMPLIFIED_ICON});await run('openIconDialog()');
+  await page.locator('#iconSearchInput').fill('gradient');await page.locator('#iconSearchBtn').click();await page.locator('#iconResults .shape-thumb').click();
+  await page.locator('#iconImportConfirm:enabled').waitFor();
+  assert.equal(await run('shapeLibrary'),null,'preview alone never creates a library');
+  const before=await page.locator('#iconOriginalPreview').getAttribute('src'),after=await page.locator('#iconConvertedPreview').getAttribute('src');
+  assert.match(decodeURIComponent(before),/linearGradient/);assert.doesNotMatch(decodeURIComponent(after),/linearGradient|clipPath|filter=|script/);
+  const losses=await page.locator('#iconImportLosses').textContent();
+  for(const message of ['Gradients','Masks and clipping','Visual effects'])assert.ok(losses.includes(message));
+  assert.equal(await run("Array.from(document.querySelectorAll('#iconImportPreview img')).every(im=>im.complete && im.naturalWidth>0)"),true);
+  const pixels=await run(`(async()=>{
+    const result=[];for(const id of ['iconOriginalPreview','iconConvertedPreview']){
+      const im=document.getElementById(id),c=document.createElement('canvas');c.width=c.height=120;
+      const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,120,120);x.drawImage(im,0,0,120,120);
+      result.push(Array.from(x.getImageData(95,60,1,1).data));
+    }return result;
+  })()`);
+  assert.notDeepEqual(pixels[0],pixels[1],'before/after previews visibly expose the omitted clipping');
+  await page.locator('#iconImportCancel').click();assert.equal(await run('shapeLibrary'),null);
+  await page.locator('#iconResults .shape-thumb').click();await page.locator('#iconImportConfirm:enabled').waitFor();
+  const approved=await run('clone(iconPendingImport.result.items)');
+  await page.locator('#iconImportConfirm').click();await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===1);
+  assert.deepEqual(await run('shapeLibrary.shapes[0].items'),approved,'the confirmed preview geometry is the geometry that gets added');
+  const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.deepEqual(exported.shapes[0].items,approved);assert.equal(exported.shapes[0].source.license.spdx,'MIT');
+}));
+
+test('simplified preview confirmation is invalidated by Escape, a new search or library replacement',async()=>{
+  for(const action of ['escape','search','replace'])await app(async({page,run})=>{
+    await routeStaticIcons(page,{gradient:SIMPLIFIED_ICON});await run('openIconDialog()');
+    await page.locator('#iconSearchInput').fill('gradient');await page.locator('#iconSearchBtn').click();await page.locator('#iconResults .shape-thumb').click();
+    await page.locator('#iconImportConfirm:enabled').waitFor();
+    if(action==='escape'){await page.keyboard.press('Escape');await run('openIconDialog()');}
+    if(action==='search'){await page.locator('#iconSearchInput').fill('another');await page.locator('#iconSearchBtn').click();}
+    if(action==='replace'){
+      await importLibrary(page,{shapes:[{name:'Replacement',items:[rectangle()]}]});
+      await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes[0]?.name')==='Replacement');
+      await page.locator('#iconImportConfirm').click();
+      assert.deepEqual(await run('shapeLibrary.shapes.map(s=>s.name)'),['Replacement']);
+      assert.equal(await run('shapeLibraryDirty'),false);
+    }else{
+      assert.equal(await run('iconPendingImport'),null);assert.equal(await run('shapeLibrary'),null);
+    }
+    assert.equal(await page.locator('#iconImportPreview').isVisible(),false,action+' retires the preview');
+  });
+});
+
+test('static simplification applies transforms, reports omissions, and never admits animations or empty results',async()=>app(async({run})=>{
+  const r=await run(`(()=>{
+    const vb={left:0,top:0,width:24,height:24};
+    const body='<defs><pattern id="p" width="1" height="1"/></defs><g transform="translate(12 12) scale(2 1)"><rect x="-4" y="-4" width="8" height="8" style="fill:url(#p);stroke:red;stroke-width:1;opacity:.5;stroke-dasharray:2 2"/><text>omitted</text><use href="#x"/></g>';
+    const normal=svgIconToItems(body,vb),simple=svgIconToItems(body,vb,{simplify:true});
+    const animations=[
+      '<rect width="24" height="24"><animate attributeName="x" values="0;2" dur="1s"/></rect>',
+      '<g><set attributeName="fill" to="red"/><rect width="24" height="24"/></g>',
+      '<style>@keyframes spin {to{opacity:0}}</style><rect width="24" height="24"/>',
+      '<rect width="24" height="24" style="animation:spin 1s infinite"/>',
+      '<rect width="24" height="24" style="transition:fill 1s"/>',
+    ].map(body=>[svgIconToItems(body,vb),svgIconToItems(body,vb,{simplify:true})]);
+    return {normal,simple,animations,empty:svgIconToItems('<text>only text</text>',vb,{simplify:true}),
+      unsafe:svgIconToItems('<script>throw 1</script><rect width="24" height="24"/>',vb,{simplify:true}),
+      faint:svgIconToItems('<rect width="24" height="24"/><circle r="10" opacity=".01"/>',vb),
+      zeroStroke:svgIconToItems('<rect width="24" height="24" fill="red" stroke="blue" stroke-width="0"/>',vb),
+      stylesInDefs:svgIconToItems('<defs><style>.red{fill:red}</style></defs><rect class="red" width="24" height="24"/>',vb,{simplify:true})};
+  })()`);
+  assert.equal(r.normal.canSimplify,true);assert.ok(r.simple.items?.length);assert.ok(r.simple.warnings.length>=4);
+  const b=await run(`bbox(${JSON.stringify(r.simple.items[0])},false)`);assert.equal(b.w,80);assert.equal(b.h,40,'non-uniform transforms are applied to geometry');
+  for(const pair of r.animations)for(const result of pair){assert.match(result.error,/Animated/);assert.equal(result.items,undefined);assert.equal(result.canSimplify,undefined);}
+  assert.match(r.empty.error,/no drawable/);assert.match(r.unsafe.error,/scripts/);
+  assert.ok(r.faint.warnings.some(w=>/transparent layers/.test(w)),'omitting faint layers is disclosed');
+  assert.equal(r.zeroStroke.items[0].strokeOn,false,'zero-width SVG strokes stay invisible');
+  assert.ok(r.stylesInDefs.warnings.includes('Stylesheet rules were omitted.'),'CSS rules inside definitions require the same disclosure');
+}));
+
+test('search excludes animated icons while keeping static multicolor icons',async()=>app(async({page,run})=>{
+  await routeStaticIcons(page,{static:'<rect width="24" height="24" fill="red"/>',animated:'<rect width="24" height="24"><animate attributeName="opacity" values="0;1" dur="1s"/></rect>',css:'<style>@keyframes x{to{opacity:0}}</style><rect width="24" height="24"/>'});
+  await run('openIconDialog()');await page.locator('#iconSearchInput').fill('icons');await page.locator('#iconSearchBtn').click();
+  await page.locator('#iconResults .shape-entry').waitFor();
+  assert.deepEqual(await page.locator('#iconResults .shape-name').allTextContents(),['static']);
+  assert.match(await page.locator('#iconStatus').textContent(),/2 animated icons excluded/);
 }));
