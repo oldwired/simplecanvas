@@ -2593,39 +2593,39 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0,'browsing the demo runs no smart scripts');
   assert.equal(await run('shapeLibraryDirty'),false);
   let canvas=await page.locator('#canvas').boundingBox();
-  for(const [name,x] of [['Steuerbord Boot',180],['Clock (smart)',480],['Bar chart (smart)',820]]){
+  for(const [name,x] of [['Starboard tack boat',180],['Clock (smart)',480],['Bar chart (smart)',820]]){
     if(await page.locator('#shapePicker').isHidden()) await page.locator('#shapeLibBtn').click();
     await page.getByRole('button',{name:'Place '+name,exact:true}).click();
     canvas=await page.locator('#canvas').boundingBox();
     await page.mouse.click(canvas.x+x,canvas.y+240);
     await run('shapePlacementQueue');
   }
-  assert.deepEqual(await run('items.map(it=>it.type)'),['polygon','polygon','polygon','ellipse','line','smart','smart']);
+  assert.deepEqual(await run('items.map(it=>it.type)'),['polygon','polygon','ellipse','line','smart','smart']);
   canvas=await page.locator('#canvas').boundingBox();
-  const clock=await run('items[5]');
+  const clock=await run('items[4]');
   await page.mouse.dblclick(canvas.x+clock.x+clock.w/2,canvas.y+clock.y+clock.h/2);
-  await page.waitForFunction(()=>__test.run('editingSmartIdx')===5);
-  const minute=await run(`requestSmartCall(items[5],'handles',[items[5].state,items[5].w,items[5].h,smartResolvedStyle(items[5])]).then(hs=>hs.find(h=>h.id==='minute'))`);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===4);
+  const minute=await run(`requestSmartCall(items[4],'handles',[items[4].state,items[4].w,items[4].h,smartResolvedStyle(items[4])]).then(hs=>hs.find(h=>h.id==='minute'))`);
   await page.mouse.move(canvas.x+clock.x+minute.x,canvas.y+clock.y+minute.y);
   await page.mouse.down();
   await page.waitForFunction(()=>__test.run('smartDrag?.handle')==='minute');
   await page.mouse.move(canvas.x+clock.x+clock.w*.85,canvas.y+clock.y+clock.h/2,{steps:5});
   await page.mouse.up();
   await run('smartHitSettled');
-  assert.equal(await run('items[5].state.m'),15);
-  await run('undo()');assert.equal(await run('items[5].state.m'),10);
-  await run('redo()');assert.equal(await run('items[5].state.m'),15);
-  const chart=await run('items[6]');
+  assert.equal(await run('items[4].state.m'),15);
+  await run('undo()');assert.equal(await run('items[4].state.m'),10);
+  await run('redo()');assert.equal(await run('items[4].state.m'),15);
+  const chart=await run('items[5]');
   await page.mouse.dblclick(canvas.x+chart.x+chart.w-40,canvas.y+chart.y+8);
-  await page.waitForFunction(()=>__test.run('editingSmartIdx')===6);
-  const add=await run(`requestSmartCall(items[6],'handles',[items[6].state,items[6].w,items[6].h,smartResolvedStyle(items[6])]).then(hs=>hs.find(h=>h.id==='add'))`);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===5);
+  const add=await run(`requestSmartCall(items[5],'handles',[items[5].state,items[5].w,items[5].h,smartResolvedStyle(items[5])]).then(hs=>hs.find(h=>h.id==='add'))`);
   await page.mouse.click(canvas.x+chart.x+add.x,canvas.y+chart.y+add.y);
   await run('smartHitSettled');
-  assert.equal(await run('items[6].state.values.length'),5);
-  await run('undo()');assert.deepEqual(await run('items[6].state.values'),[30,60,45,80]);
+  assert.equal(await run('items[5].state.values.length'),5);
+  await run('undo()');assert.deepEqual(await run('items[5].state.values'),[30,60,45,80]);
   await page.reload();
-  assert.equal(await run('items[5].state.m'),15,'edited demo shapes survive autosave/reload');
-  assert.deepEqual(await run('items[6].state.values'),[30,60,45,80]);
+  assert.equal(await run('items[4].state.m'),15,'edited demo shapes survive autosave/reload');
+  assert.deepEqual(await run('items[5].state.values'),[30,60,45,80]);
 }, {origin:'http://simplecanvas.test/simplecanvas',files:{'shapes-library.json':demoLibrary},init:()=>{
   const NativeWorker=window.Worker;
   window.__smartWorkerStarts=0;
