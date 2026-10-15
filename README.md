@@ -35,11 +35,17 @@ width and dashes without moving the canvas.
 
 Developer checks are described in [tests/README.md](tests/README.md).
 
-The public demo includes eight shapes: the six sailing shapes from [Bauka](https://bauka.com/)
-(two boats, start and finish lines, a course mark, and a wind arrow), plus a smart **Clock** and
-**Bar chart**. Open the shape library in the toolbar, choose a shape, then click the canvas to place
-it. Double-click the clock to drag its hands, or the chart to drag bars and add/remove them with
+The public demo library includes ten shapes: the six sailing shapes from [Bauka](https://bauka.com/)
+(two boats, start and finish lines, a course mark, and a wind arrow), plus smart **Clock**,
+**Bar chart**, **Drill template**, and **Race start timer** shapes. Open the shape library in the
+toolbar, choose a shape, then click the canvas to place it. Double-click the clock to drag its
+hands, or the chart to drag bars and add/remove them with
 the +/− controls. All demo entries include saved previews.
+
+The contributor's [drilling template](examples/drill-template.js) and
+[race-start timer](examples/race-start-timer.js) are also included as smart shapes. The drilling
+template has handles for hole diameter and position; resizing sets the hole spacing. The race-start
+timer has a draggable clock hand and clickable mast controls for changing flags.
 
 The shape library is optional. Open the library picker and choose **Add selection** to save
 selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
@@ -85,7 +91,8 @@ if needed. The HTML works on its own without a library file.
 
 The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
 `index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
-`demo-shapes-library.json` to that conventional library name, so the existing loader picks it up.
+`examples/demo-shapes-library.json` to that conventional library name, so the existing loader
+picks it up.
 The workflow also publishes `reallysimple/index.html` (a copy of the same HTML) and
 `reallysimple/settings.json`, with all five optional features disabled. The variant settings are
 tracked in [reallysimple/settings.json](reallysimple/settings.json). Only the prepared directory
@@ -96,13 +103,15 @@ and set **Build and deployment → Source** to **GitHub Actions**, replacing the
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
 either settings file, or workflow on `main` deploy automatically.
 
-To update the demo, import `demo-shapes-library.json`, edit it in **Manage**, export the library,
-and save the download back as `demo-shapes-library.json`.
+To update the demo, import `examples/demo-shapes-library.json`, edit it in **Manage**, export the
+library, and save the download back as `examples/demo-shapes-library.json`. The contributor shapes
+embed their complete `.js` example scripts; update the corresponding library source when changing
+either example.
 
 ## Optional deployment settings
 
-For a hosted deployment, copy [settings.example.json](settings.example.json) to `settings.json`
-beside `index.html`, and change the feature switches you need. You can omit any switch: all five
+For a hosted deployment, copy [examples/settings.example.json](examples/settings.example.json)
+to `settings.json` beside `index.html`, and change the feature switches you need. You can omit any switch: all five
 default to `true`. Without a settings file, or when opening the HTML directly as a local file,
 the standard features remain available. No settings file is required to run the app.
 

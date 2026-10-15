@@ -1845,7 +1845,8 @@ test('missing smart previews require consent; exported PNGs load without executi
   }
 }));
 
-const demoLibrary = fs.readFileSync(path.join(__dirname,'..','demo-shapes-library.json'),'utf8');
+const demoLibrary = fs.readFileSync(path.join(__dirname,'..','examples','demo-shapes-library.json'),'utf8');
+const demoShapeCount = JSON.parse(demoLibrary).shapes.length;
 const settingsFile=features=>JSON.stringify({version:1,features});
 
 test('a custom deployment title is plain text and invalid titles do not partially apply settings',async()=>{
@@ -1918,7 +1919,7 @@ test('workspace settings preserve saved tabs, restrict exports to the active ske
 }));
 
 test('fixed libraries block mutations and Iconify while existing smart handles still work',async()=>app(async({page,run})=>{
-  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
+  await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
   await page.locator('#shapeLibBtn').click();
   assert.equal(await page.locator('#manageShapesBtn').isVisible(),false);
   assert.equal(await page.locator('#shapePickerFooter').isVisible(),false);
@@ -1950,7 +1951,7 @@ test('fixed libraries block mutations and Iconify while existing smart handles s
 }, {files:{'settings.json':settingsFile({shapeLibraryManagement:false}),'shapes-library.json':demoLibrary}}));
 
 test('smart authoring can be disabled independently while static library additions remain available',async()=>app(async({page,run})=>{
-  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
+  await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
   assert.equal(await page.getByRole('button',{name:'Edit Clock (smart)',exact:true}).count(),0);
   assert.equal(await page.locator('#newSmartObjectBtn').isVisible(),false);
@@ -1968,7 +1969,7 @@ test('smart authoring can be disabled independently while static library additio
   await run(`items=[clone(shapeLibrary.shapes[6].items[0])];selection=[0];addSelectionToLibrary();
     importShapeLibraryFile(new File([${JSON.stringify(demoLibrary)}],'smart-library.json'));`);
   await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Importing smart shapes is disabled');
-  assert.equal(await run('shapeLibrary.shapes.length'),9);
+  assert.equal(await run('shapeLibrary.shapes.length'),demoShapeCount+1);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
 }, {files:{'settings.json':settingsFile({smartShapeAuthoring:false}),'shapes-library.json':demoLibrary}}));
 
@@ -2051,13 +2052,13 @@ test('the standalone local HTML opens with defaults and no HTTP settings depende
 });
 
 test('the bundled demo loads under a Pages subpath with inert previews and editable smart shapes',async()=>app(async({page,run})=>{
-  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===8);
-  assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),2);
+  await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
+  assert.equal(await run('shapeLibrary.shapes.filter(t=>t.items.some(it=>it.type==="smart")).length'),4);
   await page.locator('#shapeLibBtn').click();
-  await page.waitForFunction(()=>{
+  await page.waitForFunction(count=>{
     const images=[...document.querySelectorAll('#shapeGrid img')];
-    return images.length===8 && images.every(img=>img.complete && img.naturalWidth===128);
-  });
+    return images.length===count && images.every(img=>img.complete && img.naturalWidth===128);
+  },demoShapeCount);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'saved previews need no script consent');
   assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0,'browsing the demo runs no smart scripts');
   assert.equal(await run('shapeLibraryDirty'),false);
@@ -2100,6 +2101,46 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   window.__smartWorkerStarts=0;
   window.Worker=class extends NativeWorker{constructor(...args){super(...args);window.__smartWorkerStarts++;}};
 }}));
+
+test('contributor demo entries keep their source scripts, working controls, and saved state',async()=>app(async({page,run})=>{
+  const sourceFiles=[['Drill template (smart)','drill-template.js'],['Race start timer (smart)','race-start-timer.js']];
+  const entries=JSON.parse(demoLibrary).shapes;
+  for(const [name,file] of sourceFiles){
+    assert.equal(entries.find(entry=>entry.name===name).items[0].script.replace(/\r\n/g,'\n'),
+      fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8').replace(/\r\n/g,'\n'));
+  }
+  await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
+  for(const [name,x] of [['Drill template (smart)',300],['Race start timer (smart)',800]]){
+    await page.locator('#shapeLibBtn').click();await page.getByRole('button',{name:'Place '+name,exact:true}).click();
+    const canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+x,canvas.y+260);
+    await run('shapePlacementQueue');
+  }
+  assert.deepEqual(await run('items.map(it=>it.type)'),['smart','smart']);
+  const drill=await run('items[0]');let canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+drill.x+drill.w/2,canvas.y+drill.y+drill.h/2);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===0);
+  const diameter=await run(`requestSmartCall(items[0],'handles',[items[0].state,items[0].w,items[0].h,smartResolvedStyle(items[0])]).then(hs=>hs.find(h=>h.id==='dia'))`);
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvas.x+drill.x+diameter.x,canvas.y+drill.y+diameter.y);await page.mouse.down();
+  await page.waitForFunction(()=>__test.run('smartDrag?.handle')==='dia');
+  await page.mouse.move(canvas.x+drill.x+diameter.x+3,canvas.y+drill.y+diameter.y,{steps:5});await page.mouse.up();await run('smartHitSettled');
+  const changedDiameter=await run('items[0].state.holeDiameterMm');assert.ok(changedDiameter>6);
+  await run('undo()');assert.equal(await run('items[0].state.holeDiameterMm'),6);await run('redo()');
+  const race=await run('items[1]');canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(canvas.x+race.x+race.w-20,canvas.y+race.y+race.h/2);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  const orange=await run(`requestSmartCall(items[1],'handles',[items[1].state,items[1].w,items[1].h,smartResolvedStyle(items[1])]).then(hs=>hs.find(h=>h.id==='orange'))`);
+  canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(canvas.x+race.x+orange.x,canvas.y+race.y+orange.y);await run('smartHitSettled');
+  assert.equal(await run('items[1].state.orangeShown'),false);
+  await run('undo()');assert.equal(await run('items[1].state.orangeShown'),true);await run('redo()');
+  const exported=await downloadedJSON(page,run,'exportProject()');
+  assert.equal(exported.items[0].state.holeDiameterMm,changedDiameter);
+  assert.equal(exported.items[1].state.orangeShown,false);
+  await page.reload();
+  assert.equal(await run('items[0].state.holeDiameterMm'),changedDiameter);
+  assert.equal(await run('items[1].state.orangeShown'),false);
+},{files:{'shapes-library.json':demoLibrary}}));
 
 test('a single HTML deployment works without a shape library',async()=>app(async({page,run})=>{
   await page.waitForLoadState('networkidle');

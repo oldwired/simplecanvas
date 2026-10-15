@@ -38,6 +38,8 @@ canvas/SVG/PNG output, and retaining focus while previews complete.
 It also checks the shipped demo under a GitHub Pages subpath, inert bundled previews, smart-shape
 editing and undo, drawing with only the HTML file deployed, and an import arriving before a delayed
 library response.
+The contributor shapes bundled into the demo must match their `.js` example sources; their actual
+handles, undo/redo, sketch exports, and saved state are exercised from the shipped library file.
 
 Deployment-settings checks cover the five switches independently, fixed-library smart handles,
 preservation and recovery of hidden tabs, active-sketch exports, delayed and invalid settings,

@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - index.html
-      - demo-shapes-library.json
+      - examples/demo-shapes-library.json
       - settings.json
       - reallysimple/settings.json
       - .github/workflows/pages.yml
@@ -37,7 +37,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/index.html
-          cp demo-shapes-library.json _site/shapes-library.json
+          cp examples/demo-shapes-library.json _site/shapes-library.json
           if [ -f settings.json ]; then
             cp settings.json _site/settings.json
           fi
