@@ -2,7 +2,7 @@
 // Numeric indicators show availability, including zero; unavailable values stay blank.
 ({
   apiVersion:2,
-  inputs:{a:{type:'number'},b:{type:'number'},operation:{type:'string',default:'+',options:['+','−','×','÷']}},
+  inputs:{a:{type:'number'},b:{type:'number'},operation:{type:'string',default:'+',options:['+','−','×','÷','min','max']}},
   outputs:{value:{type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
@@ -13,6 +13,8 @@
       case '+':value=inputs.a+inputs.b;break;
       case '−':value=inputs.a-inputs.b;break;
       case '×':value=inputs.a*inputs.b;break;
+      case 'min':value=Math.min(inputs.a,inputs.b);break;
+      case 'max':value=Math.max(inputs.a,inputs.b);break;
       case '÷':
         if(inputs.b===0)throw new Error('Division by zero');
         value=inputs.a/inputs.b;break;
@@ -43,7 +45,7 @@
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
     const label=value=>!Number.isFinite(value)?'—':String(value).length<=11?String(value):Number(value.toPrecision(4)).toString();
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
-    const operation=['+','−','×','÷'].includes(inputs.operation)?inputs.operation:null;
+    const operation=['+','−','×','÷','min','max'].includes(inputs.operation)?inputs.operation:null;
     const available=Number.isFinite(inputs.a)&&Number.isFinite(inputs.b)&&Number.isFinite(outputs.value)&&operation!==null;
     const title={...text('',w*.04,0,w*.92,h*.2,18,'left'),...this._caption(io.name,'Math',w*.92,h*.2,{...style,fontSize:18*scale})};
     const cy=h*.49,ay=h*.38,by=h*.65;
@@ -57,7 +59,7 @@
       text('Output',w*.71,h*.22,w*.29,h*.12,10.5),
       text(label(outputs.value),w*.71,h*.35,w*.29,h*.12,10),
       {type:'rect',x:w*.30,y:h*.25,w:w*.39,h:h*.48,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
-      text(available?operation:'+ − × ÷',w*.30,h*.25,w*.39,h*.48,available?34:20)
+      text(available?operation:'+ − × ÷',w*.30,h*.25,w*.39,h*.48,available?(operation.length>1?26:34):20)
     ];
     if(state.showIndicators!==false){
       const radius=4*scale;
@@ -71,7 +73,7 @@
       const error=typeof io.error==='string'?io.error:'';
       const note=/Division by zero/i.test(error)?'Calculation unavailable\nCannot divide by zero':
         /Calculation overflow|non.?finite/i.test(error)?'Calculation unavailable\nResult is outside the numeric range':
-        /Unsupported operation/i.test(error)?'Calculation unavailable\nChoose +, −, ×, or ÷':
+        /Unsupported operation/i.test(error)?'Calculation unavailable\nChoose an operation in Inputs':
         !error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
       children.push({...text(note,w*.04,h*.77,w*.92,h*.22,10.5),color:'#92400e'});
     }

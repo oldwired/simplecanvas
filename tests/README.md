@@ -112,3 +112,16 @@ pulses. Trigger checks cover rapid clicks, held presses, idle output, restoratio
 memory, active-document time, stale evaluation rejection, pure snapshot paths, and ordered editor/
 offline interaction. Run it with `node --test tests/temporal-components.test.cjs`; prefix with
 `BROWSER_ENGINE=webkit` for WebKit.
+
+`tests/catalog-extensions.test.cjs` checks configurable channel counts through the real Inputs
+dialog, library placement, undo/redo, removed-output errors, pulse-driven stepped routing,
+and typed numeric entry in the editor and downloaded offline HTML. It also checks dialog
+cancellation when visibility changes and connects the new pulse sources to counters.
+Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
+`BROWSER_ENGINE=webkit` for WebKit.
+
+The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
+and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
+reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
+verify that all 35 API v2 catalog definitions match their editable source files and retain
+their instance names in canvas, SVG, and offline HTML.

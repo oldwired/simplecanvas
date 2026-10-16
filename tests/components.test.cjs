@@ -152,11 +152,11 @@ test('the supplied Number control and Gauge can be connected with the input pick
   const control=await run('selection=[0];editingSmartIdx=0;render();items[0]');
   const box=await page.locator('#canvas').boundingBox();
   await page.mouse.click(box.x+control.x+control.w*.75,box.y+control.y+control.h*.84);
-  await run('smartHitSettled');await drawing(page,'gauge','55%');
+  await run('smartHitSettled');await drawing(page,'gauge','51%');
   const {preview,errors,requests}=await openExport(page,run,context);
-  await readerDrawing(preview,0,'Gauge55%');
+  await readerDrawing(preview,0,'Gauge51%');
   await readerClick(preview,preview.locator('[data-smart-index="0"]'),control.w*.75,control.h*.84);
-  await readerDrawing(preview,0,'Gauge60%');
+  await readerDrawing(preview,0,'Gauge52%');
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 

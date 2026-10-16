@@ -1,7 +1,9 @@
 # From smart shapes to connected components
 
-Status: stage 1, its authoring setting, and the initial stage 2 library/logic delivery are implemented on `feature/smart-components`,
-based on `main`, updated 2026-10-16. They are not yet part of the main-branch baseline below.
+Status: stage 1, its authoring setting, and the expanded stage 2 library, logic, routing, and timed
+signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-16.
+Stage 2 closeout still includes usable example drawings and an authoring-experience pass.
+These additions are not yet part of the main-branch baseline below.
 Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
@@ -22,8 +24,8 @@ The first milestone is **one numeric control driving a separate gauge,
 working in both the editor and an exported HTML file**. It is implemented with API v2,
 an **Inputs…** source picker, saved bindings, and independent instance IDs. Open
 [the connected example](../examples/connected-components.json) as a sketch to try it.
-The initial second milestone adds a categorized library, ready-to-place default components, and
-logic gates. This comes before data tables, events, downloads, and external integrations, so actual
+The second milestone adds a categorized library, ready-to-place default components, logic gates,
+numeric helpers, typed routing, and bounded timed signals. This comes before data tables, events, downloads, and external integrations, so actual
 composed documents can inform those later increments.
 
 ## Current baseline: main and the feature branch
@@ -95,8 +97,8 @@ These boundaries describe the feature branch, including stage 1.
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
 - **Library edits require explicit export.** The browser and working collection last for the
   current visit. Import replaces the user catalog and its working membership; built-ins remain.
-  The initial Constant is numeric, Compare is strict greater-than, and Value label accepts numbers.
-  Further scalar variants can extend this catalog without changing the browsing model.
+  Constant and Value label are numeric. Compare accepts two numbers and a selectable relation;
+  routing has separate numeric and Boolean variants with fixed channel types.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
   document-wide Run/Preview mode inside the editor would be an additional feature.
 
@@ -118,7 +120,8 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stage 1 and the initial stage 2 delivery are implemented on the feature branch. The stage numbers give the
+Stage 1 and the expanded stage 2 catalog are implemented on the feature branch; stage 2 example
+closeout remains. The stage numbers give the
 proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -127,7 +130,7 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic — initial delivery implemented | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, scalar controls/displays, gates, comparison, and bounded timed signals | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the example works in editor and offline HTML. |
+| 2. Component library and logic — expanded delivery implemented; example closeout remains | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, and bounded timed signals | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the example works in editor and offline HTML. |
 | 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
@@ -182,13 +185,17 @@ Use one category per library entry, optional search tags, and a search field. Us
 **categories** for library organization; canvas **groups** continue to mean objects selected
 and transformed together. Nested folders can follow if real collections need them.
 
-| Category | Initial contents |
+| Category | Current built-in contents |
 | --- | --- |
-| Controls | Number control, Toggle, numeric Constant |
-| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare (strict greater-than), numeric Inverter (×−1), Math |
+| Controls | Number control, Toggle, numeric Constant, Trigger |
+| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, and Stepped distributor |
 | Displays | Gauge, numeric Value label, Status indicator |
-| Tools & time | Ruler, Live clock, Stopwatch |
+| Tools & time | Ruler, Live clock, Stopwatch, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, and categorized user shapes/icons |
+
+The latest stage 2 extension adds eleven API v2 entries: Pulse generator, Edge to pulse, two typed
+Selectors, four typed stepped switches, Clamp, Range mapper, and Number function. It also expands
+Compare, Number control, and Math without adding another delivery stage.
 
 Category and tag metadata survive library import/export. Existing flat libraries remain
 valid and appear under an uncategorized section. Keep library-entry identity separate from
@@ -228,13 +235,23 @@ and dependent boolean components wait without inventing false. Authors can conne
 it is Z, and enabling it restores the dependent chain. The triangle has a distinct enable pin and
 purple Z indicator; amber still means a missing or invalid input. One source per input remains the
 connection model; bus resolution and electrical effects are not included.
-Compare bridges numeric controls and boolean logic with strict greater-than and an
-editor-adjustable threshold. More comparison operations and
-string/boolean constants can be added as later catalog extensions.
-Math combines two required numeric inputs with a selectable +, −, ×, or ÷ operation and one
+Compare bridges numeric controls and boolean logic with two live operands (`value` and `b`) and
+selectable >, ≥, <, ≤, =, or ≠. Defaults remain > and B = 70; equality compares numbers exactly.
+String/boolean constants can be added as later catalog extensions.
+Math combines two required numeric inputs with a selectable +, −, ×, ÷, min, or max operation and one
 numeric output. Configure the operation in Inputs alongside the bindings; each instance saves
 its own choice. Subtraction and division preserve operand order, and division by zero or overflow
 make the result unavailable until corrected. The same computation runs in exported HTML.
+Clamp limits a number to inclusive bounds. Range mapper converts an increasing input range into an
+output range, supports reversed output bounds, and clamps by default; disabling clamping enables
+extrapolation. Number function offers abs, round, floor, and ceil, with Math.round's half-toward-
+positive-infinity rule. Invalid ranges or nonfinite results become unavailable.
+
+Number control exposes min/max/step inputs (defaults 0/100/1), a slider, step buttons, and direct
+number entry. Negative and fractional values work. All interactions share a bounded step grid
+anchored at min, with max also reachable. Direct entry uses a host-owned number dialog in the
+editor and offline HTML, and creates one accepted state change.
+
 Use declared types throughout: invalid or missing required inputs produce connection errors,
 and an unavailable upstream value must not silently become `false`.
 
@@ -274,6 +291,31 @@ the instance when moved, resized, or rotated. Bindings should continue to refere
 and port name; screen coordinates must never become connection identity. Inputs remains the
 current connection editor.
 
+### Typed routing and stepped switches
+
+Selector has separate number and Boolean entries. `select=false` routes A to `value`;
+`select=true` routes B. Both data inputs must be valid. Evaluation eagerly resolves every declared
+input, so an unselected unavailable branch still makes the selector unavailable; selectors do
+not suspend upstream work.
+
+Stepped switch and Stepped distributor each have number and Boolean entries. Authors choose
+2–16 Channels (initially 4) in **Inputs…**. Channel count is saved authoring configuration that
+changes declared ports, rather than a live data input. The selector routes `in1`…`inN` to `value`,
+with unbound channels defaulting to 0/false. The distributor routes required `value` to one of
+`out1`…`outN`; inactive outputs are numeric 0 or Boolean false. These are separate outputs, not
+shared bus drivers or high-impedance outputs.
+
+Every false → true `pulse` advances the selected channel, wraps N → 1, and publishes a numeric
+`position`. Holding high does not repeat. Held `reset` selects 1 while tracking the pulse, so
+releasing reset during high does not step. Saved position survives reload, copy, and undo, while
+fresh pulse memory prevents phantom steps. Changing Channels resets to 1 and re-primes, including
+when runtime observations were cleared. Selected data remains live between pulses.
+
+Switch visuals show the selected contact, channel values, instance name, and optional LEDs.
+A Trigger or Pulse generator can drive several independent switches. Channel removal can leave
+consumers referencing removed outputs unavailable until rewired; no connection is silently moved
+to a different channel. All declared inputs still follow the ordinary typed availability rules.
+
 ### Stateful and timed signals
 
 Stage 2 also includes a bounded temporal extension to the existing acyclic graph:
@@ -283,6 +325,13 @@ Stage 2 also includes a bounded temporal extension to the existing acyclic graph
   64 waiting presses with at least a 10 ms low gap between pulses, preserving each rising edge.
   Its transient queue never replays after reload, copying, or undo. It is a scalar signal source,
   not an external-action/event API, and works directly in offline HTML.
+- **Pulse generator:** boolean output with period `seconds` (default 1, range 0.02–3,600), high
+  `width` (default 0.1), and `enable` (default true). High and low time are each at least 0.01 seconds.
+  Starts low, with first pulse after a full period; disabling forces low, and enabling or changing
+  timing starts fresh. Late wakes advance one phase and schedule from that wake without catch-up bursts.
+- **Edge to pulse:** rising, falling, or either observed boolean edge produces a configured high pulse
+  (0.01–3,600 seconds, default 0.1). The initial level never triggers. Up to 64 waiting pulses have
+  at least 10 ms low between them. Edge-mode or duration changes discard the queue and re-prime.
 - **Delay:** boolean input/output, configured seconds (0–3,600), transport delay preserving every
   transition. Each instance queues at most 64 transitions, reports overflow, and emits at most one
   due transition per settle so downstream counters observe short pulses. Changing seconds resets
@@ -310,7 +359,7 @@ deadlines, and previous-input observations do not. Reload, copy, undo, script/bi
 or unavailable-input recovery re-primes observations without creating a false initial count.
 Static exports and previews use pure computation; offline HTML uses the same temporal contract.
 
-Feedback loops and latches remain deferred. A boolean value is still distinct from an event or
+Feedback loops, latches, and flip-flops remain deferred. A boolean value is still distinct from an event or
 request trigger; remaining true must not imply repeated external actions in later stages.
 
 ### Stage 2 acceptance
@@ -328,7 +377,15 @@ request trigger; remaining true must not imply repeated external actions in late
   remain visible and do not masquerade as valid false outputs.
 - State and wiring survive undo/redo and sketch/workspace save/load. Duplicated examples remain
   independent, and one source can correctly feed several consumers.
+- Number control accepts negative/fractional ranges and direct entry in the editor and reader.
+  Compare supports all six relations, Math includes min/max, and numeric helpers validate ranges.
+- Typed selectors route valid values; all declared inputs retain eager availability checks.
+  Stepped switches expose the selected channel, advance once per pulse, wrap, hold reset, preserve
+  independent saved positions, and re-prime on restoration or channel-count changes. Inactive
+  distributor outputs are 0/false, including after copy, save/load, and offline HTML startup.
 - Trigger emits one distinct pulse per accepted click without replay on restoration.
+  Pulse generator retains observable high/low phases on late wakes; Edge to pulse preserves queued
+  qualifying edges without replaying initial levels or stale queues after reconfiguration.
 - Delay preserves pulse order, Counter counts each rising edge once, and resets/initial high
   inputs do not create phantom counts. Repeated instances remain independent. Random stays within
   its inclusive bounds; both Sample & hold variants retain values until the next sampling boundary.
@@ -390,6 +447,17 @@ argument on drawing and interaction hooks containing resolved inputs and outputs
 with `number`, `string`, and `boolean`. Table types can follow with the dataset model.
 Metadata crosses the same validated sandbox boundary as hook results. `compute` is required
 when outputs are declared; an input-only display is valid. `io` also reaches `exportBehavior`.
+
+`inputs` and `outputs` can be static descriptor maps or pure `inputs(state)` / `outputs(state)`
+functions. Optional `settings` metadata describes authoring fields stored in state: scalar type,
+required default, optional label, numeric min/max/positive step, and string options. Inputs edits
+these fields and rebuilds port choices. Port-defining settings are not live ports; transitions
+and reader interactions must not change the declared port layout. This supports a bounded channel
+count while retaining stable names (`in1`, `out1`, etc.) for connection identity.
+
+A `kind:'number'` handle declares a finite value and optional min/max/step. The host owns the entry
+dialog, validates acceptance, and invokes `dragEdit` with the accepted number in `lx`; cancellation
+makes no state change. Editor and offline HTML use this same contract.
 
 An optional `unavailableChildren(state, style, w, h, editing, io)` view hook can retain a component's
 recognizable silhouette before its inputs are connected. The host supplies empty inputs/outputs

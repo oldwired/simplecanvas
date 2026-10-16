@@ -199,16 +199,16 @@ test('built-in controls and logic compose a strict threshold indicator that work
   await connect(page,run,4,{value:{type:'boolean',uid:gate.uid,port:'value'}});
   await drawing(page,indicator.uid,'OFF');
   await editorClick(page,run,2,toggle.w/2,toggle.h/2);
-  await editorClick(page,run,0,20+(control.w-40)*.70,control.h*.52);await drawing(page,indicator.uid,'OFF');
+  await editorClick(page,run,0,20+(control.w-40)*.70,control.h*.55);await drawing(page,indicator.uid,'OFF');
   assert.equal(await run('items[0].state.value'),70);
-  await editorClick(page,run,0,20+(control.w-40)*.71,control.h*.52);await drawing(page,indicator.uid,'ON');
+  await editorClick(page,run,0,20+(control.w-40)*.71,control.h*.55);await drawing(page,indicator.uid,'ON');
   assert.equal(await run('items[0].state.value'),71);
   await editorClick(page,run,2,toggle.w/2,toggle.h/2);await drawing(page,indicator.uid,'OFF');
   await run('undo()');await drawing(page,indicator.uid,'ON');
   const {preview,errors,requests}=await openExport(page,run,context);
   await readerIndicator(preview,'ON');
-  await readerClick(preview,0,20+(control.w-40)*.70,control.h*.52);await readerIndicator(preview,'OFF');
-  await readerClick(preview,0,20+(control.w-40)*.71,control.h*.52);await readerIndicator(preview,'ON');
+  await readerClick(preview,0,20+(control.w-40)*.70,control.h*.55);await readerIndicator(preview,'OFF');
+  await readerClick(preview,0,20+(control.w-40)*.71,control.h*.55);await readerIndicator(preview,'ON');
   await readerClick(preview,2,toggle.w/2,toggle.h/2);await readerIndicator(preview,'OFF');
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[],'the downloaded composed document needs no server or external library');
 }));
@@ -279,7 +279,7 @@ test('personal metadata can change without renaming an entry that shares a pinne
 test('a newly placed Compare explains its missing input before becoming a live connected shape',async()=>app(async({page,run,context})=>{
   const compare=await place(page,run,'Compare',600,250);
   await run('ensureEditorComponentGraph()');
-  await page.waitForFunction(()=>__test.run("smartChildrenFor(items[0],false).some(child=>child.text==='>') && smartChildrenFor(items[0],false).some(child=>child.type==='text' && /Input required/.test(child.text))"));
+  await page.waitForFunction(()=>__test.run("smartChildrenFor(items[0],false).some(child=>child.text==='≷') && smartChildrenFor(items[0],false).some(child=>child.type==='text' && /Input required/.test(child.text))"));
   const unbound=await canvasTexts(page);
   assert.match(unbound,/compare/i,'an unbound component has a visible identity instead of an empty selection box');
   assert.match(unbound,/Input required/i,'the canvas identifies the missing input');
@@ -295,14 +295,14 @@ test('a newly placed Compare explains its missing input before becoming a live c
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   const source=await place(page,run,'Number control',200,250);
   await connect(page,run,0,{value:{type:'number',uid:source.uid,port:'value'}});
-  await drawing(page,compare.uid,'50');
+  await drawing(page,compare.uid,'A: 50');
   const connected=await canvasTexts(page);
-  assert.match(connected,/Compare/i);assert.match(connected,/Input\s*50/);assert.match(connected,/>/);
-  assert.match(connected,/Output\s*false/);assert.match(connected,/Threshold:\s*70/);
+  assert.match(connected,/Compare/i);assert.match(connected,/A:\s*50/);assert.match(connected,/>/);
+  assert.match(connected,/Output\s*false/);assert.match(connected,/B:\s*70/);
   assert.doesNotMatch(connected,/missing|unavailable/i,'the missing-input presentation clears after connecting');
   await run('selection=[1];editingSmartIdx=null;render()');await page.keyboard.press('Delete');
   await run('ensureEditorComponentGraph()');
-  await page.waitForFunction(()=>__test.run("smartChildrenFor(items[0],false).some(child=>child.text==='>') && smartChildrenFor(items[0],false).some(child=>child.type==='text' && /unavailable/i.test(child.text))"));
+  await page.waitForFunction(()=>__test.run("smartChildrenFor(items[0],false).some(child=>child.text==='≷') && smartChildrenFor(items[0],false).some(child=>child.type==='text' && /unavailable/i.test(child.text))"));
   const disconnected=await canvasTexts(page);
   assert.match(disconnected,/Compare/i);assert.match(disconnected,/unavailable/i);
   assert.doesNotMatch(disconnected,/Output:?\s*(true|false)/,'removing a source replaces the last computed drawing with its unavailable state');

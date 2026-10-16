@@ -1,15 +1,23 @@
-// Required numeric input; a missing connection remains unavailable, never zero.
-// Configure the strict greater-than threshold and optional indicators in the editor.
-// A blue input indicator means the numeric value is available, not that it is true.
+// Compare two numbers. A uses the value port; B defaults to 70 and can also be connected.
+// Choose the comparison in Inputs. The output indicator is green for true, grey for false.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'}},
+  inputs:{value:{type:'number'},b:{type:'number',default:70},operation:{type:'string',default:'>',options:['>','≥','<','≤','=','≠']}},
   outputs:{value:{type:'boolean'}},
-  initState(){return {threshold:70,showIndicators:true};},
-  initStyle(){return {w:260,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b'};},
-  _threshold(state){return Number.isFinite(state.threshold)?state.threshold:70;},
-  compute(inputs,state){return {value:inputs.value>this._threshold(state)};},
-  unavailableChildren(state,style,w,h,editing,io){return this.children(state,style,w,h,false,io);},
+  initState(){return {showIndicators:true};},
+  initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
+  compute(inputs){
+    if(!Number.isFinite(inputs.value) || !Number.isFinite(inputs.b))throw new Error('Input values must be finite numbers');
+    switch(inputs.operation){
+      case '>':return {value:inputs.value>inputs.b};
+      case '≥':return {value:inputs.value>=inputs.b};
+      case '<':return {value:inputs.value<inputs.b};
+      case '≤':return {value:inputs.value<=inputs.b};
+      case '=':return {value:inputs.value===inputs.b};
+      case '≠':return {value:inputs.value!==inputs.b};
+      default:throw new Error('Unsupported comparison');
+    }
+  },
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -28,55 +36,48 @@
     return {text:lines.join('\n'),font:(style.font||'600 20px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px')};
   },
   children(state,style,w,h,editing,io={}){
-    const scale=Math.min(w/260,h/180),font=size=>'600 '+size*scale+'px sans-serif';
-    const left=w*.12,right=w*.88,cy=h*.49,indicator=8*scale;
-    const textColor=style.textColor||style.color;
-    const input=io.inputs?.value,output=io.outputs?.value;
-    const hasInput=Number.isFinite(input),hasOutput=typeof output==='boolean';
+    const inputs=io.error?{}:io.inputs||{},outputs=io.error?{}:io.outputs||{},scale=Math.min(w/300,h/180);
+    const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
+    const label=value=>!Number.isFinite(value)?'—':String(value).length<=11?String(value):Number(value.toPrecision(4)).toString();
+    const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
+    const operation=['>','≥','<','≤','=','≠'].includes(inputs.operation)?inputs.operation:null;
+    const available=Number.isFinite(inputs.value)&&Number.isFinite(inputs.b)&&typeof outputs.value==='boolean'&&operation!==null;
+    const title={...text('',w*.04,0,w*.92,h*.2,18,'left'),...this._caption(io.name,'Compare',w*.92,h*.2,{...style,fontSize:18*scale})};
+    const cy=h*.49,ay=h*.38,by=h*.65;
     const children=[
-      {type:'text',x:0,y:0,w,h:h*.16,...this._caption(io.name,'Compare',w,h*.16,{...style,fontSize:18*scale}),align:'center',color:textColor,strokeOn:false},
-      {type:'rect',x:left,y:h*.19,w:right-left,h:h*.48,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
-      {type:'line',x1:w*.02,y1:cy,x2:left,y2:cy,color:style.color,size:style.size,strokeOn:style.strokeOn},
-      {type:'line',x1:right,y1:cy,x2:w*.98,y2:cy,color:style.color,size:style.size,strokeOn:style.strokeOn},
-      {type:'text',x:left,y:h*.25,w:w*.24,h:h*.12,text:'Input',align:'center',font:font(12),color:textColor,strokeOn:false},
-      {type:'text',x:left,y:h*.38,w:w*.24,h:h*.16,text:hasInput?String(input):'—',align:'center',font:font(16),color:textColor,strokeOn:false},
-      {type:'text',x:w*.36,y:h*.24,w:w*.28,h:h*.30,text:'>',align:'center',font:font(42),color:style.color,textColor:style.color,strokeOn:false},
-      {type:'text',x:w*.64,y:h*.25,w:w*.24,h:h*.12,text:'Output',align:'center',font:font(12),color:textColor,strokeOn:false},
-      {type:'text',x:w*.64,y:h*.38,w:w*.24,h:h*.16,text:hasOutput?String(output):'—',align:'center',font:font(16),color:textColor,strokeOn:false},
-      {type:'text',x:left,y:h*.54,w:right-left,h:h*.12,text:'Threshold: '+this._threshold(state),align:'center',font:font(12),color:textColor,strokeOn:false}
+      title,
+      {type:'line',x1:w*.02,y1:ay,x2:w*.30,y2:ay,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true},
+      {type:'line',x1:w*.02,y1:by,x2:w*.30,y2:by,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true},
+      {type:'line',x1:w*.69,y1:cy,x2:w*.98,y2:cy,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true},
+      text('A: '+label(inputs.value),0,h*.25,w*.29,h*.12,10),
+      text('B: '+label(inputs.b),0,h*.52,w*.29,h*.12,10),
+      text('Output',w*.71,h*.22,w*.29,h*.12,10.5),
+      text(typeof outputs.value==='boolean'?String(outputs.value):'—',w*.71,h*.35,w*.29,h*.12,10),
+      {type:'rect',x:w*.30,y:h*.25,w:w*.39,h:h*.48,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
+      text(operation||'≷',w*.30,h*.25,w*.39,h*.48,available?34:20)
     ];
     if(state.showIndicators!==false){
-      for(const [x,color] of [[w*.045,hasInput?'#2563eb':'#fbbf24'],[w*.955,!hasOutput?'#fbbf24':output?'#15803d':'#64748b']]){
-        children.push({type:'ellipse',x:x-indicator/2,y:cy-indicator/2,w:indicator,h:indicator,fill:true,fillColor:color,strokeOn:true,color:color==='#fbbf24'?'#b45309':'#ffffff',size:1});
+      const radius=4*scale;
+      for(const [x,y,value,boolean] of [[w*.045,ay,inputs.value,false],[w*.045,by,inputs.b,false],[w*.955,cy,outputs.value,true]]){
+        const present=boolean?typeof value==='boolean':Number.isFinite(value),color=!present?'#fbbf24':boolean?(value?'#15803d':'#64748b'):'#2563eb';
+        children.push({type:'ellipse',x:x-radius,y:y-radius,w:radius*2,h:radius*2,fill:true,
+          fillColor:color,strokeOn:true,color:present?'#f8fafc':'#b45309',size:Math.max(1,scale)});
       }
     }
-    if(io.error || !hasInput || !hasOutput){
-      const note=!io.error || /^Missing value or binding for /.test(io.error)?'Input required':'Input unavailable';
-      children.push({type:'text',x:0,y:h*.73,w,h:h*.18,text:note,align:'center',font:font(12),color:'#92400e',textColor:'#92400e',strokeOn:false});
+    if(io.error || !available){
+      const error=typeof io.error==='string'?io.error:'';
+      const note=/Unsupported comparison/i.test(error)?'Choose a comparison in Inputs':
+        !error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
+      children.push({...text(note,w*.04,h*.77,w*.92,h*.22,10.5),color:'#92400e'});
     }
-    if(editing && hasInput && hasOutput && !io.error){
-      for(const [x,label] of [[0,'Threshold − 1'],[w/2,'Threshold + 1']]){
-        children.push({type:'rect',x:x+4,y:h*.72,w:Math.max(0,w/2-8),h:h*.12,fill:false,strokeOn:true,color:style.color,size:1,editorOnly:true});
-        children.push({type:'text',x,y:h*.72,w:w/2,h:h*.12,text:label,align:'center',font:font(12),color:textColor,strokeOn:false,editorOnly:true});
-      }
-      children.push({type:'rect',x:4,y:h*.87,w:Math.max(0,w-8),h:h*.11,fill:false,strokeOn:true,color:style.color,size:1,editorOnly:true});
-      children.push({type:'text',x:0,y:h*.87,w,h:h*.11,text:'Indicators: '+(state.showIndicators!==false?'on':'off'),align:'center',font:font(12),color:textColor,strokeOn:false,editorOnly:true});
+    if(editing && available && !io.error){
+      children.push({type:'rect',x:w*.05,y:h*.84,w:w*.9,h:h*.13,fill:true,fillColor:'#e2e8f0',strokeOn:false,editorOnly:true});
+      children.push({...text('Indicators: '+(state.showIndicators!==false?'on':'off'),w*.05,h*.84,w*.9,h*.13,10.5),editorOnly:true});
     }
     return children;
   },
-  handles(state,w,h){return [
-    {id:'minus',x:w/4,y:h*.78,kind:'click',editorOnly:true},
-    {id:'plus',x:w*.75,y:h*.78,kind:'click',editorOnly:true},
-    {id:'indicators',x:w/2,y:h*.925,kind:'click',editorOnly:true}
-  ];},
-  hitEdit(state,x,y,w,h){
-    if(x<0 || x>w)return null;
-    if(y>=h*.87 && y<=h*.98)return 'indicators';
-    return y>=h*.72 && y<=h*.84?(x<w/2?'minus':'plus'):null;
-  },
-  dragEdit(state,handle){
-    if(handle==='indicators')return {state:{...state,showIndicators:state.showIndicators===false}};
-    const threshold=this._threshold(state)+(handle==='plus'?1:handle==='minus'?-1:0);
-    return {state:{...state,threshold:Number.isFinite(threshold)?threshold:this._threshold(state)}};
-  }
+  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,inputs:{},outputs:{}});},
+  handles(state,w,h){return [{id:'indicators',x:w/2,y:h*.905,kind:'click',editorOnly:true}];},
+  hitEdit(state,x,y,w,h){return x>=w*.05 && x<=w*.95 && y>=h*.84 && y<=h*.97?'indicators':null;},
+  dragEdit(state,handle){return {state:handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state};}
 })

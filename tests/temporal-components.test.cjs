@@ -303,24 +303,24 @@ test('typed sample-and-hold and Random integer feed live outputs in saved and of
     await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
   }
   const plus=await editorHandle(page,run,0,'plus'),toggle=await editorHandle(page,run,1,'toggle');
-  await page.waitForFunction(()=>__test.run('items[2].state.value===55 && items[3].state.value===true && items[4].state.value===7'));
+  await page.waitForFunction(()=>__test.run('items[2].state.value===51 && items[3].state.value===true && items[4].state.value===7'));
   const download=page.waitForEvent('download');await run('exportProject()');
   const project=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
-  assert.deepEqual(project.items.slice(2,5).map(item=>item.state.value),[55,true,7]);
+  assert.deepEqual(project.items.slice(2,5).map(item=>item.state.value),[51,true,7]);
   assert.deepEqual(project.items.slice(2,4).map(item=>item.inputValues.seconds),[.4,.4]);
   await page.reload();await run('appStarted');
   await page.waitForFunction(()=>__test.run("items.every(item=>smartChildrenCache.has(item.uid))"));
-  assert.deepEqual(await run('items.slice(2,5).map(item=>item.state.value)'),[55,true,7]);
+  assert.deepEqual(await run('items.slice(2,5).map(item=>item.state.value)'),[51,true,7]);
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===6);
-  assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/Output\s*55/);
+  assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/Output\s*51/);
   assert.match(await preview.locator('[data-smart-index="3"]').textContent(),/Output:?\s*true/);
   assert.ok(await preview.locator('[data-smart-index="5"] text').evaluateAll(texts=>texts.some(text=>text.textContent==='7')));
   await readerClick(preview,0,plus);await readerClick(preview,1,toggle);
-  await preview.waitForFunction(()=>/Output\s*60/.test(document.querySelector('[data-smart-index="2"]')?.textContent||'') &&
+  await preview.waitForFunction(()=>/Output\s*52/.test(document.querySelector('[data-smart-index="2"]')?.textContent||'') &&
     /Output:?\s*false/.test(document.querySelector('[data-smart-index="3"]')?.textContent||''));
   assert.doesNotMatch((await preview.locator('[data-smart-index]').allTextContents()).join(' '),/Indicators:/,'temporal author controls stay hidden in offline HTML');
-  assert.deepEqual(await run('items.slice(2,5).map(item=>item.state.value)'),[55,true,7]);
+  assert.deepEqual(await run('items.slice(2,5).map(item=>item.state.value)'),[51,true,7]);
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 

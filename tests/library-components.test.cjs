@@ -87,7 +87,10 @@ async function settledDrawings(page){
 const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
-  delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js'};
+  delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
+  clamp:'clamp.js',rangeMap:'range-map.js',numberFunction:'number-function.js',pulseGenerator:'pulse-generator.js',edgePulse:'edge-pulse.js',
+  selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
+  steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js'};
 
 test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
@@ -121,8 +124,8 @@ test('shipped gates satisfy truth tables through the sandbox and required inputs
   for(const value of [false,true])for(const enable of [false,true]){
     cases.push({key:'triStateBuffer',inputs:{value,enable},expected:enable?value:null});
   }
-  for(const value of [69,70,71])cases.push({key:'compare',inputs:{value},state:{threshold:70},expected:value>70});
-  cases.push({key:'compare',inputs:{value:-2},state:{threshold:-3},expected:true},
+  for(const value of [69,70,71])cases.push({key:'compare',inputs:{value,b:70,operation:'>'},expected:value>70});
+  cases.push({key:'compare',inputs:{value:-2,b:-3,operation:'>'},expected:true},
     {key:'valueLabel',inputs:{value:-12.5},expected:-12.5},
     {key:'statusIndicator',inputs:{value:false},expected:false});
   for(const value of [-8.5,0,12.5,Number.MAX_VALUE])cases.push({key:'numberInverter',inputs:{value},expected:value===0?0:-value});
@@ -148,7 +151,7 @@ test('shipped gates satisfy truth tables through the sandbox and required inputs
   await page.waitForFunction(()=>__test.run(`items.every(item=>{
     const kids=smartChildrenFor(item,false);
     return kids.some(child=>child.type==='text' && /Input required/.test(child.text)) &&
-      (['valueLabel','statusIndicator'].includes(item.uid) || kids.some(child=>child.type==='polygon' || child.text==='>' || child.text==='×−1' || child.text==='+ − × ÷'));
+      (['valueLabel','statusIndicator'].includes(item.uid) || kids.some(child=>child.type==='polygon' || child.text==='≷' || child.text==='×−1' || child.text==='+ − × ÷'));
   })`));
   const unavailable=await run(`(async()=>{
     const graph=await ensureEditorComponentGraph();
@@ -164,30 +167,36 @@ test('shipped gates satisfy truth tables through the sandbox and required inputs
     if(entry.key==='triStateBuffer')assert.doesNotMatch(entry.text.join(' '),/Output:?\s*Z\b|High impedance/i,'missing inputs must not fabricate high impedance');
     if(!['valueLabel','statusIndicator'].includes(entry.key)){
       const indicators=entry.children.filter(child=>child.type==='ellipse' && child.fillColor==='#fbbf24');
-      assert.equal(indicators.length,['not','buffer','compare','numberInverter'].includes(entry.key)?2:3,entry.key+' unavailable ports use amber indicators');
+      assert.equal(indicators.length,['not','buffer','numberInverter'].includes(entry.key)?2:3,entry.key+' unavailable ports use amber indicators');
       assert.equal(entry.children.some(child=>child.editorOnly),false,entry.key+' unavailable drawing does not expose author controls');
     }
   }
 }));
 
-test('Constant and Compare author controls work in the editor but remain hidden and inert in HTML',async()=>app(async({page,run,context})=>{
+test('Constant controls and Compare configuration work in the editor while author handles remain inert in HTML',async()=>app(async({page,run,context})=>{
   await run(`cancelGesture();items=['constant','compare','toggle'].map((key,index)=>({
     ...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===key).items[0]),uid:key,x:100+index*350,y:120,
     ...(key==='compare'?{inputValues:{value:71}}:{})
   }));setTool('select');selection=[];render();save();`);
   const constantPlus=await editorHandle(page,run,0,'plus');
   await page.waitForFunction(()=>__test.run('items[0].state.value===71'));
-  const comparePlus=await editorHandle(page,run,1,'plus');
-  await page.waitForFunction(()=>__test.run('items[1].state.threshold===71'));
+  await run('selection=[1];editingSmartIdx=null;render()');await page.locator('#componentBindingsBtn').click();
+  await page.getByLabel('b value',{exact:true}).fill('71');
+  const comparisons=page.getByLabel('operation value',{exact:true});
+  assert.deepEqual(await comparisons.locator('option').evaluateAll(options=>options.map(option=>option.value)),['>','≥','<','≤','=','≠']);
+  await comparisons.selectOption('>');await page.locator('#componentBindingsSave').click();
+  await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
+  const compareIndicators=await editorHandle(page,run,1,'indicators');
+  await page.waitForFunction(()=>__test.run('items[1].inputValues.b===71 && items[1].state.showIndicators===false'));
   const staticSvg=await run('itemsToSVGMarkup(items)');
   assert.doesNotMatch(staticSvg,/Threshold [−+] 1|>\+ 1<|>− 1</,'author controls do not appear in static exports');
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===3);
   const constant=preview.locator('[data-smart-index="0"]'),compare=preview.locator('[data-smart-index="1"]');
   const before=[await constant.textContent(),await compare.textContent()];
-  assert.match(before[0],/Constant\s*71/);assert.match(before[1],/Input\s*71.*>.*Output\s*false.*Threshold:\s*71/);
+  assert.match(before[0],/Constant\s*71/);assert.match(before[1],/A:\s*71.*B:\s*71.*Output\s*false.*>/);
   assert.doesNotMatch(before.join(' '),/Threshold [−+] 1|Indicators:|[−+] 1/);
-  await readerClick(preview,0,constantPlus);await readerClick(preview,1,comparePlus);await readerClick(preview,2,{x:110,y:69});
+  await readerClick(preview,0,constantPlus);await readerClick(preview,1,compareIndicators);await readerClick(preview,2,{x:110,y:69});
   // The working Toggle confirms the ordered reader gesture queue passed both blocked handles.
   await readerToggle(preview,2,true);
   assert.deepEqual([await constant.textContent(),await compare.textContent()],before);
@@ -246,10 +255,10 @@ test('indicator visibility belongs to each instance and survives save, reload, a
   const numericIndicators=await editorHandle(page,run,4,'indicators');
   for(const handle of [andIndicators,compareIndicators,numericIndicators])assert.equal(handle.editorOnly,true);
   assert.deepEqual(await run('items.slice(0,6).map(item=>item.state.showIndicators)'),[false,true,false,true,false,true]);
-  assert.deepEqual(await run('items.slice(2,4).map(item=>item.state.threshold)'),[70,70],'indicator changes preserve threshold configuration');
+  assert.deepEqual(await run('items.slice(2,4).map(item=>item.inputValues)'),[{value:71},{value:71}],'indicator changes preserve input configuration');
   const toggle=await editorHandle(page,run,6,'toggle');
   await page.waitForFunction(()=>__test.run('items[6].state.value===true'));
-  const expected=[[],['#15803d','#15803d','#15803d'],[],['#2563eb','#15803d'],[],['#2563eb','#2563eb'],[]];
+  const expected=[[],['#15803d','#15803d','#15803d'],[],['#2563eb','#2563eb','#15803d'],[],['#2563eb','#2563eb'],[]];
   const before=await svgRenderings(page,run);
   assert.deepEqual(before.map(item=>item.leds),expected,'only the chosen instances hide indicators; their siblings still follow live data');
   assert.doesNotMatch(before.map(item=>item.text).join(' '),/Indicators:|Threshold [−+] 1/,'author controls stay out of static exports');
@@ -268,7 +277,7 @@ test('indicator visibility belongs to each instance and survives save, reload, a
   await readerClick(preview,6,toggle);
   await readerToggle(preview,6,false);
   await preview.waitForFunction(()=>/Output:\s*false/.test(document.querySelector('[data-smart-index="1"]').textContent));
-  assert.deepEqual(await readerLEDs(),[[],['#64748b','#15803d','#64748b'],[],['#2563eb','#15803d'],[],['#2563eb','#2563eb'],[]],
+  assert.deepEqual(await readerLEDs(),[[],['#64748b','#15803d','#64748b'],[],['#2563eb','#2563eb','#15803d'],[],['#2563eb','#2563eb'],[]],
     'reader data updates LEDs while editor-only visibility controls remain inert');
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
@@ -371,7 +380,7 @@ test('Math operations are configured per instance in Inputs and persist through 
     await run(`selection=[${index}];render()`);await page.locator('#componentBindingsBtn').click();
     const choices=page.locator('select[aria-label="operation value"]');
     await choices.waitFor({state:'visible'});
-    assert.deepEqual(await choices.locator('option').evaluateAll(options=>options.map(option=>option.value)),['+','−','×','÷']);
+    assert.deepEqual(await choices.locator('option').evaluateAll(options=>options.map(option=>option.value)),['+','−','×','÷','min','max']);
     assert.equal(await choices.inputValue(),'+','new Math instances default to addition');
     await page.getByLabel('b (number)',{exact:true}).selectOption(JSON.stringify({uid:'math-ui-0',port:'value'}));
     await choices.selectOption(operation);await page.locator('#componentNameInput').fill(name);
@@ -383,7 +392,7 @@ test('Math operations are configured per instance in Inputs and persist through 
   const control=await run('items[0]');
   const setNumber=async value=>{
     await run('selection=[0];editingSmartIdx=0;render()');const box=await page.locator('#canvas').boundingBox();
-    await page.mouse.click(box.x+control.x+20+(control.w-40)*value/100,box.y+control.y+control.h*.52);await run('smartHitSettled');
+    await page.mouse.click(box.x+control.x+20+(control.w-40)*value/100,box.y+control.y+control.h*.55);await run('smartHitSettled');
   };
   await setNumber(0);
   await page.waitForFunction(()=>__test.run("smartChildrenFor(items[1],false).some(child=>child.text?.includes('Cannot divide by zero'))"));
@@ -400,14 +409,15 @@ test('Math operations are configured per instance in Inputs and persist through 
   assert.match(svg[2].text,/Scaled.*Output\s*150.*×/);assert.deepEqual(svg[2].leds,['#2563eb','#2563eb','#2563eb']);
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===4);
-  assert.equal(await preview.locator('select,input,button').count(),0,'Math operation selection stays in the editor Inputs dialog');
+  assert.equal(await preview.locator('select').count(),0,'Math operation selection stays in the editor Inputs dialog');
+  assert.equal(await preview.locator('input:visible').count(),0,'numeric entry stays hidden until the user opens it');
   assert.doesNotMatch((await preview.locator('[data-smart-index]').allTextContents()).join(' '),/Indicators:/);
-  await readerClick(preview,0,{x:20,y:control.h*.52});
+  await readerClick(preview,0,{x:20,y:control.h*.55});
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="1"]')?.textContent.includes('Cannot divide by zero'));
   assert.ok(await preview.locator('[data-smart-index="1"]').getAttribute('data-component-error'));
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="3"][data-component-error]'));
   assert.doesNotMatch(await preview.locator('[data-smart-index="1"]').textContent(),/Output\s*0\.2/);
-  await readerClick(preview,0,{x:20+(control.w-40)*.5,y:control.h*.52});
+  await readerClick(preview,0,{x:20+(control.w-40)*.5,y:control.h*.55});
   await preview.waitForFunction(()=>/Output\s*0\.2/.test(document.querySelector('[data-smart-index="1"]')?.textContent||'') &&
     document.querySelector('[data-smart-index="3"][data-smart-ready="true"]'));
   assert.match(await preview.locator('[data-smart-index="1"]').textContent(),/Ratio/);
@@ -420,11 +430,19 @@ test('every API2 catalog component uses its instance name in canvas, SVG, and of
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
     const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2);
+    const validInputs={
+      clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
+      numberFunction:{value:-7.5,operation:'abs'},pulseGenerator:{seconds:60,width:.1,enable:false},edgePulse:{value:false,edge:'rising',seconds:.1},
+      selectorNumber:{a:12,b:24,select:false},selectorBoolean:{a:false,b:true,select:false},
+      steppedSelectorNumber:{in1:10,in2:20,in3:30,in4:40,pulse:false,reset:false},
+      steppedSelectorBoolean:{in1:false,in2:true,in3:false,in4:true,pulse:false,reset:false},
+      steppedDistributorNumber:{value:12,pulse:false,reset:false},steppedDistributorBoolean:{value:true,pulse:false,reset:false}
+    };
     items=definitions.map((definition,index)=>({
       ...clone(definition.items[0]),uid:'catalog-name-'+index,x:40+(index%4)*360,y:40+Math.floor(index/4)*200,
-      inputValues:Object.fromEntries(Object.entries(definition.ports.inputs).map(([name,port])=>[
+      inputValues:{...Object.fromEntries(Object.entries(definition.ports.inputs).map(([name,port])=>[
         name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:'sample')
-      ]))
+      ])),...validInputs[definition.key]}
     }));setTool('select');selection=[];render();save();return definitions.map(definition=>definition.key);
   })()`);
   await settledDrawings(page);

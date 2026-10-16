@@ -178,10 +178,10 @@ tags, choose a category, and filter the collection with **All collections**, **B
 
 | Category | Examples |
 | --- | --- |
-| Controls | Number control, Toggle, Constant |
-| Logic | AND, NAND, OR, NOR, XOR, XNOR, NOT, Buffer, Tri-state buffer, Compare, Inverter (×−1), Math |
+| Controls | Number control, Toggle, Constant, Trigger |
+| Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors and stepped switches |
 | Displays | Gauge, Value label, Status indicator |
-| Tools & time | Live clock, Stopwatch, Ruler |
+| Tools & time | Live clock, Stopwatch, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse |
 
 You can place an entry directly from the browser without adding it to the working collection.
@@ -234,7 +234,8 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 
 Open [examples/connected-components.json](examples/connected-components.json) with
 **File → Open sketch…** to try a Number control connected to a separate Gauge. Double-click
-the control, then drag its slider or click **−5 / +5**. The gauge follows its value. **Export HTML**
+the control, then drag its slider, use its step buttons, or click its value to type a number.
+The gauge follows its value. **Export HTML**
 keeps that connection working offline; reopening the HTML restores the exported values.
 
 To build your own pair, place **Number control** and **Gauge** from the built-in library.
@@ -247,9 +248,17 @@ Every built-in component displays that instance name as its caption, separately 
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports.
 
+**Number control** has `min`, `max`, and `step` inputs, initially 0, 100, and 1. Set literals or
+connect these values through **Inputs…**. Negative bounds and fractional steps work. The slider,
+step buttons, and direct entry stay within the bounds and snap to the step grid anchored at `min`;
+the maximum remains reachable even when it is between grid points. The step must be positive,
+and `min` must not exceed `max`. Direct number entry also works in exported HTML.
+
 The built-in logic components use the same typed connections. **AND**, **NAND**, **OR**, **NOR**,
 **XOR**, **XNOR**, **NOT**, and **Buffer** use traditional logic-gate shapes and boolean ports.
-**Compare** outputs whether its numeric input is strictly greater than its configured threshold.
+**Compare** takes two numbers: `value` (A) and `b` (B, initially 70). Both can be connected or set
+as literals. Choose **>**, **≥**, **<**, **≤**, **=**, or **≠** in **Inputs…**; the boolean output
+reports the selected comparison. Equality compares the actual numbers without a tolerance.
 **Inverter (×−1)** takes and returns a number; **NOT** takes and returns a boolean.
 For example, **Compare** and **Toggle** can feed **AND**, whose output drives a **Status indicator**.
 
@@ -261,11 +270,37 @@ is disabled. Missing connections still show amber, not Z. Each input has one sou
 resolution and electrical simulation are outside this component's behavior.
 
 **Math** takes two numeric inputs, `a` and `b`, and outputs `value`. In **Inputs…**, connect each
-input or enter a number, then choose **+**, **−**, **×**, or **÷** in the `operation` dropdown.
+input or enter a number, then choose **+**, **−**, **×**, **÷**, **min**, or **max** in the `operation` dropdown.
 Subtraction means `a − b`; division means `a ÷ b`. Each instance keeps its own operation.
 You can connect its result to another Math block, Compare, Gauge, or Value label. Division by
 zero and overflow report an error and leave the result unavailable; correcting the input
 restores the connected calculation, including in exported HTML.
+
+**Clamp** limits a number to `min`…`max` (initially 0…100). **Range mapper** converts `inMin`…`inMax`
+into `outMin`…`outMax`, initially 0…100 → 0…1. It clamps to the input range by default; set `clamp`
+false to extrapolate. Input bounds must increase; reversed output bounds are supported.
+**Number function** applies **abs**, **round**, **floor**, or **ceil** to a number. `round` uses
+nearest-integer rounding with half values toward positive infinity. All settings are in **Inputs…**.
+
+**Selector (number)** and **Selector (Boolean)** choose between `a` and `b`: `select=false`
+chooses A, and `select=true` chooses B. Both data inputs must be valid, including the unselected
+one. These are value-routing components; they do not pause or disable an upstream branch.
+
+**Stepped switch** and **Stepped distributor** each have number and Boolean variants. Set
+**Channels** in **Inputs…** to 2–16 (initially 4); this changes the available ports. Connect a
+Trigger or Pulse generator to `pulse`. Every false → true pulse advances from channel 1 through
+N and wraps to 1; holding true does not advance again. A true `reset` holds channel 1. The numeric
+`position` output reports the selected channel.
+
+- A stepped selector has `in1`…`inN` and one `value` output. Unconnected channels default to 0 or
+  false; every declared channel must have a valid value, even when unselected.
+- A stepped distributor has one required `value` input and `out1`…`outN`. Only the selected
+  output follows the input; every inactive output is **0 for numbers** or **false for Booleans**.
+
+Selection is saved, and reload/copy/undo preserves it without advancing for an already-high pulse.
+Changing the channel count resets to channel 1 and starts fresh pulse observation. Data continues
+to flow through the selected route between pulses. Reducing the channel count can leave connections
+to removed outputs unavailable until they are rewired.
 
 **Trigger**, in **Controls**, is a pushbutton with a boolean `value` output. Double-click it to
 enter its controls, then click **Press**: each completed click emits `true` for 0.1 seconds and
@@ -277,6 +312,14 @@ Queued presses are transient; reopening, copying, or undoing never replays old p
 
 The **Tools & time** category adds connected signals with per-instance timing:
 
+- **Pulse generator** publishes boolean `value` with configurable `seconds` (period, initially 1),
+  `width` (high time, initially 0.1), and `enable` (initially true). It starts low and emits its
+  first pulse after a full period. Periods are 0.02–3,600 seconds; high and low time must each be
+  at least 0.01 seconds. Disabling forces low; re-enabling or changing timing restarts the period.
+- **Edge to pulse** turns each rising, falling, or either edge of boolean `value` into a high pulse
+  lasting `seconds` (0.01–3,600, initially 0.1). The first observed level never triggers. Up to 64
+  waiting pulses are queued, separated by at least 0.01 seconds low; changing edge mode or duration
+  discards the queue and starts fresh observation.
 - **Delay** accepts a boolean `value` and `seconds` (0–3,600, including fractions). Every on/off
   transition appears at its output after that delay, including short pulses. Zero passes through
   immediately. Changing the duration clears pending transitions and starts again from the current
@@ -296,7 +339,8 @@ Configure and connect them in **Inputs…**. For example, connect Random integer
 (integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
 The controls, names, indicators, and connections work in exported HTML too.
 Timing uses active document time: hidden/inactive documents and the open **Inputs…** dialog pause
-it. Late wakes replay Delay transitions in order; Random and Sample & hold take one new sample,
+it. Late wakes replay Delay transitions and queued Edge to pulses in order. Pulse generator advances
+one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
 without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
 Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:
 reload, copy, undo, rewiring, or recovery from unavailable inputs starts fresh observation without
@@ -305,8 +349,8 @@ counting an already-high input. Static exports and previews capture saved values
 Input/output indicators are on by default for these logic entries. Green means true, grey means
 false, and blue means a numeric value is available, including zero. Amber means unavailable.
 With valid inputs, double-click the shape and use **Indicators: on/off** to change that instance.
-Compare's editor controls also adjust its threshold. These controls stay out of exports, while
-the saved indicator preference is retained.
+The indicator toggle stays out of exports, while the saved preference is retained. Compare's
+operands and operation are configured in **Inputs…**.
 
 Missing or invalid inputs show an unavailable state rather than a false result. The built-in
 logic entries keep their silhouette, display **—** for unavailable values, and show **Input

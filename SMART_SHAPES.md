@@ -245,7 +245,7 @@ Returns `[{id, x, y, kind?, editorOnly?}, ...]` — one entry per point `hitEdit
 same **local** coordinate frame as `children()` (container's own top-left as origin).
 Every interactive ID must be declared here; a script with no handles cannot receive a valid
 handle action. The app draws a small solid-blue dot for each `'drag'` handle. It draws no dot
-for `'click'` handles: draw their buttons or labels yourself in `children()`. The four corner
+for `'click'` or `'number'` handles: draw their buttons or labels yourself in `children()`. The four corner
 markers indicate edit mode and are not interactive handles.
 IDs are unique, nonempty strings of at most 64 characters. `hitEdit()` must return one of these
 IDs or `null`/`undefined`. A response can contain at most 128 handles. An optional boolean `editorOnly`
@@ -268,6 +268,19 @@ Without `kind:'click'`, small pointer movements during a press can call `dragEdi
 and repeat the action (for example, inserting several new bars from a single tap on "+").
 `kind:'click'` makes the app resolve it exactly once, from the original press position, on release.
 
+`kind:'number'` opens a host-owned number-entry dialog on release. Supply a finite numeric `value`
+and optional finite `min`, `max`, and positive `step` metadata; `min` must not exceed `max`.
+The host validates the entry and, on acceptance, calls `dragEdit` once with the accepted **number
+in `lx`**, rather than a pointer coordinate. `ly` is zero; identify this case
+by the handle ID. Cancellation leaves state unchanged. Keep domain-specific snapping and validation
+in the script's `dragEdit`/`compute` hooks as well. This handle works in editor edit mode and offline
+HTML; `editorOnly:true` can restrict it to authoring.
+
+```js
+{ id:'entry', x:w/2, y:h/3, kind:'number', value:state.value,
+  min:-20, max:40, step:0.25 }
+```
+
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
 Given a press position, return the `id` of the handle it landed on (within your own chosen hit
@@ -287,7 +300,8 @@ hitEdit(state, lx, ly, w, h){
 
 Given the `id` `hitEdit` returned and the current (local) pointer position, return the new
 state. Called continuously while dragging a `'drag'`-kind handle, or exactly once (from the
-original press position) for a `'click'`-kind handle or a zero-movement click.
+original press position) for a `'click'`-kind handle or a zero-movement click. A `'number'` handle
+uses the accepted numeric entry as `lx`, as described above.
 
 The [worked example](#a-complete-worked-example) uses the same layout helper in `dragEdit()`
 and the drawing hooks to keep its radius within the current box.
@@ -320,7 +334,10 @@ or mutate another component. Start from the **Number control** or **Gauge** temp
 })
 ```
 
-`inputs` and `outputs` are maps of port names to `{type}` descriptors. Types are `number`,
+`inputs` and `outputs` are maps of port names to `{type}` descriptors, or synchronous pure
+`inputs(state)` / `outputs(state)` functions returning such maps from the current saved state.
+This supports author-configured port counts without making port layout depend on live inputs.
+Types are `number`,
 `string`, and `boolean`; input descriptors may also include a matching `default`. A string input
 may declare `options`, an array of 1–32 distinct, nonempty strings of at most 2,000 characters each.
 Its default, if present, must be one of those options. **Inputs…** presents these values as a
@@ -332,6 +349,28 @@ to 2,000 characters. Each port map and computed output object is limited to 32,0
 characters. A sketch supports at most 128 connected components.
 Saved bindings and literal-input maps are each limited to 16,000 serialized characters;
 the input dialog rejects changes that would exceed the save/load contract.
+
+An optional `settings` map declares authoring configuration stored in ordinary instance state.
+Each descriptor uses a scalar `type` and a required matching `default`; string settings may use
+`options`. Numeric settings may add finite `min`, `max`, and positive `step`, with the step grid
+anchored at `min` (or zero when omitted). A `label` of at most 100 characters supplies the visible
+field name. At most 16 settings are allowed. The host edits and validates these fields in
+**Inputs…**. Settings are not ports and cannot be bound to live sources.
+
+```js
+settings: { channels: { type:'number', default:4, min:2, max:16, step:1, label:'Channels' } },
+inputs(state) {
+  const ports = {};
+  for (let i=1; i<=state.channels; i++) ports['in'+i] = {type:'number', default:0};
+  return ports;
+},
+```
+
+Initialize setting fields in `initState()` and keep port-defining settings unchanged in
+`transition` and interactive reader hooks. Dynamic declarations must be deterministic from state;
+they do not authorize mutation during capability inspection. Changing Channels rebuilds the
+available ports in the authoring dialog. Bindings to a removed output become unavailable until
+reconnected. Runtime-only position changes must not change the declared channel set.
 
 `compute(inputs, state)` synchronously returns an object containing exactly the declared outputs
 with matching types. It is required when outputs are declared. Treat it as a pure computation:
@@ -432,12 +471,14 @@ until a valid drawing recovers. Unsupported scripts still cannot execute either 
 
 The built-in logic entries implement this hook with their normal silhouette, **—** values,
 amber indicators when enabled, and a short input-status note. The boolean gates are AND, NAND, OR, NOR,
-XOR, XNOR, NOT, and Buffer. Compare uses a numeric input and boolean output;
+XOR, XNOR, NOT, and Buffer. Compare uses numeric `value` and `b` inputs, a string `operation`
+selected from `>`, `≥`, `<`, `≤`, `=`, and `≠`, and a boolean output. B defaults to 70; the operation
+defaults to `>`. Both operands can be connected, and equality is exact numeric equality;
 [Inverter (×−1)](examples/number-inverter.js) uses numeric input and output. Its computation
 is `-inputs.value`, whereas NOT computes `!inputs.value` on a boolean.
 
 [Math](examples/math.js) declares numeric `a` and `b` inputs, a string `operation` input with
-`options:['+','−','×','÷']` and default `'+'`, and numeric `value` output. Choose the operation in
+`options:['+','−','×','÷','min','max']` and default `'+'`, and numeric `value` output. Choose the operation in
 **Inputs…**; subtraction and division use `a` as the left operand. Division by zero and nonfinite
 results fail computation, leaving outputs unavailable until corrected. Computation errors expose
 their message as bounded plain text; other failing hooks retain the generic failure message.
@@ -872,11 +913,41 @@ The built-in catalog also provides component examples with their source in `exam
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
   [NOT](examples/not-gate.js), and [Buffer](examples/buffer.js): traditional boolean gate shapes,
   required typed ports, and optional indicators.
-- [Compare](examples/compare.js): strict numeric comparison against an editor-configured threshold.
+- [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
+  step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
+  at `min`; the upper bound is reachable even if not on that grid.
+- [Compare](examples/compare.js): two live numeric operands and six selectable comparison operators.
 - [Inverter (×−1)](examples/number-inverter.js): numeric negation, distinct from boolean NOT.
-- [Math](examples/math.js): two numeric inputs and a selectable arithmetic operation in **Inputs…**.
+- [Math](examples/math.js): two numeric inputs and selectable arithmetic, minimum, or maximum.
+- [Clamp](examples/clamp.js): limit a number to inclusive `min`/`max` bounds.
+- [Range mapper](examples/range-map.js): linear input/output range conversion, clamped by default;
+  increasing input bounds and reversed output bounds are supported.
+- [Number function](examples/number-function.js): absolute value, nearest integer, floor, or ceiling.
+  Nearest-integer rounding uses JavaScript's `Math.round` rule: half values toward positive infinity.
+- [Selector (number)](examples/selector-number.js) and
+  [Selector (Boolean)](examples/selector-boolean.js): false chooses A, true chooses B; both inputs
+  must be available. The graph eagerly resolves every declared input; selection never suspends
+  the unselected source.
+- [Stepped switch (number)](examples/stepped-selector-number.js) and
+  [Stepped switch (Boolean)](examples/stepped-selector-boolean.js): `in1`…`inN` route to `value`.
+  Unbound channels default to 0/false; all declared channels still require valid values.
+- [Stepped distributor (number)](examples/stepped-distributor-number.js) and
+  [Stepped distributor (Boolean)](examples/stepped-distributor-boolean.js): required `value` routes
+  to one of `out1`…`outN`; inactive outputs are 0/false.
+  Both stepped families have a Channels setting (2–16, initially 4), boolean `pulse` and `reset`
+  inputs, and numeric `position` output. Every rising pulse advances 1…N and wraps; held reset
+  selects 1 and tracks the pulse. Saved position survives restoration without a phantom step.
+  Changing Channels resets position to 1 and re-primes, using durable `configuredChannels` to
+  detect the change even if transient memory was cleared.
 - [Trigger](examples/trigger.js): a pushbutton producing a 100 ms boolean pulse per click;
   queued presses have a 10 ms low gap. Transient observation prevents replay after restoration.
+- [Pulse generator](examples/pulse-generator.js): boolean output with period `seconds` (0.02–3,600),
+  high time `width`, and `enable`. High and low time are each at least 0.01 seconds. Starts low,
+  first pulse after a full period; disable or timing changes restart low. Late wakes advance one
+  phase from the wake time without a burst of missed periods.
+- [Edge to pulse](examples/edge-pulse.js): rising, falling, or either observed edge produces a pulse
+  of `seconds` (0.01–3,600). Initial level is primed without a pulse. Up to 64 waiting pulses have
+  a minimum 10 ms low gap; reconfiguration/restoration discards pending pulses and re-primes.
 - [Delay](examples/delay.js): preserve boolean transitions with a configured delay in seconds.
 - [Counter](examples/counter.js): rising-edge count, inclusive threshold output, and reset.
 - [Random integer](examples/random-integer.js): inclusive integer range, one sample per second.
