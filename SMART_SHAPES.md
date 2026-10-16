@@ -398,7 +398,14 @@ and changed bindings re-prime it; changing a literal input is an ordinary input 
 Each document retains its own clock and transient memory across tab switches. Inactive/hidden
 documents pause, as does the editor's Inputs dialog; the same instances resume on return.
 Saved JSON includes current durable counts/outputs, but reopening, duplicating, or undoing starts
-new transient observation. The built-in Counter seeds an already-high input without counting it.
+new transient observation. The built-in Counter preserves its saved count in either direction
+and seeds an already-high input without counting it. Its held reset follows the input while
+holding the mode's baseline, so releasing reset during high does not add or subtract an edge.
+Shift registers likewise preserve their durable cells and last `shiftedOut` value while
+re-priming pulse observation. Their `shiftedOut` port captures the old final cell on an accepted
+rising edge. Connect that port to the next register's data input when sharing a pulse: ordinary
+stage outputs already contain the producer's staged next state when the consumer evaluates.
+This supports an acyclic cascade; it does not change the graph's rejection of feedback loops.
 The built-in Delay retains up to 64 queued transitions and emits at most one per settle, preserving
 short pulses for downstream counters even after a late wake. Changing its seconds resets its queue.
 Random integer and Sample & hold sample once on a late wake and schedule their next interval from
@@ -907,7 +914,7 @@ the whole file into the Script field:
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 
-The built-in catalog also provides component examples with their source in `examples/`:
+The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -916,6 +923,23 @@ The built-in catalog also provides component examples with their source in `exam
 - [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
   step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
   at `min`; the upper bound is reachable even if not on that grid.
+- [Seven-segment display](examples/seven-segment-display.js): authoring Input mode selects
+  `number` (default) or `segments`. Number mode requires integer `value` in 0–9; segments mode
+  exposes boolean `a`…`g` inputs, all default false. Both modes include boolean `decimalPoint`
+  (false) and `enable` (true). Fixed boolean outputs `a`…`g` and `decimalPoint` describe the visible
+  segments after enable is applied; disabling sets every output false. The drawing uses the
+  conventional segment positions, the instance caption, dim off segments, and amber unavailable
+  segments. Mode changes alter input declarations, not output names or types.
+- [LED matrix (8×8)](examples/led-matrix.js): authoring Input mode selects `boolean` (default)
+  or `rows`. Boolean mode exposes `row1`…`row8` and `col1`…`col8`, all default false;
+  each LED is the AND of its row and column, with every active crossing shown. Row 1 is topmost
+  and column 1 leftmost. Rows mode exposes numeric `r1`…`r8` (default 0), each an integer in
+  0–255; `r1` is the top row, bit 128 is leftmost, and bit 1 rightmost. A row byte of 129 lights
+  both ends, 255 lights every LED, and 0 lights none. Both modes include
+  boolean `enable` (default true) and fixed numeric outputs `r1`…`r8` describing the visible row
+  bytes, or eight zeros when disabled. Mode-specific input names keep row/column Boolean ports
+  distinct from row-byte ports. The named display computes directly from current inputs, with
+  no scan cycle or persistent frame buffer.
 - [Compare](examples/compare.js): two live numeric operands and six selectable comparison operators.
 - [Inverter (×−1)](examples/number-inverter.js): numeric negation, distinct from boolean NOT.
 - [Math](examples/math.js): two numeric inputs and selectable arithmetic, minimum, or maximum.
@@ -939,6 +963,19 @@ The built-in catalog also provides component examples with their source in `exam
   selects 1 and tracks the pulse. Saved position survives restoration without a phantom step.
   Changing Channels resets position to 1 and re-primes, using durable `configuredChannels` to
   detect the change even if transient memory was cleared.
+- [Shift register (Boolean)](examples/shift-register-boolean.js) and
+  [Shift register (number)](examples/shift-register-number.js): a Stages setting (1–16, initially
+  4), required typed `value`, and boolean `pulse`/`reset` inputs (both default false). Each rising
+  pulse shifts one snapshot of the old cells: data enters `q1`, old `q1` enters `q2`, and so on.
+  Dynamic outputs `q1`…`qN` expose every cell; `value` aliases current `qN`. `shiftedOut` captures
+  old `qN` on that edge and holds it between edges. For a shared-pulse cascade, wire `shiftedOut`
+  to the next register's `value` and share pulse/reset. With independent clocks, `qN` can supply
+  the current last cell instead. Numbers must be finite; they need not be integers.
+  Reset clears cells and `shiftedOut` to false/0. Held reset tracks pulse so release-high does
+  not shift; manual Reset works in editor and reader. Changing Stages clears storage and
+  re-primes pulse detection. Reload/copy/undo preserve storage and start fresh observation;
+  library placement initializes empty cells. Each cell is drawn individually alongside the
+  instance name, with optional indicators. This bounded internal state does not permit graph cycles.
 - [Trigger](examples/trigger.js): a pushbutton producing a 100 ms boolean pulse per click;
   queued presses have a 10 ms low gap. Transient observation prevents replay after restoration.
 - [Pulse generator](examples/pulse-generator.js): boolean output with period `seconds` (0.02–3,600),
@@ -949,7 +986,16 @@ The built-in catalog also provides component examples with their source in `exam
   of `seconds` (0.01–3,600). Initial level is primed without a pulse. Up to 64 waiting pulses have
   a minimum 10 ms low gap; reconfiguration/restoration discards pending pulses and re-primes.
 - [Delay](examples/delay.js): preserve boolean transitions with a configured delay in seconds.
-- [Counter](examples/counter.js): rising-edge count, inclusive threshold output, and reset.
+- [Counter](examples/counter.js): boolean `value` and `reset`; string `direction` with options
+  `up`/`down` (default `up`); numeric `start` and `threshold` (both default 3, nonnegative safe
+  integers). Up starts/resets at zero, increments per rising edge, and publishes `reached` when
+  `count >= threshold`. Down starts/resets at start, decrements per rising edge, clamps at zero,
+  and publishes `reached` when `count === 0`; threshold does not determine down-mode completion.
+  Changing direction, or start while down, restarts and re-primes without counting that evaluation.
+  Threshold changes and start changes while up keep the current count. Reload/copy/undo preserve
+  the saved count and prime edge memory without replay. Held reset tracks the input; release
+  during high does not count. Manual Reset uses the same baseline in editor and HTML. The drawing
+  shows the direction arrow, an up-mode ≥ threshold or down-mode zero target, and the down start.
 - [Random integer](examples/random-integer.js): inclusive integer range, one sample per second.
 - [Sample & hold (integer)](examples/sample-hold-integer.js) and
   [Sample & hold (Boolean)](examples/sample-hold-boolean.js): sample immediately and hold for a

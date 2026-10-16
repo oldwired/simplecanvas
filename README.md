@@ -179,10 +179,12 @@ tags, choose a category, and filter the collection with **All collections**, **B
 | Category | Examples |
 | --- | --- |
 | Controls | Number control, Toggle, Constant, Trigger |
-| Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors and stepped switches |
-| Displays | Gauge, Value label, Status indicator |
+| Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
+| Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
 | Tools & time | Live clock, Stopwatch, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse |
+
+The catalog includes 39 connected API v2 components.
 
 You can place an entry directly from the browser without adding it to the working collection.
 Each browser entry has a pin: filled means it is in the working collection; outline means it
@@ -254,6 +256,28 @@ step buttons, and direct entry stay within the bounds and snap to the step grid 
 the maximum remains reachable even when it is between grid points. The step must be positive,
 and `min` must not exceed `max`. Direct number entry also works in exported HTML.
 
+**Seven-segment display**, in **Displays**, has two **Input mode** settings in **Inputs…**.
+**Number** (the default) takes a required integer `value` from 0 to 9. **Segments** exposes boolean
+`a`…`g` inputs, each initially false, for direct control of the conventional seven segments.
+Both modes accept `decimalPoint` (initially false) and `enable` (initially true). The fixed boolean
+outputs `a`…`g` and `decimalPoint` report the visible segments; disabling the display makes them
+all false. Dim segments mean off; amber means an unavailable input, not the digit zero.
+
+**LED matrix (8×8)** has two **Input mode** settings:
+
+- **Boolean** (the default): `row1`…`row8` and `col1`…`col8`, all initially false. Row 1 is at the
+  top and column 1 at the left. An LED lights when both its row and column are true. Every active
+  crossing is shown: two active rows and two active columns light four LEDs.
+- **Rows**: numeric `r1`…`r8`, each initially 0 and restricted to integers 0–255. `r1` is the top
+  row; bit 128 is at the left and bit 1 at the right. A row value of 129 lights both ends, 255
+  lights all eight LEDs, and 0 leaves the row dark.
+
+Both modes have `enable`, initially true. The fixed numeric outputs `r1`…`r8` report the visible
+row bytes in every mode; disabling blanks the display and sets these outputs to zero. Changing
+Input mode exposes its own input ports while preserving those output names. Both displays show
+their instance name and work in offline HTML. They show current inputs directly, with no scanning
+clock or stored frame.
+
 The built-in logic components use the same typed connections. **AND**, **NAND**, **OR**, **NOR**,
 **XOR**, **XNOR**, **NOT**, and **Buffer** use traditional logic-gate shapes and boolean ports.
 **Compare** takes two numbers: `value` (A) and `b` (B, initially 70). Both can be connected or set
@@ -302,6 +326,25 @@ Changing the channel count resets to channel 1 and starts fresh pulse observatio
 to flow through the selected route between pulses. Reducing the channel count can leave connections
 to removed outputs unavailable until they are rewired.
 
+**Shift register (Boolean)** and **Shift register (number)**, in **Logic**, store a sequence of
+values. Set **Stages** in **Inputs…** to 1–16 (initially 4), connect data to `value`, and connect
+Trigger or Pulse generator to `pulse`. Each false → true pulse stores the data in `q1` and moves
+the previous contents of `q1` to `q2`, and so on, using the same snapshot of the old cells. Holding
+true does not shift again. Each stage has its own output and visible value; `value` also exposes
+the current last stage, `qN`. The numeric variant accepts finite numbers, including fractions.
+
+`shiftedOut` holds the last value removed from the end of the register. To cascade registers on
+**the same pulse**, connect **shiftedOut → value** and share the pulse and reset signals. Connecting
+current `qN` would pass the already-updated last stage and move data one stage too early. With
+separate clocks, connect `qN` when you want to sample the upstream register's current last stage.
+
+Reset clears all stages and `shiftedOut` to false or 0; hold the `reset` input true or use **Reset**
+in the component controls, also available in exported HTML. An initial high pulse and reset release
+during high do not shift. Changing Stages clears the stored sequence and starts fresh pulse
+observation. Reload, copying canvas instances, and undo preserve contents without replaying a pulse;
+fresh placement from the library starts empty. Instance names and optional indicators work as for
+other logic components. Internal storage does not enable feedback connections between components.
+
 **Trigger**, in **Controls**, is a pushbutton with a boolean `value` output. Double-click it to
 enter its controls, then click **Press**: each completed click emits `true` for 0.1 seconds and
 returns to `false`. Holding the button does not repeat. Rapid clicks queue distinct pulses,
@@ -324,10 +367,18 @@ The **Tools & time** category adds connected signals with per-instance timing:
   transition appears at its output after that delay, including short pulses. Zero passes through
   immediately. Changing the duration clears pending transitions and starts again from the current
   input; each instance holds up to 64 pending transitions and shows an error if full.
-- **Counter** accepts boolean `value`, numeric `threshold`, and boolean `reset`. Each false → true
-  transition adds one; holding true does not keep counting. Outputs are `count` and `reached`
-  (`count >= threshold`). The threshold is a nonnegative integer. An initially high input does
-  not count. Hold `reset` true to keep the count at zero, or double-click and use **Reset**.
+- **Counter** accepts boolean `value` and `reset`, `direction` (**up** or **down**, initially up),
+  numeric `start` (initially 3), and numeric `threshold` (initially 3). Up starts at zero, adds one
+  per false → true edge, and sets `reached` when `count >= threshold`. Down starts at `start`,
+  subtracts one per rising edge, stops at zero, and sets `reached` when `count === 0`; threshold
+  applies only to up mode. Start and threshold must be nonnegative safe integers. Holding true
+  does not repeat, and an initially high input never counts. Hold reset to keep the mode's
+  starting count (zero for up, start for down), or double-click and use **Reset**, also available
+  in HTML. Releasing reset during high does not count. Changing direction, or changing start
+  while counting down, restarts at the appropriate baseline and observes the input afresh.
+  Changing threshold, or start in up mode, keeps the current count. Saved counts survive reload
+  and undo without phantom edges. An up/down arrow and target readout show the mode; down also
+  displays its configured start.
 - **Random integer** accepts inclusive integer `min` and `max`. It emits immediately, then once
   per second. The same number may be drawn twice. Negative bounds and a single-value range work.
 - **Sample & hold (integer)** and **Sample & hold (Boolean)** accept `value` and `seconds`
@@ -339,7 +390,7 @@ Configure and connect them in **Inputs…**. For example, connect Random integer
 (integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
 The controls, names, indicators, and connections work in exported HTML too.
 Timing uses active document time: hidden/inactive documents and the open **Inputs…** dialog pause
-it. Late wakes replay Delay transitions and queued Edge to pulses in order. Pulse generator advances
+it. Late wakes replay Delay transitions and queued pulses from Edge to pulse in order. Pulse generator advances
 one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
 without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
 Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:

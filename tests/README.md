@@ -113,6 +113,27 @@ memory, active-document time, stale evaluation rejection, pure snapshot paths, a
 offline interaction. Run it with `node --test tests/temporal-components.test.cjs`; prefix with
 `BROWSER_ENGINE=webkit` for WebKit.
 
+`tests/counter-modes.test.cjs` checks up/down counting, configurable countdown starts, zero clamping,
+reset and held-input behavior, and configuration changes that coincide with rising edges. It uses
+the real Inputs dialog and Trigger controls, then verifies saved progress, undo/redo, reload, and
+offline HTML countdown/reset behavior. Run with `node --test tests/counter-modes.test.cjs`, optionally
+prefixed with `BROWSER_ENGINE=webkit`.
+
+`tests/shift-register.test.cjs` checks Boolean and numeric cascades using a shared pulse and
+`shiftedOut`, independent stored stages, pure inspection, and restoration without phantom shifts.
+Editor checks configure stages through Inputs, connect a parallel output, and exercise Trigger
+sampling, JSON reload, and actual offline HTML shifting/reset. Run with
+`node --test tests/shift-register.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
+The browser-independent `node --test tests/shift-register-contracts.test.cjs` checks stage
+limits, simultaneous shifts, held reset, reconfiguration, finite numeric values, and state isolation.
+
+`tests/led-displays.test.cjs` exercises both seven-segment input modes and both matrix modes
+through the real Inputs dialog and sandbox. It checks segment/pixel positions, enable masking,
+mode changes, unavailable inputs, saving, and interaction in offline HTML. Run with
+`node --test tests/led-displays.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
+The browser-independent `tests/seven-segment-contracts.test.cjs` and
+`tests/led-matrix-contracts.test.cjs` cover digit patterns, every pixel, input bounds, and pure rendering.
+
 `tests/catalog-extensions.test.cjs` checks configurable channel counts through the real Inputs
 dialog, library placement, undo/redo, removed-output errors, pulse-driven stepped routing,
 and typed numeric entry in the editor and downloaded offline HTML. It also checks dialog

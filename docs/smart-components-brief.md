@@ -188,14 +188,16 @@ and transformed together. Nested folders can follow if real collections need the
 | Category | Current built-in contents |
 | --- | --- |
 | Controls | Number control, Toggle, numeric Constant, Trigger |
-| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, and Stepped distributor |
-| Displays | Gauge, numeric Value label, Status indicator |
+| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
+| Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
 | Tools & time | Ruler, Live clock, Stopwatch, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, and categorized user shapes/icons |
 
-The latest stage 2 extension adds eleven API v2 entries: Pulse generator, Edge to pulse, two typed
-Selectors, four typed stepped switches, Clamp, Range mapper, and Number function. It also expands
-Compare, Number control, and Math without adding another delivery stage.
+The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
+Selectors, four stepped switches, two Shift registers, Clamp, Range mapper, Number function,
+Seven-segment display, and LED matrix (8×8). The catalog now includes 39 API v2 components.
+The extension also expands Compare, Number control, Math, and Counter without adding another
+delivery stage.
 
 Category and tag metadata survive library import/export. Existing flat libraries remain
 valid and appear under an uncategorized section. Keep library-entry identity separate from
@@ -291,6 +293,34 @@ the instance when moved, resized, or rotated. Bindings should continue to refere
 and port name; screen coordinates must never become connection identity. Inputs remains the
 current connection editor.
 
+### Segment and matrix displays
+
+Seven-segment display has an authoring **Input mode** setting: `number` (default) or `segments`.
+Number mode takes required integer `value` in 0–9. Segments mode instead exposes boolean inputs
+`a`…`g`, each default false. Both modes have boolean `decimalPoint` (default false) and `enable`
+(default true). Its fixed boolean outputs `a`…`g` and `decimalPoint` reflect the segments actually
+shown after applying enable; disabled outputs are all false. Switching modes changes input ports
+while retaining the output contract. The drawing shows the conventional segment diagram and
+instance name, with dim off segments and amber unavailable values rather than a fabricated zero.
+
+LED matrix (8×8) has an authoring **Input mode** setting: `boolean` (default) or `rows`.
+Boolean mode exposes `row1`…`row8` and `col1`…`col8`, each default false. Row 1 is at
+the top and column 1 at the left. An LED lights only when its row and column are both true;
+all active crossings are shown together, without simulated scanning or retained illumination.
+
+Rows mode instead takes numeric `r1`…`r8`, each default 0 and restricted to integers 0–255.
+`r1` is the top row, with bits ordered left to right from 128 to 1: 129 lights both ends, 255
+lights the full row, and 0 lights none.
+
+Both modes have boolean `enable` (default true) and fixed numeric outputs `r1`…`r8` reflecting
+the visible row bytes; disabling publishes eight zero rows. Mode changes expose distinct input
+names and must not reinterpret old Boolean row/column assignments as numeric row bytes. Outputs
+keep their names and types across modes, and the instance name remains visible.
+
+Both are pure displays of current scalar inputs in editor and offline HTML. They introduce no
+scanning clock, frame persistence, or feedback behavior, and do not depend on the deferred
+sequential-logic backlog below. Missing/invalid inputs remain visibly unavailable.
+
 ### Typed routing and stepped switches
 
 Selector has separate number and Boolean entries. `select=false` routes A to `value`;
@@ -316,6 +346,36 @@ A Trigger or Pulse generator can drive several independent switches. Channel rem
 consumers referencing removed outputs unavailable until rewired; no connection is silently moved
 to a different channel. All declared inputs still follow the ordinary typed availability rules.
 
+### Shift registers
+
+Shift register has separate Boolean and number entries in Logic. Authors set 1–16 Stages
+(initially 4) in **Inputs…**. Stages is durable authoring configuration that defines outputs
+`q1`…`qN`; it is not a live input. The required `value` input supplies typed data; boolean `pulse`
+and `reset` default to false. Number cells accept finite numbers, including fractions.
+
+Each false → true pulse shifts one snapshot of the previous cells: input data enters `q1`, old
+`q1` moves to `q2`, and so on. No value advances through multiple cells during a single shift.
+The `value` output aliases current `qN`. A separate `shiftedOut` output captures old `qN`, the
+value removed by the accepted edge, and holds that value between edges.
+
+For cascades sharing one pulse, connect `shiftedOut` to the next register's `value` and share
+pulse/reset. The existing evaluator advances producers before their consumers, so connecting
+current `qN` would expose the new cell and shorten the combined sequence by one stage per
+boundary. `shiftedOut` gives the consumer the old tail without changing graph evaluation.
+With separate clocks, a consumer can instead sample current `qN` if that is the intended behavior.
+
+Initial high and held-high pulses do not shift repeatedly. Held reset clears every cell and
+`shiftedOut` to false/0 while tracking pulse, so releasing reset during high does not shift.
+Manual Reset has the same clearing behavior in editor and HTML. Changing Stages clears the
+stored sequence and re-primes observation. Reload/copy/undo preserve the saved cells and last
+shifted-out value while starting fresh pulse observation; fresh library placement starts empty.
+Rewiring or recovery from unavailable inputs re-primes observation without shifting stored data.
+Reducing Stages leaves references to removed outputs visibly unavailable until rewired.
+
+The drawing shows each stage's value, instance name, and optional indicators. This is bounded
+internal storage within an acyclic component. General feedback connections and standalone
+latches/flip-flops remain part of the deferred discussion.
+
 ### Stateful and timed signals
 
 Stage 2 also includes a bounded temporal extension to the existing acyclic graph:
@@ -336,9 +396,16 @@ Stage 2 also includes a bounded temporal extension to the existing acyclic graph
   transition. Each instance queues at most 64 transitions, reports overflow, and emits at most one
   due transition per settle so downstream counters observe short pulses. Changing seconds resets
   the pending queue and schedules the current input relative to the current output.
-- **Counter:** counts false → true edges; outputs numeric `count` and boolean `reached` when
-  `count >= threshold`. Threshold is a nonnegative safe integer. Initial high inputs do not count.
-  A held boolean reset keeps the count at zero and tracks the input; a manual Reset also works in HTML.
+- **Counter:** counts false → true edges in a selected `direction` (`up` by default, or `down`).
+  Inputs include boolean `value`/`reset` and nonnegative safe integer `start`/`threshold` (both
+  default 3). Up starts/resets at zero and increments; `reached` means `count >= threshold`.
+  Down starts/resets at start and decrements, stops at zero, and uses `count === 0` for `reached`;
+  threshold only determines completion in up mode. Initial high inputs do not count. Held reset
+  keeps the mode's baseline and tracks the input, so releasing reset during high does not count.
+  Manual Reset also works in HTML. Direction changes, or start changes while down, restart and
+  re-prime; threshold changes and start changes while up preserve count. Reload/copy/undo retain
+  saved count without phantom edges. The drawing shows an up/down arrow, the relevant target,
+  and the configured start in down mode.
 - **Random integer:** configurable inclusive integer bounds; produces a value immediately and
   once per second thereafter. Values may repeat; bounds and inclusive span must be safe integers.
 - **Sample & hold:** separate Integer and Boolean library entries with fixed typed ports. Both
@@ -379,16 +446,30 @@ request trigger; remaining true must not imply repeated external actions in late
   independent, and one source can correctly feed several consumers.
 - Number control accepts negative/fractional ranges and direct entry in the editor and reader.
   Compare supports all six relations, Math includes min/max, and numeric helpers validate ranges.
+- Seven-segment display accepts decimal digits or direct segment inputs according to its mode,
+  includes the decimal point, and keeps fixed outputs consistent with its enabled visible pattern.
+  LED matrix defaults to Boolean row/column intersections and validates all eight bytes in Rows
+  mode. Its fixed row-byte outputs match the visible pattern across both input modes.
+  Disabled displays publish dark patterns; unavailable inputs remain distinct from valid off
+  states. Instance names, mode/configuration, and connections survive save/load and offline HTML.
 - Typed selectors route valid values; all declared inputs retain eager availability checks.
   Stepped switches expose the selected channel, advance once per pulse, wrap, hold reset, preserve
   independent saved positions, and re-prime on restoration or channel-count changes. Inactive
   distributor outputs are 0/false, including after copy, save/load, and offline HTML startup.
+- Boolean and numeric shift registers expose each stored cell and shift once per rising pulse.
+  Two cascaded two-stage registers using `shiftedOut` match a single four-stage register,
+  independently of scene order. Held/reset-release-high inputs and restoration create no shifts;
+  reset and stage-count changes clear storage. Saved contents survive reload/copy/undo, fresh
+  library placements start empty, and the same behavior works in offline HTML.
 - Trigger emits one distinct pulse per accepted click without replay on restoration.
   Pulse generator retains observable high/low phases on late wakes; Edge to pulse preserves queued
   qualifying edges without replaying initial levels or stale queues after reconfiguration.
-- Delay preserves pulse order, Counter counts each rising edge once, and resets/initial high
-  inputs do not create phantom counts. Repeated instances remain independent. Random stays within
-  its inclusive bounds; both Sample & hold variants retain values until the next sampling boundary.
+- Delay preserves pulse order. Counter increments or decrements once per rising edge, stops at
+  zero in down mode, and publishes the direction's completion condition. Reset uses the mode's
+  baseline; initial high, reset release during high, restoration, and configuration restarts
+  never create phantom counts. Threshold changes and start changes while up retain count.
+  Repeated instances remain independent. Random stays within its inclusive bounds; both
+  Sample & hold variants retain values until the next sampling boundary.
 - Temporal signals pause/resume across visibility and tabs, re-prime correctly after restoration,
   and do not advance during static export, thumbnails, or Inputs inspection.
 - The example works in downloaded HTML without network access. Static exports capture its
@@ -397,6 +478,35 @@ request trigger; remaining true must not imply repeated external actions in late
   copies, fixed-library placements, and exports continue working.
 
 ### Discussion checkpoint: after stage 2, before stage 3
+
+Revisit feedback and sequential logic with the user before starting stage 3. Keep the current
+acyclic evaluator until that design is agreed. The discussion must establish which feedback paths
+are allowed, whether stateful components sample old values together or follow explicit time steps,
+how clock edges and resets are ordered, and how non-settling loops are stopped and explained.
+Browser scheduling, saved-state restoration, and offline HTML must follow the same chosen rules.
+A zero-delay loop must not silently depend on scene order or run indefinitely.
+
+The candidates below are a backlog for that discussion, not committed deliveries or prerequisites
+for stage 3. The user explicitly deferred the requested **4017-style counter** until flip-flops
+and feedback are understood. This scheduling decision also keeps related sequential-logic additions
+coherent. Some could use bounded internal state in today's acyclic runtime, just as Counter and
+Shift register already do; external feedback support is not a technical prerequisite for every row.
+
+| Candidate family | Decisions to settle before implementation |
+| --- | --- |
+| SR and D latches; SR, D, JK, and T flip-flops | Define level-sensitive versus edge-triggered behavior, active levels/edges, reset/set priority, simultaneous-input cases, and how unknown or unavailable signals appear. Agree how connected storage elements sample and commit state. |
+| Registers with parallel load and enable | Define reset/load/shift/hold priority, the values sampled on a shared edge, and how these extend the existing Shift register without changing its current contract. |
+| Ring and Johnson counters | Choose seed/reset patterns, sequence length, treatment of invalid states, and how circulating state is represented and observed. Decide whether these are composite feedback examples, built-in state machines, or both. |
+| Decoded decade counter, requested as “4017-style” | Define ten decoded outputs, clock enable/inhibit, reset, and any carry output; keep the model's observable contract distinct from a simple circulating one-hot ring. |
+| Binary/decade counters with bit outputs; ripple, synchronous, and up/down variants | Define edge propagation versus simultaneous updates, overflow/wrap, carry/borrow, and reset/enable behavior. These would extend the existing scalar Counter rather than replace its up/down modes. |
+| Small memory blocks and register files; bounded FIFO memory | Set capacity/address limits, read/write timing and same-address collisions, reset/clear rules, and persistence. Separate practical memory budgets from the later document-dataset model. |
+| Oscillators and timers constructed with feedback | Define explicit time or state boundaries, startup conditions, scheduling limits, pause/stop controls, and visible failure for loops that cannot settle. Existing Pulse generator and Delay remain usable independently. |
+| LFSR sequence/pseudorandom generator | Choose bounded register width, taps/seed rules, repeatability and reset behavior, and serial versus numeric outputs. Decide whether users can inspect or construct its feedback network; keep it separate from the existing Random integer source. |
+
+Terminology reference: the CD4017B is a five-stage Johnson counter with ten decoded outputs,
+so “4017-style decoded decade counter” is the precise candidate label here. The user-requested
+ring-counter analogy describes its sequencing role, not an identical internal design.
+[Texas Instruments CD4017B documentation](https://www.ti.com/product/CD4017B).
 
 Shared-bus support is deferred. Once stage 2 is complete, discuss it with the user before
 starting stage 3; do not implement it as part of the current stage or automatically at that checkpoint.

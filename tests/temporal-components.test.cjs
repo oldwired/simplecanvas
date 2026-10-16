@@ -341,7 +341,7 @@ test('interaction hooks use the state committed by their own temporal graph sett
   assert.equal(result.hit,'toggle','an unrelated timer settlement must not discard an accepted interaction');
   assert.equal(result.delayed,true);
   assert.equal(result.before.count,0);assert.equal(result.committed.count,1);
-  assert.deepEqual(result.updated,{count:1,showIndicators:false},'the hook must receive the newly committed count instead of overwriting it with stale state');
+  assert.deepEqual(result.updated,{count:1,configuredDirection:'up',configuredStart:3,showIndicators:false},'the hook must receive the newly committed count instead of overwriting it with stale state');
 }));
 
 test('invalid temporal replies and failed compute withhold their staged state while a healthy branch commits',async()=>app(async({run})=>{
@@ -406,7 +406,7 @@ test('a superseded temporal evaluation commits neither staged state nor scheduli
   })()`);
   assert.deepEqual(result.cancelled,{cancelled:true});
   assert.deepEqual(result.after,result.before,'the older reply cannot replace current state, memory, or wake time');
-  assert.deepEqual(result.after.states,[{value:false,showIndicators:true},{count:0,showIndicators:true}]);
+  assert.deepEqual(result.after.states,[{value:false,showIndicators:true},{count:0,configuredDirection:'up',configuredStart:3,showIndicators:true}]);
   assert.deepEqual(result.after.memory,[{previous:false,seconds:.1,queue:[]},{previous:false}]);
   assert.equal(result.after.deadline,Infinity,'no rejected rising pulse remains scheduled');
 }));

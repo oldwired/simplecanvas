@@ -90,7 +90,9 @@ const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant
   delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
   clamp:'clamp.js',rangeMap:'range-map.js',numberFunction:'number-function.js',pulseGenerator:'pulse-generator.js',edgePulse:'edge-pulse.js',
   selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
-  steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js'};
+  steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js',
+  shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
+  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js'};
 
 test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{

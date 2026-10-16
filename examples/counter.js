@@ -1,27 +1,51 @@
-// Count false-to-true edges. An initial high input seeds memory without counting.
-// Held reset keeps zero and follows the input, so releasing reset high adds no edge.
+// Count false-to-true edges up from zero or down from a configurable starting value.
+// Reset/configuration changes re-prime the input; a held or restored high never invents an edge.
 ({
   apiVersion:2,
-  inputs:{value:{type:'boolean'},threshold:{type:'number',default:3},reset:{type:'boolean',default:false}},
+  inputs:{value:{type:'boolean'},direction:{type:'string',default:'up',options:['up','down']},start:{type:'number',default:3},threshold:{type:'number',default:3},reset:{type:'boolean',default:false}},
   outputs:{count:{type:'number'},reached:{type:'boolean'}},
-  initState(){return {count:0,showIndicators:true};},
+  initState(){return {count:0,configuredDirection:'up',configuredStart:3,showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
+  _configuration(inputs={}){
+    const direction=inputs.direction??'up',start=inputs.start??3;
+    if(!['up','down'].includes(direction))throw new Error('Counter direction must be up or down');
+    if(!Number.isSafeInteger(start) || start<0)throw new Error('Counter start must be a nonnegative safe integer');
+    return {direction,start};
+  },
   _validate(inputs,state){
+    this._configuration(inputs);
     if(typeof inputs.value!=='boolean' || typeof inputs.reset!=='boolean')throw new Error('Counter requires Boolean input and reset values');
     if(!Number.isSafeInteger(inputs.threshold) || inputs.threshold<0)throw new Error('Counter threshold must be a nonnegative safe integer');
     if(!Number.isSafeInteger(state.count) || state.count<0)throw new Error('Counter count must be a nonnegative safe integer');
+    if(state.configuredDirection!==undefined && !['up','down'].includes(state.configuredDirection))throw new Error('Counter saved direction is invalid');
+    if(state.configuredStart!==undefined && (!Number.isSafeInteger(state.configuredStart) || state.configuredStart<0))throw new Error('Counter saved start is invalid');
+  },
+  _changed(state,config){
+    return (state.configuredDirection??'up')!==config.direction ||
+      (config.direction==='down' && (state.configuredStart??3)!==config.start);
+  },
+  _count(state,config){
+    return this._changed(state,config)?(config.direction==='down'?config.start:0):state.count;
   },
   transition(inputs,state,memory){
     this._validate(inputs,state);
-    let count=state.count;
-    if(inputs.reset)count=0;
-    else if(memory?.previous===false && inputs.value){
-      if(count>=Number.MAX_SAFE_INTEGER)throw new Error('Counter exceeds the safe integer range');
-      count++;
+    const config=this._configuration(inputs),changed=this._changed(state,config);
+    let count=this._count(state,config);
+    if(inputs.reset)count=config.direction==='down'?config.start:0;
+    else if(!changed && memory?.previous===false && inputs.value){
+      if(config.direction==='down')count=Math.max(0,count-1);
+      else{
+        if(count>=Number.MAX_SAFE_INTEGER)throw new Error('Counter exceeds the safe integer range');
+        count++;
+      }
     }
-    return {state:{...state,count},memory:{previous:inputs.value},nextWakeAt:null};
+    return {state:{...state,count,configuredDirection:config.direction,configuredStart:config.start},memory:{previous:inputs.value},nextWakeAt:null};
   },
-  compute(inputs,state){this._validate(inputs,state);return {count:state.count,reached:state.count>=inputs.threshold};},
+  compute(inputs,state){
+    this._validate(inputs,state);
+    const config=this._configuration(inputs),count=this._count(state,config);
+    return {count,reached:config.direction==='down'?count===0:count>=inputs.threshold};
+  },
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -48,6 +72,7 @@
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const count=Number.isSafeInteger(outputs.count)?String(outputs.count):'—',threshold=Number.isSafeInteger(inputs.threshold)?String(inputs.threshold):'—';
+    const down=(raw.direction??state.configuredDirection)==='down',start=Number.isSafeInteger(raw.start)?String(raw.start):'—';
     const upper=h*.42,lower=h*.66;
     const children=[
       {...text('',w*.04,0,w*.92,h*.18,16,'left'),...this._caption(io.name,'Counter',w*.92,h*.18,{...style,fontSize:16*scale})},
@@ -58,10 +83,11 @@
       {...text('',w*.72,h*.31,w*.28,h*.09,10),...this._caption(count,'—',w*.28,h*.09,{...style,fontSize:10*scale})},
       text('Reached: '+label(outputs.reached),w*.71,h*.51,w*.29,h*.13,10),
       {type:'rect',x:w*.30,y:h*.25,w:w*.39,h:h*.48,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
-      text('↑',w*.30,h*.26,w*.39,h*.18,26),
+      text(down?'↓':'↑',w*.30,h*.26,w*.39,h*.18,26),
       {...text('',w*.30,h*.44,w*.39,h*.15,24),...this._caption(count,'—',w*.39,h*.15,{...style,fontSize:24*scale})},
-      {...text('',w*.30,h*.60,w*.39,h*.10,11),...this._caption('≥ '+threshold,'≥ —',w*.39,h*.10,{...style,fontSize:11*scale})}
+      {...text('',w*.30,h*.60,w*.39,h*.10,11),...this._caption(down?'= 0':'≥ '+threshold,'≥ —',w*.39,h*.10,{...style,fontSize:11*scale})}
     ];
+    if(down && available)children.push({...text('',w*.30,h*.735,w*.39,h*.09,10),...this._caption('Start: '+start,'Start: —',w*.39,h*.09,{...style,fontSize:10*scale})});
     if(state.showIndicators!==false){
       const radius=4*scale;
       for(const [x,y,value,numeric] of [[w*.045,upper,inputs.value,false],[w*.045,lower,inputs.reset,false],[w*.955,upper,outputs.count,true],[w*.955,lower,outputs.reached,false]]){
@@ -72,7 +98,7 @@
     }
     if(!available){
       const error=typeof io.error==='string'?io.error:'';
-      const note=/threshold must/i.test(error)?'Threshold must be a nonnegative integer':/safe integer range/i.test(error)?'Counter is outside the numeric range':!error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
+      const note=/start must/i.test(error)?'Start must be a nonnegative integer':/direction must/i.test(error)?'Choose up or down':/threshold must/i.test(error)?'Threshold must be a nonnegative integer':/safe integer range/i.test(error)?'Counter is outside the numeric range':!error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
       children.push({...text(note,w*.04,h*.79,w*.92,h*.18,10.5),color:'#92400e'});
     }
     if(editing && available){
@@ -89,5 +115,11 @@
     if(y<h*.84 || y>h*.97)return null;
     return x>=w*.05 && x<=w*.47?'reset':x>=w*.53 && x<=w*.95?'indicators':null;
   },
-  dragEdit(state,handle){return {state:handle==='reset'?{...state,count:0}:handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state};}
+  dragEdit(state,handle,lx,ly,w,h,style,io={}){
+    if(handle==='reset'){
+      const config=this._configuration(io.inputs);
+      return {state:{...state,count:config.direction==='down'?config.start:0,configuredDirection:config.direction,configuredStart:config.start}};
+    }
+    return {state:handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state};
+  }
 })
