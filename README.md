@@ -217,7 +217,9 @@ Connections survive sketch/workspace saves, autosave, and undo/redo. Copy or dup
 components to create an independently connected pair. Copying only a consumer leaves its
 external source unresolved; use **Inputs…** to reconnect it. Deleting a source also reports
 a missing connection, and undo restores it. Static PNG/SVG/print capture the computed result.
-Component authoring follows the `smartShapeAuthoring` deployment setting.
+Set `features.smartComponents` to `false` in `settings.json` to hide component templates and
+the input picker and disable component authoring. Existing connected drawings and HTML exports
+keep working. Component authoring also requires `smartShapeAuthoring` to be enabled.
 
 This first version supports number, string, and boolean values within one sketch. See the
 [component scripting contract](SMART_SHAPES.md#connected-components-api-v2) for custom ports
@@ -293,11 +295,13 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
 | `shapeLibraryManagement` | Hides Manage and all library additions; blocks library import/export, rename, replace, and delete. Users can place shapes from the deployed library. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
+| `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component library entries through scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components, their connections, deployed-library placements, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 
 Disabling `shapeLibrary` also disables its management. Disabling management also disables smart-shape
-authoring and Iconify additions, regardless of their individual switches. A fixed library with a
+authoring and Iconify additions, regardless of their individual switches. Disabling smart-shape
+authoring also disables component authoring. A fixed library with a
 single-sketch interface therefore needs only:
 
 ```json

@@ -344,7 +344,11 @@ Unversioned scripts keep returning raw state from `dragEdit`, even when their st
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
 
 Select an instance and click **Inputs…** to name it, enter literal inputs, or bind inputs to
-compatible outputs in the same sketch. A binding takes precedence over a saved literal; an
+compatible outputs in the same sketch. Deployments can disable component authoring with
+`features.smartComponents:false` in `settings.json`; existing components still execute and export.
+The flag hides component templates, source editing, and input controls, and blocks adding component
+library entries. Ordinary smart-shape authoring has its own `smartShapeAuthoring` switch, which
+must also be enabled to author components. A binding takes precedence over a saved literal; an
 unbound input uses its literal, then its declared default. Missing required inputs, missing
 sources/ports, type mismatches, cycles, and failed computations report errors. Failed outputs
 are unavailable to consumers; healthy independent components continue working.

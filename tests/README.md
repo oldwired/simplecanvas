@@ -64,6 +64,8 @@ duplicate/clipboard binding remapping, cross-tab UID isolation, and downloaded o
 They check rapid changes, unsupported-version recovery, legacy raw-state compatibility, missing
 or incompatible ports, source deletion, cycles, and isolation of failed computations. Format 4
 retains component API markers and wiring; earlier drawing formats remain readable.
+The `smartComponents` deployment switch is checked for disabled authoring, preserved legacy
+authoring, and working saved connections, copies, deployed-library placements, and offline HTML.
 
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed

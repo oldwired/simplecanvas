@@ -836,7 +836,7 @@
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 4;     // 2: group pivots; 3: polygon fill rules; 4: connected smart components
   // Deployment settings are optional and never saved into a sketch or browser storage.
-  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true});
+  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,smartComponents:true,iconify:true,customPrinting:true});
   let features = DEFAULT_FEATURES;
   let appStarted = false;
   function normalizeFeatures(raw){
@@ -851,6 +851,7 @@
     const flags={...DEFAULT_FEATURES,...overrides};
     flags.shapeLibraryManagement=flags.shapeLibrary && flags.shapeLibraryManagement;
     flags.smartShapeAuthoring=flags.shapeLibraryManagement && flags.smartShapeAuthoring;
+    flags.smartComponents=flags.smartShapeAuthoring && flags.smartComponents;
     flags.iconify=flags.shapeLibraryManagement && flags.iconify;
     return Object.freeze(flags);
   }
@@ -6178,6 +6179,7 @@ self.onmessage = function(e){
     const list = selectionAsShapeItems();
     if(!list) return;
     if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
+    if(!features.smartComponents && list.some(it=>it.componentApi!==undefined)){toast('Adding smart components is disabled');return;}
     const name = await askLibrary({title:'Add selection to library', message:'This adds one reusable shape. Export the library when you want to keep your changes.', name:'', submit:'Add shape', validate:validateShapeName});
     if(name===null) return;
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
@@ -6202,6 +6204,7 @@ self.onmessage = function(e){
     const list = selectionAsShapeItems();
     if(!list) return;
     if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
+    if(!features.smartComponents && list.some(it=>it.componentApi!==undefined)){toast('Adding smart components is disabled');return;}
     if(!await askLibrary({title:'Replace shape', message:'Replace "'+tpl.name+'" with the current canvas selection? Shapes already placed on the canvas will stay as they are.', submit:'Replace shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     tpl.items = list;
@@ -6271,7 +6274,7 @@ self.onmessage = function(e){
   }
   function updateOrderButtons(){
     const active = ui.tool==='select' && selection.length>0;
-    document.getElementById('componentBindingsBtn').hidden=!(active && features.smartShapeAuthoring &&
+    document.getElementById('componentBindingsBtn').hidden=!(active && features.smartComponents &&
       selection.length===1 && items[selection[0]]?.type==='smart' && items[selection[0]].componentApi!==undefined);
     const disp = active ? '' : 'none';
     if(arrangeGroup.style.display !== disp){ arrangeGroup.style.display = disp; arrangeSep.style.display = disp; }
@@ -8336,8 +8339,8 @@ self.onmessage = function(e){
   }
 })`;
   const SMART_TEMPLATES = {
-    numberControl: { name:'Number control', script:NUMBER_CONTROL_EXAMPLE_SCRIPT },
-    gauge: { name:'Gauge', script:GAUGE_EXAMPLE_SCRIPT },
+    numberControl: { name:'Number control', script:NUMBER_CONTROL_EXAMPLE_SCRIPT, component:true },
+    gauge: { name:'Gauge', script:GAUGE_EXAMPLE_SCRIPT, component:true },
     clock: { name:'Clock', script:CLOCK_EXAMPLE_SCRIPT },
     liveClock: { name:'Live clock', script:LIVE_CLOCK_EXAMPLE_SCRIPT },
     stopwatch: { name:'Stopwatch', script:STOPWATCH_EXAMPLE_SCRIPT },
@@ -8367,6 +8370,7 @@ self.onmessage = function(e){
   }
   function editLibrarySmartSource(tpl,item){
     if(!features.smartShapeAuthoring) return;
+    if(!features.smartComponents && item?.componentApi!==undefined) return;
     if(!shapeLibrary?.shapes.includes(tpl) || !tpl.items.includes(item) || item.type!=='smart') return;
     configureSmartObjectDialog({library:shapeLibrary,entry:tpl,item,script:item.script});
     smartObjectNameInput.value=tpl.name;
@@ -8376,7 +8380,7 @@ self.onmessage = function(e){
   }
   function selectSmartTemplate(key){
     const tpl = SMART_TEMPLATES[key];
-    if(!tpl) return;
+    if(!tpl || (tpl.component && !features.smartComponents)) return;
     smartObjectNameInput.value = tpl.name;
     smartObjectScriptInput.value = tpl.script;
     smartTemplateSelect.value = key;
@@ -8412,6 +8416,10 @@ self.onmessage = function(e){
       if(!current()) return;
       if(!caps || !caps.children){
         smartObjectDialogError.textContent = 'The script must be a JS expression evaluating to an object with a children(state, style, w, h) function.';
+        return;
+      }
+      if(!features.smartComponents && (caps.apiVersion===2 || edit?.item.componentApi!==undefined)){
+        smartObjectDialogError.textContent='Smart component authoring is disabled.';
         return;
       }
       if(edit){
@@ -8501,7 +8509,7 @@ self.onmessage = function(e){
   }
   async function openComponentBindings(){
     const it=selection.length===1?items[selection[0]]:null;
-    if(!features.smartShapeAuthoring || it?.type!=='smart' || it.componentApi===undefined)return;
+    if(!features.smartComponents || it?.type!=='smart' || it.componentApi===undefined)return;
     const session={it,scene:items,tab:activeTabId,signature:componentGraphSignature(items),seq:++componentDialogSeq,rows:[]};
     componentDialogSession=session;
     const current=()=>componentDialogSession===session && componentBindingsDialog.open &&
@@ -8566,6 +8574,7 @@ self.onmessage = function(e){
   componentBindingsDialog.addEventListener('click',e=>e.stopPropagation());
   document.getElementById('componentBindingsForm').addEventListener('submit',async e=>{
     e.preventDefault();const session=componentDialogSession;
+    if(!features.smartComponents)return;
     if(!session?.current() || componentBindingsSave.disabled)return;
     if(!session.valid()){componentBindingsError.textContent=session.changedMessage;componentBindingsSave.disabled=true;return;}
     componentBindingsSave.disabled=true;componentBindingsError.textContent='';
@@ -8940,7 +8949,8 @@ self.onmessage = function(e){
       const actions = document.createElement('div');
       actions.className = 'shape-entry-actions';
       const smartItems=tpl.items.filter(it=>it.type==='smart');
-      const editActions=features.smartShapeAuthoring ? smartItems.map((it,i)=>[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]) : [];
+      const editActions=features.smartShapeAuthoring ? smartItems.flatMap((it,i)=>
+        !features.smartComponents && it.componentApi!==undefined ? [] : [[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]]) : [];
       for(const [text, action] of [...editActions,['Rename', renameLibraryShape], ['Replace', replaceLibraryShape], ['Delete', deleteLibraryShape]]){
         const btn = document.createElement('button');
         btn.type = 'button'; btn.textContent = text;
@@ -8993,6 +9003,7 @@ self.onmessage = function(e){
       try{ lib = normalizeShapeLibrary(JSON.parse(r.result)); }
       catch(err){ toast(err instanceof SyntaxError ? 'That file is not valid JSON' : err.message); return; }
       if(!features.smartShapeAuthoring && lib.shapes.some(tpl=>tpl.items.some(it=>it.type==='smart'))){toast('Importing smart shapes is disabled');return;}
+      if(!features.smartComponents && lib.shapes.some(tpl=>tpl.items.some(it=>it.componentApi!==undefined))){toast('Importing smart components is disabled');return;}
       if(shapeLibraryDirty && !await askLibrary({title:'Replace active library?', message:'The library has unexported changes. Importing will replace it and discard those changes. Cancel and export first if you want to keep them.', submit:'Discard and import'})) return;
       if(request!==shapeLibraryImportSeq) return;
       shapeLibrary = lib;
@@ -9881,6 +9892,9 @@ self.onmessage = function(e){
     shapeLibWrap.hidden=!features.shapeLibrary;
     manageShapesBtn.hidden=!features.shapeLibraryManagement;
     document.getElementById('newSmartObjectBtn').hidden=!features.smartShapeAuthoring;
+    if(!features.smartComponents)for(const option of Array.from(smartTemplateSelect.options)){
+      if(SMART_TEMPLATES[option.value]?.component)option.remove();
+    }
     document.getElementById('addSelectionFooterBtn').hidden=!features.shapeLibraryManagement;
     loadTabList();
     enterTab(activeTabId);

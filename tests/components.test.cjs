@@ -19,16 +19,17 @@ before(async () => {
 });
 after(async () => { if(browser) await browser.close(); });
 
-async function app(fn,{origin='http://components.test'}={}){
+async function app(fn,{origin='http://components.test',files={}}={}){
   const context = await browser.newContext({viewport:{width:1280,height:900}});
   try{
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.accept());
-    await page.route(origin+'/**', route => route.fulfill({
-      status:route.request().url().endsWith('index.html') ? 200 : 404,
-      contentType:'text/html',body:html
-    }));
+    await page.route(origin+'/**', route => {
+      const contents=files[route.request().url().slice(origin.length+1)];
+      return route.fulfill({status:contents!==undefined || route.request().url().endsWith('index.html') ? 200 : 404,
+        contentType:contents!==undefined?'application/json':'text/html',body:contents??html});
+    });
     await page.goto(origin+'/index.html');
     const run = source => page.evaluate(async source => {
       await __test.run('appReady');return __test.run(source);
@@ -61,6 +62,13 @@ const smart = (uid,script,state={},extra={}) => ({type:'smart',uid,x:100,y:100,w
   fontFamily:'sans',fontSize:12,font:'600 12px sans-serif',script,state,componentApi:2,...extra});
 const pair = (n=6) => [smart('source',producerScript,{n}),smart('gauge',consumerScript,{},
   {x:400,bindings:{value:{uid:'source',port:'value'}}})];
+const componentAuthoringOff={
+  'settings.json':JSON.stringify({version:1,features:{smartComponents:false}}),
+  'shapes-library.json':JSON.stringify({app:'SimpleCanvasShapeLibrary',version:1,shapes:[
+    {name:'Existing connected pair',items:pair()},
+    {name:'Existing legacy shape',items:[{...smart('legacy','({children(){return [{type:"rect",x:0,y:0,w:100,h:50}];}})'),componentApi:undefined}]}
+  ]})
+};
 
 async function seed(run,list){
   await run(`cancelGesture();applySketchToActiveTab(${JSON.stringify(list)},{});setTool('select');selection=[];render();save();`);
@@ -91,6 +99,9 @@ async function openExport(page,run,context,{init}={}){
   return {preview,errors,requests,source:fs.readFileSync(output,'utf8')};
 }
 async function readerClick(page,host,x=40,y=45){
+  // The initial static SVG can show values before the reader has installed its
+  // hit surface and editing-only buttons. Wait for that component to be usable.
+  await page.waitForFunction(el=>el.dataset.smartReady==='true',await host.elementHandle(),{timeout:10000});
   const point=await host.evaluate((el,{x,y})=>{
     const p=new DOMPoint(x,y).matrixTransform(el.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};
   },{x,y});
@@ -147,6 +158,68 @@ test('the supplied Number control and Gauge can be connected with the input pick
   await readerDrawing(preview,0,'60%');
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
+
+test('disabled component authoring hides its controls and blocks library changes while legacy authoring remains available',async()=>app(async({page,run})=>{
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===2);
+  assert.equal(await run('features.smartComponents'),false);
+  assert.equal(await run('features.smartShapeAuthoring'),true);
+  assert.equal(await page.locator('#settingsWarning').isVisible(),false);
+  await seed(run,pair());await drawing(page,'gauge','Gauge:12');
+  await run('selection=[1];render();void openComponentBindings();');
+  assert.equal(await page.locator('#componentBindingsBtn').isVisible(),false);
+  assert.equal(await page.locator('#componentBindingsDialog').isVisible(),false);
+  const original=await run('JSON.stringify(shapeLibrary)');
+  await run('void editLibrarySmartSource(shapeLibrary.shapes[0],shapeLibrary.shapes[0].items[0]);selection=[0,1];void addSelectionToLibrary();void replaceLibraryShape(shapeLibrary.shapes[1]);');
+  assert.equal(await page.locator('dialog[open]').count(),0);
+  assert.equal(await run('JSON.stringify(shapeLibrary)'),original);
+  await page.locator('#shapeLibraryInput').setInputFiles({name:'new-components.json',mimeType:'application/json',
+    buffer:Buffer.from(JSON.stringify({shapes:[{name:'New components',items:pair()}]}))});
+  await page.waitForFunction(()=>/component.*disabled|disabled.*component/i.test(document.querySelector('#toast').textContent));
+  assert.equal(await run('JSON.stringify(shapeLibrary)'),original,'a rejected import preserves the deployed library');
+  await run('document.getElementById("newSmartObjectBtn").click()');
+  assert.equal(await page.locator('#smartObjectDialog').isVisible(),true,'legacy source authoring stays available');
+  for(const key of ['numberControl','gauge']){
+    assert.equal(await page.evaluate(key=>{
+      const option=document.querySelector('#smartTemplateSelect option[value="'+key+'"]');
+      return !option || option.hidden || option.disabled;
+    },key),true);
+    const originalScript=await page.locator('#smartObjectScriptInput').inputValue();
+    await run(`selectSmartTemplate(${JSON.stringify(key)})`);
+    assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),originalScript);
+  }
+  await page.locator('#smartObjectNameInput').fill('Blocked component source');
+  await page.locator('#smartObjectScriptInput').fill(producerScript);
+  await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>/component.*disabled|disabled.*component/i.test(document.querySelector('#smartObjectDialogError').textContent));
+  assert.equal(await run('JSON.stringify(shapeLibrary)'),original,'pasted v2 source cannot bypass disabled templates');
+  await page.locator('#smartObjectNameInput').fill('Allowed legacy source');
+  await page.locator('#smartObjectScriptInput').fill('({children(){return [{type:"rect",x:0,y:0,w:100,h:50}];}})');
+  await page.locator('#smartObjectDialogSubmit').click();
+  await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
+  assert.deepEqual(await run('shapeLibrary.shapes.map(shape=>shape.name)'),['Existing connected pair','Existing legacy shape','Allowed legacy source']);
+  assert.equal(await run('shapeLibrary.shapes[2].items[0].componentApi'),undefined);
+},{files:componentAuthoringOff}));
+
+test('disabled component authoring preserves saved drawings, deployed placements, copies, and offline interaction',async()=>app(async({page,run,context})=>{
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===2);
+  await seed(run,pair());await page.reload();await drawing(page,'gauge','Gauge:12');
+  await editorClick(page,run);await drawing(page,'gauge','Gauge:20');
+  const saved=await downloadJSON(page,run);
+  assert.equal(saved.items[0].state.n,10);
+  assert.deepEqual(saved.items[1].bindings,{value:{uid:'source',port:'value'}});
+  await run('selection=[0,1];copySelection();pasteClipboard();');
+  const copies=await run('items.slice(2)');
+  assert.equal(copies[1].bindings.value.uid,copies[0].uid);await drawing(page,copies[1].uid,'Gauge:20');
+  await run('for(const it of items.slice(2))translateItem(it,0,180);render();');
+  await run('placeShapeAt(shapeLibrary.shapes[0],800,400)');
+  const placed=await run('items.slice(4)');
+  assert.equal(placed.length,2);assert.equal(placed[1].bindings.value.uid,placed[0].uid);
+  await drawing(page,placed[1].uid,'Gauge:12');
+  const {preview,errors,requests}=await openExport(page,run,context);
+  await readerDrawing(preview,0,'Gauge:20');
+  await readerClick(preview,preview.locator('[data-smart-index="0"]'));await readerDrawing(preview,0,'Gauge:28');
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+},{files:componentAuthoringOff}));
 
 test('downloaded connected HTML recomputes offline and resets to the saved state on reload',async()=>app(async({page,run,context})=>{
   await seed(run,pair());
