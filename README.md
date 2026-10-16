@@ -170,22 +170,52 @@ display size does not guarantee physical dimensions.
 
 ## Shape libraries and smart shapes
 
-The shape library is optional. Open the library picker and choose **Add selection** to save
-selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
-available even before a library exists, including **Add smart shape…**. Click a saved shape to
-place it; **Manage** also lets you rename, delete, or replace an entry with the current selection.
-For smart shapes, **Edit** opens their existing script in the authoring dialog. Library
-edits, replacements, and deletions do not change already-placed objects. Save changes, then
-export the library to keep the updated code and preview. Images cannot be included in library entries.
+The shape library is optional. The small toolbar popup remains a quick picker for your
+**working collection**. Click a shape, then click the canvas to place it. Open the expanded
+library browser with the **Browse** icon when you want to find more shapes: search by name or
+tags, choose a category, and filter the collection with **All collections**, **Built-in**, or **Mine**.
+**Back to collection** returns to the quick picker.
 
-**Export library…** downloads the entire active library as `shapes-library.json`. Library
-changes last only for the current visit and are separate from sketch saves and autosave.
-An indicator shows unexported changes; importing another library or leaving the page warns
-before those changes are discarded. Import your exported file to use it on another visit.
+| Category | Examples |
+| --- | --- |
+| Controls | Number control, Toggle, Constant |
+| Logic | AND, NAND, OR, NOR, XOR, XNOR, NOT, Buffer, Tri-state buffer, Compare, Inverter (×−1), Math |
+| Displays | Gauge, Value label, Status indicator |
+| Tools & time | Live clock, Stopwatch, Ruler |
+| Drawing | Rectangle, Ellipse |
+
+You can place an entry directly from the browser without adding it to the working collection.
+Each browser entry has a pin: filled means it is in the working collection; outline means it
+is outside. Click the pin to toggle membership, or use **Keep in collection** / **Remove from
+collection** in the entry details. Unpinning only removes the shortcut; its catalog entry and
+already-placed objects remain available. Keeping a built-in entry references the same definition
+rather than creating a user copy.
+
+Built-in entries are available offline and cannot be edited in place. Use **Copy to mine**
+to customize one. This creates a separate entry in Mine and adds it to the working collection.
+**Edit details** changes its name, category, description, and tags. Personal entries also offer
+**Edit source…** and **Delete** from their browser details, including when they are unpinned.
+**Add selection** saves selected canvas objects to your collection, and
+**Manage → Import…** opens a library file. **Manage** also offers **Add smart shape…**, rename,
+delete, and replacement with the current selection. For your smart shapes, **Edit** opens the
+script authoring dialog. Library edits never update already-placed objects. Images cannot be
+included in library entries.
+
+**Export library…** downloads a self-contained `shapes-library.json`, including the working
+collection, every entry in Mine, and the definitions they need. Kept built-ins are included as snapshots, so the
+file does not depend on another installation having the same built-in version. Library format 2
+preserves entry IDs, categories, tags, and working-collection membership. Older flat libraries
+still import; their entries appear in **Mine** and initially populate the working collection.
+Importing a user library leaves the built-in catalog available.
+
+Library edits and working-collection changes last only for the current visit, separately from
+sketch saves and autosave. An indicator shows unexported changes; importing another library or
+leaving the page warns before those changes are discarded. Export and reimport the file to
+retain your collection for another visit.
 
 Libraries include PNG thumbnails, which display without running shape scripts. Ordinary missing
-previews are generated automatically. Smart shapes with missing previews show placeholders and ask
-before running their scripts to generate pictures; **Use placeholders** still loads the library.
+previews are generated automatically. Imported smart shapes with missing previews show placeholders
+and ask before running scripts to generate pictures; **Use placeholders** still loads the library.
 **Generate missing previews…** lets you generate them later. Export the library to retain new previews.
 
 ### Smart shapes
@@ -207,11 +237,81 @@ Open [examples/connected-components.json](examples/connected-components.json) wi
 the control, then drag its slider or click **−5 / +5**. The gauge follows its value. **Export HTML**
 keeps that connection working offline; reopening the HTML restores the exported values.
 
-To build your own pair, create and place the **Number control** and **Gauge** smart-shape
-templates. Select the gauge, click **Inputs…**, choose **Number control · value** for its
+To build your own pair, place **Number control** and **Gauge** from the built-in library.
+Their script templates also remain available for authoring. Select the gauge, click **Inputs…**,
+choose **Number control · value** for its
 `value` input, and save. The same dialog can name an instance or set a literal input value.
 It lists compatible outputs from components in the active sketch.
 Give repeated instances distinct names in **Inputs…** so their outputs are easy to identify.
+Every built-in component displays that instance name as its caption, separately from its
+operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
+Long names fit within the caption area, and names persist in saved sketches and exports.
+
+The built-in logic components use the same typed connections. **AND**, **NAND**, **OR**, **NOR**,
+**XOR**, **XNOR**, **NOT**, and **Buffer** use traditional logic-gate shapes and boolean ports.
+**Compare** outputs whether its numeric input is strictly greater than its configured threshold.
+**Inverter (×−1)** takes and returns a number; **NOT** takes and returns a boolean.
+For example, **Compare** and **Toggle** can feed **AND**, whose output drives a **Status indicator**.
+
+**Tri-state buffer** has boolean `value` and `enable` inputs. When `enable` is true, the output
+follows `value`; when false, it is **Z (high impedance)**, not an inverted value. Its separate enable
+pin and purple Z indicator distinguish it from ordinary Buffer and NAND. A boolean consumer connected
+to Z shows an unavailable state until the buffer is enabled; you can save that connection while it
+is disabled. Missing connections still show amber, not Z. Each input has one source; shared-bus
+resolution and electrical simulation are outside this component's behavior.
+
+**Math** takes two numeric inputs, `a` and `b`, and outputs `value`. In **Inputs…**, connect each
+input or enter a number, then choose **+**, **−**, **×**, or **÷** in the `operation` dropdown.
+Subtraction means `a − b`; division means `a ÷ b`. Each instance keeps its own operation.
+You can connect its result to another Math block, Compare, Gauge, or Value label. Division by
+zero and overflow report an error and leave the result unavailable; correcting the input
+restores the connected calculation, including in exported HTML.
+
+**Trigger**, in **Controls**, is a pushbutton with a boolean `value` output. Double-click it to
+enter its controls, then click **Press**: each completed click emits `true` for 0.1 seconds and
+returns to `false`. Holding the button does not repeat. Rapid clicks queue distinct pulses,
+separated by at least 0.01 seconds of `false`, so a Counter can register every press. Each instance
+holds up to 64 waiting presses and reports an error if full. Connect **Trigger · value** to a
+Counter's `value` input through **Inputs…**. In exported HTML, click the button directly.
+Queued presses are transient; reopening, copying, or undoing never replays old presses.
+
+The **Tools & time** category adds connected signals with per-instance timing:
+
+- **Delay** accepts a boolean `value` and `seconds` (0–3,600, including fractions). Every on/off
+  transition appears at its output after that delay, including short pulses. Zero passes through
+  immediately. Changing the duration clears pending transitions and starts again from the current
+  input; each instance holds up to 64 pending transitions and shows an error if full.
+- **Counter** accepts boolean `value`, numeric `threshold`, and boolean `reset`. Each false → true
+  transition adds one; holding true does not keep counting. Outputs are `count` and `reached`
+  (`count >= threshold`). The threshold is a nonnegative integer. An initially high input does
+  not count. Hold `reset` true to keep the count at zero, or double-click and use **Reset**.
+- **Random integer** accepts inclusive integer `min` and `max`. It emits immediately, then once
+  per second. The same number may be drawn twice. Negative bounds and a single-value range work.
+- **Sample & hold (integer)** and **Sample & hold (Boolean)** accept `value` and `seconds`
+  (0.01–3,600). They sample immediately, hold that value for the chosen duration, then sample again
+  at the start of each new hold. Changing the duration samples immediately and restarts the period.
+  The integer variant requires safe integers; the Boolean variant connects directly to gates.
+
+Configure and connect them in **Inputs…**. For example, connect Random integer → Sample & hold
+(integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
+The controls, names, indicators, and connections work in exported HTML too.
+Timing uses active document time: hidden/inactive documents and the open **Inputs…** dialog pause
+it. Late wakes replay Delay transitions in order; Random and Sample & hold take one new sample,
+without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
+Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:
+reload, copy, undo, rewiring, or recovery from unavailable inputs starts fresh observation without
+counting an already-high input. Static exports and previews capture saved values without sampling.
+
+Input/output indicators are on by default for these logic entries. Green means true, grey means
+false, and blue means a numeric value is available, including zero. Amber means unavailable.
+With valid inputs, double-click the shape and use **Indicators: on/off** to change that instance.
+Compare's editor controls also adjust its threshold. These controls stay out of exports, while
+the saved indicator preference is retained.
+
+Missing or invalid inputs show an unavailable state rather than a false result. The built-in
+logic entries keep their silhouette, display **—** for unavailable values, and show **Input
+required** or **Input unavailable**. Custom components can provide their own unavailable drawing;
+otherwise the app displays a status card. Their handles are inactive until the component recovers.
 
 Connections survive sketch/workspace saves, autosave, and undo/redo. Copy or duplicate both
 components to create an independently connected pair. Copying only a consumer leaves its
@@ -263,7 +363,8 @@ unchanged; icons with no usable geometry cannot be imported.
 
 ## Deployment and settings
 
-When hosted, an optional `shapes-library.json` beside the HTML supplies the initial library.
+When hosted, an optional `shapes-library.json` beside the HTML supplies the initial user library
+and working collection alongside the built-in catalog.
 The file is read only at startup; opening the picker never reloads it. File imports work when
 hosted or opened locally, including importing the demo file via **Manage → Import…**.
 For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
@@ -293,9 +394,9 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | --- | --- |
 | `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
 | `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
-| `shapeLibraryManagement` | Hides Manage and all library additions; blocks library import/export, rename, replace, and delete. Users can place shapes from the deployed library. |
-| `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
-| `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component library entries through scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components, their connections, deployed-library placements, and HTML exports keep working. |
+| `shapeLibraryManagement` | Hides library management and disables pins, copying to Mine, library import/export, rename, replace, and delete. The browser and direct placement remain available. |
+| `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into Mine, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
+| `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 

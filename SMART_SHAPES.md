@@ -23,6 +23,7 @@ app as an end user; see [README.md](README.md) for that.
 - [HTML export behavior](#html-export-behavior)
 - [Fixed units and physical printing](#fixed-units-and-physical-printing)
 - [Constraints and sandbox](#constraints-and-sandbox)
+- [Library catalog and snapshots](#library-catalog-and-snapshots)
 - [Library previews](#library-previews)
 - [Shipped reference templates](#shipped-reference-templates)
 - [Asking an AI to write one](#asking-an-ai-to-write-one-for-you)
@@ -40,7 +41,12 @@ app as an end user; see [README.md](README.md) for that.
 For a grouped smart shape, the first double-click enters group editing; double-click the
 member again to enter its smart-shape controls.
 
-To edit a library definition, choose **Manage → Edit** beside its name. The authoring
+Built-in catalog entries can be placed directly from the expanded library browser. To customize
+one, use **Copy to mine** first; built-in definitions are read-only. Pinning an entry adds a
+reference to the quick popup's working collection and does not create an editable copy.
+
+To edit your library definition, choose **Manage → Edit** beside its name, or **Edit source…**
+in its browser details (also available for unpinned entries). The authoring
 dialog opens with its existing name and script; **Save changes** updates that entry and regenerates
 its PNG preview. The definition's saved state, dimensions, and appearance are preserved.
 `initState()` and `initStyle()` run afresh when placing each instance; saved values supply defaults
@@ -151,11 +157,13 @@ cannot release or cancel the active finger's press.
 
 Every hook reply is validated before rendering, export, preview generation, or state updates.
 `children()` returning `[]` is valid. Invalid individual children are skipped with an error.
-If the whole response is rejected, a live refresh keeps the last valid drawing, or stays empty
-if none exists, and reports an error. Invalid state updates keep the previous state.
+If the whole response is rejected, an unversioned shape's live refresh keeps the last valid drawing,
+or stays empty if none exists, and reports an error. API v2 components show an unavailable state.
+Invalid state updates keep the previous state.
 Missing optional hooks return no handles or make no state change.
 On static export failure, a cached drawing is used only if its script, state, style, size, and non-editing
-mode all match. Otherwise that smart shape is omitted; marked authoring controls never enter an exported drawing.
+mode all match. Otherwise that unversioned smart shape is omitted. Components show an unavailable
+drawing or status card; marked authoring controls never enter an exported drawing.
 
 ### `initState()`
 
@@ -313,7 +321,11 @@ or mutate another component. Start from the **Number control** or **Gauge** temp
 ```
 
 `inputs` and `outputs` are maps of port names to `{type}` descriptors. Types are `number`,
-`string`, and `boolean`; input descriptors may also include a matching `default`. Names start
+`string`, and `boolean`; input descriptors may also include a matching `default`. A string input
+may declare `options`, an array of 1–32 distinct, nonempty strings of at most 2,000 characters each.
+Its default, if present, must be one of those options. **Inputs…** presents these values as a
+dropdown; literal and connected values must match an option. Options apply only to string inputs.
+Names start
 with an ASCII letter and contain up to 64 letters, digits, or underscores. Reserved object keys
 are rejected. Each side supports at most 32 ports. Numbers must be finite; strings are limited
 to 2,000 characters. Each port map and computed output object is limited to 32,000 serialized
@@ -328,7 +340,52 @@ graph asynchronously in dependency order when component state, scripts, or wirin
 discards superseded results. Size, style, and presentation refreshes do not recompute values.
 `refreshMs` remains a drawing refresh; it does not turn a clock into a connected time source.
 
-The host appends `{inputs, outputs}` as the final `io` argument to these v2 hooks:
+The optional API v2 `transition(inputs, state, memory, {now})` hook adds explicit stateful,
+timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
+instance state; `memory` is a transient JSON object, isolated per instance and never saved or
+exported. Both use the existing 4,000-character state limit and JSON validation. `nextWakeAt`
+is an absolute nonnegative timestamp in active-document milliseconds, or `null`/omitted to stop
+waking. The host provides monotonic `now`, owns the timer, and clamps wake delays to at least 10 ms.
+It invokes `transition` before pure `compute`, so downstream components see the staged next state.
+A transition may also run when an input changes before its deadline: inspect `memory` and `now`
+to decide whether to sample. Do not depend on hook-call counts, Worker-local state, or script timers.
+
+Only a current evaluation commits state/memory, and an error in one branch does not stop independent
+branches. Accepted smart-control changes and timed wakes settle in order. Unfinished drag previews
+never consume edges; their committed final value does. Missing inputs, Z, and failed transition or
+compute calls clear that instance's transient observation. Replacement objects, changed scripts,
+and changed bindings re-prime it; changing a literal input is an ordinary input transition.
+
+Each document retains its own clock and transient memory across tab switches. Inactive/hidden
+documents pause, as does the editor's Inputs dialog; the same instances resume on return.
+Saved JSON includes current durable counts/outputs, but reopening, duplicating, or undoing starts
+new transient observation. The built-in Counter seeds an already-high input without counting it.
+The built-in Delay retains up to 64 queued transitions and emits at most one per settle, preserving
+short pulses for downstream counters even after a late wake. Changing its seconds resets its queue.
+Random integer and Sample & hold sample once on a late wake and schedule their next interval from
+that wake. Duration inputs use seconds; the host contract uses milliseconds.
+
+Static exports, library thumbnails, and input inspection call only `compute`, never `transition`.
+Offline HTML starts a new timeline from the exported durable state and uses the same transition
+contract. Timed changes save state without creating an undo entry on every tick. This extension
+keeps the graph acyclic; it does not add events, actions, feedback loops, or shared-bus resolution.
+
+A boolean **output** may declare `triState:true` to permit `null` as an explicit high-impedance
+value, shown as **Z**. Ordinary boolean outputs still accept only `true` or `false`; numeric and
+string ports, input literals, and defaults never accept `null`. The graph validates the declared
+output before publishing Z. A component producing Z remains healthy and interactive. A boolean
+consumer of Z does not run `compute()` or receive a fabricated value; it remains unavailable until
+the source drives true or false again. Valid bindings to Z can be saved in **Inputs…**, while other
+input, type, or cycle errors still prevent saving. This status propagates through dependent
+components in both the editor and exported HTML. Inputs retain one source each; this does not add
+shared buses, pull-up/down resolution, or electrical simulation.
+
+The host appends `{inputs, outputs, name}` as the final `io` argument to these v2 hooks.
+`name` is the instance name from **Inputs…**, or an empty string for unnamed imports. It is
+presentation metadata: renaming redraws the instance without changing computed port values.
+Every built-in API v2 component uses it as the visible caption, falling back to its catalog name
+when empty. Captions fit within the shape, with wrapping or truncation for long names, and remain
+separate from numeric readouts, state labels, and operation symbols.
 
 ```text
 children(state, style, w, h, editing, io)
@@ -352,6 +409,46 @@ must also be enabled to author components. A binding takes precedence over a sav
 unbound input uses its literal, then its declared default. Missing required inputs, missing
 sources/ports, type mismatches, cycles, and failed computations report errors. Failed outputs
 are unavailable to consumers; healthy independent components continue working.
+
+### Unavailable drawings
+
+An optional v2 hook keeps a recognizable shape on screen before its inputs are connected:
+
+```text
+unavailableChildren(state, style, w, h, editing, io)
+```
+
+Here `io` is **`{inputs:{}, outputs:{}, error: message, name}`**. The maps are empty, even if some
+inputs are valid; no old or fabricated values are supplied. Use the saved `state` only for
+configuration such as a threshold or indicator visibility, and draw a neutral placeholder
+for unavailable data. The hook returns child descriptors with the same validation, limits,
+and sandbox as `children()`. It does not produce outputs, update state, or request refreshes.
+
+The editor passes its current `editing` flag; static exports and interactive HTML pass `false`
+to this hook. For unavailable inputs, the host skips `compute()` and invokes this hook instead
+of `children()`. Handles cannot be used. The app draws a status card when no unavailable hook is
+available or its drawing fails. A drawing-hook failure also disables component interactions
+until a valid drawing recovers. Unsupported scripts still cannot execute either hook.
+
+The built-in logic entries implement this hook with their normal silhouette, **—** values,
+amber indicators when enabled, and a short input-status note. The boolean gates are AND, NAND, OR, NOR,
+XOR, XNOR, NOT, and Buffer. Compare uses a numeric input and boolean output;
+[Inverter (×−1)](examples/number-inverter.js) uses numeric input and output. Its computation
+is `-inputs.value`, whereas NOT computes `!inputs.value` on a boolean.
+
+[Math](examples/math.js) declares numeric `a` and `b` inputs, a string `operation` input with
+`options:['+','−','×','÷']` and default `'+'`, and numeric `value` output. Choose the operation in
+**Inputs…**; subtraction and division use `a` as the left operand. Division by zero and nonfinite
+results fail computation, leaving outputs unavailable until corrected. Computation errors expose
+their message as bounded plain text; other failing hooks retain the generic failure message.
+
+These entries store the indicator preference in `state.showIndicators`, defaulting to `true`.
+Missing flags in older state also mean on. With valid inputs, their editor-only **Indicators:
+on/off** control changes that instance; the saved setting affects editor and exported drawings.
+Green/grey indicators mean true/false, blue means an available number (including zero), and
+amber means unavailable. The setting does not change computation or port types.
+
+### Saved components
 
 Sketch format 4 stores the API marker on each component and bindings on the receiving item:
 
@@ -689,18 +786,56 @@ still rescale output. Check a known division on a printed template before use.
 - Children cannot be nested smart shapes, tables, or asset-referencing images. Use the documented
   primitives above. Bézier controls (`c1`/`c2`) and polygon arcs (`arcTo`) are preserved.
 
+## Library catalog and snapshots
+
+The small shape popup shows the working collection. The optional expanded browser offers
+**All collections**, **Built-in**, and **Mine** views, search, and the categories Controls, Logic, Displays,
+Tools & time, and Drawing. Entries can be placed directly or kept in the working collection
+for later use. A filled pin means the entry is in that collection; an outline pin means it is
+outside. The pin toggles membership, as do **Keep in collection** / **Remove from collection**
+in the details. Unpinning leaves its definition and placed objects unchanged. **Copy to mine**
+creates an independent definition for authoring and pins that copy. **Edit details** updates a
+user entry's name, category, description, and tags without changing its script.
+
+Library format 2 retains the self-contained `shapes` definition table, adds stable entry IDs
+and optional category/tag metadata, and records working membership in `workingCollection`.
+Library-entry IDs are separate from the UIDs of canvas items and component bindings. Renaming
+or categorizing an entry therefore does not change a placed component's connections.
+Older flat `{shapes:[...]}` libraries remain readable and initially include every imported
+entry in the working collection. Export includes every user entry and the definitions needed by saved references,
+including snapshots of kept built-ins; an import must not silently substitute a newer definition.
+Importing user entries does not replace the built-in catalog.
+
+The catalog does not change the component API or placement lifecycle. Each placement clones its
+definition, remaps internal component bindings, and initializes smart state and style. Existing
+canvas instances and exported HTML retain their own definition snapshots. Library changes,
+including working membership, require explicit library export; sketch autosave does not save them.
+
+Deployment switches continue to separate authoring from use. `shapeLibrary` hides the library;
+`shapeLibraryManagement` disables catalog changes and pins. Adding smart definitions to the working
+collection or copying them into Mine requires `smartShapeAuthoring`, and API v2 definitions also
+require `smartComponents`. The browser and direct placement remain available when management or
+authoring is disabled. Those switches do not disable existing controls, connections, or HTML
+playback. They do not grant network access to component scripts.
+
 ## Library previews
 
 Library exports include a 128×128 PNG thumbnail and a versioned fingerprint of its source items.
 The fingerprint detects stale previews; it does not certify a library's source or safety. PNG
 headers, dimensions, and size are checked on import, and decoding failures become missing previews.
-Ordinary shape previews are generated automatically. A missing smart-shape preview displays a
+Ordinary shape previews are generated automatically. A missing imported smart-shape preview displays a
 placeholder until you approve script execution. Opening an automatically loaded library asks once;
 declining still lets you use the library. **Generate missing previews…** offers the choice again.
 Automatic preview creation or recovery does not mark the library as having unexported changes.
 Newly authored or replaced entries regenerate previews, and exporting retains generated PNGs so
 future imports can display them without running scripts. Placing/editing a smart shape still runs
-its hooks inside the sandbox. Renaming an entry does not require a new picture.
+its hooks inside the sandbox. Built-in previews ship with the app. Renaming, categorizing,
+tagging, or keeping an entry does not require a new picture; changing its drawing or script does.
+
+A selection can combine ordinary shapes and components. If a component's input source is outside
+the selection, its copied binding stays unresolved and the preview draws its unavailable state
+alongside the other shapes. A component without `unavailableChildren()` uses the host status card;
+missing inputs alone do not prevent thumbnail generation. Drawing-hook failures still report an error.
 
 Thumbnails and cropped SVG/PNG exports include painted children outside the container, including
 outside labels and thick outlines. The editable container and rotation pivots keep their geometry.
@@ -730,6 +865,28 @@ the whole file into the Script field:
 
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
+
+The built-in catalog also provides component examples with their source in `examples/`:
+
+- [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
+  [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
+  [NOT](examples/not-gate.js), and [Buffer](examples/buffer.js): traditional boolean gate shapes,
+  required typed ports, and optional indicators.
+- [Compare](examples/compare.js): strict numeric comparison against an editor-configured threshold.
+- [Inverter (×−1)](examples/number-inverter.js): numeric negation, distinct from boolean NOT.
+- [Math](examples/math.js): two numeric inputs and a selectable arithmetic operation in **Inputs…**.
+- [Trigger](examples/trigger.js): a pushbutton producing a 100 ms boolean pulse per click;
+  queued presses have a 10 ms low gap. Transient observation prevents replay after restoration.
+- [Delay](examples/delay.js): preserve boolean transitions with a configured delay in seconds.
+- [Counter](examples/counter.js): rising-edge count, inclusive threshold output, and reset.
+- [Random integer](examples/random-integer.js): inclusive integer range, one sample per second.
+- [Sample & hold (integer)](examples/sample-hold-integer.js) and
+  [Sample & hold (Boolean)](examples/sample-hold-boolean.js): sample immediately and hold for a
+  configured duration, with fixed typed ports.
+- [Tri-state buffer](examples/tri-state-buffer.js): boolean data and active-high enable; outputs
+  the data when enabled or Z when disabled. Its purple Z indicator differs from amber missing inputs.
+
+These sources include `unavailableChildren()` so the component stays recognizable before connection.
 
 Standalone copies of [Live clock](examples/live-clock.js), [Stopwatch](examples/stopwatch.js), and
 [Ruler](examples/ruler.js) are also available, along with the importable

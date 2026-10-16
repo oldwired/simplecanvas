@@ -1,8 +1,8 @@
 # From smart shapes to connected components
 
-Status: stage 1 and its authoring setting are implemented on `feature/smart-components`,
+Status: stage 1, its authoring setting, and the initial stage 2 library/logic delivery are implemented on `feature/smart-components`,
 based on `main`, updated 2026-10-16. They are not yet part of the main-branch baseline below.
-Stages 2–6 remain proposals; the delivery tables define their intended order and prerequisites.
+Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
@@ -10,9 +10,8 @@ For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
 SimpleCanvas already creates portable interactive documents. An HTML export contains its
 visuals, smart-shape scripts, saved state, and an isolated runtime; readers can use it offline.
-On the feature branch, connected shapes can now exchange scalar values. The next step is to
-make useful components easy to find, place, and combine; consuming datasets and requesting
-explicit actions follow.
+On the feature branch, connected shapes exchange scalar values, and a categorized browser makes
+components easy to find, place, and combine. Consuming datasets and requesting explicit actions follow.
 
 The proposed direction is a visual authoring tool for small, self-contained interactive
 HTML documents. Preserve the ordinary drawing workflow and make component authoring optional.
@@ -23,8 +22,8 @@ The first milestone is **one numeric control driving a separate gauge,
 working in both the editor and an exported HTML file**. It is implemented with API v2,
 an **Inputs…** source picker, saved bindings, and independent instance IDs. Open
 [the connected example](../examples/connected-components.json) as a sketch to try it.
-The next milestone adds a categorized library, ready-to-place default components, and logic
-gates. This comes before data tables, events, downloads, and external integrations, so actual
+The initial second milestone adds a categorized library, ready-to-place default components, and
+logic gates. This comes before data tables, events, downloads, and external integrations, so actual
 composed documents can inform those later increments.
 
 ## Current baseline: main and the feature branch
@@ -46,6 +45,7 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Library previews | Bundled PNG previews display without executing scripts. Missing imported smart previews use placeholders and require approval before generation; authoring a definition already authorizes its preview. Placement still runs hooks in the sandbox. |
 | Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
 | Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Inputs, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
+| Library browser — feature branch | The existing popup stays the working collection. An optional adjacent browser provides search, categories, Built-in/Mine filters, direct placement, and pins controlling working membership. Built-in definitions and static previews are bundled; library format 2 preserves IDs, metadata, and membership. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
 
 The original, still-supported hook contract is:
@@ -61,8 +61,8 @@ hitEdit(state, lx, ly, w, h, style)
 dragEdit(state, handle, lx, ly, w, h, style)
 ```
 
-API v2 adds `compute(inputs, state)`, resolved `io` on drawing/interaction hooks, and an
-explicit `{state}` return from `dragEdit`. The [scripting reference](../SMART_SHAPES.md#connected-components-api-v2)
+API v2 adds pure `compute(inputs, state)`, the optional stateful `transition` hook, resolved `io`
+on drawing/interaction hooks, and an explicit `{state}` return from `dragEdit`. The [scripting reference](../SMART_SHAPES.md#connected-components-api-v2)
 defines the implemented contract and budgets.
 
 Hooks return synchronously inside the Worker; requests and replies cross an asynchronous
@@ -93,9 +93,10 @@ These boundaries describe the feature branch, including stage 1.
   characters. Invalid state updates are rejected. Bulk datasets need a separate representation.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
-- **Library discovery is still basic.** The picker presents one flat collection, and importing
-  a library replaces that collection. Number control and Gauge are authoring templates;
-  a categorized built-in component collection remains to be implemented.
+- **Library edits require explicit export.** The browser and working collection last for the
+  current visit. Import replaces the user catalog and its working membership; built-ins remain.
+  The initial Constant is numeric, Compare is strict greater-than, and Value label accepts numbers.
+  Further scalar variants can extend this catalog without changing the browsing model.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
   document-wide Run/Preview mode inside the editor would be an additional feature.
 
@@ -117,7 +118,7 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stage 1 is implemented on the feature branch; stage 2 is next. The stage numbers give the
+Stage 1 and the initial stage 2 delivery are implemented on the feature branch. The stage numbers give the
 proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -126,7 +127,7 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic | Categories/search, a built-in collection alongside user entries, controls/displays, boolean gates, and numeric comparison | An author builds the threshold-and-toggle indicator from the library without editing scripts; the document and independent copies work in the editor and offline HTML. |
+| 2. Component library and logic — initial delivery implemented | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, scalar controls/displays, gates, comparison, and bounded timed signals | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the example works in editor and offline HTML. |
 | 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
@@ -152,32 +153,44 @@ and a complete visual programming editor outside these milestones unless actual 
 Every stage must work in the editor and self-contained HTML. Local behavior works offline;
 live integrations additionally require reachable endpoints and preserve readable offline fallbacks.
 
-## Next milestone: component library and logic
+## Stage 2: component library and logic
 
 Make composing a useful connected document possible directly from the library, without opening
 the script editor. This milestone builds on the existing scalar API and source picker; it does
 not require datasets, events, or a new execution model.
 
-Deliver this as three steps: **2.1** define library-entry identity, category/tag serialization,
-and built-in/user collection behavior; **2.2** build the picker and supply the scalar controls,
-gates, and displays; **2.3** verify the complete example, library roundtrips, and offline HTML.
-Keep the existing input picker sufficient for this milestone; visible wires are optional later work.
+The delivery follows three steps: **2.1** library-entry identity, category/tag serialization,
+and built-in/user collection behavior; **2.2** the expandable browser and scalar controls,
+gates, and displays; **2.3** the complete example, library roundtrips, and offline HTML checks.
+The existing input picker is sufficient; visible wires remain optional later work.
+
+### Preserve the working popup
+
+The existing popup keeps its dimensions, grid, management flow, and Add selection/Add icon footer.
+A Browse control expands a single popover with the library browser alongside it. On narrow screens,
+the browser occupies the popover and Back to collection returns to the original view.
+
+Every browser entry supports direct placement and a separate pin. A filled pin includes the entry
+in the working collection; an outlined pin leaves it in the catalog only. Unpinning removes membership,
+not the definition or placed instances. Both panes use the same canonical entries. Keeping a built-in
+does not create a personal duplicate; Copy to mine explicitly creates an editable personal definition.
+Info opens details without starting placement. Browsing and placing never require a Manage detour.
 
 ### Categories and discovery
 
-Start with one category per library entry, optional search tags, and a search field. Use
+Use one category per library entry, optional search tags, and a search field. Use
 **categories** for library organization; canvas **groups** continue to mean objects selected
 and transformed together. Nested folders can follow if real collections need them.
 
 | Category | Initial contents |
 | --- | --- |
-| Controls | Number control, toggle, typed constant values |
-| Logic | AND, OR, NOT, XOR, numeric comparison |
-| Displays | Gauge, value label, boolean indicator |
-| Tools & time | Ruler, clock, stopwatch |
-| Drawing | Existing shapes and imported icons |
+| Controls | Number control, Toggle, numeric Constant |
+| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare (strict greater-than), numeric Inverter (×−1), Math |
+| Displays | Gauge, numeric Value label, Status indicator |
+| Tools & time | Ruler, Live clock, Stopwatch |
+| Drawing | Rectangle, Ellipse, and categorized user shapes/icons |
 
-Category and tag metadata should survive library import/export. Existing flat libraries remain
+Category and tag metadata survive library import/export. Existing flat libraries remain
 valid and appear under an uncategorized section. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Cataloguing clocks here does not make their presentation refreshes into
@@ -185,13 +198,15 @@ connected time sources.
 
 ### Built-in and user collections
 
-Offer a built-in collection alongside the user's collection. Collection origin and category
+The browser offers a built-in collection alongside the user's collection. Collection origin and category
 serve different purposes: an author can find Logic components across both collections, while
 still seeing which entries are built in and which are their own.
 
-Default components should be ready to place, with descriptions and bundled previews. Include
-their definitions in the standalone app so they remain available without a hosted library file
-or network connection. Importing a user library must not replace the built-in collection.
+Default components are ready to place, with descriptions and bundled previews. Their definitions
+are included in the standalone app, available without a hosted library file or network connection.
+Importing a user library does not replace the built-in collection. Format 2 exports include full
+snapshots of kept built-ins, all personal entries, and ordered working-collection IDs. A matching
+built-in snapshot can reuse its installed definition; changed snapshots remain personal entries.
 Authors can copy a built-in definition into their own collection to customize it. Preserve
 existing instance snapshots: changing a library entry never silently updates placed components.
 
@@ -203,15 +218,35 @@ milestone must keep the existing explicit library export workflow clear.
 
 ### Logic components
 
-Implement gates as normal API v2 components with declared boolean ports and pure `compute()`
-hooks. AND, OR, and XOR start with two inputs; NOT has one. A numeric Compare component bridges
-controls and boolean logic, with its comparison operation and threshold configured explicitly.
+Gates are normal API v2 components with declared boolean ports and pure `compute()` hooks.
+AND, OR, NAND, NOR, XOR, and XNOR have two inputs; NOT and Buffer have one. NOT inverts a boolean,
+while the numeric Inverter multiplies a number by −1. These remain separate typed definitions.
+Tri-state buffer adds boolean data and an active-high enable input. When disabled, its output is
+explicitly undriven (Z); when enabled, it follows the data. Boolean output metadata opts into this
+third state with `triState:true`; ordinary booleans remain strict. A disabled buffer stays healthy,
+and dependent boolean components wait without inventing false. Authors can connect a source while
+it is Z, and enabling it restores the dependent chain. The triangle has a distinct enable pin and
+purple Z indicator; amber still means a missing or invalid input. One source per input remains the
+connection model; bus resolution and electrical effects are not included.
+Compare bridges numeric controls and boolean logic with strict greater-than and an
+editor-adjustable threshold. More comparison operations and
+string/boolean constants can be added as later catalog extensions.
+Math combines two required numeric inputs with a selectable +, −, ×, or ÷ operation and one
+numeric output. Configure the operation in Inputs alongside the bindings; each instance saves
+its own choice. Subtraction and division preserve operand order, and division by zero or overflow
+make the result unavailable until corrected. The same computation runs in exported HTML.
 Use declared types throughout: invalid or missing required inputs produce connection errors,
 and an unavailable upstream value must not silently become `false`.
 
-Show readable gate names and current input/output values on the blocks. Distinguish an
-unavailable value from a valid false result, so an author can understand a composed document
-without inspecting scripts. Reader exports initially retain the blocks and their values;
+Use traditional curved gate silhouettes, including inversion bubbles, with readable names and
+current input/output values. All built-in components display their instance name as the caption,
+including Number control, Constant, Gauge, and the gates. Captions fit within the shape; operation
+symbols, readouts, and state labels remain separate. Optional per-instance LEDs default on: green means true, grey false,
+blue an available numeric value, and amber unavailable. The editor-only Indicators control toggles
+the LEDs without changing computation, port stubs, or inversion bubbles; its setting survives saves
+and exports. Unconnected logic components retain their silhouettes and show “—” plus an input-status
+message. Other components use a named host status card when they cannot render a valid value.
+Reader exports initially retain the blocks and their values;
 an authoring-only display policy can be considered separately from computation.
 
 The acceptance example is **an indicator that turns on only when a number exceeds 70 and an
@@ -228,28 +263,90 @@ flowchart LR
 Authors place these components from the library and connect them through **Inputs…**. Repeated
 instances retain their own names, state, and bindings; duplicating the complete example creates
 an independent working copy. One output may also feed several consumers.
+Toggle, Value label, and Status indicator display the instance name from Inputs as their caption,
+separately from the current value or state. Renaming redraws the caption without changing wiring
+or computation, and the caption remains visible in exports.
 
-Keep this increment to combinational logic: outputs derive from current inputs and state.
-Feedback loops, latches, delays, and scheduled signals need explicit state and time semantics
-before they can extend the current acyclic graph. A boolean value is also distinct from an
-event or request trigger; remaining true must not imply repeated actions in later stages.
+Visual input pins sit on the left and outputs on the right. Future physical attachment points
+should occupy those same positions, so wires meet the logical symbol and its indicator directly.
+That later interaction needs named port anchors in component-local coordinates, transformed with
+the instance when moved, resized, or rotated. Bindings should continue to reference instance UID
+and port name; screen coordinates must never become connection identity. Inputs remains the
+current connection editor.
+
+### Stateful and timed signals
+
+Stage 2 also includes a bounded temporal extension to the existing acyclic graph:
+
+- **Trigger:** a pushbutton in Controls with a boolean `value` output, normally false. Each
+  completed click emits a 100 ms high pulse. Holding does not repeat; rapid clicks queue up to
+  64 waiting presses with at least a 10 ms low gap between pulses, preserving each rising edge.
+  Its transient queue never replays after reload, copying, or undo. It is a scalar signal source,
+  not an external-action/event API, and works directly in offline HTML.
+- **Delay:** boolean input/output, configured seconds (0–3,600), transport delay preserving every
+  transition. Each instance queues at most 64 transitions, reports overflow, and emits at most one
+  due transition per settle so downstream counters observe short pulses. Changing seconds resets
+  the pending queue and schedules the current input relative to the current output.
+- **Counter:** counts false → true edges; outputs numeric `count` and boolean `reached` when
+  `count >= threshold`. Threshold is a nonnegative safe integer. Initial high inputs do not count.
+  A held boolean reset keeps the count at zero and tracks the input; a manual Reset also works in HTML.
+- **Random integer:** configurable inclusive integer bounds; produces a value immediately and
+  once per second thereafter. Values may repeat; bounds and inclusive span must be safe integers.
+- **Sample & hold:** separate Integer and Boolean library entries with fixed typed ports. Both
+  sample at the start of each hold, beginning immediately, and hold for a configured 0.01–3,600
+  seconds. Changing the duration starts a fresh hold. Integer inputs must be safe integers.
+
+The optional v2 `transition(inputs, state, memory, {now})` hook returns staged durable state,
+transient per-instance memory, and an optional next-wake deadline. The host owns bounded scheduling,
+validation, and ordered commits. `compute()` remains pure and sees the staged state. State and memory
+have the same 4 KB limit. Only current successful nodes commit; failed branches stay unavailable.
+An accepted control change settles before the next accepted change; drag previews do not consume
+edges until released. Timed changes do not create an undo entry for every tick.
+
+Clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
+Delay preserves its pending queue across those pauses. Random and Sample & hold sample once after
+a late wake, without replaying missed intervals. Current outputs/counts persist, while queues,
+deadlines, and previous-input observations do not. Reload, copy, undo, script/binding replacement,
+or unavailable-input recovery re-primes observations without creating a false initial count.
+Static exports and previews use pure computation; offline HTML uses the same temporal contract.
+
+Feedback loops and latches remain deferred. A boolean value is still distinct from an event or
+request trigger; remaining true must not imply repeated external actions in later stages.
 
 ### Stage 2 acceptance
 
+- The ordinary popup retains its placement and management flow. The expanded browser places
+  entries directly; pinning/unpinning changes only working membership and survives export/import.
 - Categories and search make the default controls, gates, and displays discoverable. They are
   ready to place in the standalone app without importing a file or editing a script.
 - Importing a user library retains the built-in collection. Older flat libraries still load;
   category/tag metadata survives export and reimport, and placed instances remain unchanged.
 - The complete threshold-and-toggle example can be composed through the library and **Inputs…**.
   With Enabled on, 70 produces false and 71 produces true; Enabled off always produces false.
-- AND, OR, NOT, and XOR satisfy their boolean truth tables. Type errors and unavailable inputs
+- AND, NAND, OR, NOR, XOR, XNOR, NOT, and Buffer satisfy their boolean truth tables; the numeric
+  Inverter switches the sign of finite numbers. Type errors and unavailable inputs
   remain visible and do not masquerade as valid false outputs.
 - State and wiring survive undo/redo and sketch/workspace save/load. Duplicated examples remain
   independent, and one source can correctly feed several consumers.
+- Trigger emits one distinct pulse per accepted click without replay on restoration.
+- Delay preserves pulse order, Counter counts each rising edge once, and resets/initial high
+  inputs do not create phantom counts. Repeated instances remain independent. Random stays within
+  its inclusive bounds; both Sample & hold variants retain values until the next sampling boundary.
+- Temporal signals pause/resume across visibility and tabs, re-prime correctly after restoration,
+  and do not advance during static export, thumbnails, or Inputs inspection.
 - The example works in downloaded HTML without network access. Static exports capture its
   current result, and all existing sandbox and deployment restrictions remain in effect.
 - Disabling component authoring hides creation/editing controls while existing drawings,
   copies, fixed-library placements, and exports continue working.
+
+### Discussion checkpoint: after stage 2, before stage 3
+
+Shared-bus support is deferred. Once stage 2 is complete, discuss it with the user before
+starting stage 3; do not implement it as part of the current stage or automatically at that checkpoint.
+The idea to revisit is connecting several tri-state buffers to one destination, with only one
+enabled at a time, potentially through a dedicated Bus component. Proposed behavior: no active
+driver produces Z, one active driver supplies its value, and multiple active drivers show a visible
+error. The interface and resolution policy remain to be agreed. Until then, each input keeps one source.
 
 ## The connected document
 
@@ -288,10 +385,17 @@ API v2 is recorded as `apiVersion:2` in the script and `componentApi:2` on the s
 and validated by the runtime. Existing unversioned scripts retain their original contract.
 
 V2 adds declared `inputs` and `outputs`, a `compute(inputs, state)` hook, and an extra `io`
-argument on drawing and interaction hooks containing resolved inputs and outputs. It starts
+argument on drawing and interaction hooks containing resolved inputs and outputs plus the instance
+`name` for presentation. It starts
 with `number`, `string`, and `boolean`. Table types can follow with the dataset model.
 Metadata crosses the same validated sandbox boundary as hook results. `compute` is required
 when outputs are declared; an input-only display is valid. `io` also reaches `exportBehavior`.
+
+An optional `unavailableChildren(state, style, w, h, editing, io)` view hook can retain a component's
+recognizable silhouette before its inputs are connected. The host supplies empty inputs/outputs
+and an `io.error` string, validates the returned primitives like ordinary children, and keeps
+interaction disabled. It never calls `compute` with fabricated values. Missing or failed view
+hooks fall back to a host-rendered status card in the editor and exports.
 
 For a gauge, the contract looks like this excerpt:
 
@@ -334,8 +438,8 @@ undo, deletion, or tab changes. Preserve these guarantees and accepted interacti
 adding new sources or optimizing evaluation. Do not depend on all Workers being resident at once.
 
 Treat `compute` as a pure value-producing hook. Rendering and recomputation must not trigger
-external actions. Keep `refreshMs` as presentation refresh: a clock driving other components
-would need an explicit time-source contract, rather than treating every redraw as a graph change.
+external actions. Keep `refreshMs` as presentation refresh. Stage 2's explicit `transition`
+contract supplies stateful/timed signals; redraws do not themselves advance that timeline.
 
 Apply execution and value-size budgets to computations as well as drawing hooks. If a producer
 fails, mark its outputs unavailable and identify affected bindings. A last valid drawing may
@@ -711,8 +815,8 @@ handling are tested separately from broker delivery.
 
 ## Decisions before each stage
 
-1. **Stage 2:** Define category/tag serialization, library-entry identity, and collection behavior
-   before implementing the expanded picker; preserve existing flat library imports.
+1. **Stage 2 — established:** Format 2 defines category/tag serialization, stable library-entry
+   identity, catalog definitions, and ordered working membership; flat imports remain supported.
 2. **Stage 3:** Define the table contract and dataset storage, transfer, and computation budgets
    before accepting embedded tables. Preserve recoverable unsupported data.
 3. **Stage 4:** Define a supported revision for event/action envelopes, receiving hooks, dispatch

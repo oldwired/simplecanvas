@@ -89,3 +89,26 @@ state across tabs with colliding UIDs, script/source escaping, and hung-script f
 
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.
+
+Library browser regressions in `tests/library-browser.test.cjs` exercise direct placement from the
+expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
+metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the
+threshold/AND/indicator example through Inputs and operate the actual downloaded HTML offline.
+`tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
+tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
+errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
+tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
+input choices from literals and bindings in the editor and offline exports. Failure tests ensure
+unavailable views replace stale results, recover correctly, and leave independent controls usable.
+A catalog-wide naming check renames every built-in component through Inputs and verifies its
+caption on canvas, in SVG, and in offline HTML.
+Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
+connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
+invalid inputs and cycles must not be hidden by a Z input.
+
+`tests/temporal-components.test.cjs` exercises the bounded transition contract, transport Delay,
+rising-edge Counter/reset, Random integer, both typed Sample & hold entries, and Trigger pushbutton
+pulses. Trigger checks cover rapid clicks, held presses, idle output, restoration, and offline use. It covers per-instance
+memory, active-document time, stale evaluation rejection, pure snapshot paths, and ordered editor/
+offline interaction. Run it with `node --test tests/temporal-components.test.cjs`; prefix with
+`BROWSER_ENGINE=webkit` for WebKit.
