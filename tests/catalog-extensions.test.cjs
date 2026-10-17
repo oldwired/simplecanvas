@@ -341,7 +341,7 @@ test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape
  const click=async id=>{const pt=await editorPoint(page,run,0,id);await page.mouse.click(pt.x,pt.y);await run('smartHitSettled');};
  const sheet=()=>run('({w:items[0].w,h:items[0].h,cols:items[0].state.cols,rows:items[0].state.rows,cells:items[0].state.cells})');
  assert.deepEqual(await outputs(run,0),{Total:8});
- await click('cadd0');   // insert right of A
+ await click('cins1');   // insert right of A
  let s=await sheet();
  assert.deepEqual([s.w,s.h,s.cols,s.rows],[448,144,7,6],'one column wider, cells keep their size');
  assert.equal(s.cells.E1,'=SUM(A1:D1)','a range spanning the insertion grows');
@@ -353,7 +353,7 @@ test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape
  assert.deepEqual([s.w,s.cols],[384,6]);
  assert.equal(s.cells.D1,'=SUM(A1:C1)','a range shrinks when a column inside it is deleted');
  assert.equal(s.cells.E1,'=OUTPUT(D1+#REF!,"Total")','a reference to the deleted column becomes #REF!');
- await click('radd0');   // insert a row below row 1
+ await click('rins1');   // insert a row below row 1
  s=await sheet();
  assert.deepEqual([s.h,s.rows],[168,7]);
  assert.equal(s.cells.A3,'="B1 stays"','row 2 moved to row 3');

@@ -1,7 +1,8 @@
 // A spreadsheet component, 6 x 6 cells to start with. In edit mode, click a cell to type a number,
-// TRUE/FALSE, a label, or a formula starting with "=". The green + above a column header inserts a
-// column to its right, the red x deletes that column; left of each row header, x deletes the row and
-// + inserts one below. The shape grows or shrinks by one cell, and formulas follow moved cells as in
+// TRUE/FALSE, a label, or a formula starting with "=". Above each column header a green + near its
+// right edge inserts a column to its right (column A also has a + on its left); left of each row
+// header a + at its bottom edge inserts a row below (row 1 also has a + at its top). Red x buttons on
+// the opposite sides delete: below the last row one per column, right of the last column one per row. The shape grows or shrinks by one cell, and formulas follow moved cells as in
 // Excel (references to deleted cells become #REF!). Up to 26 columns; at most 128 cells and buttons.
 //   =A1+B2*2   =(A1-A2)/A3   =SUM(A1:A9)   =AVERAGE(B1:B5, 10)   =MIN(A1:C3)   =MAX(A1, B1)
 //   =A1>20   =A1<>B1   (= <> < > <= >=)   =AND(A1>0, B1)   =OR(...)   =NOT(B2)   =TRUE
@@ -30,8 +31,13 @@
     const n=(v,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:10;
     return {cols:n(state.cols,26),rows:n(state.rows,99)};
   },
-  // The host allows at most 128 handles: one per cell plus an x and a + per column and per row.
-  _fits(cols,rows){return cols*rows+2*(cols+rows)<=128;},
+  // The host allows at most 128 handles: one per cell, an x and a + per column and per row, and the
+  // extra + before the first column and before the first row.
+  _fits(cols,rows){return cols*rows+2*(cols+rows)+2<=128;},
+  // Cell text uses the toolbar font size. With _CAP_FONT on it is also limited to half the row height so
+  // it never spills out of a cell; switched off for now because the silent limit surprised users.
+  _CAP_FONT:false,
+  _cellPx(style,L){const t=style.fontSize||L.px;return Math.max(6,Math.round(this._CAP_FONT?Math.min(t,L.px):t));},
   _port(name){
     let p=String(name).trim().replace(/[^A-Za-z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64);
     if(!/^[A-Za-z]/.test(p))p=('p'+p).slice(0,64);
@@ -166,7 +172,7 @@
         if(n.k!=='fn')return;
         if(n.name==='INPUT'){
           const type=this._inputType(n);
-          if(type){const p=this._port(n.args[0].v);if(!ins.some(x=>x.port===p))ins.push({port:p,type});}
+          if(type){const p=this._port(n.args[0].v);if(!ins.some(x=>x.port===p))ins.push({port:p,type,cell:this._key(c,r)});}
         }
         const last=n.args[n.args.length-1];
         if(n.name==='OUTPUT'&&n.args.length===2&&last.k==='str'){
@@ -313,24 +319,29 @@
   _layout(w,h,dims){
     const cw=w/dims.cols,rh=h/dims.rows,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,cw*.45));
     // + and x buttons: a row above the column headers, a column left of the row headers
-    const bs=Math.max(10,Math.min(16,rh*.45,cw*.4));
-    return {cw,rh,headH,headW,bs,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
+    const bs=Math.max(10,Math.min(16,rh*.45,cw*.4)),gap=5;   // gap: air between buttons and shape/headers
+    return {cw,rh,headH,headW,bs,gap,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
   },
-  // Centers of the editor-only + / x buttons, keyed by handle id (cdelN / caddN per column, rdelN /
-  // raddN per row). x disappears for the last remaining column/row, + once the sheet would exceed
-  // the host's handle limit.
+  // Centers of the editor-only + / x buttons, keyed by handle id: cdelN / rdelN delete column/row N,
+  // cinsN / rinsN insert a new column/row AT index N (0 = before the first). x disappears for the last
+  // remaining column/row, + once the sheet would exceed the host's handle limit.
   _buttons(state,w,h){
     const dims=this._dims(state),L=this._layout(w,h,dims),b={},pad=2,half=L.bs/2;
-    const colY=-L.headH-half-pad,rowX=-L.headW-half-pad;
     const addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
-    for(let c=0;c<dims.cols;c++){
-      if(dims.cols>1)b['cdel'+c]={x:c*L.cw+half+pad,y:colY,kind:'del'};
-      if(addCol)b['cadd'+c]={x:(c+1)*L.cw-half-pad,y:colY,kind:'add'};
-    }
-    for(let r=0;r<dims.rows;r++){
-      if(dims.rows>1)b['rdel'+r]={x:rowX,y:r*L.rh+half+1,kind:'del'};
-      if(addRow)b['radd'+r]={x:rowX,y:(r+1)*L.rh-half-1,kind:'add'};
-    }
+    // + buttons: columns one lane above the headers, right-aligned in their column (set in a little;
+    // column A also gets one at its left edge); rows one lane left of the headers, flush with the row's
+    // bottom edge (row 1 also gets one at its top). A + never sits under the host's rotation knob
+    // (radius 8, centered above the shape) -- it moves left until it clears it.
+    const addY=-L.headH-half-L.gap,addX=-L.headW-half-L.gap,inset=half+2*pad,knob=w/2,clear=8+half+3;
+    const dodge=x=>Math.abs(x-knob)<clear?knob-clear:x;
+    for(let c=0;c<dims.cols;c++)if(addCol)b['cins'+(c+1)]={x:dodge((c+1)*L.cw-inset),y:addY,kind:'add'};
+    if(addCol)b['cins0']={x:dodge(inset),y:addY,kind:'add'};
+    for(let r=0;r<dims.rows;r++)if(addRow)b['rins'+(r+1)]={x:addX,y:(r+1)*L.rh-half,kind:'add'};
+    if(addRow)b['rins0']={x:addX,y:half,kind:'add'};
+    // x buttons on the opposite sides: below the last row, centered under each column; right of the
+    // last column, centered beside each row.
+    for(let c=0;c<dims.cols;c++)if(dims.cols>1)b['cdel'+c]={x:(c+.5)*L.cw,y:h+half+L.gap+5,kind:'del'};   // the selection outline sits 5 px out; keep L.gap beyond it
+    for(let r=0;r<dims.rows;r++)if(dims.rows>1)b['rdel'+r]={x:w+half+L.gap+5,y:(r+.5)*L.rh,kind:'del'};
     return {b,r:half};
   },
   _fmt(v){
@@ -347,7 +358,7 @@
     const family=['sans','serif','mono','cursive'].includes(style.fontFamily)?style.fontFamily:'sans';
     const cap=size=>Math.max(6,Math.round(Math.min(style.fontSize||L.px,size)));
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
-      fontFamily:family,fontSize:cap(size||L.px),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
+      fontFamily:family,fontSize:size?cap(size):this._cellPx(style,L),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const x=sheet[this._key(c,r)];
@@ -384,8 +395,24 @@
           items.push({type:'line',x1:x-arm,y1:y+arm,x2:x+arm,y2:y-arm,color:col,size:1.5,editorOnly:true});
         }
       }
-      const note=errorNote||[ports.ins.length?'In: '+ports.ins.map(x=>x.port+(x.type==='boolean'?' (bool)':'')).join(', '):'',ports.outs.length?'Out: '+ports.outs.map(o=>o.port+(o.type!=='number'?' ('+(o.type==='boolean'?'bool':o.type)+')':'')).join(', '):''].filter(Boolean).join('   ');
-      if(note)items.push({...label(note,0,h+2,w,Math.max(14,L.headH),'left',errorNote?'#92400e':'#475569',false,Math.min(12,L.px)),editorOnly:true});
+      // Ports listed below the x lane with their cells, e.g. "energy (E2)", "door (B5, bool)". Inputs and
+      // outputs start on separate lines and are wrapped here, one text child per line with its own fixed
+      // height, so a long list grows downward and is never clipped by the drawing's bounds.
+      const tag=x=>x.port+' ('+x.cell+(x.type==='number'?'':', '+(x.type==='boolean'?'bool':x.type))+')';
+      const groups=errorNote?[{words:errorNote.split(/\s+/),comma:false}]:[ports.ins.length?['In:',...ports.ins.map(tag)]:null,ports.outs.length?['Out:',...ports.outs.map(tag)]:null].filter(Boolean).map(words=>({words,comma:true}));
+      const npx=Math.min(12,L.px),lineH=Math.ceil(npx*1.35),perLine=Math.max(8,Math.floor((w-12)/(npx*.62)));   // conservative glyph width
+      const lines=[];
+      for(const {words,comma} of groups){
+        let line='';
+        for(const [i,word] of words.entries()){
+          const piece=!comma||i===0||i===words.length-1?word:word+',';
+          const next=line?line+' '+piece:piece;
+          if(line && next.length>perLine){lines.push(line);line=piece;}else line=next;
+        }
+        if(line)lines.push(line);
+      }
+      const top=h+L.bs+L.gap+11;
+      lines.forEach((text,i)=>items.push({...label(text,0,top+i*lineH,w,lineH,'left',errorNote?'#92400e':'#475569',false,npx),editorOnly:true}));
     }
     return items;
   },
@@ -399,7 +426,7 @@
   // but offers no way to change values or formulas.
   handles(state,w,h,style={}){
     const dims=this._dims(state),L=this._layout(w,h,dims),hs=[];
-    const fontSize=Math.max(6,Math.round(Math.min(style.fontSize||L.px,L.px)));   // same size the cell text is drawn with
+    const fontSize=this._cellPx(style,L);   // same size the cell text is drawn with
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const k=this._key(c,r);
       hs.push({id:k,x:(c+.5)*L.cw,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
@@ -454,11 +481,11 @@
     return {...state,cells,cols:dims.cols+(axis==='c'?delta:0),rows:dims.rows+(axis==='r'?delta:0)};
   },
   dragEdit(state,handle,value,ly,w,h){
-    const dims=this._dims(state),op=/^([cr])(add|del)(\d+)$/.exec(handle);
+    const dims=this._dims(state),op=/^([cr])(ins|del)(\d+)$/.exec(handle);
     if(op){
-      const axis=op[1],add=op[2]==='add',i=+op[3],count=axis==='c'?dims.cols:dims.rows;
-      if(i>=count || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
-      const next=this._restructure(state,axis,add?i+1:i,add?1:-1);
+      const axis=op[1],add=op[2]==='ins',i=+op[3],count=axis==='c'?dims.cols:dims.rows;
+      if(i>(add?count:count-1) || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
+      const next=this._restructure(state,axis,i,add?1:-1);
       if(JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
       // grow/shrink by one cell so the cells keep their size (the host keeps the top-left corner)
       const L=this._layout(w,h,dims);
