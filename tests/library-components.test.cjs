@@ -92,7 +92,7 @@ const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant
   selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
   steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js',
   shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
-  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js'};
+  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',spreadsheet:'spreadsheet.js'};
 
 test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
@@ -431,7 +431,8 @@ test('Math operations are configured per instance in Inputs and persist through 
 test('every API2 catalog component uses its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
-    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2);
+    // the spreadsheet deliberately draws no caption: its cells fill the whole shape
+    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && definition.key!=='spreadsheet');
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
       numberFunction:{value:-7.5,operation:'abs'},pulseGenerator:{seconds:60,width:.1,enable:false},edgePulse:{value:false,edge:'rising',seconds:.1},

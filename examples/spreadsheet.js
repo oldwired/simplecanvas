@@ -2,7 +2,9 @@
 // TRUE/FALSE, a label, or a formula starting with "=". Right-click (Control+click on a Mac) a column
 // header, a row header or a cell to insert or delete columns/rows from a context menu; on a cell the
 // menu also offers "Insert function", which puts the function into the cell (wrapping a formula that
-// is already there) and opens the cell with the first placeholder selected. The shape grows or shrinks by one cell, and formulas follow moved cells as in
+// is already there) and opens the cell with the first placeholder selected, plus "Number format" (how
+// a numeric result is shown) and "Alignment" (Left, Center, Right, or Default: numbers right, Booleans
+// centered, text left). The shape grows or shrinks by one cell, and formulas follow moved cells as in
 // Excel (references to deleted cells become #REF!). Up to 26 columns; at most 128 cells and buttons.
 //   =A1+B2*2   =(A1-A2)/A3   =SUM(A1:A9)   =AVERAGE(B1:B5, 10)   =MIN(A1:C3)   =MAX(A1, B1)
 //   =A1>20   =A1<>B1   (= <> < > <= >=)   =AND(A1>0, B1)   =OR(...)   =NOT(B2)   =TRUE
@@ -347,7 +349,7 @@
       C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4',A6:'=SUM(A2:A4)',C6:'=SUM(C2:C4)',
       E1:'Extra',E2:'=INPUT("energy")',F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
   },
-  initStyle(){return {w:384,h:144,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
+  initStyle(){return {w:384,h:144,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state){
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
@@ -394,6 +396,8 @@
       MID:['text','start','count']}],
     ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
   ],
+  _cellFormat(state,k){const f=(state.formats||{})[k];return this._FORMATS.some(([c])=>c&&c===f)?f:'';},
+  _cellAlign(state,k){const a=(state.aligns||{})[k];return ['left','center','right'].includes(a)?a:'';},
   _fnArgs(name){for(const [,fns] of this._FN_GROUPS)if(fns[name])return fns[name];return null;},
   // The cell text after inserting a function, and what to select for typing: the first remaining
   // placeholder (inside its quotes for a "name"), else the caret before ")". What the cell already
@@ -438,8 +442,34 @@
       items.push({separator:true},{label:'Insert function',items:this._FN_GROUPS.map(([group,fns])=>({label:group,
         items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
           return {id:'fn:'+name+':'+cell,label:name+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
+      // the cell's current choice is ticked
+      const fc=this._cellFormat(state,cell),al=this._cellAlign(state,cell),tick=on=>on?'  \u2713':'';
+      items.push({label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
+        label:name+(code?'  '+this._fmtCode(code.endsWith('%')?.1235:1234.5678,code):'')+tick(code===fc)}))},
+        {label:'Alignment',items:this._ALIGNS.map(([a,name])=>({id:'al:'+(a||'default')+':'+cell,label:name+tick(a===al)}))});
     }
     return items;
+  },
+  // "Number format" entries: [code, name]. Codes are stored per cell in state.formats; Automatic
+  // stores nothing. They change only how numbers are shown, never the value formulas compute with.
+  _FORMATS:[['','Automatic'],['0','Integer'],['0.0','1 decimal'],['0.00','2 decimals'],['0.000','3 decimals'],
+    ['#,##0','Thousands'],['#,##0.00','Thousands, 2 decimals'],['0%','Percent'],['0.00%','Percent, 2 decimals'],
+    ['0.00E+0','Scientific']],
+  _ALIGNS:[['left','Left'],['center','Center'],['right','Right'],['','Default']],
+  _fmtCode(v,code){
+    if(!code)return this._fmt(v);
+    if(Object.is(v,-0))v=0;
+    const dec=(/\.(0+)/.exec(code)||['',''])[1].length;
+    if(code.endsWith('E+0')){
+      const [m,e]=v.toExponential(dec).split('e');
+      return m+'E'+(e[0]==='-'?e:'+'+e.replace('+',''));
+    }
+    const pct=code.endsWith('%'),n=pct?v*100:v;
+    if(Math.abs(n)>=1e21)return this._fmt(v);   // toFixed switches to exponent form there
+    let text=n.toFixed(dec);
+    if(/^-0(\.0+)?$/.test(text))text=text.slice(1);
+    if(code.startsWith('#,'))text=text.replace(/^(-?)(\d+)/,(all,sign,int)=>sign+int.replace(/\B(?=(\d{3})+(?!\d))/g,','));
+    return text+(pct?'%':'');
   },
   _fmt(v){
     if(Object.is(v,-0))v=0;
@@ -460,8 +490,10 @@
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const x=sheet[this._key(c,r)];
       if(!x)continue;
-      const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmt(x.v));
-      const align=x.v!==undefined?'right':x.b!==undefined?'center':'left';   // numbers right, Booleans centered
+      const k=this._key(c,r),fc=this._cellFormat(state,k);
+      const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmtCode(x.v,fc));
+      // the cell's own alignment, else numbers right, Booleans centered, text left
+      const align=this._cellAlign(state,k)||(x.v!==undefined?'right':x.b!==undefined?'center':'left');
       items.push(label(text,L.xs[c],r*L.rh,L.ws[c],L.rh,align,x.e?'#b91c1c':textInk));
     }
     // Cell borders and the outer frame both follow the toolbar's stroke color, width and dash
@@ -514,7 +546,7 @@
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const k=this._key(c,r);
       hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
-        rect:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh},fontSize,editorOnly:true});
+        rect:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh},fontSize,...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{}),editorOnly:true});
     }
     // width entries, reached only through "Column width..." in the header menu (never hit directly)
     for(let c=0;c<dims.cols;c++)hs.push({id:'cw'+c,x:L.xs[c]+L.ws[c]/2,y:-L.hgap-L.headH/2,kind:'number',
@@ -567,6 +599,16 @@
       cells[axis==='c'?this._key(n,pos.r):this._key(pos.c,n)]=rewrite(src);
     }
     const next={...state,cells,cols:dims.cols+(axis==='c'?delta:0),rows:dims.rows+(axis==='r'?delta:0)};
+    for(const prop of ['formats','aligns']){   // per-cell settings move with their cells
+      if(!state[prop])continue;
+      const out={};
+      for(const [k,v] of Object.entries(state[prop])){
+        const pos=parse(k);if(!pos)continue;
+        const n=axis==='c'?move(pos.c):move(pos.r);
+        if(n!==null)out[axis==='c'?this._key(n,pos.r):this._key(pos.c,n)]=v;
+      }
+      if(Object.keys(out).length)next[prop]=out;else delete next[prop];
+    }
     if(axis==='c'&&Array.isArray(state.weights)){
       const wt=dims.weights.slice();
       if(delta>0)wt.splice(at,0,wt[Math.max(0,at-1)]);else wt.splice(at,1);
@@ -601,6 +643,18 @@
       const [,name,k]=fn,c=this._COLS.indexOf(k[0]),r=+k.slice(1)-1;
       if(!this._fnArgs(name)||c<0||c>=dims.cols||r<0||r>=dims.rows)return {state};
       const next={...state,cells:{...(state.cells||{}),[k]:this._fnInsert((state.cells||{})[k],name).text}};
+      return {state:JSON.stringify(next).length>3900?state:next};
+    }
+    const look=/^(?:nf(\d+)|al:(left|center|right|default)):([A-Z]\d+)$/.exec(handle);
+    if(look){   // "Number format" / "Alignment" from the context menu
+      const [,fi,al,k]=look,c=this._COLS.indexOf(k[0]),r=+k.slice(1)-1;
+      if(c<0||c>=dims.cols||r<0||r>=dims.rows)return {state};
+      const prop=fi!==undefined?'formats':'aligns';
+      const v=fi!==undefined?(this._FORMATS[+fi]||[''])[0]:al==='default'?'':al;
+      const map={...(state[prop]||{})};
+      if(v)map[k]=v;else delete map[k];
+      const next={...state};
+      if(Object.keys(map).length)next[prop]=map;else delete next[prop];
       return {state:JSON.stringify(next).length>3900?state:next};
     }
     const cell=/^([A-Z])(\d+)$/.exec(handle);

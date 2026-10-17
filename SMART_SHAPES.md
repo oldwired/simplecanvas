@@ -951,9 +951,8 @@ the whole file into the Script field:
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 - [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
-- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; a right-click context menu inserts and deletes columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, ROUND/ROUNDUP/ROUNDDOWN, INT, ABS, SIGN, MOD, SQRT, POWER, PI, PRODUCT, COUNT, COUNTA (counts every non-empty cell, including `""` results and errors), IFERROR, ISBLANK/ISNUMBER/ISTEXT/ISERROR and CONCAT/LEN/UPPER/LOWER/LEFT/RIGHT/MID; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
 
-The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 40 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -962,6 +961,7 @@ The built-in catalog includes 39 API v2 components, with editable sources in `ex
 - [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
   step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
   at `min`; the upper bound is reachable even if not on that grid.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; a right-click context menu inserts and deletes columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, ROUND/ROUNDUP/ROUNDDOWN, INT, ABS, SIGN, MOD, SQRT, POWER, PI, PRODUCT, COUNT, COUNTA (counts every non-empty cell, including `""` results and errors), IFERROR, ISBLANK/ISNUMBER/ISTEXT/ISERROR and CONCAT/LEN/UPPER/LOWER/LEFT/RIGHT/MID; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. The cell menu also sets a per-cell Number format (Automatic, integer, 1-3 decimals, thousands separators, percent, scientific; display only) and Alignment (Left, Center, Right, Default). Cells are edited in place through `kind:'text'` handles. It is in the catalog's Controls category.
 - [Seven-segment display](examples/seven-segment-display.js): authoring Input mode selects
   `number` (default) or `segments`. Number mode requires integer `value` in 0–9; segments mode
   exposes boolean `a`…`g` inputs, all default false. Both modes include boolean `decimalPoint`

@@ -428,6 +428,44 @@ test('spreadsheet context menu: Insert function submenu wraps the cell formula a
  assert.equal(bad,'rejected','menus nest at most two levels deep');
 }));
 
+test('spreadsheet context menu: Number format and Alignment per cell, moved with inserted columns',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1234.5678',A2:'0.1235',A3:'hello',A4:'=A1*2'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ const menus=page.locator('[data-smart-context-menu]');
+ const choose=async(row,sub,name,expect)=>{   // expect: state check once the choice is applied
+   await page.mouse.click(box.x+120+32,box.y+140+row*24+12,{button:'right'});
+   await menus.first().getByRole('menuitem',{name:sub}).hover();
+   await menus.nth(1).getByRole('menuitem',{name}).click();
+   await page.waitForFunction(expect=>__test.run(expect),expect);
+ };
+ await choose(0,'Number format',/^Thousands, 2 decimals/,"items[0].state.formats?.A1==='#,##0.00'");
+ await choose(1,'Number format',/^Percent\s+12%/,"items[0].state.formats?.A2==='0%'");
+ await choose(2,'Alignment',/^Right/,"items[0].state.aligns?.A3==='right'");
+ await page.waitForFunction(()=>__test.run('JSON.stringify([items[0].state.formats,items[0].state.aligns])')===JSON.stringify([{A1:'#,##0.00',A2:'0%'},{A3:'right'}]));
+ const drawn=()=>run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>[k.text,k.align]);})()`);
+ let shown=await drawn();
+ assert.deepEqual(shown.filter(([t])=>['1,234.57','12%','hello','2469.1356'].includes(t)),[['1,234.57','right'],['12%','right'],['hello','right'],['2469.1356','right']],
+   'formats change only the shown number; a formula referring to A1 still computes with the full value');
+ // the current choice is ticked
+ await page.mouse.click(box.x+120+32,box.y+140+2*24+12,{button:'right'});
+ await menus.first().getByRole('menuitem',{name:'Alignment'}).hover();
+ assert.deepEqual(await menus.nth(1).getByRole('menuitem').allTextContents(),['Left','Center','Right  ✓','Default']);
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('[data-smart-context-menu]'));
+ // inserting a column left of A moves the settings with their cells; Default/Automatic remove them
+ await run(`(async()=>{const it=items[0],r=await requestSmartCall(it,'dragEdit',[it.state,'cins0',0,0,it.w,it.h]);applySmartDragResult(it,r);})()`);
+ assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[{B1:'#,##0.00',B2:'0%'},{B3:'right'}]);
+ await run(`(async()=>{const it=items[0];for(const id of ['nf0:B1','nf0:B2','al:default:B3'])applySmartDragResult(it,await requestSmartCall(it,'dragEdit',[it.state,id,0,0,it.w,it.h]));})()`);
+ assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[undefined,undefined]);
+ assert.ok(await run(`BUILTIN_LIBRARY_DEFINITIONS.some(d=>d.key==='spreadsheet'&&d.category==='Controls')`),'built into the Controls catalog');
+}));
+
 test('spreadsheet column width from the header menu: number dialog, the shape grows by the difference, reset restores',async()=>app(async({page,run})=>{
  const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
  await run(`(async()=>{const script=${JSON.stringify(script)};
