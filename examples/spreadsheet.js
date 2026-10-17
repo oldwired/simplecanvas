@@ -7,7 +7,8 @@
 // Enter/Tab apply the cell and move down/right; Escape cancels. An empty entry clears the cell.
 // Errors show as #DIV/0!, #REF!, #NAME?, #VALUE!, #CYCLE!, #N/A or #ERROR!. An output whose formula
 // fails makes the component report that error. Row and column headers appear outside the sheet only
-// in edit mode. Needs the host's kind:'text' handles with rect (in-place cell editing).
+// in edit mode. Cells are editable only in the editor; exported HTML recomputes but cannot edit.
+// Needs the host's kind:'text' handles with rect (in-place cell editing).
 ({
   apiVersion:2,
   _COLS:'ABCDEFGHIJ',
@@ -168,7 +169,7 @@
       A7:'=AVERAGE(A2:A4)',A8:'=MAX(A2:A4)-MIN(A2:A4)',E1:'Extra',E2:'=INPUT("energy")',
       F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
   },
-  initStyle(){return {w:640,h:240,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#1f2937',size:1};},
+  initStyle(){return {w:640,h:240,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state){
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
@@ -202,21 +203,23 @@
     const cap=size=>Math.max(6,Math.round(Math.min(style.fontSize||L.px,size)));
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
       fontFamily:family,fontSize:cap(size||L.px),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
-    const outCells=new Set(ports.outs.map(o=>o.cell));
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-      const k=this._key(c,r),x=sheet[k],src=(state.cells||{})[k]||'';
-      const isIn=/INPUT\s*\(/i.test(src),isOut=outCells.has(k);
-      if(isIn||isOut)items.push({type:'rect',x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh,fill:true,fillColor:isOut?'#dcfce7':'#dbeafe',strokeOn:false});
+      const x=sheet[this._key(c,r)];
       if(!x)continue;
       const text=x.e||(x.t!==undefined?x.t:this._fmt(x.v)),numeric=x.v!==undefined;
-      items.push(label(text,c*L.cw,r*L.rh,L.cw,L.rh,numeric?'right':'left',x.e?'#b91c1c':textInk,numeric&&isOut));
+      items.push(label(text,c*L.cw,r*L.rh,L.cw,L.rh,numeric?'right':'left',x.e?'#b91c1c':textInk));
     }
-    for(let i=1;i<10;i++){   // inner grid lines, then the outer frame on top
-      items.push({type:'line',x1:i*L.cw,y1:0,x2:i*L.cw,y2:h,color:grid,size:1});
-      items.push({type:'line',x1:0,y1:i*L.rh,x2:w,y2:i*L.rh,color:grid,size:1});
+    // Cell borders and the outer frame both follow the toolbar's stroke color, width and dash
+    // pattern; Stroke "None" hides all of them.
+    if(style.strokeOn!==false){
+      const line={color:ink,size:style.size||1,dash:style.dash||'solid'};
+      for(let i=1;i<10;i++){
+        items.push({type:'line',x1:i*L.cw,y1:0,x2:i*L.cw,y2:h,...line});
+        items.push({type:'line',x1:0,y1:i*L.rh,x2:w,y2:i*L.rh,...line});
+      }
+      items.push({type:'rect',x:0,y:0,w,h,...line,strokeOn:true,fill:false});
     }
-    items.push({type:'rect',x:0,y:0,w,h,color:ink,size:style.size||1,strokeOn:style.strokeOn!==false,fill:false});
     if(editing){
       const head=(text,x,y,hw,hh)=>{
         items.push({type:'rect',x,y,w:hw,h:hh,fill:true,fillColor:'#f1f5f9',strokeOn:true,color:grid,size:1,editorOnly:true});
@@ -235,12 +238,14 @@
     return this._draw(state,style,w,h,editing,null,msg.length>120?msg.slice(0,117)+'…':msg);
   },
   // One in-place text field per cell (the host lays it over `rect`; Enter/Tab move to the neighbour).
+  // editorOnly: cells are edited only in the editor. Exported HTML keeps recomputing from its inputs
+  // but offers no way to change values or formulas.
   handles(state,w,h){
     const L=this._layout(w,h),hs=[];
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
       const k=this._key(c,r);
       hs.push({id:k,x:(c+.5)*L.cw,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
-        rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh}});
+        rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh},editorOnly:true});
     }
     return hs;
   },
