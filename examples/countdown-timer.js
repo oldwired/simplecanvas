@@ -2,6 +2,8 @@
 // Reset run it. Outputs: seconds (0-60), and its tens (0-6) and ones (0-9) digits for two
 // single-digit displays. Timing uses the host clock (transition/nextWakeAt), so connected
 // components follow every second; reloading resumes a running countdown from its saved second.
+// In edit mode, click the title to type your own (an empty title goes back to the instance name from
+// Inputs..., or "Countdown timer").
 ({
   apiVersion:2,
   outputs:{seconds:{type:'number'},tens:{type:'number'},ones:{type:'number'}},
@@ -11,7 +13,11 @@
     for(const key of ['remaining','preset'])
       if(!Number.isInteger(state[key]) || state[key]<0 || state[key]>60)throw new Error('Countdown '+key+' must be a whole number of seconds from 0 to 60');
     if(typeof state.running!=='boolean')throw new Error('Countdown running flag must be Boolean');
+    if(state.title!==undefined && (typeof state.title!=='string' || state.title.length>100))throw new Error('Countdown title must be text of at most 100 characters');
   },
+  // The shown title: the user's own (state.title), else the instance name, else the component's name.
+  _title(state,io){return (typeof state.title==='string' && state.title.trim()) || io.name || 'Countdown timer';},
+  _titleRect(w,h){const s=this._layout(w,h).s;return {x:w*.04,y:0,w:w*.92,h:26*s};},
   // One layout for drawing and hit-testing: caption, dial, readout, control row (240 x 340 design grid).
   _layout(w,h){
     const s=Math.min(w/240,h/340);
@@ -26,7 +32,7 @@
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
     const size=Math.max(1,Math.min(style.fontSize||16,h*.7,Math.max(1,w-16)/Math.max(1,units(label))));
-    return {text:label,font:(style.font||'600 16px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px')};
+    return {text:label,size,font:(style.font||'600 16px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px')};
   },
   transition(inputs,state,memory,context){
     this._validate(state);
@@ -51,7 +57,8 @@
     const ink=style.color||'#334155',textInk=style.textColor||ink,thin=Math.max(1,(style.size||2)/2);
     const font=px=>(style.font||'600 16px sans-serif').replace(/\d+(?:\.\d+)?px/,Math.max(6,Math.round(px))+'px');
     const text=(value,x,y,tw,th,px,color=textInk)=>({type:'text',x,y,w:tw,h:th,text:String(value),align:'center',font:font(px),color,strokeOn:false,fill:false});
-    items.push({...text('',w*.04,0,w*.92,26*s,16*s),...this._caption(io.name,'Countdown timer',w*.92,26*s,{...style,fontSize:16*s})});
+    const cap=this._caption(this._title(state,io),'Countdown timer',w*.92,26*s,{...style,fontSize:16*s});
+    items.push({...text('',w*.04,0,w*.92,26*s,16*s),text:cap.text,font:cap.font});
     items.push({type:'ellipse',x:cx-r,y:cy-r,w:2*r,h:2*r,color:ink,size:thin,strokeOn:true,fill:false});
     const a=this._angle(seconds),sweep=Math.min(seconds/60*2*Math.PI,2*Math.PI-1e-4);
     if(seconds>0 && L.wedgeR>1){
@@ -80,18 +87,29 @@
     }else items.push(text(state.running?'Running':seconds>0?'Stopped':'Done',0,L.rowY,w,L.rowH,14*s));
     return items;
   },
-  handles(state,w,h){
-    const L=this._layout(w,h),a=this._angle(state.remaining);
+  handles(state,w,h,style={},io={}){
+    const L=this._layout(w,h),a=this._angle(state.remaining),t=this._titleRect(w,h);
+    const cap=this._caption(this._title(state,io),'Countdown timer',t.w,t.h,{...style,fontSize:16*L.s});
     return [{id:'hand',x:L.cx+Math.sin(a)*L.wedgeR,y:L.cy-Math.cos(a)*L.wedgeR},
-      {id:'toggle',x:w/4,y:L.rowY+L.rowH/2,kind:'click'},{id:'reset',x:w*.75,y:L.rowY+L.rowH/2,kind:'click'}];
+      {id:'toggle',x:w/4,y:L.rowY+L.rowH/2,kind:'click'},{id:'reset',x:w*.75,y:L.rowY+L.rowH/2,kind:'click'},
+      // the title is edited in place, prefilled with what is shown; editor only (not in exported HTML)
+      {id:'title',x:t.x+t.w/2,y:t.y+t.h/2,kind:'text',value:cap.text,label:'Title',rect:t,fontSize:cap.size,align:'center',editorOnly:true}];
   },
   hitEdit(state,x,y,w,h){
+    const t=this._titleRect(w,h);
+    if(x>=t.x && x<=t.x+t.w && y>=t.y && y<=t.y+t.h)return 'title';
     const L=this._layout(w,h),a=this._angle(state.remaining);
     if(Math.hypot(x-(L.cx+Math.sin(a)*L.wedgeR),y-(L.cy-Math.cos(a)*L.wedgeR))<14)return 'hand';
     if(y>=L.rowY && y<=L.rowY+L.rowH && x>=0 && x<=w)return x<w/2?'toggle':'reset';
     return null;
   },
   dragEdit(state,handle,x,y,w,h){
+    if(handle==='title'){
+      if(typeof x!=='string')return {state};
+      const title=x.trim().replace(/\s+/g,' ').slice(0,100),next={...state};
+      if(title)next.title=title;else delete next.title;   // empty: back to the default title
+      return {state:next};
+    }
     if(handle==='toggle')return {state:{...state,running:!state.running && state.remaining>0}};
     if(handle==='reset')return {state:{...state,remaining:state.preset,running:false}};
     if(handle==='hand'){

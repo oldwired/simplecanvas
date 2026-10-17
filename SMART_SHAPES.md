@@ -294,7 +294,7 @@ continues in the text handle directly below, Shift+Enter above, Tab to the right
 left (neighbours are found from the handles' rects); clicking elsewhere applies and stops, Escape
 discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
 An optional `fontSize` (in the shape's units) sets the field's text size, so it matches the drawn
-text; without it the size follows the rect's height.
+text; without it the size follows the rect's height. An optional `align` (`'left'` default, `'center'`, `'right'`) aligns the typed text.
 [Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.
 
 ```js

@@ -2025,7 +2025,7 @@ self.onmessage = function(e){
       input.style.cssText='position:fixed;margin:0;box-sizing:border-box;z-index:1000;transform-origin:0 0;'+
         'border:2px solid #2563eb;border-radius:0;outline:none;background:#fff;color:#111827;padding:0 4px;'+
         'font:400 '+Math.max(6,Math.round(handle.fontSize?handle.fontSize*h/r.h:h*.55))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
-      Object.assign(input.style,{left:a.x+'px',top:a.y+'px',width:Math.max(24,w)+'px',height:Math.max(14,h)+'px',transform:'rotate('+angle+'rad)'});
+      Object.assign(input.style,{left:a.x+'px',top:a.y+'px',width:Math.max(24,w)+'px',height:Math.max(14,h)+'px',transform:'rotate('+angle+'rad)',textAlign:handle.align||'left'});
       // Grow to the right with the typed text (over the neighbouring cells), never narrower than the
       // rect and never past the window's right edge, so a long formula stays fully visible.
       const measure=document.createElement('canvas').getContext('2d');
@@ -2440,6 +2440,11 @@ self.onmessage = function(e){
           number.value=h.value;if(h.label!==undefined)number.label=h.label;
           // Optional font size (shape units) so the in-place field matches the drawn text.
           if(h.fontSize!==undefined)number.fontSize=smartNumber(h.fontSize,'Text entry font size',1,400);
+          // Optional alignment of the in-place field's text, matching how the shape draws it.
+          if(h.align!==undefined){
+            if(!['left','center','right'].includes(h.align))throw new Error('Text entry align must be left, center or right');
+            number.align=h.align;
+          }
           // Optional local rectangle: edit in place over it instead of in a dialog.
           if(h.rect!==undefined){
             const r=h.rect;
