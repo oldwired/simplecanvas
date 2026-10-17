@@ -5632,11 +5632,17 @@ self.onmessage = function(e){
       render();
       return true;
     };
-    // after a choice with edit:{handle}: edit that text handle in place, Enter/Tab continuing as usual
+    // after a choice with edit:{handle}: edit that text handle in place (Enter/Tab continuing as usual),
+    // or open the number dialog of a kind:'number' handle
     const editAfter=async edit=>{
       const toScreen=(px,py)=>{const r=canvas.getBoundingClientRect(),w=toWorld(it,it.x+px,it.y+py);return {x:r.left+w.x,y:r.top+w.y};};
       let hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
-      let cur=hs.find(h=>h.id===edit.handle && h.kind==='text' && h.rect),first=true;
+      let cur=hs.find(h=>h.id===edit.handle && ((h.kind==='text' && h.rect) || h.kind==='number')),first=true;
+      if(cur && cur.kind==='number'){   // a number handle: the usual number dialog, applied once
+        const value=await editSmartNumber(cur,it.componentName,valid);
+        if(value!==null && valid())await apply(cur.id,value,0);
+        return;
+      }
       while(cur && valid()){
         const result=await editSmartTextInline(first && edit.select?{...cur,select:edit.select}:cur,toScreen,valid);
         first=false;

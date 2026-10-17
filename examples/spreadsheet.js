@@ -32,10 +32,13 @@
   // Sheets saved before rows/columns could change have no size in their state: they keep 10 x 10.
   _dims(state){
     const n=(v,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:10;
-    return {cols:n(state.cols,26),rows:n(state.rows,99)};
+    const cols=n(state.cols,26),rows=n(state.rows,99),wt=state.weights;
+    // relative column widths, 1 = the normal width; kept in state only while some column differs
+    const weights=Array.isArray(wt)&&wt.length===cols&&wt.every(x=>Number.isFinite(x)&&x>=.01&&x<=200)?wt.slice():Array(cols).fill(1);
+    return {cols,rows,weights};
   },
-  // The host allows at most 128 handles: one per cell plus one for the header area.
-  _fits(cols,rows){return cols*rows+1<=128;},
+  // The host allows at most 128 handles: one per cell, one for the header area, one width entry per column.
+  _fits(cols,rows){return cols*rows+1+cols<=128;},
   // Cell text uses the toolbar font size. With _CAP_FONT on it is also limited to half the row height so
   // it never spills out of a cell; switched off for now because the silent limit surprised users.
   _CAP_FONT:false,
@@ -361,13 +364,17 @@
   // headers, the + / x buttons and the port note are drawn OUTSIDE the box and only while editing
   // (editorOnly), so no export, thumbnail or reader view shows them.
   _layout(w,h,dims){
-    const cw=w/dims.cols,rh=h/dims.rows,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,cw*.45));
+    // unit: the width of a normal column; xs/ws: left edge and width of every column
+    const sum=dims.weights.reduce((a,b)=>a+b,0),unit=w/sum,xs=[],ws=[];
+    let x=0;for(const wt of dims.weights){xs.push(x);ws.push(wt*unit);x+=wt*unit;}
+    const colAt=px=>{for(let c=0;c<xs.length;c++)if(px<xs[c]+ws[c])return px<0?-1:c;return xs.length;};
+    const rh=h/dims.rows,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,unit*.45));
     // hgap: headers stand off the sheet, so the host's selection outline (5 px out) runs between them
-    return {cw,rh,headH,headW,hgap:8,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
+    return {unit,xs,ws,colAt,rh,headH,headW,hgap:8,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
   },
   // What a point in local coordinates refers to: a column header, a row header, a cell, or nothing.
   _target(x,y,w,h,dims){
-    const L=this._layout(w,h,dims),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
+    const L=this._layout(w,h,dims),c=L.colAt(x),r=Math.floor(y/L.rh);
     const inCols=x>=0&&x<w,inRows=y>=0&&y<h;
     if(inCols&&y<0&&y>=-L.hgap-L.headH)return {col:c};   // the gap counts as the header
     if(inRows&&x<0&&x>=-L.hgap-L.headW)return {row:r};
@@ -416,6 +423,9 @@
         {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol},
         {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1});
     }
+    if(t.col!==undefined&&t.row===undefined)   // on a column header: its width
+      items.push({separator:true},{id:'colw'+t.col,label:'Column width\u2026',edit:{handle:'cw'+t.col}},
+        {id:'cwreset'+t.col,label:'Reset column width',disabled:dims.weights[t.col]===1});
     if(t.col!==undefined&&t.row!==undefined)items.push({separator:true});
     if(t.row!==undefined){
       items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow},
@@ -451,13 +461,13 @@
       if(!x)continue;
       const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmt(x.v));
       const align=x.v!==undefined?'right':x.b!==undefined?'center':'left';   // numbers right, Booleans centered
-      items.push(label(text,c*L.cw,r*L.rh,L.cw,L.rh,align,x.e?'#b91c1c':textInk));
+      items.push(label(text,L.xs[c],r*L.rh,L.ws[c],L.rh,align,x.e?'#b91c1c':textInk));
     }
     // Cell borders and the outer frame both follow the toolbar's stroke color, width and dash
     // pattern; Stroke "None" hides all of them.
     if(style.strokeOn!==false){
       const line={color:ink,size:style.size||1,dash:style.dash||'solid'};
-      for(let i=1;i<dims.cols;i++)items.push({type:'line',x1:i*L.cw,y1:0,x2:i*L.cw,y2:h,...line});
+      for(let i=1;i<dims.cols;i++)items.push({type:'line',x1:L.xs[i],y1:0,x2:L.xs[i],y2:h,...line});
       for(let i=1;i<dims.rows;i++)items.push({type:'line',x1:0,y1:i*L.rh,x2:w,y2:i*L.rh,...line});
       items.push({type:'rect',x:0,y:0,w,h,...line,strokeOn:true,fill:false});
     }
@@ -466,7 +476,7 @@
         items.push({type:'rect',x,y,w:hw,h:hh,fill:true,fillColor:'#f1f5f9',strokeOn:true,color:grid,size:1,editorOnly:true});
         items.push({...label(text,x,y,hw,hh,'center','#475569',true,Math.min(L.px,hh*.6)),editorOnly:true});
       };
-      for(let c=0;c<dims.cols;c++)head(this._COLS[c],c*L.cw,-L.hgap-L.headH,L.cw,L.headH);
+      for(let c=0;c<dims.cols;c++)head(this._COLS[c],L.xs[c],-L.hgap-L.headH,L.ws[c],L.headH);
       for(let r=0;r<dims.rows;r++)head(r+1,-L.hgap-L.headW,r*L.rh,L.headW,L.rh);
       // Ports listed below the x lane with their cells, e.g. "energy (E2)", "door (B5, bool)". Inputs and
       // outputs start on separate lines and are wrapped here, one text child per line with its own fixed
@@ -502,16 +512,19 @@
     const fontSize=this._cellPx(style,L);   // same size the cell text is drawn with
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const k=this._key(c,r);
-      hs.push({id:k,x:(c+.5)*L.cw,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
-        rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh},fontSize,editorOnly:true});
+      hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
+        rect:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh},fontSize,editorOnly:true});
     }
+    // width entries, reached only through "Column width..." in the header menu (never hit directly)
+    for(let c=0;c<dims.cols;c++)hs.push({id:'cw'+c,x:L.xs[c]+L.ws[c]/2,y:-L.hgap-L.headH/2,kind:'number',
+      value:Math.round(L.ws[c]),min:8,max:2000,step:1,editorOnly:true});
     // One do-nothing handle for the headers (and the gap to the sheet): a left click there keeps edit
     // mode instead of counting as a click outside the shape. Right-click opens the context menu.
     hs.push({id:'headers',x:-L.hgap-L.headW/2,y:-L.hgap-L.headH/2,kind:'click',editorOnly:true});
     return hs;
   },
   hitEdit(state,x,y,w,h){
-    const dims=this._dims(state),L=this._layout(w,h,dims),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
+    const dims=this._dims(state),L=this._layout(w,h,dims),c=L.colAt(x),r=Math.floor(y/L.rh);
     if(c>=0&&c<dims.cols&&r>=0&&r<dims.rows)return this._key(c,r);
     const t=this._target(x,y,w,h,dims);
     return t?'headers':null;
@@ -552,7 +565,13 @@
       if(n===null)continue;   // the deleted column/row's own cells
       cells[axis==='c'?this._key(n,pos.r):this._key(pos.c,n)]=rewrite(src);
     }
-    return {...state,cells,cols:dims.cols+(axis==='c'?delta:0),rows:dims.rows+(axis==='r'?delta:0)};
+    const next={...state,cells,cols:dims.cols+(axis==='c'?delta:0),rows:dims.rows+(axis==='r'?delta:0)};
+    if(axis==='c'&&Array.isArray(state.weights)){
+      const wt=dims.weights.slice();
+      if(delta>0)wt.splice(at,0,wt[Math.max(0,at-1)]);else wt.splice(at,1);
+      if(wt.every(x=>x===1))delete next.weights;else next.weights=wt;
+    }
+    return next;
   },
   dragEdit(state,handle,value,ly,w,h){
     const dims=this._dims(state),op=/^([cr])(ins|del)(\d+)$/.exec(handle);
@@ -562,8 +581,19 @@
       const next=this._restructure(state,axis,i,add?1:-1);
       if(JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
       // grow/shrink by one cell so the cells keep their size (the host keeps the top-left corner)
-      const L=this._layout(w,h,dims);
-      return {state:next,size:axis==='c'?{w:w+(add?L.cw:-L.cw)}:{h:h+(add?L.rh:-L.rh)}};
+      const L=this._layout(w,h,dims),colPx=add?L.ws[Math.max(0,i-1)]:L.ws[i];
+      return {state:next,size:axis==='c'?{w:w+(add?colPx:-colPx)}:{h:h+(add?L.rh:-L.rh)}};
+    }
+    const width=/^(cw|cwreset|colw)(\d+)$/.exec(handle);
+    if(width){   // column width: the shape grows/shrinks by the difference, other columns keep theirs
+      const c=+width[2];
+      if(c>=dims.cols||width[1]==='colw')return {state};   // colw: only opens the width entry
+      const L=this._layout(w,h,dims),px=width[1]==='cw'?Math.max(8,Math.min(2000,Number(value))):L.unit;
+      if(!Number.isFinite(px))return {state};
+      const wt=dims.weights.slice();wt[c]=width[1]==='cw'?px/L.unit:1;
+      const next={...state};
+      if(wt.every(x=>x===1))delete next.weights;else next.weights=wt.map(x=>Math.round(x*1e4)/1e4);
+      return {state:next,size:{w:w-L.ws[c]+px}};
     }
     const fn=/^fn:([A-Z]+):([A-Z]\d+)$/.exec(handle);
     if(fn){   // "Insert function" from the context menu

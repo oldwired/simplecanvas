@@ -339,7 +339,8 @@ labels). Return `[{id, label, disabled?}, ...]` (at most 24 entries; `{separator
 divider; ids up to 64 and labels up to 80 characters), or an empty array for no menu. An entry
 with `items:[...]` instead of an `id` is a submenu (two levels deep, 128 entries in all). An entry
 may add `edit:{handle, select?}`: after its `dragEdit` the host opens that `kind:'text'` handle in
-place, with `select:[start, end]` preselected (e.g. a placeholder of a freshly inserted function). Choosing an
+place, with `select:[start, end]` preselected (e.g. a placeholder of a freshly inserted function), or
+the number dialog of a `kind:'number'` handle (e.g. a column width). Choosing an
 entry calls `dragEdit(state, id, lx, ly, w, h, style)` once with the clicked point, applied as one
 undo step, including a v2 `size` result. Menu ids need not be handles. Offline HTML shows no
 context menu. [Spreadsheet](examples/spreadsheet.js) uses it to insert and delete columns and rows.

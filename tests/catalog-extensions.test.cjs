@@ -425,3 +425,28 @@ test('spreadsheet context menu: Insert function submenu wraps the cell formula a
    const r=await requestSmartCall(it,'contextMenu',[{},0,0,10,10,{}]);return r==null?'rejected':'accepted';})()`);
  assert.equal(bad,'rejected','menus nest at most two levels deep');
 }));
+
+test('spreadsheet column width from the header menu: number dialog, the shape grows by the difference, reset restores',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:{B1:'x'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const pick=async label=>{const box=await page.locator('#canvas').boundingBox();
+   await page.mouse.click(box.x+120+96,box.y+140-16,{button:'right'});   // column header B
+   await page.locator('[data-smart-context-menu]').getByRole('menuitem',{name:label,exact:true}).click();};
+ await pick('Column width…');
+ await page.locator('dialog[data-smart-number-input]').waitFor();
+ assert.equal(await page.locator('#smartNumberValue').inputValue(),'64','the dialog shows the current width');
+ await page.locator('#smartNumberValue').fill('120');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
+ await page.waitForFunction(()=>__test.run('items[0].w')===440);
+ assert.deepEqual(await run('items[0].state.weights'),[1,1.875,1,1,1,1]);
+ const rect=await run(`(async()=>{const it=items[0];return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,{}])).find(h=>h.id==='B1').rect;})()`);
+ assert.deepEqual([rect.x,rect.w],[64,120],'cell B1 is 120 px wide and starts after A');
+ await run('selection=[0];editingSmartIdx=0;render()');
+ await pick('Reset column width');
+ await page.waitForFunction(()=>__test.run('items[0].w')===384);
+ assert.equal(await run('items[0].state.weights'),undefined,'a reset sheet stores no widths');
+}));
