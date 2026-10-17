@@ -180,11 +180,12 @@ tags, choose a category, and filter the collection with **All collections**, **B
 | --- | --- |
 | Controls | Number control, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
-| Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
-| Tools & time | Live clock, Stopwatch, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Drawing | Rectangle, Ellipse |
+| Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Drill template, Race start timer, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 39 connected API v2 components.
+The catalog includes 53 entries, including 42 connected API v2 components. Every smart-shape
+template is available in **Built-in**, along with Drill template and Race start timer.
 
 You can place an entry directly from the browser without adding it to the working collection.
 Each browser entry has a pin: filled means it is in the working collection; outline means it
@@ -228,6 +229,11 @@ edit its handles, then double-click again or click outside to leave. If it belon
 the first double-click enters group editing and the second opens its smart controls. Clicks
 and drags support undo/redo.
 
+You can also place any template directly from **Built-in** or pin it to your working collection;
+the authoring dialog remains available for source authoring. **Clock** has manually adjusted
+hands, **Timer** is a connected countdown, and **Chart** retains its editable bars. **Minimal** is the circle starter;
+**Blank** is an intentionally empty authoring starter. All are bundled for offline use.
+
 Scripts run in an isolated Worker with blocked network access, and generated shapes are
 validated before rendering or export. The app still works as a single local HTML file.
 Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
@@ -266,7 +272,7 @@ choose **Number control · value** for its
 `value` input, and save. The same dialog can name an instance or set a literal input value.
 It lists compatible outputs from components in the active sketch.
 Give repeated instances distinct names in **Inputs…** so their outputs are easy to identify.
-Every built-in component displays that instance name as its caption, separately from its
+Every built-in API v2 component displays that instance name as its caption, separately from its
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports.
 
@@ -373,7 +379,57 @@ holds up to 64 waiting presses and reports an error if full. Connect **Trigger �
 Counter's `value` input through **Inputs…**. In exported HTML, click the button directly.
 Queued presses are transient; reopening, copying, or undoing never replays old presses.
 
-The **Tools & time** category adds connected signals with per-instance timing:
+The **Tools & time** category includes **Live clock**, which follows wall time in the selected
+timezone. In **Inputs…**, set its string `timezone` input to `local` (the default), `UTC`, or an
+IANA name such as `Europe/Berlin` or `America/New_York`. Invalid timezones show an error.
+Its hands, digital readout, and string `time` output share the same `HH:mm:ss` snapshot.
+Place a fresh Live clock from the built-in library to use these ports; existing instances retain
+their embedded scripts.
+
+Four boolean outputs emit nominal 100 ms pulses: `second` on each observed consecutive second,
+`minute` at second 00, `hour` at minute/second 00, and `halfDay` at noon and midnight in the
+selected timezone. For example, connect **Live clock · second** to **Counter · value** through
+**Inputs…** to count observed seconds. The `time` output is a string, so it cannot connect to the
+existing numeric Value label. Optional LEDs labelled **1s**, **1m**, **1h**, and **12h** show the
+pulses; the clock also displays its instance name.
+
+Fresh placement, reload, and timezone changes start with all pulses false. Missed boundaries and
+clock jumps never replay pulses. Live updates run in the active tab; returning to the tab realigns
+the clock to current wall time. Static exports capture its last settled snapshot without advancing
+it, while exported HTML keeps the clock live.
+
+**Stopwatch** has boolean `run` and `reset` inputs and one numeric output, `elapsed`, in seconds
+including milliseconds. Connect a Toggle to `run`: changing it to true starts or resumes timing;
+changing it to false pauses and publishes the accumulated result. For example, connect
+**Stopwatch · elapsed** to **Value label · value** to show the result after pausing. While timing
+runs, the output holds the previous paused total; Reset clears it to zero and stops timing.
+
+The live display uses `HH:mm:ss.mmm` and refreshes every 100 ms while running. It follows saved
+wall timestamps, so a running stopwatch continues through tab switches, backgrounding, and
+reloads. Double-click for **Start/Pause** and **Reset** in the editor, or use them directly in HTML.
+Manual actions remain in effect until `run` changes again; a held true `reset` always keeps the
+stopwatch cleared and stopped. Place a fresh Stopwatch to get these ports. Older instances keep
+their embedded source, and new placements start stopped.
+
+**Timer** keeps its red countdown wedge and adds connected controls. In **Inputs…**, choose
+**Unit** (**minutes** by default, or **seconds**) and **Starting duration** (0–60, initially 45).
+Dragging the dial hand also sets the starting duration, refills the timer, and stops it. The top
+of the dial means 0; set a full 60 through **Inputs…**. Changing either setting refills and stops.
+
+Boolean `run` and `reset` inputs default to false. A change to run=true starts/resumes; changing
+to false pauses. **Start/Pause** and **Reset** also work directly in the component controls.
+The latest manual action remains effective until run changes; held reset overrides it, refills,
+and stops. Releasing reset alone does not start. At zero, the timer stops and holds `reached=true`.
+An explicit Start or a new run rising edge refills and starts once; holding run true never loops.
+
+The boolean `tick` output emits a nominal 100 ms pulse for each observed whole configured unit
+elapsed. Connect it to Counter's `value`, or connect `reached` to a Status indicator. The instance
+caption and optional LEDs show the timer's identity and outputs. A running Timer follows wall
+time across hidden tabs and reloads. Missed ticks are not replayed; expiry while hidden sets
+`reached` on return. Reload clears a stale tick. Static exports keep the last settled dial and
+output snapshot; exported HTML runs the countdown. Place a fresh Timer to get the new ports.
+
+Other connected signals use per-instance intervals or edge observation:
 
 - **Pulse generator** publishes boolean `value` with configurable `seconds` (period, initially 1),
   `width` (high time, initially 0.1), and `enable` (initially true). It starts low and emits its
@@ -409,8 +465,10 @@ The **Tools & time** category adds connected signals with per-instance timing:
 Configure and connect them in **Inputs…**. For example, connect Random integer → Sample & hold
 (integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
 The controls, names, indicators, and connections work in exported HTML too.
-Timing uses active document time: hidden/inactive documents and the open **Inputs…** dialog pause
-it. Late wakes replay Delay transitions and queued pulses from Edge to pulse in order. Pulse generator advances
+Interval timing uses active document time: hidden/inactive documents and the open **Inputs…**
+dialog pause it. Live clock resumes at current wall time; running Stopwatch and Timer instances
+retain elapsed wall time. Late wakes replay Delay transitions
+and queued pulses from Edge to pulse in order. Pulse generator advances
 one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
 without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
 Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:
@@ -454,8 +512,8 @@ through **Manage → Import…** when using the app locally.
 | **Bar chart** | Drag bars and add/remove them with the +/− controls in edit mode |
 | **[Drill template](examples/drill-template.js)** | Handles adjust hole diameter and position; resizing changes hole spacing while diameter stays fixed in millimeters |
 | **[Race start timer](examples/race-start-timer.js)** | A draggable clock hand and clickable mast controls for changing flags |
-| **[Live clock](examples/live-clock.js)** | Follows local time |
-| **[Stopwatch](examples/stopwatch.js)** | Start/Pause and Reset controls in edit mode; a running stopwatch continues across tab switches and reloads |
+| **[Live clock](examples/live-clock.js)** | Local or selected timezone, synchronized hands/readout, and connected second/minute/hour/half-day pulse outputs |
+| **[Stopwatch](examples/stopwatch.js)** | Live millisecond display, run/reset inputs, and an elapsed-seconds result published on pause; manual controls and running time survive tab switches and reloads |
 | **[Ruler](examples/ruler.js)** | Extends its markings at fixed spacing; in edit mode, click the unit label to cycle cm with mm divisions, inches with sixteenth-inch divisions, and pixels |
 
 Live clock, Stopwatch, and Ruler are also templates under **Manage → Add smart shape…**.
@@ -569,6 +627,8 @@ complete `.js` example scripts: keep the drilling template and race-start timer 
 library sources in sync. Live clock, Stopwatch, and Ruler also have embedded authoring templates
 in `index.html`; update those copies, their `.js` examples, library sources, and saved previews
 together when changing a script.
+Keep [Timer's source](examples/timer.js), embedded authoring template, built-in catalog definition,
+and preview in sync as well.
 
 ### Releases
 

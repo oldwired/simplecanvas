@@ -41,7 +41,7 @@ library response.
 The contributor shapes bundled into the demo must match their `.js` example sources; their actual
 handles, undo/redo, sketch exports, and saved state are exercised from the shipped library file.
 Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive document cleanup,
-unchanged history/storage, live clock updates, stopwatch controls and timestamp recovery, matching
+unchanged history/storage for presentation-only refreshes, live clock updates, stopwatch controls and timestamp recovery, matching
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
 tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
 Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and the
@@ -94,17 +94,39 @@ Library browser regressions in `tests/library-browser.test.cjs` exercise direct 
 expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
 metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the
 threshold/AND/indicator example through Inputs and operate the actual downloaded HTML offline.
+Focused template-catalog checks cover the nine added entries: Clock, Arrow, Arc, Timer,
+Chart, Minimal, Blank, Drill template, and Race start timer. They verify source parity and
+availability for direct placement and pinning in the 53-entry offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
 tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
 input choices from literals and bindings in the editor and offline exports. Failure tests ensure
 unavailable views replace stale results, recover correctly, and leave independent controls usable.
-A catalog-wide naming check renames every built-in component through Inputs and verifies its
+A catalog-wide naming check renames every built-in API v2 component through Inputs and verifies its
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
 connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
 invalid inputs and cycles must not be hidden by a Z input.
+
+`tests/live-clock.test.cjs` checks timezone inputs, second pulses connected to Counter, synchronized
+time-string consumers, independent instances, invalid-zone validation, reload, and offline HTML.
+The browser-independent `tests/live-clock-contracts.test.cjs` controls wall and active-document time
+separately to check local/IANA formatting, DST and noon/midnight boundaries, pulse widths, missed
+ticks, timezone changes, fresh observation, and pure snapshots.
+
+`tests/stopwatch.test.cjs` checks run/reset input connections, manual Start/Pause and Reset,
+published elapsed seconds, independent instances, saved timestamp recovery, and offline HTML.
+The browser-independent `tests/stopwatch-contracts.test.cjs` uses controlled wall time to check
+pause/resume totals, milliseconds, command/manual precedence, held reset, and pure computation.
+The tests distinguish the live display from the single stopped-result output: presentation
+refreshes do not publish running elapsed time, schedule tick transitions, or autosave each tick.
+
+`tests/timer.test.cjs` checks the countdown's settings and dial controls, run/reset bindings,
+manual actions, connected tick/reached outputs, saved progress, and offline HTML.
+The browser-independent `tests/timer-contracts.test.cjs` uses controlled time for unit boundaries,
+short tick pulses, pause/resume, zero/restart, held reset/run, configuration resets, missed ticks,
+reload observation, and pure settled snapshots.
 
 `tests/temporal-components.test.cjs` exercises the bounded transition contract, transport Delay,
 rising-edge Counter/reset, Random integer, both typed Sample & hold entries, and Trigger pushbutton
@@ -144,5 +166,5 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 35 API v2 catalog definitions match their editable source files and retain
+verify that all 42 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.

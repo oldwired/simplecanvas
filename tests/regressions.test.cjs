@@ -1525,16 +1525,19 @@ test('icon search offline shows a message instead of failing', async () => app(a
   assert.equal(await page.locator('#iconResults .shape-entry').count(), 0);
 }));
 
-test('the Timer template shows a large "N Minutes left" readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
+test('the Timer template shows a large Minutes or Seconds left readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
   const r = JSON.parse(await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
-    const init = await requestSmartCall(script, 'initStyle', []);
+    const seed = clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='timer').items[0]);
+    const init = await requestSmartCall(seed, 'initStyle', []);
+    const initial = await requestSmartCall(seed, 'initState', []);
     const out = [];
     for(const [w,h] of [[init.w, init.h], [160,190], [90,110], [70,84]]){
-      const it = {type:'smart', w, h, color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
+      const it = {type:'smart', uid:'timer-readout', componentApi:2, componentName:'Timer', w, h, color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
         size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12), script};
-      for(const value of [-45, -59, -1]){
-        const kids = await requestSmartCall(script, 'children', [{value}, smartResolvedStyle(it), w, h, false]);
+      for(const unit of ['minutes','seconds'])for(const duration of [45,59,1]){
+        it.state={...initial,unit,duration,configuredUnit:unit,configuredDuration:duration,remainingMs:duration*(unit==='minutes'?60000:1000)};
+        const kids = (await warmSmartExportCache([it],true)).get(it);
         const t = kids.find(c=>c.type==='text' && /left$/.test(c.text));
         ctx.font = t.font;
         out.push({w, h, text:t.text, bottom:t.y+t.h, px:+/(\\d+)px/.exec(t.font)[1], textW:ctx.measureText(t.text).width, boxW:t.w-12});
@@ -1547,6 +1550,8 @@ test('the Timer template shows a large "N Minutes left" readout under the dial, 
   assert.equal(big.text, '45 Minutes left');
   assert.ok(big.px >= 24, `large type at the default size (${big.px}px)`);
   assert.equal(r.out[2].text, '1 Minute left', 'singular at one minute');
+  assert.equal(r.out[3].text, '45 Seconds left');
+  assert.equal(r.out[5].text, '1 Second left', 'singular at one second');
   for(const o of r.out){
     assert.ok(o.bottom <= o.h + 0.5, `readout inside the box at ${o.w}x${o.h}`);
     assert.ok(o.textW <= o.boxW, `"${o.text}" fits on one line at ${o.w}x${o.h} (${o.textW.toFixed(1)} <= ${o.boxW})`);
@@ -1556,10 +1561,12 @@ test('the Timer template shows a large "N Minutes left" readout under the dial, 
 test('a Timer scaled down to almost nothing, or any script arc with a negative radius, renders without errors', async () => app(async ({page,run}) => {
   await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
+    const seed = clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='timer').items[0]);
+    const state = await requestSmartCall(seed,'initState',[]);
     const base = {type:'smart', color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
       size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12)};
     items = [
-      ...[[30,36],[12,14],[4,5],[1,1]].map(([w,h],k)=>({...base, uid:'t'+k, x:40+k*60, y:40, w, h, script, state:{value:-45}})),
+      ...[[30,36],[12,14],[4,5],[1,1]].map(([w,h],k)=>({...base, uid:'t'+k, x:40+k*60, y:40, w, h, script, componentApi:2, state:clone(state)})),
       {...base, uid:'neg', x:400, y:40, w:50, h:50,
        script:'({children(){return [{type:"polygon",closed:true,fill:true,fillColor:"#ff0000",color:"#ff0000",strokeOn:false,points:[{x:25,y:25},{x:25,y:20,arcTo:{cx:25,cy:25,r:-3,a1:0,a2:1}},{x:30,y:25}]}]}})'}];
     render();
@@ -1634,8 +1641,14 @@ async function exportRotate(preview,host,w,h,angle,release=true){
 }
 
 test('HTML smart shapes run offline with live timing, direct ordered controls and a locked layout',async()=>app(async({page,run,context})=>{
-  await run(`items=[{...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script,w:260,h:110,state:{elapsedMs:0,startedAt:null}},
-    {...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.liveClock.script,x:500,h:208}];setTool('select');selection=[];render();save();`);
+  // Keep this refresh-only/API1 fixture inert in saved state. API2 Live Clock
+  // deliberately publishes durable time and pulses and has its own connection tests.
+  const clockScript=`({refreshMs(){return 1000;},children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:new Date().toISOString(),strokeOn:false}];}})`;
+  const stopwatch=await run(`(async()=>{
+    const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
+    items=[sw,{...${JSON.stringify(smartFixture(clockScript))},uid:'refresh-clock',x:500,h:208}];
+    setTool('select');selection=[];render();save();return sw;
+  })()`);
   const before=await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})');
   const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
     // Force early callbacks, as can occur naturally when browsers round fractional delays.
@@ -1647,14 +1660,15 @@ test('HTML smart shapes run offline with live timing, direct ordered controls an
   assert.match(await sw.textContent(),/Start.*Reset/,'operating buttons are visible immediately');
   const firstClock=await clock.textContent();
   await preview.waitForFunction(first=>document.querySelector('[data-smart-index="1"]').textContent!==first,firstClock);
-  await exportClick(preview,sw,65,88);
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Pause'));
-  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.0'));
-  await exportClick(preview,sw,65,88);
+  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.000'));
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
   const paused=await sw.textContent();await preview.waitForTimeout(250);assert.equal(await sw.textContent(),paused);
   // Quick released clicks still execute in order. Reset, Start, Pause must end stopped.
-  await exportClick(preview,sw,195,88);await exportClick(preview,sw,65,88);await exportClick(preview,sw,65,88);
+  await exportClick(preview,sw,stopwatch.w*.75,stopwatch.h*.86);
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
   const box=await sw.boundingBox();await exportDrag(preview,sw,20,20,60,40);await preview.waitForTimeout(100);
   assert.deepEqual(await sw.boundingBox(),box,'the body cannot be moved');
@@ -1865,8 +1879,11 @@ test('HTML isolates hostile or hung scripts, preserves frozen fallback, and esca
   const attack="</script><script>window.exportEscaped=true</script> $& $` $'";
   const hostile=`({children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:s.text+' '+typeof document+' '+typeof fetch,strokeOn:false}];}})`;
   const hang=`({children(s,style,w,h,editing){if(editing)while(true){}return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#22c55e'}];}})`;
-  await run(`items=[${JSON.stringify(smartFixture(hostile,{text:attack}))},{...${JSON.stringify(smartFixture(hang))},uid:'hang',x:400},
-    {...${JSON.stringify(smartFixture(''))},uid:'clock',script:SMART_TEMPLATES.liveClock.script,x:700,h:208}];render();`);
+  await run(`(async()=>{
+    const clock={...${JSON.stringify(smartFixture(''))},uid:'clock',script:SMART_TEMPLATES.liveClock.script,x:700};
+    await initializeSmartItem(clock);
+    items=[${JSON.stringify(smartFixture(hostile,{text:attack}))},{...${JSON.stringify(smartFixture(hang))},uid:'hang',x:400},clock];render();
+  })()`);
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
   assert.equal(await preview.evaluate(()=>window.exportEscaped),undefined);
@@ -2194,9 +2211,11 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
     await initializeSmartItem(clock);items=[clock];setTool('select');selection=[];render();return clock;
   })()`);
   await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.some(c=>/^\\d{2}:\\d{2}:\\d{2}$/.test(c.text))"));
-  const first=await run("smartChildrenCache.get('smart-test').kids.find(c=>c.type==='text').text");
-  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids.find(c=>c.type==='text')?.text")!==first,first);
-  assert.deepEqual(await run('items[0].state'),{});
+  const first=await run("items[0].state.time");
+  await page.waitForFunction(first=>__test.run("items[0].state.time")!==first,first);
+  assert.equal(await run('items[0].componentApi'),2);
+  assert.match(await run('items[0].state.time'),/^\d{2}:\d{2}:\d{2}$/);
+  assert.equal(await run("['second','minute','hour','halfDay'].every(port=>typeof items[0].state[port]==='boolean')"),true);
   await run(`(async()=>{const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
     items=[sw];selection=[0];editingSmartIdx=0;undoStack=[];redoStack=[];render();})()`);
   await page.waitForFunction(()=>__test.run("smartHandlesCache.get('smart-test')?.hs.length")===2);
@@ -2208,13 +2227,13 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   await click('toggle');
   const started=await run('items[0].state.startedAt');assert.equal(typeof started,'number');
   await page.waitForFunction(()=>{
-    const reading=__test.run("smartChildrenCache.get('smart-test')?.kids[1]?.text");
-    return typeof reading==='string' && reading!=='00:00:00.0';
+    const reading=__test.run("smartChildrenCache.get('smart-test')?.kids.find(child=>/^\\d{2,}:\\d{2}:\\d{2}\\.\\d{3}$/.test(child.text))?.text");
+    return typeof reading==='string' && reading!=='00:00:00.000';
   });
   assert.equal(await run('undoStack.length'),1,'refreshes do not become undo steps');
   // Model a delayed/background redraw: elapsed time must follow the saved timestamp, not tick count.
   await run('items[0].state.startedAt=Date.now()-62300;render();save()');
-  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]/);
+  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]\d{2}/);
   await page.reload();assert.equal(await run('typeof items[0].state.startedAt'),'number');
   await run('setTool("select");selection=[0];editingSmartIdx=0;render()');
   await click('toggle');assert.equal(await run('items[0].state.startedAt'),null);
@@ -2224,7 +2243,7 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   await click('reset');assert.equal(await run('items[0].state.elapsedMs'),0);
   await run('undo()');assert.equal(await run('items[0].state.elapsedMs'),paused);
   await run('redo()');assert.equal(await run('items[0].state.elapsedMs'),0);
-  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null});
+  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null,observedRun:false});
 }));
 
 test('ruler grows at a fixed drill-template scale and unit switching is undoable and survives saving',async()=>app(async({page,run})=>{

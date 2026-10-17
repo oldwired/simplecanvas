@@ -1,7 +1,7 @@
 # From smart shapes to connected components
 
 Status: stage 1, its authoring setting, and the expanded stage 2 library, logic, routing, and timed
-signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-16.
+signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-17.
 Stage 2 includes an editable eight-tab example workspace and offline HTML reader; a focused
 authoring-experience pass remains before closeout.
 These additions are not yet part of the main-branch baseline below.
@@ -43,7 +43,9 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Programmable shapes | Each `smart` item carries a script, JSON state, dimensions, and styling. Scripts return drawing primitives and interactive handles. |
 | Connected scalar values — feature branch | API v2 scripts declare typed ports and compute outputs from inputs and state. Number control and Gauge templates demonstrate saved bindings, undo/redo, independent copies, and offline HTML. |
 | Isolated execution | Each instance runs in its own Worker, managed by an opaque-origin sandboxed frame. Network access is blocked, replies are validated, and hook timeouts terminate the offending Worker. HTML exports use the same isolation machinery. |
-| Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Live clock and stopwatch templates derive readings from timestamps. Refreshes do not mutate saved state or create undo entries. |
+| Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Timestamp-based presentation, such as Stopwatch, does not mutate saved state or create undo entries. |
+| Connected wall clock — feature branch | Live clock uses API v2 transitions to synchronize timezone-aware hands/readout, four boundary-pulse outputs, and a string time output. Pure computation reads its settled snapshot. |
+| Connected stopwatch — feature branch | Stopwatch accepts run/reset commands and publishes elapsed seconds on pause/reset. Its live display independently follows saved wall timestamps without updating the output on each refresh. |
 | Interactive HTML | One offline file embeds the drawing, scripts, saved state, sandbox, and runtime. Controls work directly, without entering editor edit mode. An initial SVG remains visible before startup or when JavaScript is unavailable. |
 | Author and reader controls | `editorOnly` removes marked visuals and handles from exports. `exportBehavior` independently permits moving, rotating, and resizing either dimension; the default layout stays fixed. |
 | Library authoring | Existing library scripts can be edited and their previews regenerated. Each new placement initializes independently. Already-placed instances retain their own script and state. |
@@ -210,21 +212,27 @@ and transformed together. Nested folders can follow if real collections need the
 | --- | --- |
 | Controls | Number control, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
-| Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
-| Tools & time | Ruler, Live clock, Stopwatch, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Drawing | Rectangle, Ellipse, and categorized user shapes/icons |
+| Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Drill template, Race start timer, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
 Selectors, four stepped switches, two Shift registers, Clamp, Range mapper, Number function,
-Seven-segment display, and LED matrix (8×8). The catalog now includes 39 API v2 components.
-The extension also expands Compare, Number control, Math, and Counter without adding another
-delivery stage.
+Seven-segment display, and LED matrix (8×8). Upgrading the existing Live clock, Stopwatch, and Timer to
+API v2 brings the catalog to 42 API v2 components. The extension also expands Compare, Number
+control, Math, and Counter without adding another delivery stage.
+
+All smart-shape templates are also available as built-in library entries. Adding Clock, Arrow,
+Arc, Timer, Chart, Minimal, and Blank, plus the bundled Drill template and Race start timer,
+brings the full catalog to 53 entries. Timer now uses API v2; the other eight retain their existing
+API v1 behavior. Minimal is the circle starter and Blank is intentionally
+empty. Authors can place or pin them offline, and the template authoring dialog remains available.
 
 Category and tag metadata survive library import/export. Existing flat libraries remain
 valid and appear under an uncategorized section. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
-existing connections. Cataloguing clocks here does not make their presentation refreshes into
-connected time sources.
+existing connections. Live clock's connected signals use explicit state transitions; presentation
+refreshes alone do not create connected time sources.
 
 ### Built-in and user collections
 
@@ -279,7 +287,7 @@ Use declared types throughout: invalid or missing required inputs produce connec
 and an unavailable upstream value must not silently become `false`.
 
 Use traditional curved gate silhouettes, including inversion bubbles, with readable names and
-current input/output values. All built-in components display their instance name as the caption,
+current input/output values. All built-in API v2 components display their instance name as the caption,
 including Number control, Constant, Gauge, and the gates. Captions fit within the shape; operation
 symbols, readouts, and state labels remain separate. Optional per-instance LEDs default on: green means true, grey false,
 blue an available numeric value, and amber unavailable. The editor-only Indicators control toggles
@@ -401,6 +409,38 @@ latches/flip-flops remain part of the deferred discussion.
 
 Stage 2 also includes a bounded temporal extension to the existing acyclic graph:
 
+- **Live clock:** string `timezone` input, default `local`, accepts IANA names such as
+  `Europe/Berlin`, `America/New_York`, and `UTC`; invalid zones show a visible error. Five fixed
+  outputs are boolean `second`, `minute`, `hour`, and `halfDay`, plus string `time` in `HH:mm:ss`
+  format. On observed consecutive wall seconds, nominal 100 ms pulses mark every second,
+  second 00 of each minute, minute/second 00 of each hour, and noon/midnight respectively.
+  Hands, digital readout, and outputs share the same per-second transition snapshot. Fresh
+  placement, reload, and timezone changes prime pulses false; missed boundaries and clock jumps
+  never replay pulses. The named clock has optional LEDs labelled 1s, 1m, 1h, and 12h.
+  Connect `second` to Counter's `value` through **Inputs…** to count observed seconds. `time`
+  is a string and cannot feed the existing numeric Value label.
+- **Stopwatch:** boolean `run` and `reset` inputs, and one numeric `elapsed` output in seconds
+  including milliseconds. A change of run to true starts/resumes, and to false pauses and
+  publishes the accumulated duration. While running, the output holds the previous paused
+  total; reset clears it to zero and stops. Manual Start/Pause and Reset remain available in
+  editor and reader; the most recent action stays effective until run changes, with held reset
+  taking priority. A `HH:mm:ss.mmm` display refreshes every 100 ms while running and uses saved
+  wall timestamps, retaining elapsed time across tabs, backgrounding, and reload. Pure compute
+  reads the stored stopped result; there is no live output, periodic transition, or tick autosave.
+  A fresh placement supplies these ports and starts stopped; older instances keep their source.
+- **Timer:** the red-wedge countdown retains its template/built-in identity and gains API v2.
+  Unit is minutes (default) or seconds; Starting duration is 0–60, default 45. Dial-hand edits
+  also set starting duration, refill, and stop; top means 0, with 60 entered through Inputs.
+  Unit/duration setting changes refill and stop. Boolean run/reset inputs default false; run
+  changes start/resume or pause. Manual Start/Pause and Reset remain available, with the latest
+  action effective until run changes; held reset overrides and refills/stops, and releasing it
+  alone never starts. At zero, the timer stops with `reached=true`. Explicit Start or a new run
+  rising edge refills/restarts once; held run never loops. `tick` emits a nominal 100 ms boolean
+  pulse for each observed whole configured unit elapsed. Running wall time survives inactivity
+  and reload; missed ticks never replay, stale tick state clears on fresh observation, and hidden
+  expiry becomes reached on return. Pure compute/rendering keep the last settled snapshot;
+  transitions update the dial roughly once per second without `refreshMs`. The name caption and
+  optional LEDs remain visible in editor and HTML.
 - **Trigger:** a pushbutton in Controls with a boolean `value` output, normally false. Each
   completed click emits a 100 ms high pulse. Holding does not repeat; rapid clicks queue up to
   64 waiting presses with at least a 10 ms low gap between pulses, preserving each rising edge.
@@ -440,12 +480,20 @@ have the same 4 KB limit. Only current successful nodes commit; failed branches 
 An accepted control change settles before the next accepted change; drag previews do not consume
 edges until released. Timed changes do not create an undo entry for every tick.
 
-Clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
+Interval clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
 Delay preserves its pending queue across those pauses. Random and Sample & hold sample once after
-a late wake, without replaying missed intervals. Current outputs/counts persist, while queues,
-deadlines, and previous-input observations do not. Reload, copy, undo, script/binding replacement,
+a late wake, without replaying missed intervals. For these interval and edge components, current
+outputs/counts persist, while queues, deadlines, and previous-input observations do not. Reload,
+copy, undo, script/binding replacement,
 or unavailable-input recovery re-primes observations without creating a false initial count.
 Static exports and previews use pure computation; offline HTML uses the same temporal contract.
+Live clock updates while active and realigns to current wall time after inactivity. Its pure
+computation keeps the last settled snapshot for static exports; the HTML reader runs it live.
+Stopwatch likewise follows wall time while running, but only commands change its durable timing
+state and published result. It saves the last observed `run` level so reopening preserves manual
+overrides. Its display refreshes do not advance the connected `elapsed` output.
+Timer also preserves wall-time progress, including expiry during inactivity. Its transitions
+settle the countdown and outputs together; static paths never advance that saved snapshot.
 
 Feedback loops, latches, and flip-flops remain deferred. A boolean value is still distinct from an event or
 request trigger; remaining true must not imply repeated external actions in later stages.
@@ -485,6 +533,20 @@ request trigger; remaining true must not imply repeated external actions in late
 - Trigger emits one distinct pulse per accepted click without replay on restoration.
   Pulse generator retains observable high/low phases on late wakes; Edge to pulse preserves queued
   qualifying edges without replaying initial levels or stale queues after reconfiguration.
+- Live clock accepts local/IANA timezones and keeps its hands, readout, and `time` output in sync.
+  Its four boundary pulses drive boolean consumers such as Counter; fresh observation, timezone
+  changes, missed boundaries, and clock jumps create no replay. Invalid zones remain visible.
+  Returning to a tab realigns wall time, while static export/inspection never advances the snapshot.
+- Stopwatch run/reset inputs and manual controls start, pause, resume, and clear independently
+  per instance; held reset wins. Its millisecond display continues while running, including
+  elapsed wall time across inactive tabs and reloads, while the sole `elapsed` output updates
+  only on pause/reset. Pure inspection and display refreshes do not alter state or autosave;
+  bindings, stopped results, and manual/command behavior work in offline HTML.
+- Timer supports minute/second configuration and dial-hand duration edits, manual and run/reset
+  commands, pause/resume, and explicit restart at zero. Held run never loops; held reset and
+  configuration changes refill/stop, and reset release alone never starts. Unit ticks remain
+  short and do not replay after inactivity/reload; reached stays true at expiry. Static inspection
+  is pure, and the settled dial, independent instances, and commands work in offline HTML.
 - Delay preserves pulse order. Counter increments or decrements once per rising edge, stops at
   zero in down mode, and publishes the direction's completion condition. Reset uses the mode's
   baseline; initial high, reset release during high, restoration, and configuration restarts
