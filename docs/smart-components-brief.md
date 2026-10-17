@@ -4,11 +4,13 @@ Status: stages 1 and 2 are complete on `feature/smart-components`, based on `mai
 validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, timed signals,
 an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
-Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
+Stage 3's first embedded-data milestone is implemented on the branch; stages 4–6 remain proposals.
+The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
 fifteen-tab workspace. A subsequent text-passing milestone adds Text input, Number input, Text label,
-Memo, and a sixteenth example tab before stage 3. Shared buses and multiple drivers are deferred;
+Memo, and a sixteenth example tab before stage 3. Embedded data adds a seventeenth tab with
+CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
@@ -17,8 +19,8 @@ For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
 SimpleCanvas already creates portable interactive documents. An HTML export contains its
 visuals, smart-shape scripts, saved state, and an isolated runtime; readers can use it offline.
-On the feature branch, connected shapes exchange scalar values, and a categorized browser makes
-components easy to find, place, and combine. Consuming datasets and requesting explicit actions follow.
+On the feature branch, connected shapes exchange scalar values and table references, and a categorized browser makes
+components easy to find, place, and combine. Embedded datasets support offline data tools; explicit actions follow.
 
 The proposed direction is a visual authoring tool for small, self-contained interactive
 HTML documents. Preserve the ordinary drawing workflow and make component authoring optional.
@@ -88,20 +90,21 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including the feedback and text-passing milestones.
+These boundaries describe the feature branch, including the feedback, text-passing, and first embedded-data milestones.
 
-- **Connections carry scalar values within one sketch.** Number, string, and boolean ports are
-  supported. Shared datasets, cross-tab connections, and routed events remain future work.
+- **Connections stay within one sketch.** Number, string, boolean, and table-reference ports are
+  supported. Tables resolve through a bounded per-document pool. Cross-tab connections and routed
+  events remain future work; tables cannot participate in feedback cycles in this slice.
 - **A handle action changes local state.** There is no component API for downloading results,
   navigating the document, or calling a service. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
-  Component API v2 is explicit and separate from document format 4. There is no state-migration
+  Component API v2 is explicit and separate from document format 5. There is no state-migration
   or automatic definition-upgrade contract.
 - **State is small.** Scripts are limited to 50,000 characters; state to 4,000 serialized JSON
-  characters. Invalid state updates are rejected. Bulk datasets need a separate representation.
+  characters. Invalid state updates are rejected. Bulk data lives in the document dataset pool.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
 - **The library saves separately in this browser.** IndexedDB retains the modified/imported personal
@@ -137,7 +140,8 @@ Keep these checks as the regression baseline for subsequent stages.
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stages 3–6 remain proposals; shared buses are explicitly outside the feedback milestone.
+Stage 3 has its first complete embedded-data slice; stages 4–6 remain proposals. Shared buses are
+explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -149,7 +153,7 @@ Share runtime helpers between editor and export throughout.
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
+| 3. Embedded data — first milestone implemented on branch | Bounded dataset schema and storage, CSV/TSV/JSON import, typed table inputs, filtering, and table/chart built-ins | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
@@ -191,7 +195,7 @@ The [editable workspace](../examples/smart-components-workspace.json) covers **B
 logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Shift memory**, and
 **LED patterns**, plus seven feedback/sequential tabs: **Self-reset**, **Stop at zero**,
 **Reset and stop**, **Latch laboratory**, **Shared-edge storage**, **Sequences**, and
-**Delayed feedback**, followed by **Text and notes**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
+**Delayed feedback**, followed by **Text and notes** and **Embedded data**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
 the current workspace first if it should be retained. The matching
 [self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
 
@@ -249,7 +253,8 @@ All smart-shape templates are also available as built-in library entries. Adding
 Arc, Timer, Chart, Minimal, and Blank brought the stage 2 catalog to 51 entries. The feedback
 milestone adds eight storage/sequencing entries, bringing that catalog to 59 entries,
 including 50 API v2 components. Text input, Number input, Text label, and Memo bring the current
-catalog to **63 entries**, including **54 API v2 components**.
+catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Dataset, Table filter,
+Data table, and Data bar chart, bringing the current catalog to **67 entries / 58 API v2 components**.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
 empty. Authors can place or pin them offline, and the template authoring dialog remains available.
@@ -760,7 +765,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current sixteen-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current seventeen-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -797,8 +802,8 @@ both browser suites to pass, and the workspace generator stages both artifacts b
 with rollback on failure. Review fixes also bind sketch imports to their initiating tab and bound
 imported geometry before rounding.
 Visual inspection covers the new examples, including the latch laboratory layout, readable mobile
-tabs, and reader controls. Phase 3 remains unstarted; shared buses and the later component backlog
-are outside this delivery.
+tabs, and reader controls. That feedback delivery precedes the separate phase 3 milestone below; shared buses and the later
+component backlog remain outside its scope.
 
 ### Remaining component backlog
 
@@ -942,7 +947,7 @@ and validated by the runtime. Existing unversioned scripts retain their original
 V2 adds declared `inputs` and `outputs`, a `compute(inputs, state)` hook, and an extra `io`
 argument on drawing and interaction hooks containing resolved inputs and outputs plus the instance
 `name` for presentation. It starts
-with `number`, `string`, and `boolean`. Table types can follow with the dataset model.
+with `number`, `string`, and `boolean`, now extended with compact `table` references in stage 3.
 Metadata crosses the same validated sandbox boundary as hook results. A component declaring
 outputs must provide `compute`, `publish`, or both; an input-only display is valid. `io` also reaches `exportBehavior`.
 
@@ -1073,26 +1078,46 @@ This does not add the future document-wide Run/Preview mode.
 An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
 and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.
 
-### Embedded data and persistence — proposed stage 3
+### Embedded data and persistence — stage 3 first milestone
 
-Add a bounded document-level dataset store for embedded CSV/JSON and, later, reader-selected
-files. Keep row data out of the 4,000-character interaction state; state should hold selections,
-filters, and stable references. The existing asset pool and pruning logic are image-specific,
-so generic data requires explicit schema, reference tracking, validation, and save/export changes.
+The first slice is implemented: **Dataset → Table filter → Data table + Data bar chart**, controlled
+by a Text input and shipped as the **Embedded data** workspace tab. Import the matching
+[sailing-results CSV](../examples/sailing-results.csv) or [JSON](../examples/sailing-results.json) through
+**Inputs…** on a table port. The same drawing and its data work in the offline HTML export.
 
-Set document, dataset, computed-output, and transfer budgets before accepting tables. Resolve
-references through the host, with bounded data passed into Workers; avoid copying a full dataset
-into every instance's saved state or every redraw. Unsupported data must produce a recoverable
-error without destroying the surrounding drawing.
+- Each sketch stores immutable tables once in `datasets`, separate from 4,000-character component
+  state. A table has a name, ordered typed columns (`key`, `name`, `type`), and scalar/null cells.
+  Ports carry `{datasetId, rows?}`; row selections retain original indices rather than copying data.
+- CSV and TSV use a unique header row and column-wide type inference; quotes, escaped quotes, and embedded
+  line breaks are supported. The import delimiter is configurable as Automatic (default), Comma,
+  Semicolon, or Tab. Detection respects quoted cells and warns on ambiguity; changing the choice refreshes
+  the preview before Save. Delimiters do not change type inference: decimal-comma values remain text.
+  Empty cells become null, and leading-zero/unsafe-integer identifiers
+  remain strings. JSON accepts flat row objects with consistent non-null column types and null for
+  missing fields. Unsupported structures and malformed rows reject the whole import.
+- Limits are 16 active datasets per sketch, 32 columns, 1,000 rows, 2,000 characters per string cell,
+  500,000 serialized characters per dataset, 2,000,000 per active pool, and 1,000,000 input-file
+  characters. Worker table transfers are bounded to 2,000,000 characters per call and 16,000,000
+  per evaluation. Limit errors preserve the surrounding drawing and accepted data.
+- Computation receives full resolved inputs through `context.tables`. Rendering receives at most
+  24 rows per input/output and 160 characters per text cell through `io.tables`; full row counts
+  remain available. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
+  are rejected in this first slice.
+- **Inputs…** previews imported column types and initial rows before Save. Cancel discards pending
+  data; tab/session changes cancel stale imports. Existing datasets can be selected directly.
+- Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
+  paste, and library transfer carry referenced datasets with collision-safe IDs. Undo/redo keeps
+  immutable prior data; exported files omit data reachable only from history.
 
-Extend sketch/workspace JSON and offline HTML together. Derived outputs can be recomputed;
-a saved document must retain the definitions, state, datasets, and bindings needed to do so.
-Static PNG/SVG/print should capture the settled visible result without running actions.
+Table filter supports text contains/equality, typed equality/inequality, numeric ordering, and
+empty/nonempty checks. Data table and Data bar chart show bounded views and disclose omissions;
+filtering evaluates all accepted rows. The chart draws one bar per row with a shared zero baseline.
+The earlier manually editable **Chart** template remains separate.
 
-Reader persistence is a separate product decision. A later explicit **Save results** action
-could export JSON or CSV. A new HTML snapshot or full HTML-to-editor round trip requires a
-complete editable document model in the export and a defined import path; the present playback
-model is not sufficient on its own.
+Reader-selected files, table-cell editing, aggregation/sorting, computed datasets with new columns,
+and additional chart types are later extensions. Reader persistence also remains separate: a later
+explicit **Save results** action can export JSON or CSV. A new HTML snapshot or full HTML-to-editor
+round trip requires a complete editable document model in the export and a defined import path.
 
 ### Definition identity and updates
 
@@ -1314,7 +1339,7 @@ independent, and redraws or restored state never produce extra requests.
 Support MQTT as another transport in the host-managed integration service. This belongs to
 the component runtime shared by the editor and exported HTML; the separate deployment-plugin
 experiment is not a dependency. MQTT uses the shared input, transient-value, credential, and
-execution contracts from step 6.1. It is future work, beyond the implemented scalar API v2.
+execution contracts from step 6.1. It is future work, beyond the implemented value/table API v2.
 
 Browser clients require MQTT over WebSockets: a broker must expose a `ws://` or `wss://`
 endpoint, or be reachable through a gateway providing one. Prefer secure WebSockets for hosted
@@ -1422,15 +1447,16 @@ handling are tested separately from broker delivery.
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
    built-in organization overrides, Keywords, stable library-entry identity, catalog definitions,
    and ordered working membership; flat and legacy single-category imports remain supported.
-2. **Stage 3:** Define the table contract and dataset storage, transfer, and computation budgets
-   before accepting embedded tables. Preserve recoverable unsupported data.
+2. **Stage 3 — established first slice:** Compact references, typed nullable columns, immutable
+   document datasets, storage/transfer budgets, and atomic imports are defined above. Extensions
+   must preserve these limits and recoverable failures.
 3. **Stage 4:** Define a supported revision for event/action envelopes, receiving hooks, dispatch
    identity, and propagation limits before adding handlers or download controls.
 4. **Stage 5:** Use the library example to choose binding/control improvements and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
    connection identity, and artifact-specific credential/startup policy before either transport.
-   These require explicit contract extensions, not implicit additions to scalar API v2.
+   These require explicit contract extensions, not implicit additions to the value/table API v2.
 6. **Transport steps:** Fix HTTP response mapping and request limits before 6.2; MQTT client-ID,
    reconnect, QoS, and retained-reading rules before 6.3; trigger baselines before 6.4; write retry,
    duplicate, and acknowledgement policies before 6.5. Keep execution settings separate from

@@ -1,11 +1,11 @@
 {
   "app": "SimpleCanvasWorkspace",
-  "version": 4,
+  "version": 5,
   "activeIndex": 0,
   "tabs": [
     {
       "name": "1 · Basics",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -37,7 +37,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  01 OF 16",
+          "text": "SMART COMPONENTS  /  01 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -271,7 +271,7 @@
     },
     {
       "name": "2 · Threshold logic",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -303,7 +303,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  02 OF 16",
+          "text": "SMART COMPONENTS  /  02 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -621,7 +621,7 @@
     },
     {
       "name": "3 · Numeric tools",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -653,7 +653,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  03 OF 16",
+          "text": "SMART COMPONENTS  /  03 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -981,7 +981,7 @@
     },
     {
       "name": "4 · Countdown",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -1013,7 +1013,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  04 OF 16",
+          "text": "SMART COMPONENTS  /  04 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -1502,7 +1502,7 @@
     },
     {
       "name": "5 · Delayed pulses",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -1534,7 +1534,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  05 OF 16",
+          "text": "SMART COMPONENTS  /  05 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -1953,7 +1953,7 @@
     },
     {
       "name": "6 · Routing",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -1985,7 +1985,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  06 OF 16",
+          "text": "SMART COMPONENTS  /  06 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -2372,7 +2372,7 @@
     },
     {
       "name": "7 · Shift memory",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -2404,7 +2404,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  07 OF 16",
+          "text": "SMART COMPONENTS  /  07 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -2778,7 +2778,7 @@
     },
     {
       "name": "8 · LED patterns",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -2810,7 +2810,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  08 OF 16",
+          "text": "SMART COMPONENTS  /  08 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -3201,7 +3201,7 @@
     },
     {
       "name": "9 · Self-reset",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -3252,7 +3252,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  09 OF 16",
+          "text": "SMART COMPONENTS  /  09 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -3580,7 +3580,7 @@
     },
     {
       "name": "10 · Stop at zero",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -3631,7 +3631,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  10 OF 16",
+          "text": "SMART COMPONENTS  /  10 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -3928,7 +3928,7 @@
     },
     {
       "name": "11 · Reset and stop",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -3979,7 +3979,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  11 OF 16",
+          "text": "SMART COMPONENTS  /  11 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -4349,7 +4349,7 @@
     },
     {
       "name": "12 · Latch laboratory",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -4400,7 +4400,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  12 OF 16",
+          "text": "SMART COMPONENTS  /  12 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -4874,7 +4874,7 @@
     },
     {
       "name": "13 · Shared-edge storage",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -4925,7 +4925,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  13 OF 16",
+          "text": "SMART COMPONENTS  /  13 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -5250,7 +5250,7 @@
     },
     {
       "name": "14 · Sequences",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -5301,7 +5301,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  14 OF 16",
+          "text": "SMART COMPONENTS  /  14 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -5650,7 +5650,7 @@
     },
     {
       "name": "15 · Delayed feedback",
-      "version": 4,
+      "version": 5,
       "assets": {},
       "ui": {
         "tool": "select",
@@ -5701,7 +5701,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  15 OF 16",
+          "text": "SMART COMPONENTS  /  15 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -5929,7 +5929,7 @@
     },
     {
       "name": "16 · Text and notes",
-      "version": 4,
+      "version": 5,
       "items": [
         {
           "type": "rect",
@@ -5961,7 +5961,7 @@
           "y": 36,
           "w": 1240,
           "h": 20,
-          "text": "SMART COMPONENTS  /  16 OF 16",
+          "text": "SMART COMPONENTS  /  16 OF 17",
           "align": "left",
           "fontFamily": "sans",
           "fontSize": 12,
@@ -6452,6 +6452,497 @@
         }
       ],
       "assets": {},
+      "ui": {
+        "tool": "select",
+        "color": "#334155",
+        "size": 2,
+        "strokeOn": true,
+        "fill": false,
+        "fillColor": "#f8fafc",
+        "textColor": "#334155",
+        "fontFamily": "sans",
+        "fontSize": 18,
+        "text": {
+          "color": "#334155",
+          "size": 1,
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#f8fafc"
+        }
+      }
+    },
+    {
+      "name": "17 · Embedded data",
+      "version": 5,
+      "items": [
+        {
+          "type": "rect",
+          "x": 18,
+          "y": 18,
+          "w": 1304,
+          "h": 810,
+          "fill": true,
+          "fillColor": "#f8fafc",
+          "strokeOn": false,
+          "color": "#f8fafc",
+          "size": 1
+        },
+        {
+          "type": "rect",
+          "x": 18,
+          "y": 18,
+          "w": 7,
+          "h": 810,
+          "fill": true,
+          "fillColor": "#2563eb",
+          "strokeOn": false,
+          "color": "#2563eb",
+          "size": 1
+        },
+        {
+          "type": "text",
+          "x": 44,
+          "y": 36,
+          "w": 1240,
+          "h": 20,
+          "text": "SMART COMPONENTS  /  17 OF 17",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 12,
+          "font": "12px sans-serif",
+          "color": "#2563eb",
+          "textColor": "#2563eb",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        },
+        {
+          "type": "text",
+          "x": 44,
+          "y": 66,
+          "w": 1240,
+          "h": 44,
+          "text": "Data that travels with the drawing",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 30,
+          "font": "30px sans-serif",
+          "color": "#0f172a",
+          "textColor": "#0f172a",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        },
+        {
+          "type": "text",
+          "x": 44,
+          "y": 115,
+          "w": 1240,
+          "h": 34,
+          "text": "Embedded sailing results → typed filtering → a table and chart. The exported HTML works offline.",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 15,
+          "font": "15px sans-serif",
+          "color": "#475569",
+          "textColor": "#475569",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        },
+        {
+          "type": "arrow",
+          "x1": 373,
+          "y1": 255,
+          "x2": 430,
+          "y2": 255,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "arrow",
+          "x1": 900,
+          "y1": 245,
+          "x2": 790,
+          "y2": 245,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "x1": 610,
+          "y1": 343,
+          "x2": 610,
+          "y2": 350,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "x1": 345,
+          "y1": 350,
+          "x2": 990,
+          "y2": 350,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "arrow",
+          "x1": 345,
+          "y1": 350,
+          "x2": 345,
+          "y2": 370,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "arrow",
+          "x1": 990,
+          "y1": 350,
+          "x2": 990,
+          "y2": 370,
+          "color": "#2563eb",
+          "size": 2,
+          "strokeOn": true,
+          "fill": false
+        },
+        {
+          "type": "smart",
+          "x": 58,
+          "y": 180,
+          "color": "#94a3b8",
+          "textColor": "#334155",
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "size": 1,
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "w": 300,
+          "h": 150,
+          "script": "// Select an embedded dataset for Data in Inputs. Rows remain in the document's dataset store.\n({\n  apiVersion:2,\n  inputs:{data:{type:'table'}},\n  outputs:{data:{type:'table'},rowCount:{type:'number'}},\n  initState(){return {};},\n  initStyle(){return {w:300,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!inputs.data || typeof inputs.data.datasetId!=='string' || !table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Choose an embedded dataset in Inputs');\n    return {data:inputs.data,rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/300,h/150),pad=12*scale,table=io.tables?.inputs?.data;\n    const available=!io.error && table && Number.isInteger(io.outputs?.rowCount),text=(v,x,y,ww,hh,size,color,weight)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Dataset',pad,pad,w-pad*2,22*scale,16,undefined,600)\n    ];\n    if(!available){children.push(text('Choose a dataset in Inputs',pad,h*.48,w-pad*2,22*scale,12,'#92400e'));return children;}\n    const count=io.outputs.rowCount,columnCount=table.columns.length;\n    children.push(text(table.name||'Embedded data',pad,43*scale,w-pad*2,20*scale,13));\n    children.push(text(count+' '+(count===1?'row':'rows')+' · '+columnCount+' '+(columnCount===1?'column':'columns'),pad,72*scale,w-pad*2,25*scale,18,undefined,600));\n    children.push(text(table.columns.map(column=>column.name).join(' · '),pad,h-30*scale,w-pad*2,18*scale,11,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {},
+          "componentApi": 2,
+          "componentName": "Race results",
+          "uid": "demo-17-source",
+          "bindings": {},
+          "inputValues": {
+            "data": {
+              "datasetId": "sailing-results"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "x": 450,
+          "y": 180,
+          "color": "#94a3b8",
+          "textColor": "#334155",
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "size": 1,
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "w": 320,
+          "h": 150,
+          "script": "// Filters retain references to original dataset rows; they never copy rows into saved state.\n// A blank column passes all rows. Comparison values use the selected column's declared type.\n({\n  apiVersion:2,\n  settings:{caseSensitive:{type:'boolean',default:false,label:'Case-sensitive text'}},\n  inputs:{data:{type:'table'},column:{type:'string',default:'',columnOf:'data'},operation:{type:'string',default:'contains',options:['contains','=','≠','>','≥','<','≤','is empty','is not empty']},text:{type:'string',default:''},number:{type:'number',default:0},boolean:{type:'boolean',default:true}},\n  outputs:{data:{type:'table'},rowCount:{type:'number'}},\n  initState(){return {caseSensitive:false};},\n  initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!inputs.data || typeof inputs.data.datasetId!=='string' || !table || !Array.isArray(table.columns) || !Array.isArray(table.rows) || !Array.isArray(table.rowIndices) || table.rows.length!==table.rowIndices.length || table.rowCount!==table.rows.length)throw new Error('Filter requires a complete table input');\n    if(typeof inputs.column!=='string')throw new Error('Column must be a column key');\n    if(inputs.column==='')return {data:inputs.data,rowCount:table.rowCount};\n    const index=table.columns.findIndex(column=>column.key===inputs.column);\n    if(index<0)throw new Error('Unknown filter column: '+inputs.column);\n    const type=table.columns[index].type,operation=inputs.operation;\n    if(!['string','number','boolean'].includes(type))throw new Error('Unsupported column type');\n    if(!['contains','=','≠','>','≥','<','≤','is empty','is not empty'].includes(operation))throw new Error('Unsupported filter operation');\n    if(operation==='contains' && type!=='string')throw new Error('Contains requires a text column');\n    if(['>','≥','<','≤'].includes(operation) && type!=='number')throw new Error('Ordered comparisons require a numeric column');\n    const fold=value=>type==='string' && state.caseSensitive!==true?value.toLowerCase():value;\n    const target=type==='string'?inputs.text:type==='number'?inputs.number:inputs.boolean;\n    if(!['is empty','is not empty'].includes(operation) && (typeof target!==type || type==='number' && !Number.isFinite(target)))throw new Error('Filter value must match the selected column type');\n    const rows=[];\n    for(let r=0;r<table.rows.length;r++){\n      const value=table.rows[r][index],empty=value===null || value==='';\n      let match=false;\n      if(operation==='is empty')match=empty;\n      else if(operation==='is not empty')match=!empty;\n      else if(value!==null){\n        if(typeof value!==type || type==='number' && !Number.isFinite(value))throw new Error('Cell does not match its column type');\n        const a=fold(value),b=fold(target);\n        switch(operation){\n          case 'contains':match=a.includes(b);break;\n          case '=':match=a===b;break;\n          case '≠':match=a!==b;break;\n          case '>':match=a>b;break;\n          case '≥':match=a>=b;break;\n          case '<':match=a<b;break;\n          case '≤':match=a<=b;break;\n        }\n      }\n      if(match)rows.push(table.rowIndices[r]);\n    }\n    return {data:{datasetId:inputs.data.datasetId,rows},rowCount:rows.length};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/320,h/150),pad=12*scale,table=io.tables?.inputs?.data,inputs=io.inputs||{};\n    const available=!io.error && table && Number.isInteger(io.outputs?.rowCount),text=(v,x,y,ww,hh,size,color,weight)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Table filter',pad,pad,w-pad*2,22*scale,16,undefined,600)\n    ];\n    if(!available){children.push(text(io.error||'Connect a table in Inputs',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}\n    const column=table.columns.find(column=>column.key===inputs.column),target=column?.type==='number'?inputs.number:column?.type==='boolean'?inputs.boolean:inputs.text;\n    const condition=column?column.name+' '+inputs.operation+(['is empty','is not empty'].includes(inputs.operation)?'':' '+(typeof target==='string'?'“'+target+'”':target)):'All rows';\n    children.push(text(condition,pad,47*scale,w-pad*2,24*scale,14));\n    children.push(text(io.outputs.rowCount+' of '+table.rowCount+' rows',pad,84*scale,w-pad*2,26*scale,20,undefined,600));\n    if(column?.type==='string' && state.caseSensitive!==true && !['is empty','is not empty'].includes(inputs.operation))children.push(text('Ignoring letter case',pad,h-26*scale,w-pad*2,16*scale,10,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "caseSensitive": false
+          },
+          "componentApi": 2,
+          "componentName": "Boat filter",
+          "uid": "demo-17-filter",
+          "bindings": {
+            "data": {
+              "uid": "demo-17-source",
+              "port": "data"
+            },
+            "text": {
+              "uid": "demo-17-boat",
+              "port": "value"
+            }
+          },
+          "inputValues": {
+            "column": "Boat",
+            "operation": "contains"
+          }
+        },
+        {
+          "type": "smart",
+          "x": 920,
+          "y": 205,
+          "color": "#94a3b8",
+          "textColor": "#334155",
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "size": 1.5,
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "w": 320,
+          "h": 72,
+          "script": "// Each accepted entry queues its value and one submitted pulse, including unchanged entries.\n// The bounded inbox survives Pause; a fresh runtime retains the latest value without replaying it.\n// A 10 ms arming gap lets connected Clear signals settle before the first queued pulse.\n({\n  apiVersion:2,\n  wakePolicy:'latest',\n  settings:{maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length'},required:{type:'boolean',default:false,label:'Required'},placeholder:{type:'string',default:'',label:'Placeholder'},showSubmitted:{type:'boolean',default:false,label:'Show submission state'},showHints:{type:'boolean',default:false,label:'Show hints'}},\n  inputs:{clear:{type:'boolean',default:false}},\n  outputs:{value:{type:'string'},submitted:{type:'boolean'}},\n  initState(){return {values:[''],current:0,pending:[],submitted:false,press:0,entryRuntime:'',showSubmitted:false,showHints:false,maxLength:2000,required:false,placeholder:''};},\n  initStyle(){return {w:320,h:72,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  _value(value){if(typeof value!=='string' || value.length>2000)throw new Error('Text must contain at most 2000 characters'); return value;},\n  _config(state){if(!Number.isSafeInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000 || typeof state.required!=='boolean' || typeof state.placeholder!=='string' || state.placeholder.length>120 || /[\\r\\n]/.test(state.placeholder))throw new Error('Choose a length from 1 to 2000 and a single-line placeholder of at most 120 characters');},\n  _state(state){\n    this._config(state);\n    if(!Array.isArray(state.values) || !state.values.length || state.values.length>65 ||\n       !Number.isSafeInteger(state.current) || state.current<0 || state.current>=state.values.length ||\n       !Array.isArray(state.pending) || state.pending.length>64 ||\n       state.pending.some(index=>!Number.isSafeInteger(index) || index<0 || index>=state.values.length) ||\n       typeof state.submitted!=='boolean' || !Number.isSafeInteger(state.press) || state.press<0 ||\n       (state.entryRuntime!==undefined && (typeof state.entryRuntime!=='string' || state.entryRuntime.length>128)))throw new Error('Invalid stored input state');\n    state.values.forEach(value=>this._value(value));\n    if(JSON.stringify(state.values).length>3200 || JSON.stringify(state).length>4000)throw new Error('Stored input text is too large');\n  },\n  _latest(state){return state.values[state.pending.length?state.pending[state.pending.length-1]:state.current];},\n  _compact(state){\n    const used=[...new Set([state.current,...state.pending])],values=used.map(index=>state.values[index]);\n    return {...state,values,current:used.indexOf(state.current),pending:state.pending.map(index=>used.indexOf(index))};\n  },\n  _entry(value,state){\n    this._value(value);if(value.length>state.maxLength)throw new Error('Text exceeds the configured maximum length');\n    if(state.required && !value.trim())throw new Error('Enter a value');\n    if(/[\\r\\n]/.test(value))throw new Error('Enter a single line of text');\n    return value;\n  },\n  publish(state){\n    this._state(state);\n    return {value:state.submitted?state.values[state.current]:this._latest(state),submitted:state.submitted};\n  },\n  compute(inputs,state){return this.publish(state);},\n  transition(inputs,state,memory,context){\n    this._state(state);\n    const now=context.now,clear=inputs.clear===undefined?false:inputs.clear;\n    if(typeof clear!=='boolean')throw new Error('Clear trigger must be Boolean');\n    if(!Number.isFinite(now) || now<0)throw new Error('Input requires a valid monotonic time');\n    if(memory?.primed!==true){\n      const runtimeId=typeof context.runtimeId==='string'?context.runtimeId:'';\n      if(!runtimeId || state.entryRuntime!==runtimeId){\n        return {state:{...state,values:[this._latest(state)],current:0,pending:[],submitted:false,entryRuntime:runtimeId},\n          memory:{primed:true,phase:'idle',nextAt:null,clear},nextWakeAt:null};\n      }\n      // A first entry accepted while paused belongs to this runtime, so Step may emit it.\n      state={...state,submitted:false};memory={primed:true,phase:'idle',nextAt:null,clear};\n    }\n    if(!['idle','high','low'].includes(memory.phase) || (memory.phase!=='idle' && (!Number.isFinite(memory.nextAt) || memory.nextAt<0)))throw new Error('Invalid input scheduling memory');\n    // Clear wins over the queue, but an initially high signal only establishes its baseline.\n    if(memory.clear===false && clear){\n      return {state:{...state,values:[''],current:0,pending:[],submitted:false},\n        memory:{primed:true,phase:'idle',nextAt:null,clear},nextWakeAt:null};\n    }\n    let phase=memory.phase,nextAt=memory.nextAt,current=state.current,pending=state.pending.slice();\n    // One phase per round gives every accepted entry its own rising edge and matching value.\n    if(phase==='high' && !context.historical && now>=nextAt){phase='low';nextAt=now+10;}\n    else if(phase==='idle' && pending.length){phase='low';nextAt=now+10;}\n    else if(phase==='low' && !context.historical && now>=nextAt && pending.length){\n      current=pending.shift();phase='high';nextAt=now+100;\n    }else if(phase==='low' && !context.historical && now>=nextAt){phase='idle';nextAt=null;}\n    if(nextAt!==null && !Number.isFinite(nextAt))throw new Error('Input wake time is outside the numeric range');\n    const next=this._compact({...state,current:phase!=='high' && pending.length?pending[0]:current,pending,submitted:phase==='high'});this._state(next);\n    return {state:next,memory:{primed:true,phase,nextAt,clear},nextWakeAt:nextAt};\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _preview(value,width,size){\n    const chars=Array.from(value),unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size;if(chars.reduce((used,c)=>used+unit(c),0)<=room)return value;\n    let result='',used=.9;for(const c of chars){if(used+unit(c)>room)break;result+=c;used+=unit(c);}return result+'…';\n  },\n  _field(state,w,h,style={}){\n    const scale=Math.min(w/320,h/72),footer=state.showSubmitted===true || state.showHints===true?14*scale:0;\n    const y=24*scale,height=Math.max(1,h-y-footer);\n    return {x:0,y,w,h:height,fontSize:Math.max(5,Math.min(style.fontSize||18,height*.55))};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/320,h/72),field=this._field(state,w,h,style),font=(size,weight=400)=>(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    const text=(value,x,y,width,height,size,align='left')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});\n    let available=false,value;try{this._state(state);value=this._latest(state);available=!io.error;}catch{}\n    const label=available?value || state.placeholder || (state.showHints===true?'Enter text':''):'Input unavailable',inset=Math.min(10*scale,field.w*.08);\n    const children=[\n      {...text('',0,0,w,20*scale,13*scale),...this._caption(io.name,'Text input',w,20*scale,{...style,fontSize:13*scale})},\n      {type:'rect',x:field.x,y:field.y,w:field.w,h:field.h,fill:true,fillColor:style.fillColor||'#ffffff',strokeOn:true,color:style.color||'#94a3b8',size:style.size||1.5},\n      {...text(this._preview(label,Math.max(1,field.w-inset*2),field.fontSize),field.x+inset,field.y+(field.h-field.fontSize*1.35)/2,Math.max(1,field.w-inset*2),field.fontSize*1.35,field.fontSize),color:available?available && !value?'#64748b':style.textColor||style.color:'#92400e'}\n    ];\n    if(state.showHints===true || state.showSubmitted===true){\n      const hint=state.showHints===true?'Enter to submit':'',status=state.showSubmitted===true?'Submitted: '+(available?String(io.outputs?.submitted===true):'—'):'';\n      children.push(text([hint,status].filter(Boolean).join(' · '),0,h-12*scale,w,12*scale,9*scale));\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,error:io.error||'Input unavailable',outputs:{}});},\n  handles(state,w,h,style={}){\n    this._state(state);const inline=this._field(state,w,h,style);\n    return [{id:'entry',x:inline.x+inline.w/2,y:inline.y+inline.h/2,kind:'text',value:this._latest(state),maxLength:state.maxLength,required:state.required,placeholder:state.placeholder,inline}];\n  },\n  hitEdit(state,x,y,w,h){const field=this._field(state,w,h);return x>=field.x && x<=field.x+field.w && y>=field.y && y<=field.y+field.h?'entry':null;},\n  dragEdit(state,handle,value,ly,w,h,style,io={}){\n    this._state(state);if(handle!=='entry')return {state};\n    value=this._entry(value,state);\n    const runtimeId=typeof io.runtimeId==='string'?io.runtimeId:'';\n    if(runtimeId && state.entryRuntime!==runtimeId){\n      // Reopened/copied inboxes are old actions; keep their latest value, then accept this new one.\n      state={...state,values:[this._latest(state)],current:0,pending:[],submitted:false,entryRuntime:runtimeId};\n    }\n    if(state.pending.length>=64)throw new Error('Submission queue is full; wait for pending submissions');\n    const values=state.values.slice(),pending=state.pending.slice();\n    let index=values.indexOf(value);if(index<0){index=values.length;values.push(value);}pending.push(index);\n    const next=this._compact({...state,values,current:state.submitted?state.current:pending[0],pending,press:state.press===Number.MAX_SAFE_INTEGER?0:state.press+1});\n    if(JSON.stringify(next.values).length>3200 || JSON.stringify(next).length>4000)throw new Error('Submission text is too large; shorten it or wait for pending submissions');\n    this._state(next);return {state:next};\n  }\n})\n",
+          "state": {
+            "values": [
+              "Aurora"
+            ],
+            "current": 0,
+            "pending": [],
+            "submitted": false,
+            "press": 0,
+            "entryRuntime": "",
+            "showSubmitted": false,
+            "showHints": false,
+            "maxLength": 2000,
+            "required": false,
+            "placeholder": "Boat name, or blank for all"
+          },
+          "componentApi": 2,
+          "componentName": "Filter boats",
+          "uid": "demo-17-boat",
+          "bindings": {},
+          "inputValues": {}
+        },
+        {
+          "type": "text",
+          "x": 920,
+          "y": 286,
+          "w": 330,
+          "h": 48,
+          "text": "Try Aurora, Borealis, or Calypso.\nPress Enter; a blank search shows all rows.",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "font": "13px sans-serif",
+          "color": "#475569",
+          "textColor": "#475569",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        },
+        {
+          "type": "smart",
+          "x": 45,
+          "y": 380,
+          "color": "#94a3b8",
+          "textColor": "#334155",
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "size": 1,
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "w": 600,
+          "h": 300,
+          "script": "// A bounded view of a connected table. Rendering never changes the data or its row count.\n({\n  apiVersion:2,\n  settings:{maxRows:{type:'number',default:12,min:1,max:20,step:1,label:'Visible rows'},showCounts:{type:'boolean',default:true,label:'Show row count'}},\n  inputs:{data:{type:'table'}},\n  outputs:{rowCount:{type:'number'}},\n  initState(){return {maxRows:12,showCounts:true};},\n  initStyle(){return {w:600,h:360,fontSize:13,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Inputs');\n    return {rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400,align='left'){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align,font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/600,h/360),pad=10*scale,table=io.tables?.inputs?.data,bodyY=44*scale;\n    const text=(v,x,y,ww,hh,size,color,weight,align)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight,align);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Data table',pad,pad,w-pad*2,25*scale,16,undefined,600)\n    ];\n    if(io.error || !table){children.push(text('Connect a table in Inputs',pad,bodyY,w-pad*2,24*scale,13,'#92400e'));return children;}\n    const columns=table.columns.slice(0,8),width=w-pad*2,cellWidth=width/Math.max(1,columns.length),rowHeight=22*scale;\n    const maxRows=Math.max(1,Math.min(20,Number.isInteger(state.maxRows)?state.maxRows:12)),room=Math.max(0,Math.floor((h-bodyY-rowHeight-28*scale)/rowHeight));\n    const rows=table.rows.slice(0,Math.min(maxRows,room)),hasMore=table.rowCount>rows.length || table.columns.length>columns.length;\n    children.push({type:'rect',x:pad,y:bodyY,w:width,h:rowHeight,fill:true,fillColor:'#e2e8f0',strokeOn:false});\n    columns.forEach((column,index)=>children.push(text(column.name,pad+index*cellWidth+5*scale,bodyY+3*scale,cellWidth-10*scale,rowHeight-6*scale,12,undefined,600)));\n    rows.forEach((row,index)=>{\n      const y=bodyY+rowHeight*(index+1);\n      if(index%2===1)children.push({type:'rect',x:pad,y,w:width,h:rowHeight,fill:true,fillColor:'#f1f5f9',strokeOn:false});\n      columns.forEach((column,col)=>children.push(text(row[col]===null?'—':row[col],pad+col*cellWidth+5*scale,y+3*scale,cellWidth-10*scale,rowHeight-6*scale,12,row[col]===null?'#94a3b8':undefined,400,column.type==='number'?'right':'left')));\n    });\n    if(table.rowCount===0)children.push(text('No matching rows',pad,bodyY+rowHeight+8*scale,width,24*scale,13,'#64748b'));\n    if(state.showCounts!==false || hasMore){\n      const counts=table.rowCount>rows.length?'Showing '+rows.length+' of '+table.rowCount+' rows':table.rowCount+' '+(table.rowCount===1?'row':'rows');\n      const omitted=table.columns.length>columns.length?' · '+columns.length+' of '+table.columns.length+' columns':'';\n      children.push(text(counts+omitted,pad,h-24*scale,width,16*scale,10,'#64748b'));\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "maxRows": 12,
+            "showCounts": true
+          },
+          "componentApi": 2,
+          "componentName": "Matching results",
+          "uid": "demo-17-table",
+          "bindings": {
+            "data": {
+              "uid": "demo-17-filter",
+              "port": "data"
+            }
+          },
+          "inputValues": {}
+        },
+        {
+          "type": "smart",
+          "x": 680,
+          "y": 380,
+          "color": "#94a3b8",
+          "textColor": "#334155",
+          "fill": true,
+          "fillColor": "#2563eb",
+          "strokeOn": true,
+          "size": 1,
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "w": 600,
+          "h": 300,
+          "script": "// One horizontal bar per row, with a shared zero baseline for positive and negative values.\n// Blank Category/Value choose the first column and first numeric column respectively.\n({\n  apiVersion:2,\n  settings:{maxBars:{type:'number',default:12,min:1,max:24,step:1,label:'Visible bars'},showValues:{type:'boolean',default:true,label:'Show values'}},\n  inputs:{data:{type:'table'},category:{type:'string',default:'',columnOf:'data'},value:{type:'string',default:'',columnOf:'data',columnType:'number'}},\n  outputs:{rowCount:{type:'number'}},\n  initState(){return {maxBars:12,showValues:true};},\n  initStyle(){return {w:600,h:360,fontSize:13,fill:true,fillColor:'#2563eb',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  _columns(inputs,table){\n    const category=inputs.category===''?0:table.columns.findIndex(column=>column.key===inputs.category);\n    const value=inputs.value===''?table.columns.findIndex(column=>column.type==='number'):table.columns.findIndex(column=>column.key===inputs.value);\n    if(category<0)throw new Error('Unknown chart category column: '+inputs.category);\n    if(value<0 || table.columns[value].type!=='number')throw new Error('Choose a numeric chart value column');\n    return {category,value};\n  },\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!table || !Array.isArray(table.columns) || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Inputs');\n    this._columns(inputs,table);\n    return {rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400,align='left'){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align,font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/600,h/360),pad=12*scale,table=io.tables?.inputs?.data;\n    const text=(v,x,y,ww,hh,size,color,weight,align)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight,align);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:'#ffffff',strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Data bar chart',pad,pad,w-pad*2,25*scale,16,undefined,600)\n    ];\n    let selected,error=io.error;\n    if(!error && table){try{selected=this._columns(io.inputs||{},table);}catch(caught){error=caught.message;}}\n    if(error || !table || !selected){children.push(text(error||'Connect a table in Inputs',pad,50*scale,w-pad*2,24*scale,13,'#92400e'));return children;}\n    const {category,value}=selected,maxBars=Math.max(1,Math.min(24,Number.isInteger(state.maxBars)?state.maxBars:12));\n    const bodyY=62*scale,bodyHeight=h-bodyY-40*scale,limit=Math.max(1,Math.floor(bodyHeight/(12*scale)));\n    const rows=table.rows.slice(0,Math.min(maxBars,limit)),rowHeight=bodyHeight/Math.max(1,rows.length);\n    const chartX=pad+100*scale,chartW=w-chartX-pad-(state.showValues!==false?78*scale:0);\n    const values=rows.map(row=>row[value]).filter(v=>typeof v==='number' && Number.isFinite(v)),magnitude=Math.max(1,...values.map(v=>Math.abs(v)));\n    const normalized=values.map(v=>v/magnitude),minimum=Math.min(0,...normalized),maximum=Math.max(0,...normalized),range=maximum-minimum||1;\n    const xAt=v=>chartX+((v/magnitude-minimum)/range)*chartW,zero=xAt(0);\n    children.push(text(table.columns[value].name,pad,38*scale,w-pad*2,16*scale,11,'#64748b'));\n    children.push({type:'line',x1:zero,y1:bodyY,x2:zero,y2:bodyY+bodyHeight,color:'#94a3b8',size:Math.max(.5,scale),strokeOn:true});\n    rows.forEach((row,index)=>{\n      const y=bodyY+index*rowHeight,v=row[value],label=row[category]===null?'—':String(row[category]);\n      children.push(text(label,pad,y+rowHeight*.2,92*scale,rowHeight*.6,Math.min(12,rowHeight/(scale*1.7))));\n      if(typeof v==='number' && Number.isFinite(v)){\n        const x=xAt(v),barWidth=Math.abs(x-zero);\n        if(barWidth>0)children.push({type:'rect',x:Math.min(zero,x),y:y+rowHeight*.18,w:barWidth,h:rowHeight*.64,fill:true,fillColor:style.fillColor||'#2563eb',strokeOn:false});\n      }\n      if(state.showValues!==false)children.push(text(v===null?'—':String(v),chartX+chartW+6*scale,y+rowHeight*.2,72*scale,rowHeight*.6,Math.min(11,rowHeight/(scale*1.7)),v===null?'#94a3b8':undefined,400,'right'));\n    });\n    if(table.rowCount===0)children.push(text('No matching rows',chartX,bodyY+12*scale,chartW,24*scale,13,'#64748b'));\n    children.push(text(table.rowCount>rows.length?'Showing '+rows.length+' of '+table.rowCount+' rows':table.rowCount+' '+(table.rowCount===1?'row':'rows'),pad,h-25*scale,w-pad*2,17*scale,10,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "maxBars": 12,
+            "showValues": true
+          },
+          "componentApi": 2,
+          "componentName": "Points per race",
+          "uid": "demo-17-chart",
+          "bindings": {
+            "data": {
+              "uid": "demo-17-filter",
+              "port": "data"
+            }
+          },
+          "inputValues": {
+            "category": "Race",
+            "value": "Points"
+          }
+        },
+        {
+          "type": "rect",
+          "x": 40,
+          "y": 710,
+          "w": 1260,
+          "h": 98,
+          "fill": true,
+          "fillColor": "#eaf1fb",
+          "strokeOn": false,
+          "color": "#eaf1fb",
+          "size": 1
+        },
+        {
+          "type": "text",
+          "x": 54,
+          "y": 719,
+          "w": 1228,
+          "h": 18,
+          "text": "TRY THIS · Editor: double-click the search field first. HTML: use it directly.",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 12,
+          "font": "12px sans-serif",
+          "color": "#2563eb",
+          "textColor": "#2563eb",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        },
+        {
+          "type": "text",
+          "x": 54,
+          "y": 745,
+          "w": 1228,
+          "h": 58,
+          "text": "1. Change the boat name and submit: both views update from the same filtered rows.\n2. In the editor, select Race results → Inputs… → Import CSV/JSON… to try your own table. Save accepts it; Cancel discards it.\n3. Save the workspace or export HTML: the dataset is included, so the original CSV/JSON file is no longer needed.",
+          "align": "left",
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "font": "13px sans-serif",
+          "color": "#334155",
+          "textColor": "#334155",
+          "strokeOn": false,
+          "fill": false,
+          "size": 1
+        }
+      ],
+      "assets": {},
+      "datasets": {
+        "sailing-results": {
+          "name": "Sailing results",
+          "columns": [
+            {
+              "key": "Boat",
+              "name": "Boat",
+              "type": "string"
+            },
+            {
+              "key": "Race",
+              "name": "Race",
+              "type": "string"
+            },
+            {
+              "key": "Points",
+              "name": "Points",
+              "type": "number"
+            },
+            {
+              "key": "Finished",
+              "name": "Finished",
+              "type": "boolean"
+            }
+          ],
+          "rows": [
+            [
+              "Aurora",
+              "Race 1",
+              3,
+              true
+            ],
+            [
+              "Aurora",
+              "Race 2",
+              1,
+              true
+            ],
+            [
+              "Aurora",
+              "Race 3",
+              4,
+              true
+            ],
+            [
+              "Aurora",
+              "Race 4",
+              2,
+              true
+            ],
+            [
+              "Borealis",
+              "Race 1",
+              2,
+              true
+            ],
+            [
+              "Borealis",
+              "Race 2",
+              4,
+              false
+            ],
+            [
+              "Borealis",
+              "Race 3",
+              2,
+              true
+            ],
+            [
+              "Borealis",
+              "Race 4",
+              3,
+              true
+            ],
+            [
+              "Calypso",
+              "Race 1",
+              1,
+              true
+            ],
+            [
+              "Calypso",
+              "Race 2",
+              3,
+              true
+            ],
+            [
+              "Calypso",
+              "Race 3",
+              1,
+              true
+            ],
+            [
+              "Calypso",
+              "Race 4",
+              4,
+              true
+            ]
+          ]
+        }
+      },
       "ui": {
         "tool": "select",
         "color": "#334155",

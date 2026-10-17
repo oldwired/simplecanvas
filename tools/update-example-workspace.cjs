@@ -95,7 +95,12 @@ const sources={
   "demo-16-clear": "trigger.js",
   "demo-16-count": "value-label.js",
   "demo-16-number": "number-input.js",
-  "demo-16-gauge": "gauge.js"
+  "demo-16-gauge": "gauge.js",
+  "demo-17-source": "data-source.js",
+  "demo-17-filter": "table-filter.js",
+  "demo-17-boat": "text-input.js",
+  "demo-17-table": "data-table.js",
+  "demo-17-chart": "data-bar-chart.js"
 };
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){

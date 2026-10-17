@@ -343,7 +343,7 @@ to its starting value does not create a no-op undo entry.
 
 ## Connected components (API v2)
 
-A component is a smart shape whose script declares `apiVersion:2`. It exchanges scalar values
+A component is a smart shape whose script declares `apiVersion:2`. It exchanges scalar values and compact table references
 through host-resolved ports. Scripts receive data and return results; they cannot inspect siblings
 or mutate another component. Start from the **Number control** or **Gauge** templates, or open
 [the connected example](examples/connected-components.json) as a sketch.
@@ -368,8 +368,8 @@ or mutate another component. Start from the **Number control** or **Gauge** temp
 `inputs` and `outputs` are maps of port names to `{type}` descriptors, or synchronous pure
 `inputs(state)` / `outputs(state)` functions returning such maps from the current saved state.
 This supports author-configured port counts without making port layout depend on live inputs.
-Types are `number`,
-`string`, and `boolean`; input descriptors may also include a matching `default`. A string input
+Types are `number`, `string`, `boolean`, and `table`; scalar input descriptors may also include
+a matching `default`. Table ports carry validated dataset references, described below. A string input
 may declare `options`, an array of 1–32 distinct, nonempty strings of at most 2,000 characters each.
 Its default, if present, must be one of those options. **Inputs…** presents these values as a
 dropdown; literal and connected values must match an option. Options apply only to string inputs.
@@ -403,7 +403,7 @@ they do not authorize mutation during capability inspection. Changing Channels r
 available ports in the authoring dialog. Bindings to a removed output become unavailable until
 reconnected. Runtime-only position changes must not change the declared channel set.
 
-`compute(inputs, state)` synchronously returns an object containing exactly the declared outputs
+`compute(inputs, state, context)` synchronously returns an object containing exactly the declared outputs
 with matching types. A component declaring outputs must provide `compute`, `publish`, or both.
 Use `compute` for values derived from current inputs; use `publish(state)` for stored outputs that
 must be available before resolving feedback. Treat both as pure computations:
@@ -633,7 +633,7 @@ amber means unavailable. The setting does not change computation or port types.
 
 ### Saved components
 
-Sketch format 4 stores the API marker on each component and bindings on the receiving item:
+Sketch format 5 stores embedded datasets alongside items and assets. It retains the API marker on each component and bindings on the receiving item:
 
 ```json
 {
@@ -647,7 +647,7 @@ Sketch format 4 stores the API marker on each component and bindings on the rece
 
 This is an excerpt; the item also retains its normal geometry, script, and state. The saved
 `componentApi` must match the script's `apiVersion`. Unsupported versions keep their source and
-saved values but cannot execute. Formats 1–3 remain readable; older app versions should not be
+saved values but cannot execute. Formats 1–4 remain readable; older app versions should not be
 used to edit connected documents. Derived outputs are recomputed, not stored as authoritative data.
 
 Copying, duplicating, or saving a connected selection to the library remaps its internal IDs
@@ -657,7 +657,74 @@ initialize fresh state. Undo/redo restores both state and bindings.
 
 Editor, static exports, library previews, and interactive HTML use the same validated computation
 contract. HTML keeps bindings working offline and retains changes across tabs; reopening restores
-the exported state. There are no cross-tab bindings, table values, events, or external actions.
+the exported state. There are no cross-tab bindings, routed events, or external actions.
+
+## Embedded table data
+
+`table` ports retain a compact `{datasetId}` reference or `{datasetId, rows:[0, 3, 7]}` selection.
+Omitting `rows` selects every row; `rows:[]` is an empty result. Selected indices refer to the
+original dataset, are unique integers, and retain their given order. A filter therefore returns
+references to its incoming dataset without duplicating row contents in state or saved output.
+Each reference is validated against the host's document pool before publication or use.
+Table-valued settings and table connections inside feedback cycles are not supported in this slice.
+
+String port descriptors may declare `columnOf:'data'` to name a table input whose columns should
+appear in their **Inputs…** dropdown, and `columnType:'number'` to restrict choices to numeric
+columns. These are ordinary string values and can still be connected to string outputs. A blank
+value retains the component's default behavior (all rows or automatic column selection).
+
+A sketch's `datasets` object maps stable IDs to normalized tables:
+
+```json
+{
+  "results": {
+    "name": "Sailing results",
+    "columns": [
+      {"key":"Boat", "name":"Boat", "type":"string"},
+      {"key":"Points", "name":"Points", "type":"number"}
+    ],
+    "rows": [["Aurora", 3], ["Borealis", null]]
+  }
+}
+```
+
+Columns have unique nonempty keys and nonempty display names, with a type of `string`, `number`, or
+`boolean`. Null cells represent missing data. Numbers are finite and integer values must be safe
+integers; text cells contain at most 2,000 UTF-16 code units. Limits are 32 columns, 1,000 rows,
+500,000 serialized characters per dataset, and 16 active datasets / 2,000,000 serialized characters
+per sketch. CSV/TSV/JSON source files are limited to 1,000,000 characters. Unsupported imports fail
+before replacing a document or a previously accepted dataset.
+
+`compute(inputs, state, context)` receives resolved input snapshots in `context.tables`, keyed by
+input port name. `transition` receives the same map in its existing context. Each snapshot has
+`{name, columns, rows, rowIndices, rowCount}`: `rows` contains the selected full cell values, and
+`rowIndices` maps them to original dataset indices. Table payloads are limited to 2,000,000
+serialized characters per computation call and 16,000,000 across one evaluation; exceeding either
+budget produces a recoverable component error. Hooks must not copy row data into state or memory.
+
+Presentation hooks receive bounded snapshots under `io.tables.inputs` and `io.tables.outputs`,
+keyed by port. They contain the first 24 selected rows, with string cells longer than 160 characters
+truncated for display; `rowCount` still reports the full selection. Computation always receives the
+complete selection. `inputs` and `outputs` themselves remain compact references. The host caches
+these views with the settled graph, so redraws do not repeatedly send complete datasets to Workers.
+
+The author imports CSV/TSV/JSON through a table input's **Inputs…** controls. CSV/TSV offers **Automatic**,
+**Comma**, **Semicolon**, and **Tab** delimiter choices. Automatic detection respects quoted cells and warns
+when the choice is ambiguous; changing the choice refreshes the typed-column and row preview.
+Type inference is independent of the delimiter: decimal-comma values remain strings. Imports stay
+provisional until **Save**, and **Cancel** discards them. Dataset selectors are document-local; connection
+selectors still allow one typed output per input. Copies and library entries carry only their
+referenced tables, remapping dataset IDs if another document already uses an ID for different data.
+Undo/redo retains immutable prior data; saved JSON and HTML omit unreferenced history tables.
+HTML contains the same datasets and filtering runtime and works offline. It does not import new
+files or save edited results in this milestone.
+
+Built-ins are [Dataset](examples/data-source.js), [Table filter](examples/table-filter.js),
+[Data table](examples/data-table.js), and [Data bar chart](examples/data-bar-chart.js).
+Table filter supports typed comparisons and empty checks; a blank column passes all rows. Data table
+shows at most 20 rows and eight columns; Data bar chart shows at most 24 bars, one per row, including
+negative values. Both report bounded views without modifying the table. The **Embedded data**
+example connects a Text input to a boat-name filter, then drives a table and chart from its output.
 
 ## The `style` object
 
@@ -1108,11 +1175,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 63 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 67 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 54 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 58 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),

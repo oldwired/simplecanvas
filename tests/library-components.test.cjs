@@ -85,7 +85,8 @@ async function settledDrawings(page){
   await page.waitForFunction(()=>__test.run('items.every(item=>smartChildrenCache.has(item.uid))'));
 }
 
-const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
+const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
+  dataSource:'data-source.js',tableFilter:'table-filter.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
   delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
@@ -97,7 +98,7 @@ const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',n
   ringCounter:'ring-counter.js',johnsonCounter:'johnson-counter.js',decadeCounter:'decade-counter.js',
   sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js'};
 
-test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
+test('bundled component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
     const item=clone(d.items[0]),owner=createSmartExecution(item);
     try{
@@ -435,6 +436,7 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
     const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2);
+    datasets={catalog:{name:'Catalog sample',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['Sample',2]]}};
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
       numberFunction:{value:-7.5,operation:'abs'},pulseGenerator:{seconds:60,width:.1,enable:false},edgePulse:{value:false,edge:'rising',seconds:.1},
@@ -447,7 +449,7 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
       ...clone(definition.items[0]),uid:'catalog-name-'+index,x:40+(index%4)*360,y:40+Math.floor(index/4)*200,
       ...(definition.key==='textLabel'?{state:{...clone(definition.items[0].state),showName:true}}:{}),
       inputValues:{...Object.fromEntries(Object.entries(definition.ports.inputs).map(([name,port])=>[
-        name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:'sample')
+        name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:port.type==='table'?{datasetId:'catalog'}:'sample')
       ])),...validInputs[definition.key]}
     }));setTool('select');selection=[];render();save();return definitions.map(definition=>definition.key);
   })()`);

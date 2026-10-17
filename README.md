@@ -189,7 +189,7 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 63 entries, including 54 connected API v2 components. Every smart-shape
+The catalog includes 67 entries, including 58 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -280,7 +280,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore sixteen connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore seventeen connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -302,6 +302,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Sequences | Circulate a bit, construct a Johnson sequence, and clock a decoded decade counter. |
 | Delayed feedback | Watch a NOT/Delay loop alternate with a real time boundary. |
 | Text and notes | Submit text to a label and memo, replace or clear the memo, and enter a numeric value. |
+| Embedded data | Filter sailing results by boat and update a table and bar chart, entirely offline. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -343,6 +344,38 @@ content area. Enable Text label's normal stroke controls to add an outline using
 color, thickness, and line style. In **Inputs…**, enable **Show submission state** or **Show hints** for the input
 controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
 label. These optional details start hidden; errors and rejected-update notices remain visible.
+
+**Embedded data** adds Dataset, Table filter, Data table, and Data bar chart to the built-in
+library. Place Dataset, select it, and open **Inputs…**. For its **data** input, choose an existing
+embedded dataset or **Import CSV/TSV/JSON…**. Inspect the first rows and column types, then **Save**.
+For CSV/TSV, **Delimiter** defaults to **Automatic**; choose **Comma**, **Semicolon**, or **Tab** to override it.
+The preview refreshes when you change the delimiter, and ambiguous detection shows a notice.
+Cancel leaves the drawing and its datasets unchanged. Connect Dataset's **data** output to Table
+filter, then connect the filter's **data** output to Data table and Data bar chart.
+
+CSV and TSV use the first row as unique column headers and support quoted delimiters, escaped quotes,
+and multiline cells. Automatic detection compares comma, semicolon, and tab parsing while respecting quoted
+cells. Each column becomes text, number, or Boolean; empty cells become null. Decimal-comma values
+remain text; choosing semicolon does not change number parsing. Numeric-looking identifiers with
+leading zeroes and integers outside JavaScript's exact range remain text.
+JSON imports an array of flat objects with scalar or null values; missing properties become null,
+and a column cannot mix non-null types. Nested objects and arrays are rejected. Try the matching
+[sailing-results CSV](examples/sailing-results.csv) or [JSON](examples/sailing-results.json).
+
+In Table filter's **Inputs…**, choose a column key and operation, then set or connect the matching
+**text**, **number**, or **boolean** comparison input. A blank column passes every row. Connect a
+Text input's **value** to **text** for live search; the example starts with `Aurora`, and a blank
+search shows all boats. Numeric columns support comparisons; text supports contains/equality;
+all types support empty/nonempty checks. Data bar chart uses a category column and a numeric value
+column, with one bar per row. Column dropdowns show the connected table's columns; the stored values use their exact keys.
+
+A sketch accepts up to 16 datasets, with 1,000 rows, 32 columns, and 2,000 characters per text cell.
+Each dataset is limited to 500,000 serialized characters; the combined active datasets are limited
+to 2,000,000. Oversized or malformed imports leave existing data intact. Table views and charts show
+a bounded preview and report when more data exists; filtering still evaluates the whole dataset.
+Data travels with sketch/workspace JSON, copied components, saved library entries, and HTML exports.
+The HTML reader needs no network or source file. Reader-side file import, editing table cells,
+aggregations, and tables in feedback loops are later work.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.

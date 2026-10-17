@@ -39,7 +39,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===16 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===17 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -63,13 +63,13 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all sixteen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all seventeen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
     const result=[];
     for(const tab of tabs){
-      const document=tabDocument(tab.id),before=JSON.stringify(document.items),graph=await inspectComponentGraph(document.items,()=>true);
+      const document=tabDocument(tab.id),before=JSON.stringify(document.items),graph=await inspectComponentGraph(document.items,()=>true,new Map(),document.datasets);
       const smart=document.items.filter(item=>item.componentApi===2),ids=new Set(smart.map(item=>item.uid));
       result.push({name:tab.name,count:smart.length,pure:before===JSON.stringify(document.items),
         sources:smart.map(item=>sourceKeys.get(item.script.trim())||null),
@@ -78,7 +78,7 @@ test('shipped workspace imports all sixteen tabs with valid local bindings and c
     }
     return result;
   })()`);
-  assert.equal(checked.length,16);
+  assert.equal(checked.length,17);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -91,7 +91,7 @@ test('shipped workspace imports all sixteen tabs with valid local bindings and c
   assert.equal(new Set(allIds).size,allIds.length);
 }));
 
-test('imported controls, routing, displays, and text examples respond while inactive timers pause',async()=>app(async({page,run})=>{
+test('imported controls, routing, text and data examples respond while inactive timers pause',async()=>app(async({page,run})=>{
   await importExample(page,run);
   await activate(run,1);await editorHandle(page,run,1,'source','plus');
   assert.equal((await outputs(run,1,'readout')).value,51);
@@ -142,6 +142,13 @@ test('imported controls, routing, displays, and text examples respond while inac
   await page.locator('#smartNumberValue').press('Enter');
   await page.waitForFunction(()=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>0);await run('smartHitSettled');
   assert.equal((await outputs(run,16,'gauge')).percentage,73);
+
+  await activate(run,17);assert.equal((await outputs(run,17,'source')).rowCount,12);
+  assert.equal((await outputs(run,17,'filter')).rowCount,4);
+  await editorHandle(page,run,17,'boat','entry');await page.locator('#smartTextValue').fill('Borealis');await page.locator('#smartTextValue').press('Enter');
+  await page.waitForFunction(()=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>0);await run('smartHitSettled');
+  assert.deepEqual((await outputs(run,17,'filter')).data.rows,[4,5,6,7]);
+  assert.equal((await outputs(run,17,'table')).rowCount,4);assert.equal((await outputs(run,17,'chart')).rowCount,4);
 }));
 
 function readerHost(page,tab,id){
@@ -166,14 +173,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has sixteen working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has seventeen working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),16);
-    for(let tab=1;tab<=16;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),17);
+    for(let tab=1;tab<=17;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -196,6 +203,11 @@ test('shipped offline HTML has sixteen working tabs and needs no HTTP dependenci
     await page.waitForFunction(host=>!host.textContent.includes('Offline note'),await readerHost(page,16,'memo').elementHandle());
     await readerHandle(page,16,'number','entry');await page.locator('#smartNumberValue').fill('73');await page.locator('#smartNumberValue').press('Enter');
     await readerText(page,16,'gauge','73%');
+    await readerTab(page,17);await readerText(page,17,'table','Aurora');
+    await readerHandle(page,17,'boat','entry');await page.locator('#smartTextValue').fill('Borealis');await page.locator('#smartTextValue').press('Enter');
+    await readerText(page,17,'table','Borealis');
+    await page.locator('#smartTextValue').fill('');await page.locator('#smartTextValue').press('Enter');
+    await readerText(page,17,'chart','12 rows');
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

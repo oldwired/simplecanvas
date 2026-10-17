@@ -205,7 +205,7 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 54 API v2 catalog definitions match their editable source files and retain
+verify that all 58 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.
 
 
@@ -225,7 +225,16 @@ phase-based, and wall-clock components preserve their no-catch-up behavior durin
 `tests/sequential-components.test.cjs` checks the dedicated latch/register/counter contracts,
 three-valued gate truth tables, pure publication, rendering, and bundled source parity.
 
-`tests/example-workspace.test.cjs` validates all sixteen shipped tabs and preserves the original
+`tests/data-import-contracts.test.cjs` checks quoted/multiline CSV/TSV, comma/semicolon/tab parsing and detection,
+type inference, exact numeric-looking identifiers, flat JSON rows, nullable typed cells, reference
+validation, and import budgets without a browser. `tests/data-component-contracts.test.cjs` covers
+typed filtering, chained row references,
+missing values, literal table rendering, and positive/negative chart data. The browser suite
+`tests/data-components.test.cjs` exercises real import controls, delimiter selection and preview refresh,
+atomic Save/Cancel, malformed and oversized imports, independent instances, dataset persistence/copying,
+and the offline HTML slice.
+
+`tests/example-workspace.test.cjs` validates all seventeen shipped tabs and preserves the original
 control/HTML walkthrough. `tests/feedback-workspace.test.cjs` verifies the three practical counter
 loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
 positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:
