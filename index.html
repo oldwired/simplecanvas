@@ -1530,7 +1530,7 @@
   // three call shapes copes with that. Nothing outside this sandbox calls `new Function` on
   // `it.script` anywhere in the file.
   const SMART_MAX_REPLY = 524288;
-  const SMART_HOOKS = new Set(['children','unavailableChildren','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior','compute','transition']);
+  const SMART_HOOKS = new Set(['children','unavailableChildren','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior','compute','transition','contextMenu']);
   const SMART_WORKER_SRC = `
 "use strict";
 const stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);
@@ -1568,7 +1568,7 @@ self.onmessage = function(e){
     const state=msg.args && msg.args[0] || (def && (typeof def.inputs==='function' || typeof def.outputs==='function') && typeof def.initState==='function' ? def.initState() : {});
     send({id:id, ok:!!def, caps: def ? {
       children: typeof def.children==='function', unavailableChildren: apiVersion===2 && typeof def.unavailableChildren==='function', handles: typeof def.handles==='function',
-      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
+      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function', contextMenu: typeof def.contextMenu==='function',
       initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',
       refreshMs: typeof def.refreshMs==='function', compute: typeof def.compute==='function',
       transition: apiVersion===2 && typeof def.transition==='function',
@@ -1838,7 +1838,7 @@ self.onmessage = function(e){
   // shape" dialog, before an item even exists) or an item object (everywhere else).
   function requestSmartCall(scriptOrItem, fn, args,execution=null){
     const it=typeof scriptOrItem==='object'?scriptOrItem:null;
-    const connected=it?.componentApi===2 && ['children','handles','hitEdit','dragEdit','exportBehavior'].includes(fn);
+    const connected=it?.componentApi===2 && ['children','handles','hitEdit','dragEdit','exportBehavior','contextMenu'].includes(fn);
     const scene=items,name=it?.componentName,script=scriptOf(scriptOrItem);
     let signature=null,authoringOnly=false;
     const current=()=>items===scene && scene.includes(it) && it.componentName===name && it.script===script;
@@ -1850,7 +1850,7 @@ self.onmessage = function(e){
           // A component whose inputs/bindings are in error still offers its editor-only handles, so the
           // author can repair it in place (e.g. retype a spreadsheet formula). Ordinary handles stay
           // blocked, and a failing drawing hook still disables all interaction.
-          if(err.cancelled || !['handles','hitEdit','dragEdit'].includes(fn) || componentDrawingError(it))throw err;
+          if(err.cancelled || !['handles','hitEdit','dragEdit','contextMenu'].includes(fn) || componentDrawingError(it))throw err;
           io={inputs:{},outputs:{},error:err.message,name:it.componentName || ''};authoringOnly=true;
         }
         if(!current())throw smartCancelled();
@@ -2047,7 +2047,9 @@ self.onmessage = function(e){
       });
       for(const type of ['pointerdown','click','dblclick'])input.addEventListener(type,event=>event.stopPropagation());
       input.addEventListener('blur',()=>accept(null));
-      document.body.append(input);input.focus();input.select();
+      document.body.append(input);input.focus();
+      // select:[start,end] marks e.g. a placeholder in a freshly inserted function; otherwise select all
+      if(Array.isArray(handle.select))input.setSelectionRange(handle.select[0],handle.select[1]);else input.select();
     });
   }
   // The nearest text handle beside `from` in the given direction, judged by the handles' rects
@@ -2455,6 +2457,40 @@ self.onmessage = function(e){
         }
         return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag',...number,...(h.editorOnly===true?{editorOnly:true}:{})};
       });
+    } else if(message.fn==='contextMenu'){
+      // [{id, label, disabled?, edit?}], {separator:true}, or a submenu {label, items:[...]} (two levels
+      // deep, 128 entries in all). A chosen id is handed to dragEdit as the handle id; edit:{handle,
+      // select?} then opens that kind:'text' handle in place, optionally with [start,end] selected.
+      if(value===null) value=[];
+      let count=0;
+      const entries=(list,depth)=>{
+        if(!Array.isArray(list)) throw new Error('Expected a list of context menu entries');
+        return list.map(e=>{
+          if(++count>128) throw new Error('Expected at most 128 context menu entries');
+          if(e && e.separator===true) return {separator:true};
+          if(!e || typeof e.label!=='string' || !e.label || e.label.length>80) throw new Error('Invalid context menu entry');
+          if(e.disabled!==undefined && typeof e.disabled!=='boolean') throw new Error('Invalid context menu entry');
+          const base={label:e.label,...(e.disabled?{disabled:true}:{})};
+          if(e.items!==undefined){
+            if(depth>=2) throw new Error('Context menus nest at most two levels deep');
+            return {...base,items:entries(e.items,depth+1)};
+          }
+          if(typeof e.id!=='string' || !e.id || e.id.length>64) throw new Error('Invalid context menu entry');
+          let edit;
+          if(e.edit!==undefined){
+            const ed=e.edit;
+            if(!ed || typeof ed.handle!=='string' || !ed.handle || ed.handle.length>64) throw new Error('Invalid context menu edit');
+            edit={handle:ed.handle};
+            if(ed.select!==undefined){
+              if(!Array.isArray(ed.select) || ed.select.length!==2 || !ed.select.every(n=>Number.isInteger(n) && n>=0 && n<=2000) || ed.select[0]>ed.select[1])
+                throw new Error('Invalid context menu edit selection');
+              edit.select=[ed.select[0],ed.select[1]];
+            }
+          }
+          return {...base,id:e.id,...(edit?{edit}:{})};
+        });
+      };
+      value=entries(value,0);
     } else if(message.fn==='hitEdit'){
       if(value!==null && (typeof value!=='string' || !value || value.length>64)) throw new Error('Expected a handle ID or null');
     } else if(message.fn==='transition'){
@@ -5564,6 +5600,88 @@ self.onmessage = function(e){
     it.state=next;
     const size=next.smartSize;
     if(size){if(size.w!==undefined)it.w=size.w;if(size.h!==undefined)it.h=size.h;}
+  }
+  // Context menu of the smart shape in edit mode (right-click, or Control+click on a Mac): the script's
+  // optional contextMenu() hook lists the entries; a chosen entry is passed to dragEdit as the handle id,
+  // with the clicked point, and applied as one undo step (a returned size included).
+  function closeSmartContextMenu(){for(const m of document.querySelectorAll('[data-smart-context-menu]'))m.remove();}
+  async function openSmartContextMenu(e){
+    closeSmartContextMenu();
+    const it=items[editingSmartIdx];
+    if(!it || it.type!=='smart')return;
+    const {x,y}=pos(e),lp=toLocal(it,x,y),lx=lp.x-it.x,ly=lp.y-it.y,scene=items,tab=activeTabId;
+    const valid=()=>items===scene && activeTabId===tab && items.includes(it) && items[editingSmartIdx]===it;
+    const entries=await requestSmartCall(it,'contextMenu',[it.state||{},lx,ly,it.w,it.h,smartResolvedStyle(it)]);
+    if(!valid() || !Array.isArray(entries) || !entries.some(en=>!en.separator))return;
+    const menus=[];   // menus[0] is the root, menus[1] an open submenu, menus[2] a sub-submenu
+    const close=()=>{for(const m of menus)m.remove();menus.length=0;
+      document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',key,true);};
+    const outside=ev=>{if(!menus.some(m=>m.contains(ev.target)))close();};
+    const key=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();close();}};
+    // one change through dragEdit, as its own undo step
+    const apply=async(id,ax,ay)=>{
+      const before=snap(),original=JSON.stringify(it.state||{}),w0=it.w,h0=it.h;
+      const next=await requestSmartCall(it,'dragEdit',[it.state||{},id,ax,ay,it.w,it.h,smartResolvedStyle(it)]);
+      if(!valid())return false;
+      applySmartDragResult(it,next);
+      if(JSON.stringify(it.state||{})!==original || it.w!==w0 || it.h!==h0){
+        undoStack.push(before);if(undoStack.length>80)undoStack.shift();
+        redoStack=[];clickCycle=null;save();updateButtons();
+      }
+      if(it.componentApi===2)await ensureEditorComponentGraph().catch(()=>{});
+      render();
+      return true;
+    };
+    // after a choice with edit:{handle}: edit that text handle in place, Enter/Tab continuing as usual
+    const editAfter=async edit=>{
+      const toScreen=(px,py)=>{const r=canvas.getBoundingClientRect(),w=toWorld(it,it.x+px,it.y+py);return {x:r.left+w.x,y:r.top+w.y};};
+      let hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+      let cur=hs.find(h=>h.id===edit.handle && h.kind==='text' && h.rect),first=true;
+      while(cur && valid()){
+        const result=await editSmartTextInline(first && edit.select?{...cur,select:edit.select}:cur,toScreen,valid);
+        first=false;
+        if(!result || !valid())break;
+        if(!await apply(cur.id,result.value,0) || !result.move)break;
+        hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+        cur=smartTextNeighbour(hs,cur,result.move);
+      }
+    };
+    const build=(list,level,left,top)=>{
+      while(menus.length>level)menus.pop().remove();   // replace this level and anything deeper
+      const menu=document.createElement('div');menu.dataset.smartContextMenu='';menu.setAttribute('role','menu');
+      menu.style.cssText='position:fixed;z-index:1000;min-width:180px;max-height:calc(100vh - 8px);overflow:auto;padding:4px 0;'+
+        'background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px #0f172a26;font:14px system-ui,sans-serif;color:#1f2937';
+      for(const en of list){
+        if(en.separator){const hr=document.createElement('div');hr.style.cssText='height:1px;margin:4px 0;background:#e2e8f0';menu.append(hr);continue;}
+        const b=document.createElement('button');b.type='button';b.setAttribute('role','menuitem');b.disabled=!!en.disabled;
+        b.style.cssText='display:flex;justify-content:space-between;gap:16px;width:100%;text-align:left;padding:6px 14px;border:0;background:none;font:inherit;color:inherit;cursor:pointer';
+        b.append(Object.assign(document.createElement('span'),{textContent:en.label}));
+        if(en.items){b.setAttribute('aria-haspopup','menu');b.append(Object.assign(document.createElement('span'),{textContent:'\u25B8'}));}
+        if(en.disabled)b.style.color='#94a3b8';
+        const openSub=()=>{if(!en.items || en.disabled)return;const r=b.getBoundingClientRect();build(en.items,level+1,r.right-2,r.top-5);};
+        b.addEventListener('mouseenter',()=>{
+          for(const o of menu.children)o.style.background='none';
+          if(!en.disabled)b.style.background='#eef2ff';
+          if(en.items)openSub();else while(menus.length>level+1)menus.pop().remove();
+        });
+        b.addEventListener('click',async()=>{
+          if(en.items){openSub();return;}
+          close();
+          if(!valid() || !await apply(en.id,lx,ly))return;
+          if(en.edit)await editAfter(en.edit);
+        });
+        menu.append(b);
+      }
+      document.body.append(menu);menus.push(menu);
+      const r=menu.getBoundingClientRect();   // keep it on screen (a submenu flips to the left when needed)
+      const fitsRight=left+r.width<=window.innerWidth-4;
+      menu.style.left=Math.max(4,fitsRight?left:(level?menus[level-1].getBoundingClientRect().left-r.width+2:window.innerWidth-r.width-4))+'px';
+      menu.style.top=Math.max(4,Math.min(top,window.innerHeight-r.height-4))+'px';
+      return menu;
+    };
+    build(entries,0,e.clientX,e.clientY);
+    document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',key,true);
+    menus[0].querySelector('button:not(:disabled)')?.focus();
   }
   // Pushes one undo entry when a handle gesture changed the item's state (compared to originalState).
   function commitSmartHandleState(it,originalState){
@@ -13182,7 +13300,9 @@ self.onmessage = function(e){
     // job a secondary click does have is right below: finishing the polygon in progress (the
     // tool's "right-click to finish").
     e.preventDefault();
-    if(ui.tool==='polygon' && polyDraft) finishPolygon();
+    if(ui.tool==='polygon' && polyDraft){ finishPolygon(); return; }
+    // ...and, for a smart shape in edit mode, its own context menu (see openSmartContextMenu)
+    if(editingSmartIdx!=null) void openSmartContextMenu(e);
   });
 
   window.addEventListener('resize', resize);

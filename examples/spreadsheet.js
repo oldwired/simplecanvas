@@ -1,12 +1,15 @@
 // A spreadsheet component, 6 x 6 cells to start with. In edit mode, click a cell to type a number,
-// TRUE/FALSE, a label, or a formula starting with "=". Above each column header a green + near its
-// right edge inserts a column to its right (column A also has a + on its left); left of each row
-// header a + at its bottom edge inserts a row below (row 1 also has a + at its top). Red x buttons on
-// the opposite sides delete: below the last row one per column, right of the last column one per row. The shape grows or shrinks by one cell, and formulas follow moved cells as in
+// TRUE/FALSE, a label, or a formula starting with "=". Right-click (Control+click on a Mac) a column
+// header, a row header or a cell to insert or delete columns/rows from a context menu; on a cell the
+// menu also offers "Insert function", which puts the function into the cell (wrapping a formula that
+// is already there) and opens the cell with the first placeholder selected. The shape grows or shrinks by one cell, and formulas follow moved cells as in
 // Excel (references to deleted cells become #REF!). Up to 26 columns; at most 128 cells and buttons.
 //   =A1+B2*2   =(A1-A2)/A3   =SUM(A1:A9)   =AVERAGE(B1:B5, 10)   =MIN(A1:C3)   =MAX(A1, B1)
 //   =A1>20   =A1<>B1   (= <> < > <= >=)   =AND(A1>0, B1)   =OR(...)   =NOT(B2)   =TRUE
 //   =IF(A1>20, "hot", "ok")   =IF(B1, A1*2, 0)   (only the chosen branch is evaluated)
+//   =A1^2   ="Total: "&B6   ROUND/ROUNDUP/ROUNDDOWN(x;n) INT ABS SIGN MOD SQRT POWER PI() PRODUCT
+//   COUNT COUNTA (counts every non-empty cell, also "" and errors) IFERROR(x;alt) ISBLANK ISNUMBER
+//   ISTEXT ISERROR  CONCAT LEN UPPER LOWER LEFT(t;n) RIGHT(t;n) MID(t;start;n)
 //   =VLOOKUP(A1, D1:F9, 2, FALSE)   exact match with FALSE/0, otherwise the largest key <= the
 //                                value in an ascending first column (as in Excel)
 //   Arguments may be separated by "," or ";"  (=IF(A1>20; "hot"; "ok"))
@@ -31,9 +34,8 @@
     const n=(v,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:10;
     return {cols:n(state.cols,26),rows:n(state.rows,99)};
   },
-  // The host allows at most 128 handles: one per cell, an x and a + per column and per row, and the
-  // extra + before the first column and before the first row.
-  _fits(cols,rows){return cols*rows+2*(cols+rows)+2<=128;},
+  // The host allows at most 128 handles: one per cell plus one for the header area.
+  _fits(cols,rows){return cols*rows+1<=128;},
   // Cell text uses the toolbar font size. With _CAP_FONT on it is also limited to half the row height so
   // it never spills out of a cell; switched off for now because the silent limit surprised users.
   _CAP_FONT:false,
@@ -50,7 +52,7 @@
     // Typographic quotes (often inserted by keyboards or autocorrect) count as straight ones, and text
     // may also be written in single quotes: "x", „x“, “x”, 'x', ‚x‘ all mean the same string.
     src=src.replace(/[“”„‟«»″]/g,'"').replace(/[‘’‚‛′]/g,"'");
-    const out=[],re=/\s*(?:(\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)|"([^"]*)"|'([^']*)'|([A-Za-z]+\d*)|(<=|>=|<>|[-+*\/(),;:<>=]))/y;
+    const out=[],re=/\s*(?:(\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)|"([^"]*)"|'([^']*)'|([A-Za-z]+\d*)|(<=|>=|<>|[-+*\/^&(),;:<>=]))/y;
     let i=0;
     while(i<src.length){
       if(/^\s*$/.test(src.slice(i)))break;
@@ -100,10 +102,12 @@
       }
       i=save;return expr();
     };
-    const term=()=>{let a=primary();while(peek()&&(peek().t==='*'||peek().t==='/')){const op=take().t;a={k:op,a,b:primary()};}return a;};
+    const power=()=>{let a=primary();while(peek()&&peek().t==='^'){take();a={k:'^',a,b:primary()};}return a;};
+    const term=()=>{let a=power();while(peek()&&(peek().t==='*'||peek().t==='/')){const op=take().t;a={k:op,a,b:power()};}return a;};
     const sum=()=>{let a=term();while(peek()&&(peek().t==='+'||peek().t==='-')){const op=take().t;a={k:op,a,b:term()};}return a;};
+    const concat=()=>{let a=sum();while(peek()&&peek().t==='&'){take();a={k:'&',a,b:sum()};}return a;};
     const CMP=['=','<>','<','>','<=','>='];
-    const expr=()=>{let a=sum();while(peek()&&CMP.includes(peek().t)){const op=take().t;a={k:'cmp',op,a,b:sum()};}return a;};
+    const expr=()=>{let a=concat();while(peek()&&CMP.includes(peek().t)){const op=take().t;a={k:'cmp',op,a,b:concat()};}return a;};
     const tree=expr();if(i!==tk.length)throw {e:'#ERROR!'};
     return tree;
   },
@@ -123,13 +127,15 @@
   // Static type of an expression -- port types must follow from saved state, not from live values.
   _typeOf(node,cells,seen,dims){
     switch(node.k){
-      case 'num':case 'neg':case '+':case '-':case '*':case '/':return 'number';
-      case 'str':return 'string';
+      case 'num':case 'neg':case '+':case '-':case '*':case '/':case '^':return 'number';
+      case 'str':case '&':return 'string';
       case 'bool':case 'cmp':return 'boolean';
       case 'ref':return this._cellType(this._key(node.c,node.r),cells,seen,dims);
       case 'fn':{
         const f=node.name;
-        if(f==='AND'||f==='OR'||f==='NOT')return 'boolean';
+        if(['AND','OR','NOT','ISBLANK','ISNUMBER','ISTEXT','ISERROR'].includes(f))return 'boolean';
+        if(['CONCAT','UPPER','LOWER','LEFT','RIGHT','MID'].includes(f))return 'string';
+        if(f==='IFERROR')return node.args[0]?this._typeOf(node.args[0],cells,seen,dims):'number';
         if(f==='VLOOKUP'){
           const t=node.args[1],ci=node.args[2];
           if(!t || t.k!=='range' || !ci || ci.k!=='num')return 'number';
@@ -211,6 +217,14 @@
     const valueOf=(c,r)=>{const x=cell(c,r);if(!x)return 0;if(x.e)throw {e:x.e};return x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;};
     const toNum=v=>{if(typeof v==='boolean')return v?1:0;if(typeof v!=='number')throw {e:'#VALUE!'};return v;};
     const toBool=v=>{if(typeof v==='boolean')return v;if(typeof v==='number')return v!==0;throw {e:'#VALUE!'};};
+    const toText=v=>typeof v==='string'?v:typeof v==='boolean'?(v?'TRUE':'FALSE'):String(Number(v.toPrecision(15)));
+    // Excel rounding: half away from zero; toPrecision(15) absorbs binary noise such as 1.005*100
+    const round=(x,n,mode)=>{const f=Math.pow(10,n),y=Number((Math.abs(x)*f).toPrecision(15));
+      return Math.sign(x)*(mode==='up'?Math.ceil(y):mode==='down'?Math.floor(y):Math.round(y))/f;};
+    const digits=a=>a===undefined?0:Math.trunc(toNum(val(a)));
+    const textArg=(a,dflt)=>a===undefined?dflt:toText(val(a));
+    const tryVal=a=>{try{return {v:val(a)};}catch(err){return {e:err&&err.e||'#ERROR!'};}};
+    const cellsIn=a=>{const out=[];for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++)out.push(cell(c,r));return out;};
     const rangeValues=(a,keep)=>{   // values of a range, skipping empty cells and anything keep() rejects
       const out=[];
       for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++){
@@ -231,6 +245,8 @@
         case '-':return toNum(val(n.a))-toNum(val(n.b));
         case '*':return toNum(val(n.a))*toNum(val(n.b));
         case '/':{const b=toNum(val(n.b));if(b===0)throw {e:'#DIV/0!'};return toNum(val(n.a))/b;}
+        case '^':{const r=Math.pow(toNum(val(n.a)),toNum(val(n.b)));if(!Number.isFinite(r))throw {e:'#NUM!'};return r;}
+        case '&':return toText(val(n.a))+toText(val(n.b));
         case 'cmp':{
           const a=val(n.a),b=val(n.b);
           if(n.op==='='||n.op==='<>'){
@@ -247,6 +263,34 @@
           if(f==='AVERAGE'){const v=numbers(a);if(!v.length)throw {e:'#DIV/0!'};return v.reduce((s,x)=>s+x,0)/v.length;}
           if(f==='MIN'){const v=numbers(a);return v.length?Math.min(...v):0;}
           if(f==='MAX'){const v=numbers(a);return v.length?Math.max(...v):0;}
+          // rounding and arithmetic
+          if(f==='ROUND'||f==='ROUNDUP'||f==='ROUNDDOWN'){if(a.length<1||a.length>2)throw {e:'#VALUE!'};
+            return round(toNum(val(a[0])),digits(a[1]),f==='ROUNDUP'?'up':f==='ROUNDDOWN'?'down':'');}
+          if(f==='INT'){if(a.length!==1)throw {e:'#VALUE!'};return Math.floor(toNum(val(a[0])));}
+          if(f==='ABS'){if(a.length!==1)throw {e:'#VALUE!'};return Math.abs(toNum(val(a[0])));}
+          if(f==='SIGN'){if(a.length!==1)throw {e:'#VALUE!'};return Math.sign(toNum(val(a[0])));}
+          if(f==='MOD'){if(a.length!==2)throw {e:'#VALUE!'};const x=toNum(val(a[0])),y=toNum(val(a[1]));if(y===0)throw {e:'#DIV/0!'};return x-y*Math.floor(x/y);}
+          if(f==='SQRT'){if(a.length!==1)throw {e:'#VALUE!'};const x=toNum(val(a[0]));if(x<0)throw {e:'#NUM!'};return Math.sqrt(x);}
+          if(f==='POWER'){if(a.length!==2)throw {e:'#VALUE!'};const r=Math.pow(toNum(val(a[0])),toNum(val(a[1])));if(!Number.isFinite(r))throw {e:'#NUM!'};return r;}
+          if(f==='PI'){if(a.length)throw {e:'#VALUE!'};return Math.PI;}
+          if(f==='PRODUCT'){const v=numbers(a);return v.length?v.reduce((p,x)=>p*x,1):0;}
+          // counting: COUNT counts numbers; COUNTA every non-empty cell, including "" results and errors
+          if(f==='COUNT')return a.reduce((n,x)=>n+(x.k==='range'?cellsIn(x).filter(y=>y&&y.v!==undefined).length:typeof tryVal(x).v==='number'?1:0),0);
+          if(f==='COUNTA')return a.reduce((n,x)=>n+(x.k==='range'?cellsIn(x).filter(y=>y!==null).length:x.k==='ref'?(cell(x.c,x.r)!==null?1:0):1),0);
+          // errors and tests
+          if(f==='IFERROR'){if(a.length!==2)throw {e:'#VALUE!'};const r=tryVal(a[0]);return r.e?val(a[1]):r.v;}
+          if(f==='ISBLANK'){if(a.length!==1)throw {e:'#VALUE!'};return a[0].k==='ref'?cell(a[0].c,a[0].r)===null:false;}
+          if(f==='ISNUMBER'){if(a.length!==1)throw {e:'#VALUE!'};return typeof tryVal(a[0]).v==='number';}
+          if(f==='ISTEXT'){if(a.length!==1)throw {e:'#VALUE!'};return typeof tryVal(a[0]).v==='string';}
+          if(f==='ISERROR'){if(a.length!==1)throw {e:'#VALUE!'};return !!tryVal(a[0]).e;}
+          // text
+          if(f==='CONCAT')return a.map(x=>x.k==='range'?cellsIn(x).map(y=>{if(!y)return '';if(y.e)throw {e:y.e};return toText(y.t!==undefined?y.t:y.b!==undefined?y.b:y.v);}).join(''):toText(val(x))).join('');
+          if(f==='LEN'){if(a.length!==1)throw {e:'#VALUE!'};return toText(val(a[0])).length;}
+          if(f==='UPPER'||f==='LOWER'){if(a.length!==1)throw {e:'#VALUE!'};const t=toText(val(a[0]));return f==='UPPER'?t.toUpperCase():t.toLowerCase();}
+          if(f==='LEFT'||f==='RIGHT'){if(a.length<1||a.length>2)throw {e:'#VALUE!'};const t=textArg(a[0],''),k=a[1]===undefined?1:digits(a[1]);
+            if(k<0)throw {e:'#VALUE!'};return f==='LEFT'?t.slice(0,k):k?t.slice(-k):'';}
+          if(f==='MID'){if(a.length!==3)throw {e:'#VALUE!'};const t=textArg(a[0],''),st=digits(a[1]),k=digits(a[2]);
+            if(st<1||k<0)throw {e:'#VALUE!'};return t.substr(st-1,k);}
           if(f==='AND'){if(!a.length)throw {e:'#VALUE!'};return booleans(a).every(Boolean);}
           if(f==='OR'){if(!a.length)throw {e:'#VALUE!'};return booleans(a).some(Boolean);}
           if(f==='NOT'){if(a.length!==1)throw {e:'#VALUE!'};return !toBool(val(a[0]));}
@@ -318,31 +362,73 @@
   // (editorOnly), so no export, thumbnail or reader view shows them.
   _layout(w,h,dims){
     const cw=w/dims.cols,rh=h/dims.rows,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,cw*.45));
-    // + and x buttons: a row above the column headers, a column left of the row headers
-    const bs=Math.max(10,Math.min(16,rh*.45,cw*.4)),gap=5;   // gap: air between buttons and shape/headers
-    return {cw,rh,headH,headW,bs,gap,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
+    // hgap: headers stand off the sheet, so the host's selection outline (5 px out) runs between them
+    return {cw,rh,headH,headW,hgap:8,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
   },
-  // Centers of the editor-only + / x buttons, keyed by handle id: cdelN / rdelN delete column/row N,
-  // cinsN / rinsN insert a new column/row AT index N (0 = before the first). x disappears for the last
-  // remaining column/row, + once the sheet would exceed the host's handle limit.
-  _buttons(state,w,h){
-    const dims=this._dims(state),L=this._layout(w,h,dims),b={},pad=2,half=L.bs/2;
-    const addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
-    // + buttons: columns one lane above the headers, right-aligned in their column (set in a little;
-    // column A also gets one at its left edge); rows one lane left of the headers, flush with the row's
-    // bottom edge (row 1 also gets one at its top). A + never sits under the host's rotation knob
-    // (radius 8, centered above the shape) -- it moves left until it clears it.
-    const addY=-L.headH-half-L.gap,addX=-L.headW-half-L.gap,inset=half+2*pad,knob=w/2,clear=8+half+3;
-    const dodge=x=>Math.abs(x-knob)<clear?knob-clear:x;
-    for(let c=0;c<dims.cols;c++)if(addCol)b['cins'+(c+1)]={x:dodge((c+1)*L.cw-inset),y:addY,kind:'add'};
-    if(addCol)b['cins0']={x:dodge(inset),y:addY,kind:'add'};
-    for(let r=0;r<dims.rows;r++)if(addRow)b['rins'+(r+1)]={x:addX,y:(r+1)*L.rh-half,kind:'add'};
-    if(addRow)b['rins0']={x:addX,y:half,kind:'add'};
-    // x buttons on the opposite sides: below the last row, centered under each column; right of the
-    // last column, centered beside each row.
-    for(let c=0;c<dims.cols;c++)if(dims.cols>1)b['cdel'+c]={x:(c+.5)*L.cw,y:h+half+L.gap+5,kind:'del'};   // the selection outline sits 5 px out; keep L.gap beyond it
-    for(let r=0;r<dims.rows;r++)if(dims.rows>1)b['rdel'+r]={x:w+half+L.gap+5,y:(r+.5)*L.rh,kind:'del'};
-    return {b,r:half};
+  // What a point in local coordinates refers to: a column header, a row header, a cell, or nothing.
+  _target(x,y,w,h,dims){
+    const L=this._layout(w,h,dims),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
+    const inCols=x>=0&&x<w,inRows=y>=0&&y<h;
+    if(inCols&&y<0&&y>=-L.hgap-L.headH)return {col:c};   // the gap counts as the header
+    if(inRows&&x<0&&x>=-L.hgap-L.headW)return {row:r};
+    if(inCols&&inRows)return {col:c,row:r};
+    return null;
+  },
+  // Functions offered by "Insert function", grouped, with their argument placeholders.
+  _FN_GROUPS:[
+    ['Math',{SUM:['range'],AVERAGE:['range'],MIN:['range'],MAX:['range'],ROUND:['value','digits'],ROUNDUP:['value','digits'],
+      ROUNDDOWN:['value','digits'],INT:['value'],ABS:['value'],SIGN:['value'],MOD:['value','divisor'],SQRT:['value'],
+      POWER:['base','exponent'],PI:[],PRODUCT:['range']}],
+    ['Logic',{IF:['condition','value_if_true','value_if_false'],AND:['condition1','condition2'],OR:['condition1','condition2'],
+      NOT:['condition'],IFERROR:['value','value_if_error'],ISBLANK:['cell'],ISNUMBER:['value'],ISTEXT:['value'],ISERROR:['value']}],
+    ['Count & lookup',{COUNT:['range'],COUNTA:['range'],VLOOKUP:['search_key','range','index','is_sorted']}],
+    ['Text',{CONCAT:['text1','text2'],LEN:['text'],UPPER:['text'],LOWER:['text'],LEFT:['text','count'],RIGHT:['text','count'],
+      MID:['text','start','count']}],
+    ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
+  ],
+  _fnArgs(name){for(const [,fns] of this._FN_GROUPS)if(fns[name])return fns[name];return null;},
+  // The cell text after inserting a function, and what to select for typing: the first remaining
+  // placeholder (inside its quotes for a "name"), else the caret before ")". What the cell already
+  // holds becomes the first argument: a formula is wrapped, a number/TRUE/FALSE kept, text quoted.
+  _fnInsert(src,name){
+    const args=this._fnArgs(name).slice(),raw=(src||'').trim();
+    let first=null;
+    if(raw[0]==='=')first=raw.slice(1).trim()||null;
+    else if(raw)first=this._bool(raw)!==null||Number.isFinite(Number(raw))?raw:'"'+raw.replace(/"/g,'')+'"';
+    const filled=first!==null&&args.length?1:0;
+    if(filled)args[0]=first;
+    const head='='+name+'(',text=head+args.join(', ')+')';
+    if(filled<args.length){
+      let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+2;
+      const ph=args[filled],q=ph[0]==='"';
+      return {text,select:[at+(q?1:0),at+ph.length-(q?1:0)]};
+    }
+    return {text,select:[text.length-1,text.length-1]};
+  },
+  // Right-click menu (host contextMenu hook): insert/delete for the clicked column and/or row. The ids
+  // are handled by dragEdit like the former buttons: cinsN / rinsN insert AT index N, cdelN / rdelN delete.
+  contextMenu(state,x,y,w,h){
+    const dims=this._dims(state),t=this._target(x,y,w,h,dims);
+    if(!t)return [];
+    const items=[],addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
+    if(t.col!==undefined){
+      items.push({id:'cins'+t.col,label:'Insert 1 column left',disabled:!addCol},
+        {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol},
+        {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1});
+    }
+    if(t.col!==undefined&&t.row!==undefined)items.push({separator:true});
+    if(t.row!==undefined){
+      items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow},
+        {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow},
+        {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1});
+    }
+    if(t.col!==undefined&&t.row!==undefined){   // on a cell: insert a function into it
+      const cell=this._key(t.col,t.row),src=(state.cells||{})[cell]||'';
+      items.push({separator:true},{label:'Insert function',items:this._FN_GROUPS.map(([group,fns])=>({label:group,
+        items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
+          return {id:'fn:'+name+':'+cell,label:name+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
+    }
+    return items;
   },
   _fmt(v){
     if(Object.is(v,-0))v=0;
@@ -380,21 +466,8 @@
         items.push({type:'rect',x,y,w:hw,h:hh,fill:true,fillColor:'#f1f5f9',strokeOn:true,color:grid,size:1,editorOnly:true});
         items.push({...label(text,x,y,hw,hh,'center','#475569',true,Math.min(L.px,hh*.6)),editorOnly:true});
       };
-      for(let c=0;c<dims.cols;c++)head(this._COLS[c],c*L.cw,-L.headH,L.cw,L.headH);
-      for(let r=0;r<dims.rows;r++)head(r+1,-L.headW,r*L.rh,L.headW,L.rh);
-      // + (green) and x (red) buttons, drawn like the point editor's controls
-      const {b,r:rad}=this._buttons(state,w,h);
-      for(const id in b){
-        const {x,y,kind}=b[id],col=kind==='add'?'#16a34a':'#dc2626',arm=rad*.45;
-        items.push({type:'ellipse',x:x-rad,y:y-rad,w:rad*2,h:rad*2,fill:true,fillColor:'#ffffff',strokeOn:true,color:col,size:1.5,editorOnly:true});
-        if(kind==='add'){
-          items.push({type:'line',x1:x-arm,y1:y,x2:x+arm,y2:y,color:col,size:1.5,editorOnly:true});
-          items.push({type:'line',x1:x,y1:y-arm,x2:x,y2:y+arm,color:col,size:1.5,editorOnly:true});
-        }else{
-          items.push({type:'line',x1:x-arm,y1:y-arm,x2:x+arm,y2:y+arm,color:col,size:1.5,editorOnly:true});
-          items.push({type:'line',x1:x-arm,y1:y+arm,x2:x+arm,y2:y-arm,color:col,size:1.5,editorOnly:true});
-        }
-      }
+      for(let c=0;c<dims.cols;c++)head(this._COLS[c],c*L.cw,-L.hgap-L.headH,L.cw,L.headH);
+      for(let r=0;r<dims.rows;r++)head(r+1,-L.hgap-L.headW,r*L.rh,L.headW,L.rh);
       // Ports listed below the x lane with their cells, e.g. "energy (E2)", "door (B5, bool)". Inputs and
       // outputs start on separate lines and are wrapped here, one text child per line with its own fixed
       // height, so a long list grows downward and is never clipped by the drawing's bounds.
@@ -411,7 +484,7 @@
         }
         if(line)lines.push(line);
       }
-      const top=h+L.bs+L.gap+11;
+      const top=h+6;
       lines.forEach((text,i)=>items.push({...label(text,0,top+i*lineH,w,lineH,'left',errorNote?'#92400e':'#475569',false,npx),editorOnly:true}));
     }
     return items;
@@ -432,15 +505,16 @@
       hs.push({id:k,x:(c+.5)*L.cw,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
         rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh},fontSize,editorOnly:true});
     }
-    const {b}=this._buttons(state,w,h);
-    for(const id in b)hs.push({id,x:b[id].x,y:b[id].y,kind:'click',editorOnly:true});
+    // One do-nothing handle for the headers (and the gap to the sheet): a left click there keeps edit
+    // mode instead of counting as a click outside the shape. Right-click opens the context menu.
+    hs.push({id:'headers',x:-L.hgap-L.headW/2,y:-L.hgap-L.headH/2,kind:'click',editorOnly:true});
     return hs;
   },
   hitEdit(state,x,y,w,h){
-    const {b,r:rad}=this._buttons(state,w,h);
-    for(const id in b)if(Math.hypot(x-b[id].x,y-b[id].y)<=rad+2)return id;
     const dims=this._dims(state),L=this._layout(w,h,dims),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
-    return c>=0&&c<dims.cols&&r>=0&&r<dims.rows?this._key(c,r):null;
+    if(c>=0&&c<dims.cols&&r>=0&&r<dims.rows)return this._key(c,r);
+    const t=this._target(x,y,w,h,dims);
+    return t?'headers':null;
   },
   // ---------- inserting and deleting columns/rows ----------
   // Moves cells and rewrites every formula's references, as Excel does: references at or past an
@@ -490,6 +564,13 @@
       // grow/shrink by one cell so the cells keep their size (the host keeps the top-left corner)
       const L=this._layout(w,h,dims);
       return {state:next,size:axis==='c'?{w:w+(add?L.cw:-L.cw)}:{h:h+(add?L.rh:-L.rh)}};
+    }
+    const fn=/^fn:([A-Z]+):([A-Z]\d+)$/.exec(handle);
+    if(fn){   // "Insert function" from the context menu
+      const [,name,k]=fn,c=this._COLS.indexOf(k[0]),r=+k.slice(1)-1;
+      if(!this._fnArgs(name)||c<0||c>=dims.cols||r<0||r>=dims.rows)return {state};
+      const next={...state,cells:{...(state.cells||{}),[k]:this._fnInsert((state.cells||{})[k],name).text}};
+      return {state:JSON.stringify(next).length>3900?state:next};
     }
     const cell=/^([A-Z])(\d+)$/.exec(handle);
     if(!cell||this._COLS.indexOf(cell[1])>=dims.cols||+cell[2]<1||+cell[2]>dims.rows||typeof value!=='string')return {state};

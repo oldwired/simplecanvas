@@ -331,6 +331,19 @@ Every completed click or drag creates one undo step only if its final validated 
 from the state at the start of the gesture (compared via `JSON.stringify`). A drag that returns
 to its starting value does not create a no-op undo entry.
 
+### `contextMenu(state, lx, ly, w, h, style)` (optional)
+
+In editor edit mode, a right-click (Control+click on a Mac) on the shape asks this hook for a
+context menu at the clicked point (**local** coordinates, also outside the box, e.g. on editor-only
+labels). Return `[{id, label, disabled?}, ...]` (at most 24 entries; `{separator:true}` draws a
+divider; ids up to 64 and labels up to 80 characters), or an empty array for no menu. An entry
+with `items:[...]` instead of an `id` is a submenu (two levels deep, 128 entries in all). An entry
+may add `edit:{handle, select?}`: after its `dragEdit` the host opens that `kind:'text'` handle in
+place, with `select:[start, end]` preselected (e.g. a placeholder of a freshly inserted function). Choosing an
+entry calls `dragEdit(state, id, lx, ly, w, h, style)` once with the clicked point, applied as one
+undo step, including a v2 `size` result. Menu ids need not be handles. Offline HTML shows no
+context menu. [Spreadsheet](examples/spreadsheet.js) uses it to insert and delete columns and rows.
+
 ## Connected components (API v2)
 
 A component is a smart shape whose script declares `apiVersion:2`. It exchanges scalar values
@@ -938,7 +951,7 @@ the whole file into the Script field:
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 - [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
-- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; editor-only + and × buttons insert and delete columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX and VLOOKUP; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; a right-click context menu inserts and deletes columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, ROUND/ROUNDUP/ROUNDDOWN, INT, ABS, SIGN, MOD, SQRT, POWER, PI, PRODUCT, COUNT, COUNTA (counts every non-empty cell, including `""` results and errors), IFERROR, ISBLANK/ISNUMBER/ISTEXT/ISERROR and CONCAT/LEN/UPPER/LOWER/LEFT/RIGHT/MID; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
 
 The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
 

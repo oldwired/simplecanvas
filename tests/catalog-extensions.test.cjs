@@ -329,7 +329,7 @@ test('a component in error keeps its editor-only handles so a spreadsheet can be
  assert.deepEqual(blocked,['fix'],'only editor-only handles remain while the component is in error');
 }));
 
-test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape, rewrite references, and undo',async()=>app(async({page,run})=>{
+test('spreadsheet context menu inserts and deletes columns/rows, resizes the shape, rewrites references, and undoes',async()=>app(async({page,run})=>{
  const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
  const cells={A1:'1',B1:'2',C1:'3',D1:'=SUM(A1:C1)',E1:'=OUTPUT(D1+B1,"Total")',A2:'="B1 stays"'};
  await run(`(async()=>{const script=${JSON.stringify(script)};
@@ -338,22 +338,31 @@ test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape
      fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
      bindings:{},inputValues:{}}];
    setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
- const click=async id=>{const pt=await editorPoint(page,run,0,id);await page.mouse.click(pt.x,pt.y);await run('smartHitSettled');};
+ // right-click at a point in the sheet's local coordinates (edit mode) and pick a menu entry
+ const pick=async(lx,ly,label)=>{
+   await run('selection=[0];editingSmartIdx=0;render()');
+   const it=await run('({x:items[0].x,y:items[0].y})'),box=await page.locator('#canvas').boundingBox();
+   await page.mouse.click(box.x+it.x+lx,box.y+it.y+ly,{button:'right'});
+   const menu=page.locator('[data-smart-context-menu]');await menu.waitFor();
+   await menu.getByRole('menuitem',{name:label,exact:true}).click();
+   await page.waitForFunction(()=>!document.querySelector('[data-smart-context-menu]'));await run('smartHitSettled');
+   await page.waitForTimeout(150);
+ };
  const sheet=()=>run('({w:items[0].w,h:items[0].h,cols:items[0].state.cols,rows:items[0].state.rows,cells:items[0].state.cells})');
  assert.deepEqual(await outputs(run,0),{Total:8});
- await click('cins1');   // insert right of A
+ await pick(32,-16,'Insert 1 column right');   // on the column header
  let s=await sheet();
  assert.deepEqual([s.w,s.h,s.cols,s.rows],[448,144,7,6],'one column wider, cells keep their size');
  assert.equal(s.cells.E1,'=SUM(A1:D1)','a range spanning the insertion grows');
  assert.equal(s.cells.F1,'=OUTPUT(E1+C1,"Total")','references follow their moved cells');
  assert.equal(s.cells.A2,'="B1 stays"','quoted text is never rewritten');
  assert.deepEqual(await outputs(run,0),{Total:8});
- await click('cdel2');   // delete C (the former B)
+ await pick(150,30,'Delete column');   // on a cell in C (the former B)
  s=await sheet();
  assert.deepEqual([s.w,s.cols],[384,6]);
  assert.equal(s.cells.D1,'=SUM(A1:C1)','a range shrinks when a column inside it is deleted');
  assert.equal(s.cells.E1,'=OUTPUT(D1+#REF!,"Total")','a reference to the deleted column becomes #REF!');
- await click('rins1');   // insert a row below row 1
+ await pick(-22,12,'Insert 1 row below');   // on the row header
  s=await sheet();
  assert.deepEqual([s.h,s.rows],[168,7]);
  assert.equal(s.cells.A3,'="B1 stays"','row 2 moved to row 3');
@@ -364,4 +373,55 @@ test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape
  const legacy=await run(`(async()=>{const it={...clone(items[0]),uid:'old',state:{cells:{J10:'7'}}};items.push(it);
    return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,{}])).filter(h=>h.kind==='text').length;})()`);
  assert.equal(legacy,100,'a sheet saved without rows/cols keeps 10 x 10');
+}));
+
+test('spreadsheet math, counting, error and text functions behave like Excel',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'2.5',A2:'-7.25',A3:'hello',A4:'=""',A5:'=1/0',A6:'TRUE',
+   B1:'=OUTPUT(ROUND(2.345;2)+ROUND(-2.5)+ROUND(1.005;2),"rounds")',B2:'=OUTPUT(-2^2+MOD(-7;3)+INT(A2)+SQRT(16),"math")',
+   B3:'=OUTPUT(COUNTA(A1:A6)*10+COUNT(A1:A6),"counts")',B4:'=OUTPUT(IFERROR(A5;0)+IFERROR(A1*2;0),"iferror")',
+   B5:'=OUTPUT("Total: "&A1&" "&LEFT(A3;2)&UPPER(MID(A3;3;3)),"text")',B6:'=OUTPUT(AND(ISBLANK(C1),NOT(ISBLANK(A4)),ISERROR(A5),ISTEXT(A3)),"tests")'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual((await run('requestSmartCaps(items[0])')).outputs.text,{type:'string'});
+ const o=await outputs(run,0);
+ assert.equal(o.rounds,2.35-3+1.01);
+ assert.equal(o.math,4+2-8+4,'-2^2 is 4, MOD takes the divisor sign, INT floors');
+ assert.equal(o.counts,62,'COUNTA counts all 6 non-empty cells including "" and an error; COUNT counts 2 numbers');
+ assert.equal(o.iferror,5);
+ assert.equal(o.text,'Total: 2.5 heLLO');
+ assert.equal(o.tests,true);
+}));
+
+test('spreadsheet context menu: Insert function submenu wraps the cell formula and opens it with the placeholder selected',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'10',A2:'4',A3:'=A1/A2'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ await page.mouse.click(box.x+120+32,box.y+140+60,{button:'right'});   // A3
+ const menus=page.locator('[data-smart-context-menu]');
+ await menus.first().getByRole('menuitem',{name:/Insert function/}).hover();
+ await menus.nth(1).getByRole('menuitem',{name:/Math/}).hover();
+ await menus.nth(2).getByRole('menuitem',{name:'ROUND(value, digits)'}).click();
+ const input=page.locator('input[data-smart-number-input]');await input.waitFor();
+ assert.deepEqual(await input.evaluate(e=>[e.value,e.value.slice(e.selectionStart,e.selectionEnd)]),['=ROUND(A1/A2, digits)','digits'],
+   'the formula is wrapped and the first open placeholder is selected');
+ assert.equal(await menus.count(),0,'menus close after the choice');
+ await page.keyboard.type('0');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A3')==='=ROUND(A1/A2, 0)');
+ await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ const shown=await run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>k.text);})()`);
+ assert.ok(shown.includes('3'),'ROUND(10/4, 0) shows 3');
+ const bad=await run(`(async()=>{const it={...clone(items[0]),uid:'bad',componentApi:undefined,script:'({initState(){return {};},children(){return [];},contextMenu(){return [{label:"a",items:[{label:"b",items:[{label:"c",items:[{id:"x",label:"x"}]}]}]}];}})'};
+   const r=await requestSmartCall(it,'contextMenu',[{},0,0,10,10,{}]);return r==null?'rejected':'accepted';})()`);
+ assert.equal(bad,'rejected','menus nest at most two levels deep');
 }));
