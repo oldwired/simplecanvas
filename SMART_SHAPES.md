@@ -293,6 +293,8 @@ host lays a single-line field exactly over that rectangle, rotated with the shap
 continues in the text handle directly below, Shift+Enter above, Tab to the right, Shift+Tab to the
 left (neighbours are found from the handles' rects); clicking elsewhere applies and stops, Escape
 discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
+An optional `fontSize` (in the shape's units) sets the field's text size, so it matches the drawn
+text; without it the size follows the rect's height.
 [Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.
 
 ```js
@@ -460,7 +462,10 @@ dragEdit(state, handle, lx, ly, w, h, style, io)
 exportBehavior(state, io)
 ```
 
-V2 `dragEdit` must return **`{state: newState}`**. Only that envelope field is supported;
+V2 `dragEdit` must return **`{state: newState}`**, optionally with **`size: {w, h}`** (either
+field may be omitted; each 20–2000) to resize the container in the same step, for example a
+spreadsheet growing by one column. The editor applies the size with the top-left corner fixed, as one
+undo step together with the state; offline HTML ignores it. No other envelope fields are supported;
 events and effects are not part of v2. `initState()` still returns the raw state object.
 Unversioned scripts keep returning raw state from `dragEdit`, even when their state happens
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
@@ -933,7 +938,7 @@ the whole file into the Script field:
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 - [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
-- [Spreadsheet](examples/spreadsheet.js): an API v2 10×10 sheet with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX and VLOOKUP; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; editor-only + and × buttons insert and delete columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX and VLOOKUP; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
 
 The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
 

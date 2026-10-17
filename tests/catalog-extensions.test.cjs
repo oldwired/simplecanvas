@@ -328,3 +328,40 @@ test('a component in error keeps its editor-only handles so a spreadsheet can be
    return (await requestSmartCall(it,'handles',[it.state,10,10,{}])).map(h=>h.id);})()`);
  assert.deepEqual(blocked,['fix'],'only editor-only handles remain while the component is in error');
 }));
+
+test('spreadsheet + / x buttons insert and delete columns/rows, resize the shape, rewrite references, and undo',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1',B1:'2',C1:'3',D1:'=SUM(A1:C1)',E1:'=OUTPUT(D1+B1,"Total")',A2:'="B1 stays"'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ const click=async id=>{const pt=await editorPoint(page,run,0,id);await page.mouse.click(pt.x,pt.y);await run('smartHitSettled');};
+ const sheet=()=>run('({w:items[0].w,h:items[0].h,cols:items[0].state.cols,rows:items[0].state.rows,cells:items[0].state.cells})');
+ assert.deepEqual(await outputs(run,0),{Total:8});
+ await click('cadd0');   // insert right of A
+ let s=await sheet();
+ assert.deepEqual([s.w,s.h,s.cols,s.rows],[448,144,7,6],'one column wider, cells keep their size');
+ assert.equal(s.cells.E1,'=SUM(A1:D1)','a range spanning the insertion grows');
+ assert.equal(s.cells.F1,'=OUTPUT(E1+C1,"Total")','references follow their moved cells');
+ assert.equal(s.cells.A2,'="B1 stays"','quoted text is never rewritten');
+ assert.deepEqual(await outputs(run,0),{Total:8});
+ await click('cdel2');   // delete C (the former B)
+ s=await sheet();
+ assert.deepEqual([s.w,s.cols],[384,6]);
+ assert.equal(s.cells.D1,'=SUM(A1:C1)','a range shrinks when a column inside it is deleted');
+ assert.equal(s.cells.E1,'=OUTPUT(D1+#REF!,"Total")','a reference to the deleted column becomes #REF!');
+ await click('radd0');   // insert a row below row 1
+ s=await sheet();
+ assert.deepEqual([s.h,s.rows],[168,7]);
+ assert.equal(s.cells.A3,'="B1 stays"','row 2 moved to row 3');
+ await run('undo()');await run('undo()');await run('undo()');
+ s=await sheet();
+ assert.deepEqual([s.w,s.h,s.cols,s.rows],[384,144,6,6],'undo restores size and dimensions');
+ assert.deepEqual(s.cells,cells,'and the original formulas');
+ const legacy=await run(`(async()=>{const it={...clone(items[0]),uid:'old',state:{cells:{J10:'7'}}};items.push(it);
+   return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,{}])).filter(h=>h.kind==='text').length;})()`);
+ assert.equal(legacy,100,'a sheet saved without rows/cols keeps 10 x 10');
+}));

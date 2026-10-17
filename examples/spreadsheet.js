@@ -1,5 +1,8 @@
-// A 10 x 10 spreadsheet component (columns A-J, rows 1-10). In edit mode, click a cell to type a
-// number, TRUE/FALSE, a label, or a formula starting with "=":
+// A spreadsheet component, 6 x 6 cells to start with. In edit mode, click a cell to type a number,
+// TRUE/FALSE, a label, or a formula starting with "=". The green + above a column header inserts a
+// column to its right, the red x deletes that column; left of each row header, x deletes the row and
+// + inserts one below. The shape grows or shrinks by one cell, and formulas follow moved cells as in
+// Excel (references to deleted cells become #REF!). Up to 26 columns; at most 128 cells and buttons.
 //   =A1+B2*2   =(A1-A2)/A3   =SUM(A1:A9)   =AVERAGE(B1:B5, 10)   =MIN(A1:C3)   =MAX(A1, B1)
 //   =A1>20   =A1<>B1   (= <> < > <= >=)   =AND(A1>0, B1)   =OR(...)   =NOT(B2)   =TRUE
 //   =IF(A1>20, "hot", "ok")   =IF(B1, A1*2, 0)   (only the chosen branch is evaluated)
@@ -20,8 +23,15 @@
 // Needs the host's kind:'text' handles with rect (in-place cell editing).
 ({
   apiVersion:2,
-  _COLS:'ABCDEFGHIJ',
+  _COLS:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   _key(c,r){return this._COLS[c]+(r+1);},
+  // Sheets saved before rows/columns could change have no size in their state: they keep 10 x 10.
+  _dims(state){
+    const n=(v,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:10;
+    return {cols:n(state.cols,26),rows:n(state.rows,99)};
+  },
+  // The host allows at most 128 handles: one per cell plus an x and a + per column and per row.
+  _fits(cols,rows){return cols*rows+2*(cols+rows)<=128;},
   _port(name){
     let p=String(name).trim().replace(/[^A-Za-z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64);
     if(!/^[A-Za-z]/.test(p))p=('p'+p).slice(0,64);
@@ -38,6 +48,8 @@
     let i=0;
     while(i<src.length){
       if(/^\s*$/.test(src.slice(i)))break;
+      const gone=/^\s*#REF!/i.exec(src.slice(i));   // a reference to a deleted cell
+      if(gone){out.push({t:'referr'});i+=gone[0].length;continue;}
       re.lastIndex=i;const m=re.exec(src);
       if(!m)throw {e:'#ERROR!'};
       i=re.lastIndex;
@@ -48,15 +60,16 @@
     }
     return out;
   },
-  _parse(src){
+  _parse(src,dims){
     const tk=this._tokens(src);let i=0;
     const peek=()=>tk[i],take=t=>{const x=tk[i];if(!x||(t&&x.t!==t))throw {e:'#ERROR!'};i++;return x;};
     const ref=v=>{const m=/^([A-Z])(\d+)$/.exec(v);if(!m)return null;const c=this._COLS.indexOf(m[1]),r=+m[2]-1;
-      if(c<0||r<0||r>9)throw {e:'#REF!'};return {c,r};};
+      if(c<0||c>=dims.cols||r<0||r>=dims.rows)throw {e:'#REF!'};return {c,r};};
     const primary=()=>{
       const x=take();
       if(x.t==='num')return {k:'num',v:x.v};
       if(x.t==='str')return {k:'str',v:x.v};
+      if(x.t==='referr')throw {e:'#REF!'};
       if(x.t==='(') {const e=expr();take(')');return e;}
       if(x.t==='-')return {k:'neg',a:primary()};
       if(x.t==='+')return primary();
@@ -102,12 +115,12 @@
     return t==='number'||t==='boolean'?t:null;
   },
   // Static type of an expression -- port types must follow from saved state, not from live values.
-  _typeOf(node,cells,seen){
+  _typeOf(node,cells,seen,dims){
     switch(node.k){
       case 'num':case 'neg':case '+':case '-':case '*':case '/':return 'number';
       case 'str':return 'string';
       case 'bool':case 'cmp':return 'boolean';
-      case 'ref':return this._cellType(this._key(node.c,node.r),cells,seen);
+      case 'ref':return this._cellType(this._key(node.c,node.r),cells,seen,dims);
       case 'fn':{
         const f=node.name;
         if(f==='AND'||f==='OR'||f==='NOT')return 'boolean';
@@ -116,21 +129,21 @@
           if(!t || t.k!=='range' || !ci || ci.k!=='num')return 'number';
           const col=t.c1+Math.floor(ci.v)-1,types=new Set();
           if(col<t.c1 || col>t.c2)return 'number';
-          for(let r=t.r1;r<=t.r2;r++){const k=this._key(col,r);if(cells[k])types.add(this._cellType(k,cells,seen));}
+          for(let r=t.r1;r<=t.r2;r++){const k=this._key(col,r);if(cells[k])types.add(this._cellType(k,cells,seen,dims));}
           return types.size===1?[...types][0]:'number';
         }
         if(f==='INPUT')return this._inputType(node)||'number';
-        if(f==='OUTPUT')return node.args[0]?this._typeOf(node.args[0],cells,seen):'number';
+        if(f==='OUTPUT')return node.args[0]?this._typeOf(node.args[0],cells,seen,dims):'number';
         if(f==='IF'){
           // The true branch decides the type; a false branch of another type fails at runtime.
-          return node.args[1]?this._typeOf(node.args[1],cells,seen):'boolean';
+          return node.args[1]?this._typeOf(node.args[1],cells,seen,dims):'boolean';
         }
         return 'number';
       }
     }
     return 'number';
   },
-  _cellType(k,cells,seen){
+  _cellType(k,cells,seen,dims){
     const src=cells[k];
     if(typeof src!=='string'||src==='')return 'number';
     if(src[0]!=='='){
@@ -139,16 +152,16 @@
     }
     if(seen[k])return 'number';
     seen[k]=true;
-    try{return this._typeOf(this._parse(src.slice(1)),cells,seen);}catch(_){return 'number';}
+    try{return this._typeOf(this._parse(src.slice(1),dims),cells,seen,dims);}catch(_){return 'number';}
     finally{delete seen[k];}
   },
   // Ports declared by the formulas, in cell order (deterministic from saved state).
   _ports(state){
-    const cells=state.cells||{},ins=[],outs=[];
-    for(let r=0;r<10;r++)for(let c=0;c<10;c++){
+    const cells=state.cells||{},ins=[],outs=[],dims=this._dims(state);
+    for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const src=cells[this._key(c,r)];
       if(typeof src!=='string'||src[0]!=='=')continue;
-      let tree;try{tree=this._parse(src.slice(1));}catch(_){continue;}
+      let tree;try{tree=this._parse(src.slice(1),dims);}catch(_){continue;}
       this._walk(tree,n=>{
         if(n.k!=='fn')return;
         if(n.name==='INPUT'){
@@ -158,7 +171,7 @@
         const last=n.args[n.args.length-1];
         if(n.name==='OUTPUT'&&n.args.length===2&&last.k==='str'){
           const p=this._port(last.v);
-          if(!outs.some(o=>o.port===p))outs.push({port:p,cell:this._key(c,r),type:this._typeOf(n.args[0],cells,{})});
+          if(!outs.some(o=>o.port===p))outs.push({port:p,cell:this._key(c,r),type:this._typeOf(n.args[0],cells,{},dims)});
         }
       });
     }
@@ -170,7 +183,7 @@
   // ---------- evaluation ----------
   // Every cell -> {v:number} | {b:boolean} | {t:text} | {e:error}; empty cells are absent.
   _sheet(state,inputs){
-    const cells=state.cells||{},memo={},busy={};
+    const cells=state.cells||{},memo={},busy={},dims=this._dims(state);
     const wrap=v=>typeof v==='boolean'?{b:v}:typeof v==='string'?{t:v}:Number.isFinite(v)?{v}:{e:'#NUM!'};
     const cell=(c,r)=>{
       const k=this._key(c,r);
@@ -184,7 +197,7 @@
         res=b!==null?{b}:src.trim()!==''&&Number.isFinite(n)?{v:n}:{t:src};
       }else{
         busy[k]=true;
-        try{res=wrap(val(this._parse(src.slice(1))));}catch(err){res={e:err&&err.e||'#ERROR!'};}
+        try{res=wrap(val(this._parse(src.slice(1),dims)));}catch(err){res={e:err&&err.e||'#ERROR!'};}
         busy[k]=false;
       }
       return memo[k]=res;
@@ -271,17 +284,16 @@
       throw {e:'#ERROR!'};
     };
     const all={};
-    for(let r=0;r<10;r++)for(let c=0;c<10;c++){const k=this._key(c,r),x=cell(c,r);if(x)all[k]=x;}
+    for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){const k=this._key(c,r),x=cell(c,r);if(x)all[k]=x;}
     return all;
   },
 
   initState(){
-    return {cells:{A1:'kWh',A2:'10',A3:'12.5',A4:'7',B1:'Price',B2:'0.3',B3:'0.3',B4:'0.32',
+    return {cols:6,rows:6,cells:{A1:'kWh',A2:'10',A3:'12.5',A4:'7',B1:'Price',B2:'0.3',B3:'0.3',B4:'0.32',
       C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4',A6:'=SUM(A2:A4)',C6:'=SUM(C2:C4)',
-      A7:'=AVERAGE(A2:A4)',A8:'=MAX(A2:A4)-MIN(A2:A4)',E1:'Extra',E2:'=INPUT("energy")',
-      F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
+      E1:'Extra',E2:'=INPUT("energy")',F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
   },
-  initStyle(){return {w:640,h:240,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
+  initStyle(){return {w:384,h:144,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state){
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
@@ -295,12 +307,31 @@
   },
 
   // ---------- drawing and editing ----------
-  // The ten by ten cells fill the whole box, so entering or leaving edit mode never moves them. Row and
-  // column headers and the port note are drawn OUTSIDE the box and only while editing (editorOnly), so
-  // no export, thumbnail or reader view shows them.
-  _layout(w,h){
-    const cw=w/10,rh=h/10,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,cw*.45));
-    return {cw,rh,headH,headW,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
+  // The cells fill the whole box, so entering or leaving edit mode never moves them. Row and column
+  // headers, the + / x buttons and the port note are drawn OUTSIDE the box and only while editing
+  // (editorOnly), so no export, thumbnail or reader view shows them.
+  _layout(w,h,dims){
+    const cw=w/dims.cols,rh=h/dims.rows,headH=Math.max(14,Math.min(24,rh*.8)),headW=Math.max(20,Math.min(40,cw*.45));
+    // + and x buttons: a row above the column headers, a column left of the row headers
+    const bs=Math.max(10,Math.min(16,rh*.45,cw*.4));
+    return {cw,rh,headH,headW,bs,px:Math.max(6,Math.min(18,Math.round(rh*.5)))};
+  },
+  // Centers of the editor-only + / x buttons, keyed by handle id (cdelN / caddN per column, rdelN /
+  // raddN per row). x disappears for the last remaining column/row, + once the sheet would exceed
+  // the host's handle limit.
+  _buttons(state,w,h){
+    const dims=this._dims(state),L=this._layout(w,h,dims),b={},pad=2,half=L.bs/2;
+    const colY=-L.headH-half-pad,rowX=-L.headW-half-pad;
+    const addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
+    for(let c=0;c<dims.cols;c++){
+      if(dims.cols>1)b['cdel'+c]={x:c*L.cw+half+pad,y:colY,kind:'del'};
+      if(addCol)b['cadd'+c]={x:(c+1)*L.cw-half-pad,y:colY,kind:'add'};
+    }
+    for(let r=0;r<dims.rows;r++){
+      if(dims.rows>1)b['rdel'+r]={x:rowX,y:r*L.rh+half+1,kind:'del'};
+      if(addRow)b['radd'+r]={x:rowX,y:(r+1)*L.rh-half-1,kind:'add'};
+    }
+    return {b,r:half};
   },
   _fmt(v){
     if(Object.is(v,-0))v=0;
@@ -309,7 +340,7 @@
     return String(Math.round(v*1e4)/1e4);
   },
   _draw(state,style,w,h,editing,inputs,errorNote){
-    const L=this._layout(w,h),items=[],sheet=this._sheet(state,inputs),ports=this._ports(state);
+    const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs),ports=this._ports(state);
     const ink=style.color||'#64748b',textInk=style.textColor||'#1f2937',grid='#cbd5e1';
     // Cells and headers follow the toolbar's font family and size; the size is capped by the row
     // height (L.px) so text never spills out of its cell.
@@ -318,7 +349,7 @@
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
       fontFamily:family,fontSize:cap(size||L.px),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
-    for(let r=0;r<10;r++)for(let c=0;c<10;c++){
+    for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const x=sheet[this._key(c,r)];
       if(!x)continue;
       const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmt(x.v));
@@ -329,10 +360,8 @@
     // pattern; Stroke "None" hides all of them.
     if(style.strokeOn!==false){
       const line={color:ink,size:style.size||1,dash:style.dash||'solid'};
-      for(let i=1;i<10;i++){
-        items.push({type:'line',x1:i*L.cw,y1:0,x2:i*L.cw,y2:h,...line});
-        items.push({type:'line',x1:0,y1:i*L.rh,x2:w,y2:i*L.rh,...line});
-      }
+      for(let i=1;i<dims.cols;i++)items.push({type:'line',x1:i*L.cw,y1:0,x2:i*L.cw,y2:h,...line});
+      for(let i=1;i<dims.rows;i++)items.push({type:'line',x1:0,y1:i*L.rh,x2:w,y2:i*L.rh,...line});
       items.push({type:'rect',x:0,y:0,w,h,...line,strokeOn:true,fill:false});
     }
     if(editing){
@@ -340,8 +369,21 @@
         items.push({type:'rect',x,y,w:hw,h:hh,fill:true,fillColor:'#f1f5f9',strokeOn:true,color:grid,size:1,editorOnly:true});
         items.push({...label(text,x,y,hw,hh,'center','#475569',true,Math.min(L.px,hh*.6)),editorOnly:true});
       };
-      for(let c=0;c<10;c++)head(this._COLS[c],c*L.cw,-L.headH,L.cw,L.headH);
-      for(let r=0;r<10;r++)head(r+1,-L.headW,r*L.rh,L.headW,L.rh);
+      for(let c=0;c<dims.cols;c++)head(this._COLS[c],c*L.cw,-L.headH,L.cw,L.headH);
+      for(let r=0;r<dims.rows;r++)head(r+1,-L.headW,r*L.rh,L.headW,L.rh);
+      // + (green) and x (red) buttons, drawn like the point editor's controls
+      const {b,r:rad}=this._buttons(state,w,h);
+      for(const id in b){
+        const {x,y,kind}=b[id],col=kind==='add'?'#16a34a':'#dc2626',arm=rad*.45;
+        items.push({type:'ellipse',x:x-rad,y:y-rad,w:rad*2,h:rad*2,fill:true,fillColor:'#ffffff',strokeOn:true,color:col,size:1.5,editorOnly:true});
+        if(kind==='add'){
+          items.push({type:'line',x1:x-arm,y1:y,x2:x+arm,y2:y,color:col,size:1.5,editorOnly:true});
+          items.push({type:'line',x1:x,y1:y-arm,x2:x,y2:y+arm,color:col,size:1.5,editorOnly:true});
+        }else{
+          items.push({type:'line',x1:x-arm,y1:y-arm,x2:x+arm,y2:y+arm,color:col,size:1.5,editorOnly:true});
+          items.push({type:'line',x1:x-arm,y1:y+arm,x2:x+arm,y2:y-arm,color:col,size:1.5,editorOnly:true});
+        }
+      }
       const note=errorNote||[ports.ins.length?'In: '+ports.ins.map(x=>x.port+(x.type==='boolean'?' (bool)':'')).join(', '):'',ports.outs.length?'Out: '+ports.outs.map(o=>o.port+(o.type!=='number'?' ('+(o.type==='boolean'?'bool':o.type)+')':'')).join(', '):''].filter(Boolean).join('   ');
       if(note)items.push({...label(note,0,h+2,w,Math.max(14,L.headH),'left',errorNote?'#92400e':'#475569',false,Math.min(12,L.px)),editorOnly:true});
     }
@@ -355,21 +397,75 @@
   // One in-place text field per cell (the host lays it over `rect`; Enter/Tab move to the neighbour).
   // editorOnly: cells are edited only in the editor. Exported HTML keeps recomputing from its inputs
   // but offers no way to change values or formulas.
-  handles(state,w,h){
-    const L=this._layout(w,h),hs=[];
-    for(let r=0;r<10;r++)for(let c=0;c<10;c++){
+  handles(state,w,h,style={}){
+    const dims=this._dims(state),L=this._layout(w,h,dims),hs=[];
+    const fontSize=Math.max(6,Math.round(Math.min(style.fontSize||L.px,L.px)));   // same size the cell text is drawn with
+    for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const k=this._key(c,r);
       hs.push({id:k,x:(c+.5)*L.cw,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
-        rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh},editorOnly:true});
+        rect:{x:c*L.cw,y:r*L.rh,w:L.cw,h:L.rh},fontSize,editorOnly:true});
     }
+    const {b}=this._buttons(state,w,h);
+    for(const id in b)hs.push({id,x:b[id].x,y:b[id].y,kind:'click',editorOnly:true});
     return hs;
   },
   hitEdit(state,x,y,w,h){
-    const L=this._layout(w,h),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
-    return c>=0&&c<10&&r>=0&&r<10?this._key(c,r):null;
+    const {b,r:rad}=this._buttons(state,w,h);
+    for(const id in b)if(Math.hypot(x-b[id].x,y-b[id].y)<=rad+2)return id;
+    const dims=this._dims(state),L=this._layout(w,h,dims),c=Math.floor(x/L.cw),r=Math.floor(y/L.rh);
+    return c>=0&&c<dims.cols&&r>=0&&r<dims.rows?this._key(c,r):null;
   },
-  dragEdit(state,handle,value){
-    if(!/^[A-J](10|[1-9])$/.test(handle)||typeof value!=='string')return {state};
+  // ---------- inserting and deleting columns/rows ----------
+  // Moves cells and rewrites every formula's references, as Excel does: references at or past an
+  // inserted index shift by one, ranges grow when the insertion is inside them; references to a deleted
+  // column/row become #REF!, ranges shrink. axis: 'c' or 'r'; delta +1 inserts AT index, -1 deletes it.
+  _restructure(state,axis,at,delta){
+    const dims=this._dims(state),cells={};
+    const move=i=>delta>0?(i>=at?i+1:i):(i===at?null:i>at?i-1:i);
+    const parse=k=>{const m=/^([A-Z])(\d+)$/.exec(k);return m?{c:this._COLS.indexOf(m[1]),r:+m[2]-1}:null;};
+    const shiftRef=(col,row)=>{
+      const c=this._COLS.indexOf(col.toUpperCase()),r=+row-1;
+      const n=axis==='c'?move(c):move(r);
+      if(n===null)return null;
+      return axis==='c'?this._COLS[n]+(r+1):col.toUpperCase()+(n+1);
+    };
+    const shiftRange=(c1,r1,c2,r2)=>{   // endpoints in letter/number form
+      const a=axis==='c'?this._COLS.indexOf(c1.toUpperCase()):+r1-1,b=axis==='c'?this._COLS.indexOf(c2.toUpperCase()):+r2-1;
+      const lo=Math.min(a,b),hi=Math.max(a,b);
+      let nlo,nhi;
+      if(delta>0){nlo=lo>=at?lo+1:lo;nhi=hi>=at?hi+1:hi;}
+      else{if(lo===at&&hi===at)return null;nlo=lo>at?lo-1:lo;nhi=hi>=at?hi-1:hi;}
+      const end=(c,r,i)=>axis==='c'?this._COLS[i]+r:c.toUpperCase()+(i+1);
+      return end(c1,r1,nlo)+':'+end(c2,r2,nhi);
+    };
+    // rewrite references outside quoted text; strings keep their quotes as typed
+    const quoted=/(["\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033][^"\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]*["\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]|['\u2018\u2019\u201A\u201B\u2032][^'\u2018\u2019\u201A\u201B\u2032]*['\u2018\u2019\u201A\u201B\u2032])/;
+    const refRe=/(^|[^A-Za-z0-9_.])([A-Za-z])(\d+)(?:\s*:\s*([A-Za-z])(\d+))?(?![A-Za-z0-9_(])/g;
+    const rewrite=src=>src[0]!=='='?src:'='+src.slice(1).split(quoted).map((part,i)=>i%2?part:part.replace(refRe,(all,pre,c1,r1,c2,r2)=>{
+      if(c2!==undefined){const x=shiftRange(c1,r1,c2,r2);return pre+(x===null?'#REF!':x);}
+      const x=shiftRef(c1,r1);return pre+(x===null?'#REF!':x);
+    })).join('');
+    for(const [k,src] of Object.entries(state.cells||{})){
+      const pos=parse(k);if(!pos)continue;
+      const n=axis==='c'?move(pos.c):move(pos.r);
+      if(n===null)continue;   // the deleted column/row's own cells
+      cells[axis==='c'?this._key(n,pos.r):this._key(pos.c,n)]=rewrite(src);
+    }
+    return {...state,cells,cols:dims.cols+(axis==='c'?delta:0),rows:dims.rows+(axis==='r'?delta:0)};
+  },
+  dragEdit(state,handle,value,ly,w,h){
+    const dims=this._dims(state),op=/^([cr])(add|del)(\d+)$/.exec(handle);
+    if(op){
+      const axis=op[1],add=op[2]==='add',i=+op[3],count=axis==='c'?dims.cols:dims.rows;
+      if(i>=count || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
+      const next=this._restructure(state,axis,add?i+1:i,add?1:-1);
+      if(JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
+      // grow/shrink by one cell so the cells keep their size (the host keeps the top-left corner)
+      const L=this._layout(w,h,dims);
+      return {state:next,size:axis==='c'?{w:w+(add?L.cw:-L.cw)}:{h:h+(add?L.rh:-L.rh)}};
+    }
+    const cell=/^([A-Z])(\d+)$/.exec(handle);
+    if(!cell||this._COLS.indexOf(cell[1])>=dims.cols||+cell[2]<1||+cell[2]>dims.rows||typeof value!=='string')return {state};
     const cells={...(state.cells||{})},text=value.trim();
     if(text)cells[handle]=text;else delete cells[handle];
     const next={...state,cells};

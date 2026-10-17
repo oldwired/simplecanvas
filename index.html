@@ -1097,7 +1097,7 @@
     // In-flight handle state is visible on canvas, but belongs to its own transaction.
     for(const p of pending){
       const it=copy.find(it=>it.uid===p.it.uid);
-      if(it) it.state=clone(p.sd.originalState);
+      if(it){it.state=clone(p.sd.originalState);if(p.sd.originalSize){it.w=p.sd.originalSize.w;it.h=p.sd.originalSize.h;}}
     }
     return JSON.stringify(copy);
   };
@@ -2024,7 +2024,7 @@ self.onmessage = function(e){
       input.setAttribute('aria-label',handle.label||'Text');
       input.style.cssText='position:fixed;margin:0;box-sizing:border-box;z-index:1000;transform-origin:0 0;'+
         'border:2px solid #2563eb;border-radius:0;outline:none;background:#fff;color:#111827;padding:0 4px;'+
-        'font:400 '+Math.max(9,Math.round(h*.55))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
+        'font:400 '+Math.max(6,Math.round(handle.fontSize?handle.fontSize*h/r.h:h*.55))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
       Object.assign(input.style,{left:a.x+'px',top:a.y+'px',width:Math.max(24,w)+'px',height:Math.max(14,h)+'px',transform:'rotate('+angle+'rad)'});
       // Grow to the right with the typed text (over the neighbouring cells), never narrower than the
       // rect and never past the window's right edge, so a long formula stays fully visible.
@@ -2438,6 +2438,8 @@ self.onmessage = function(e){
           if(typeof h.value!=='string' || h.value.length>2000)throw new Error('Text entry value must be a string of at most 2000 characters');
           if(h.label!==undefined && (typeof h.label!=='string' || h.label.length>100))throw new Error('Text entry label must be at most 100 characters');
           number.value=h.value;if(h.label!==undefined)number.label=h.label;
+          // Optional font size (shape units) so the in-place field matches the drawn text.
+          if(h.fontSize!==undefined)number.fontSize=smartNumber(h.fontSize,'Text entry font size',1,400);
           // Optional local rectangle: edit in place over it instead of in a dialog.
           if(h.rect!==undefined){
             const r=h.rect;
@@ -2462,10 +2464,20 @@ self.onmessage = function(e){
     } else if(message.fn==='initState' || message.fn==='dragEdit'){
       if(message.fn==='dragEdit' && message.componentApi===2 && value!==null){
         if(!value || typeof value!=='object' || Array.isArray(value) || !Object.hasOwn(value,'state') ||
-           Object.keys(value).some(key=>key!=='state'))throw new Error('Component API 2 dragEdit must return {state}; events and effects are not supported');
-        value=value.state;
+           Object.keys(value).some(key=>key!=='state' && key!=='size'))throw new Error('Component API 2 dragEdit must return {state} or {state, size}; events and effects are not supported');
+        let size=null;
+        if(value.size!==undefined){
+          // An optional new container size, e.g. a spreadsheet growing by one column. The editor applies it
+          // with the top-left corner fixed; offline HTML ignores it.
+          const z=value.size;
+          if(!z || typeof z!=='object' || Array.isArray(z))throw new Error('dragEdit size must be {w, h}');
+          size={};
+          for(const key of ['w','h'])if(z[key]!==undefined)size[key]=Math.round(smartNumber(z[key],'dragEdit size '+key,20,2000));
+        }
+        value=value.state===null?null:normalizeSmartState(value.state);
+        if(value && size)Object.defineProperty(value,'smartSize',{value:size,enumerable:false});
       }
-      value=value===null?null:normalizeSmartState(value);
+      else value=value===null?null:normalizeSmartState(value);
     } else if(message.fn==='initStyle'){
       if(value!==null){
         if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('Expected a style object');
@@ -5529,7 +5541,7 @@ self.onmessage = function(e){
     for(const p of smartGestureRecords){
       if(preserveReleased && p.released){p.epoch=smartGestureEpoch;continue;}
       p.cancelled=true;
-      if(p.sd && p.tab===activeTabId && items.includes(p.it)) p.it.state=clone(p.sd.originalState);
+      if(p.sd && p.tab===activeTabId && items.includes(p.it)){p.it.state=clone(p.sd.originalState);if(p.sd.originalSize){p.it.w=p.sd.originalSize.w;p.it.h=p.sd.originalSize.h;}}
       p.release();
       if(p.sd?.onSettle){const settle=p.sd.onSettle;p.sd.onSettle=null;settle();}
     }
@@ -5539,6 +5551,14 @@ self.onmessage = function(e){
     const r=canvas.getBoundingClientRect();
     return {clientX:r.left+x,clientY:r.top+y,pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,
       shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey};
+  }
+  // Applies a dragEdit result; a component may also return a new size (see validateSmartReply), applied
+  // with the top-left corner fixed.
+  function applySmartDragResult(it,next){
+    if(!next)return;
+    it.state=next;
+    const size=next.smartSize;
+    if(size){if(size.w!==undefined)it.w=size.w;if(size.h!==undefined)it.h=size.h;}
   }
   // Pushes one undo entry when a handle gesture changed the item's state (compared to originalState).
   function commitSmartHandleState(it,originalState){
@@ -5570,7 +5590,7 @@ self.onmessage = function(e){
     handledPointerUp=!!handle;
     if(handle){
       const sd={press:p,handle,kind:h.kind,moved:false,lx:p.lp.x,ly:p.lp.y,token:++smartDragToken,
-        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,originalState:clone(it.state||{})};
+        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,originalState:clone(it.state||{}),originalSize:{w:it.w,h:it.h}};
       p.sd=sd;p.mode='handle';
       if(smartCurrentPress===p && !p.released) smartDrag=sd;
       if(p.latest) runSmartDragMove(p.latest.x,p.latest.y,sd);
@@ -5589,9 +5609,9 @@ self.onmessage = function(e){
             if(!result)break;
             const next=await requestSmartCall(it,'dragEdit',[it.state||{},cur.id,result.value,0,it.w,it.h,smartResolvedStyle(it)]);
             if(!smartGestureValid(p))return;
-            if(next)it.state=next;
+            applySmartDragResult(it,next);
             if(!result.move)break;
-            commitSmartHandleState(it,sd.originalState);sd.originalState=clone(it.state||{});
+            commitSmartHandleState(it,sd.originalState);sd.originalState=clone(it.state||{});sd.originalSize={w:it.w,h:it.h};
             if(it.componentApi===2)await ensureEditorComponentGraph().catch(()=>{});
             render();
             const hs2=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
@@ -5604,13 +5624,13 @@ self.onmessage = function(e){
           if(value!==null){
             const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,value,0,it.w,it.h,smartResolvedStyle(it)]);
             if(!smartGestureValid(p))return;
-            if(next)it.state=next;
+            applySmartDragResult(it,next);
           }
         }
       }else if(sd.kind==='click' || !sd.moved){
         const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,sd.lx,sd.ly,it.w,it.h,smartResolvedStyle(it)]);
         if(!smartGestureValid(p)) return;
-        if(next) it.state=next;
+        applySmartDragResult(it,next);
       } else {
         if(sd.inFlight) await new Promise(resolve=>sd.onSettle=resolve);
       }
