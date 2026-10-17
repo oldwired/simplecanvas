@@ -2,7 +2,8 @@
 
 Status: stage 1, its authoring setting, and the expanded stage 2 library, logic, routing, and timed
 signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-16.
-Stage 2 closeout still includes usable example drawings and an authoring-experience pass.
+Stage 2 includes an editable eight-tab example workspace and offline HTML reader; a focused
+authoring-experience pass remains before closeout.
 These additions are not yet part of the main-branch baseline below.
 Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -27,6 +28,8 @@ an **Inputs…** source picker, saved bindings, and independent instance IDs. Op
 The second milestone adds a categorized library, ready-to-place default components, logic gates,
 numeric helpers, typed routing, and bounded timed signals. This comes before data tables, events, downloads, and external integrations, so actual
 composed documents can inform those later increments.
+The [smart-components workspace](../examples/smart-components-workspace.json) and its
+[offline HTML reader](../examples/smart-components-workspace.html) demonstrate these compositions.
 
 ## Current baseline: main and the feature branch
 
@@ -120,8 +123,8 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stage 1 and the expanded stage 2 catalog are implemented on the feature branch; stage 2 example
-closeout remains. The stage numbers give the
+Stage 1, the expanded stage 2 catalog, and the example workspace are implemented on the feature
+branch; a focused stage 2 authoring-experience pass remains. The stage numbers give the
 proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -130,7 +133,7 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic — expanded delivery implemented; example closeout remains | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, and bounded timed signals | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the example works in editor and offline HTML. |
+| 2. Component library and logic — catalog and examples implemented; authoring pass remains | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, and an eight-tab example workspace | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the examples work in editor and offline HTML. |
 | 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
@@ -166,6 +169,24 @@ The delivery follows three steps: **2.1** library-entry identity, category/tag s
 and built-in/user collection behavior; **2.2** the expandable browser and scalar controls,
 gates, and displays; **2.3** the complete example, library roundtrips, and offline HTML checks.
 The existing input picker is sufficient; visible wires remain optional later work.
+
+### Shipped example workspace
+
+The [editable workspace](../examples/smart-components-workspace.json) covers **Basics**, **Threshold
+logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Shift memory**, and
+**LED patterns**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
+the current workspace first if it should be retained. The matching
+[self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
+
+Double-click controls in the editor; use them directly in HTML. Number controls also accept typed
+values by clicking their displayed number. **Inputs…** exposes the actual saved bindings, while
+illustrative arrows are ordinary drawing objects. Countdown starts at 9 with **Run** off. Each
+tab has independent state and timing pauses while it is inactive. Reader tab switches retain
+changes; reloading restores the exported snapshot. JSON remains the editable source.
+
+This fills the shipped-example gap in step 2.3. A focused pass over component discovery, placement,
+input configuration, and error clarity remains before stage 2 closeout; it does not add a new
+runtime or require the proposed Run/Preview mode.
 
 ### Preserve the working popup
 
@@ -502,6 +523,27 @@ Shift register already do; external feedback support is not a technical prerequi
 | Small memory blocks and register files; bounded FIFO memory | Set capacity/address limits, read/write timing and same-address collisions, reset/clear rules, and persistence. Separate practical memory budgets from the later document-dataset model. |
 | Oscillators and timers constructed with feedback | Define explicit time or state boundaries, startup conditions, scheduling limits, pause/stop controls, and visible failure for loops that cannot settle. Existing Pulse generator and Delay remain usable independently. |
 | LFSR sequence/pseudorandom generator | Choose bounded register width, taps/seed rules, repeatability and reset behavior, and serial versus numeric outputs. Decide whether users can inspect or construct its feedback network; keep it separate from the existing Random integer source. |
+| Consistent floating-point support | Generalize Sample & hold (integer) to Sample & hold (number), add a floating-point random source or mode, and agree decimal formatting plus an optional tolerance for equality comparisons. Existing numeric ports already carry finite floating-point values; keep counts, stage sizes, and bit patterns integer-only. |
+| Function generator | Consider sine, square, triangle, and sawtooth waveforms with frequency, amplitude, offset, phase, and applicable duty-cycle controls. Define the sampling clock, supported frequency range, reset/enable behavior, and what happens when settings change or a scheduled update is late. |
+| Scope / oscilloscope | Plot one or more numeric signals over time with a time base, vertical scale, trigger, and pause/hold controls. Define timestamped sampling, channel alignment, bounded history, and treatment of unavailable values and missed samples. |
+| FFT / spectrogram display | Show a frequency spectrum and a spectrum-over-time view. Decide sample rate, window size/function, overlap, frequency/amplitude scales, supported frequency range, bounded history, and processing limits. Define startup, gaps, and configuration changes without presenting incomplete or stale samples as a valid spectrum. |
+| Audio components — even later | Candidates include oscillators/noise sources, sample players, gain, mixers, filters, envelopes, and audio input/output. Define audio streams versus scalar controls, channel/sample formats, timing and latency, host-owned playback/device controls, and saved-asset/offline-export behavior. |
+
+These floating-point improvements and signal instruments are explicitly deferred. A useful order
+is component consistency, then a shared sampling/time model, then Function generator and Scope,
+followed by FFT/spectrogram views. Sampling must be independent of canvas redraws, with a clear
+policy for late updates, pause/resume, and changes to the sample rate. Decide whether analysis
+consumes scalar samples or bounded sample blocks before extending the existing port contract.
+Keep sample histories and analysis buffers bounded and separate from ordinary saved component
+state; agree what, if anything, is saved or exported. Editor and offline HTML should use the same
+time and sample semantics. These decisions can be discussed alongside feedback without making
+all these components depend on feedback support or turning them into prerequisites for stage 3.
+
+Schedule audio components after the Function generator, Scope, and FFT/spectrogram work. Revisit
+their execution model then: audio processing needs its own timing contract, with an explicit
+bridge to scalar component controls and the analysis displays. Preserve the component sandbox;
+the host should own audio start/stop, device access, and document lifecycle behavior. This is a
+longer-term candidate family, not an extension of the current delivery.
 
 Terminology reference: the CD4017B is a five-stage Johnson counter with ten decoded outputs,
 so “4017-style decoded decade counter” is the precise candidate label here. The user-requested

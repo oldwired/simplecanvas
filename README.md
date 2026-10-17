@@ -234,11 +234,31 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 
 ### Connected components
 
-Open [examples/connected-components.json](examples/connected-components.json) with
-**File → Open sketch…** to try a Number control connected to a separate Gauge. Double-click
-the control, then drag its slider, use its step buttons, or click its value to type a number.
-The gauge follows its value. **Export HTML**
-keeps that connection working offline; reopening the HTML restores the exported values.
+Open [the smart-components workspace](examples/smart-components-workspace.json) with
+**File → Open workspace…** to explore eight connected examples. Opening a workspace replaces
+all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
+editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
+
+| Tab | Try it |
+| --- | --- |
+| Basics | Change one number and watch a gauge and value label follow. |
+| Threshold logic | Combine a comparison with an enable toggle. |
+| Numeric tools | Scale and clamp a decimal value. |
+| Countdown | Turn **Run** on to count down from 9 on a seven-segment display. |
+| Delayed pulses | Follow a pulse through a delay. |
+| Routing | Step through four values with pulse and reset controls. |
+| Shift memory | Move a bit through two cascaded registers. |
+| LED patterns | Drive matrices with Boolean lines and row bytes. |
+
+In the editor, double-click a component to use its controls. Number controls support a slider,
+step buttons, and clicking the displayed value to type a number. In HTML, use the controls
+directly. Select a component and open **Inputs…** in the editor to inspect or change its actual
+bindings. The illustrative arrows are ordinary drawing objects. Each tab is independent;
+timing pauses while that tab is inactive. Reader changes survive tab switches, and reloading
+the HTML restores the exported snapshot.
+
+For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
+with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
 
 To build your own pair, place **Number control** and **Gauge** from the built-in library.
 Their script templates also remain available for authoring. Select the gauge, click **Inputs…**,
