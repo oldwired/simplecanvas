@@ -2017,6 +2017,15 @@ self.onmessage = function(e){
         'border:2px solid #2563eb;border-radius:0;outline:none;background:#fff;color:#111827;padding:0 4px;'+
         'font:400 '+Math.max(9,Math.round(h*.55))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
       Object.assign(input.style,{left:a.x+'px',top:a.y+'px',width:Math.max(24,w)+'px',height:Math.max(14,h)+'px',transform:'rotate('+angle+'rad)'});
+      // Grow to the right with the typed text (over the neighbouring cells), never narrower than the
+      // rect and never past the window's right edge, so a long formula stays fully visible.
+      const measure=document.createElement('canvas').getContext('2d');
+      const fit=()=>{
+        measure.font=input.style.font;
+        const needed=Math.ceil(measure.measureText(input.value).width)+16;   // padding, border, caret
+        input.style.width=Math.max(24,w,Math.min(needed,window.innerWidth-a.x-8))+'px';
+      };
+      input.addEventListener('input',fit);fit();
       let done=false;
       const finish=value=>{if(done)return;done=true;input.remove();resolve(value);};
       const accept=move=>{if(!valid()){finish(null);return;}finish({value:input.value,move});};
