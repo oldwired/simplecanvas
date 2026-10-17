@@ -933,7 +933,7 @@ the whole file into the Script field:
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 - [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
-- [Spreadsheet](examples/spreadsheet.js): an API v2 10×10 sheet with arithmetic, SUM/AVERAGE/MIN/MAX, `INPUT("name")` cells that become input ports and `OUTPUT(cell,"Name")` cells that become output ports; cells are edited through `kind:'text'` handles.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 10×10 sheet with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX and VLOOKUP; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. Cells are edited in place through `kind:'text'` handles.
 
 The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
 

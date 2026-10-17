@@ -1840,11 +1840,19 @@ self.onmessage = function(e){
     const it=typeof scriptOrItem==='object'?scriptOrItem:null;
     const connected=it?.componentApi===2 && ['children','handles','hitEdit','dragEdit','exportBehavior'].includes(fn);
     const scene=items,name=it?.componentName,script=scriptOf(scriptOrItem);
-    let signature=null;
+    let signature=null,authoringOnly=false;
     const current=()=>items===scene && scene.includes(it) && it.componentName===name && it.script===script;
     return Promise.resolve().then(async()=>{
       if(connected){
-        const io=await resolveSmartComponentIo(it);
+        let io;
+        try{io=await resolveSmartComponentIo(it);}
+        catch(err){
+          // A component whose inputs/bindings are in error still offers its editor-only handles, so the
+          // author can repair it in place (e.g. retype a spreadsheet formula). Ordinary handles stay
+          // blocked, and a failing drawing hook still disables all interaction.
+          if(err.cancelled || !['handles','hitEdit','dragEdit'].includes(fn) || componentDrawingError(it))throw err;
+          io={inputs:{},outputs:{},error:err.message,name:it.componentName || ''};authoringOnly=true;
+        }
         if(!current())throw smartCancelled();
         // Resolving the owned graph may advance temporal state. Its committed snapshot is the
         // interaction baseline, including this item's state if a due transition just changed it.
@@ -1853,6 +1861,7 @@ self.onmessage = function(e){
       }
       const r=await requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args},it,execution);
       if(connected && (!current() || componentGraphSignature(scene)!==signature))throw smartCancelled();
+      if(authoringOnly && fn==='handles' && r.ok && Array.isArray(r.result))return r.result.filter(h=>h && h.editorOnly===true);
       return r.ok?r.result:null;
     }).catch(err=>{if(fn==='compute' || fn==='transition')throw err;return null;});
   }
@@ -5556,7 +5565,7 @@ self.onmessage = function(e){
     }
     if(!smartGestureValid(p)) return;
     const h=hs.find(h=>h.id===handle);
-    if(handle && !h){reportSmartError(it.script,'hitEdit','Unknown handle ID');handle=null;}
+    if(handle && !h){if(!componentGraphError(it))reportSmartError(it.script,'hitEdit','Unknown handle ID');handle=null;}
     if(smartHitPending===p) smartHitPending=null;
     handledPointerUp=!!handle;
     if(handle){

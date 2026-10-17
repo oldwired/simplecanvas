@@ -1,9 +1,18 @@
 // A 10 x 10 spreadsheet component (columns A-J, rows 1-10). In edit mode, click a cell to type a
-// number, a label, or a formula starting with "=":
+// number, TRUE/FALSE, a label, or a formula starting with "=":
 //   =A1+B2*2   =(A1-A2)/A3   =SUM(A1:A9)   =AVERAGE(B1:B5, 10)   =MIN(A1:C3)   =MAX(A1, B1)
-//   =INPUT("energy")             reads an input port; connect it to any output in Inputs...
-//   =OUTPUT(F10, "Total Energy") shows F10's value and publishes it as an output port
+//   =A1>20   =A1<>B1   (= <> < > <= >=)   =AND(A1>0, B1)   =OR(...)   =NOT(B2)   =TRUE
+//   =IF(A1>20, "hot", "ok")   =IF(B1, A1*2, 0)   (only the chosen branch is evaluated)
+//   =VLOOKUP(A1, D1:F9, 2, FALSE)   exact match with FALSE/0, otherwise the largest key <= the
+//                                value in an ascending first column (as in Excel)
+//   Arguments may be separated by "," or ";"  (=IF(A1>20; "hot"; "ok"))
+//   Text may use straight, typographic or single quotes: "x", „x“, “x”, 'x'
+//   =INPUT("energy")             number input port; connect it to any output in Inputs...
+//   =INPUT("door", "boolean")    Boolean input port ("number" is the default type)
+//   =OUTPUT(F10, "Total Energy") shows F10's value and publishes it as an output port; its type
+//                                (number, Boolean or text) follows the formula, e.g. OUTPUT(A1>20,"Alarm")
 // Port names keep letters, digits and underscores ("Total Energy" becomes Total_Energy).
+// Booleans count as 1/0 in arithmetic; SUM/AVERAGE/MIN/MAX ranges skip Booleans, text and empty cells.
 // Enter/Tab apply the cell and move down/right; Escape cancels. An empty entry clears the cell.
 // Errors show as #DIV/0!, #REF!, #NAME?, #VALUE!, #CYCLE!, #N/A or #ERROR!. An output whose formula
 // fails makes the component report that error. Row and column headers appear outside the sheet only
@@ -18,10 +27,14 @@
     if(!/^[A-Za-z]/.test(p))p=('p'+p).slice(0,64);
     return p;
   },
+  _bool(text){const t=String(text).trim().toUpperCase();return t==='TRUE'?true:t==='FALSE'?false:null;},
 
   // ---------- formula parser (no eval) ----------
   _tokens(src){
-    const out=[],re=/\s*(?:(\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)|"([^"]*)"|([A-Za-z]+\d*)|([-+*\/(),:]))/y;
+    // Typographic quotes (often inserted by keyboards or autocorrect) count as straight ones, and text
+    // may also be written in single quotes: "x", „x“, “x”, 'x', ‚x‘ all mean the same string.
+    src=src.replace(/[“”„‟«»″]/g,'"').replace(/[‘’‚‛′]/g,"'");
+    const out=[],re=/\s*(?:(\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)|"([^"]*)"|'([^']*)'|([A-Za-z]+\d*)|(<=|>=|<>|[-+*\/(),;:<>=]))/y;
     let i=0;
     while(i<src.length){
       if(/^\s*$/.test(src.slice(i)))break;
@@ -29,9 +42,9 @@
       if(!m)throw {e:'#ERROR!'};
       i=re.lastIndex;
       if(m[1]!==undefined)out.push({t:'num',v:parseFloat(m[1])});
-      else if(m[2]!==undefined)out.push({t:'str',v:m[2]});
-      else if(m[3]!==undefined)out.push({t:'id',v:m[3].toUpperCase()});
-      else out.push({t:m[4]});
+      else if(m[2]!==undefined||m[3]!==undefined)out.push({t:'str',v:m[2]!==undefined?m[2]:m[3]});
+      else if(m[4]!==undefined)out.push({t:'id',v:m[4].toUpperCase()});
+      else out.push({t:m[5]===';'?',':m[5]});   // ';' is accepted as an argument separator, like ','
     }
     return out;
   },
@@ -53,6 +66,7 @@
           if(!(peek()&&peek().t===')'))do{args.push(arg());}while(peek()&&peek().t===','&&take(','));
           take(')');return {k:'fn',name:x.v,args};
         }
+        if(x.v==='TRUE'||x.v==='FALSE')return {k:'bool',v:x.v==='TRUE'};
         const a=ref(x.v);if(!a)throw {e:'#NAME?'};
         return {k:'ref',...a};
       }
@@ -68,7 +82,9 @@
       i=save;return expr();
     };
     const term=()=>{let a=primary();while(peek()&&(peek().t==='*'||peek().t==='/')){const op=take().t;a={k:op,a,b:primary()};}return a;};
-    const expr=()=>{let a=term();while(peek()&&(peek().t==='+'||peek().t==='-')){const op=take().t;a={k:op,a,b:term()};}return a;};
+    const sum=()=>{let a=term();while(peek()&&(peek().t==='+'||peek().t==='-')){const op=take().t;a={k:op,a,b:term()};}return a;};
+    const CMP=['=','<>','<','>','<=','>='];
+    const expr=()=>{let a=sum();while(peek()&&CMP.includes(peek().t)){const op=take().t;a={k:'cmp',op,a,b:sum()};}return a;};
     const tree=expr();if(i!==tk.length)throw {e:'#ERROR!'};
     return tree;
   },
@@ -78,29 +94,84 @@
     for(const k of ['a','b'])this._walk(node[k],fn);
     if(node.args)for(const x of node.args)this._walk(x,fn);
   },
-  // Port names declared by the formulas, in cell order (deterministic from saved state).
+  _inputType(node){   // INPUT("name") / INPUT("name","boolean"|"number"); null = malformed
+    const a=node.args;
+    if(!a.length||a.length>2||a[0].k!=='str')return null;
+    if(a.length===1)return 'number';
+    const t=a[1].k==='str'?a[1].v.trim().toLowerCase():'';
+    return t==='number'||t==='boolean'?t:null;
+  },
+  // Static type of an expression -- port types must follow from saved state, not from live values.
+  _typeOf(node,cells,seen){
+    switch(node.k){
+      case 'num':case 'neg':case '+':case '-':case '*':case '/':return 'number';
+      case 'str':return 'string';
+      case 'bool':case 'cmp':return 'boolean';
+      case 'ref':return this._cellType(this._key(node.c,node.r),cells,seen);
+      case 'fn':{
+        const f=node.name;
+        if(f==='AND'||f==='OR'||f==='NOT')return 'boolean';
+        if(f==='VLOOKUP'){
+          const t=node.args[1],ci=node.args[2];
+          if(!t || t.k!=='range' || !ci || ci.k!=='num')return 'number';
+          const col=t.c1+Math.floor(ci.v)-1,types=new Set();
+          if(col<t.c1 || col>t.c2)return 'number';
+          for(let r=t.r1;r<=t.r2;r++){const k=this._key(col,r);if(cells[k])types.add(this._cellType(k,cells,seen));}
+          return types.size===1?[...types][0]:'number';
+        }
+        if(f==='INPUT')return this._inputType(node)||'number';
+        if(f==='OUTPUT')return node.args[0]?this._typeOf(node.args[0],cells,seen):'number';
+        if(f==='IF'){
+          // The true branch decides the type; a false branch of another type fails at runtime.
+          return node.args[1]?this._typeOf(node.args[1],cells,seen):'boolean';
+        }
+        return 'number';
+      }
+    }
+    return 'number';
+  },
+  _cellType(k,cells,seen){
+    const src=cells[k];
+    if(typeof src!=='string'||src==='')return 'number';
+    if(src[0]!=='='){
+      if(this._bool(src)!==null)return 'boolean';
+      return Number.isFinite(Number(src.trim()))&&src.trim()!==''?'number':'string';
+    }
+    if(seen[k])return 'number';
+    seen[k]=true;
+    try{return this._typeOf(this._parse(src.slice(1)),cells,seen);}catch(_){return 'number';}
+    finally{delete seen[k];}
+  },
+  // Ports declared by the formulas, in cell order (deterministic from saved state).
   _ports(state){
-    const ins=[],outs=[];
+    const cells=state.cells||{},ins=[],outs=[];
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-      const src=(state.cells||{})[this._key(c,r)];
+      const src=cells[this._key(c,r)];
       if(typeof src!=='string'||src[0]!=='=')continue;
       let tree;try{tree=this._parse(src.slice(1));}catch(_){continue;}
       this._walk(tree,n=>{
         if(n.k!=='fn')return;
+        if(n.name==='INPUT'){
+          const type=this._inputType(n);
+          if(type){const p=this._port(n.args[0].v);if(!ins.some(x=>x.port===p))ins.push({port:p,type});}
+        }
         const last=n.args[n.args.length-1];
-        if(n.name==='INPUT'&&n.args.length===1&&last.k==='str'){const p=this._port(last.v);if(!ins.includes(p))ins.push(p);}
-        if(n.name==='OUTPUT'&&n.args.length===2&&last.k==='str'){const p=this._port(last.v);if(!outs.some(o=>o.port===p))outs.push({port:p,cell:this._key(c,r)});}
+        if(n.name==='OUTPUT'&&n.args.length===2&&last.k==='str'){
+          const p=this._port(last.v);
+          if(!outs.some(o=>o.port===p))outs.push({port:p,cell:this._key(c,r),type:this._typeOf(n.args[0],cells,{})});
+        }
       });
     }
     return {ins:ins.slice(0,32),outs:outs.slice(0,32)};
   },
-  inputs(state){const m={};for(const p of this._ports(state).ins)m[p]={type:'number',default:0};return m;},
-  outputs(state){const m={};for(const o of this._ports(state).outs)m[o.port]={type:'number'};return m;},
+  inputs(state){const m={};for(const x of this._ports(state).ins)m[x.port]={type:x.type,default:x.type==='boolean'?false:0};return m;},
+  outputs(state){const m={};for(const o of this._ports(state).outs)m[o.port]={type:o.type};return m;},
 
   // ---------- evaluation ----------
-  // Every cell -> {v:number} | {t:text} | {e:error}; empty cells are absent.
+  // Every cell -> {v:number} | {b:boolean} | {t:text} | {e:error}; empty cells are absent.
   _sheet(state,inputs){
     const cells=state.cells||{},memo={},busy={};
+    const wrap=v=>typeof v==='boolean'?{b:v}:typeof v==='string'?{t:v}:Number.isFinite(v)?{v}:{e:'#NUM!'};
     const cell=(c,r)=>{
       const k=this._key(c,r);
       if(memo[k])return memo[k];
@@ -108,58 +179,99 @@
       const src=cells[k];
       if(typeof src!=='string'||src==='')return null;
       let res;
-      if(src[0]!=='='){const n=Number(src.trim());res=src.trim()!==''&&Number.isFinite(n)?{v:n}:{t:src};}
-      else{
+      if(src[0]!=='='){
+        const b=this._bool(src),n=Number(src.trim());
+        res=b!==null?{b}:src.trim()!==''&&Number.isFinite(n)?{v:n}:{t:src};
+      }else{
         busy[k]=true;
-        try{res={v:num(this._parse(src.slice(1)))};}catch(err){res={e:err&&err.e||'#ERROR!'};}
+        try{res=wrap(val(this._parse(src.slice(1))));}catch(err){res={e:err&&err.e||'#ERROR!'};}
         busy[k]=false;
       }
       return memo[k]=res;
     };
-    const valueOf=(c,r)=>{const x=cell(c,r);if(!x)return 0;if(x.e)throw {e:x.e};if(x.t!==undefined)throw {e:'#VALUE!'};return x.v;};
-    const list=args=>{   // numbers for SUM/AVERAGE/MIN/MAX: ranges skip empty and text cells
+    const valueOf=(c,r)=>{const x=cell(c,r);if(!x)return 0;if(x.e)throw {e:x.e};return x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;};
+    const toNum=v=>{if(typeof v==='boolean')return v?1:0;if(typeof v!=='number')throw {e:'#VALUE!'};return v;};
+    const toBool=v=>{if(typeof v==='boolean')return v;if(typeof v==='number')return v!==0;throw {e:'#VALUE!'};};
+    const rangeValues=(a,keep)=>{   // values of a range, skipping empty cells and anything keep() rejects
       const out=[];
-      for(const a of args){
-        if(a.k==='range'){for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++){const x=cell(c,r);if(x&&x.e)throw {e:x.e};if(x&&x.v!==undefined)out.push(x.v);}}
-        else out.push(num(a));
+      for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++){
+        const x=cell(c,r);if(!x)continue;if(x.e)throw {e:x.e};
+        const v=x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;if(keep(v))out.push(v);
       }
       return out;
     };
-    const num=n=>{
+    const numbers=args=>args.flatMap(a=>a.k==='range'?rangeValues(a,v=>typeof v==='number'):[toNum(val(a))]);
+    const booleans=args=>args.flatMap(a=>a.k==='range'?rangeValues(a,v=>typeof v!=='string').map(toBool):[toBool(val(a))]);
+    const val=n=>{
       switch(n.k){
-        case 'num':return n.v;
-        case 'str':throw {e:'#VALUE!'};
+        case 'num':case 'str':case 'bool':return n.v;
         case 'ref':return valueOf(n.c,n.r);
         case 'range':throw {e:'#VALUE!'};
-        case 'neg':return -num(n.a);
-        case '+':return num(n.a)+num(n.b);
-        case '-':return num(n.a)-num(n.b);
-        case '*':return num(n.a)*num(n.b);
-        case '/':{const b=num(n.b);if(b===0)throw {e:'#DIV/0!'};return num(n.a)/b;}
+        case 'neg':return -toNum(val(n.a));
+        case '+':return toNum(val(n.a))+toNum(val(n.b));
+        case '-':return toNum(val(n.a))-toNum(val(n.b));
+        case '*':return toNum(val(n.a))*toNum(val(n.b));
+        case '/':{const b=toNum(val(n.b));if(b===0)throw {e:'#DIV/0!'};return toNum(val(n.a))/b;}
+        case 'cmp':{
+          const a=val(n.a),b=val(n.b);
+          if(n.op==='='||n.op==='<>'){
+            const same=typeof a==='string'&&typeof b==='string'?a.toLowerCase()===b.toLowerCase():
+              typeof a===typeof b?a===b:false;
+            return n.op==='='?same:!same;
+          }
+          const x=toNum(a),y=toNum(b);
+          return n.op==='<'?x<y:n.op==='>'?x>y:n.op==='<='?x<=y:x>=y;
+        }
         case 'fn':{
           const f=n.name,a=n.args;
-          if(f==='SUM')return list(a).reduce((s,x)=>s+x,0);
-          if(f==='AVERAGE'){const v=list(a);if(!v.length)throw {e:'#DIV/0!'};return v.reduce((s,x)=>s+x,0)/v.length;}
-          if(f==='MIN'){const v=list(a);return v.length?Math.min(...v):0;}
-          if(f==='MAX'){const v=list(a);return v.length?Math.max(...v):0;}
+          if(f==='SUM')return numbers(a).reduce((s,x)=>s+x,0);
+          if(f==='AVERAGE'){const v=numbers(a);if(!v.length)throw {e:'#DIV/0!'};return v.reduce((s,x)=>s+x,0)/v.length;}
+          if(f==='MIN'){const v=numbers(a);return v.length?Math.min(...v):0;}
+          if(f==='MAX'){const v=numbers(a);return v.length?Math.max(...v):0;}
+          if(f==='AND'){if(!a.length)throw {e:'#VALUE!'};return booleans(a).every(Boolean);}
+          if(f==='OR'){if(!a.length)throw {e:'#VALUE!'};return booleans(a).some(Boolean);}
+          if(f==='NOT'){if(a.length!==1)throw {e:'#VALUE!'};return !toBool(val(a[0]));}
+          if(f==='VLOOKUP'){
+            if(a.length<3||a.length>4||a[1].k!=='range')throw {e:'#VALUE!'};
+            const want=val(a[0]),t=a[1],ci=Math.floor(toNum(val(a[2])));
+            const exact=a.length===4?!toBool(val(a[3])):false;
+            if(ci<1)throw {e:'#VALUE!'};
+            if(t.c1+ci-1>t.c2)throw {e:'#REF!'};
+            const keyOf=r=>{const x=cell(t.c1,r);return !x||x.e?undefined:x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;};
+            const same=(k,v)=>typeof k==='string'&&typeof v==='string'?k.toLowerCase()===v.toLowerCase():k===v;
+            let hit=-1;
+            for(let r=t.r1;r<=t.r2;r++){
+              const k=keyOf(r);
+              if(k===undefined)continue;
+              if(exact){if(same(k,want)){hit=r;break;}continue;}
+              // approximate: last key <= wanted value before the first larger key (ascending first column)
+              const cmp=typeof k==='number'&&typeof want==='number'?k-want:
+                typeof k==='string'&&typeof want==='string'?k.toLowerCase().localeCompare(want.toLowerCase()):null;
+              if(cmp===null)continue;
+              if(cmp>0)break;
+              hit=r;
+            }
+            if(hit<0)throw {e:'#N/A'};
+            return valueOf(t.c1+ci-1,hit);
+          }
+          if(f==='IF'){
+            if(a.length<2||a.length>3)throw {e:'#VALUE!'};
+            return toBool(val(a[0]))?val(a[1]):a.length===3?val(a[2]):false;
+          }
           if(f==='INPUT'){
-            if(a.length!==1||a[0].k!=='str')throw {e:'#VALUE!'};
+            const type=this._inputType(n);if(!type)throw {e:'#VALUE!'};
             const v=inputs?inputs[this._port(a[0].v)]:undefined;
-            if(!Number.isFinite(v))throw {e:'#N/A'};
+            if(type==='boolean'?typeof v!=='boolean':!Number.isFinite(v))throw {e:'#N/A'};
             return v;
           }
-          if(f==='OUTPUT'){if(a.length!==2||a[1].k!=='str')throw {e:'#VALUE!'};return num(a[0]);}
+          if(f==='OUTPUT'){if(a.length!==2||a[1].k!=='str')throw {e:'#VALUE!'};return val(a[0]);}
           throw {e:'#NAME?'};
         }
       }
       throw {e:'#ERROR!'};
     };
     const all={};
-    for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-      const k=this._key(c,r),x=cell(c,r);
-      if(!x)continue;
-      all[k]=x.v!==undefined&&!Number.isFinite(x.v)?{e:'#NUM!'}:x;   // overflow such as 1e308*10
-    }
+    for(let r=0;r<10;r++)for(let c=0;c<10;c++){const k=this._key(c,r),x=cell(c,r);if(x)all[k]=x;}
     return all;
   },
 
@@ -174,8 +286,10 @@
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
       const x=sheet[o.cell];
-      if(!x||x.e||x.v===undefined)throw new Error('Output '+o.port+' in '+o.cell+': '+(x&&x.e||'no number'));
-      out[o.port]=x.v;
+      if(!x||x.e)throw new Error('Output '+o.port+' in '+o.cell+': '+(x&&x.e||'empty'));
+      const v=x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;
+      if(typeof v!==o.type)throw new Error('Output '+o.port+' in '+o.cell+': expected '+o.type+', got '+typeof v);
+      out[o.port]=v;
     }
     return out;
   },
@@ -207,8 +321,9 @@
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
       const x=sheet[this._key(c,r)];
       if(!x)continue;
-      const text=x.e||(x.t!==undefined?x.t:this._fmt(x.v)),numeric=x.v!==undefined;
-      items.push(label(text,c*L.cw,r*L.rh,L.cw,L.rh,numeric?'right':'left',x.e?'#b91c1c':textInk));
+      const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmt(x.v));
+      const align=x.v!==undefined?'right':x.b!==undefined?'center':'left';   // numbers right, Booleans centered
+      items.push(label(text,c*L.cw,r*L.rh,L.cw,L.rh,align,x.e?'#b91c1c':textInk));
     }
     // Cell borders and the outer frame both follow the toolbar's stroke color, width and dash
     // pattern; Stroke "None" hides all of them.
@@ -227,7 +342,7 @@
       };
       for(let c=0;c<10;c++)head(this._COLS[c],c*L.cw,-L.headH,L.cw,L.headH);
       for(let r=0;r<10;r++)head(r+1,-L.headW,r*L.rh,L.headW,L.rh);
-      const note=errorNote||[ports.ins.length?'In: '+ports.ins.join(', '):'',ports.outs.length?'Out: '+ports.outs.map(o=>o.port).join(', '):''].filter(Boolean).join('   ');
+      const note=errorNote||[ports.ins.length?'In: '+ports.ins.map(x=>x.port+(x.type==='boolean'?' (bool)':'')).join(', '):'',ports.outs.length?'Out: '+ports.outs.map(o=>o.port+(o.type!=='number'?' ('+(o.type==='boolean'?'bool':o.type)+')':'')).join(', '):''].filter(Boolean).join('   ');
       if(note)items.push({...label(note,0,h+2,w,Math.max(14,L.headH),'left',errorNote?'#92400e':'#475569',false,Math.min(12,L.px)),editorOnly:true});
     }
     return items;

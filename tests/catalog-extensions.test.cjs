@@ -249,3 +249,82 @@ test('kind:text handles edit in place over their rect, or in a dialog without on
    try{const r=await requestSmartCall(it,'handles',[{},10,10,{}]);return r==null?'rejected':'accepted '+JSON.stringify(r);}catch(e){return 'rejected';}})()`);
  assert.equal(bad,'rejected','a non-string text value is rejected');
 }));
+
+test('spreadsheet Booleans: typed INPUT/OUTPUT ports, comparisons, IF/AND, wired to a toggle and a status indicator',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={B1:'=INPUT("temp")',B2:'=INPUT("door","boolean")',B3:'=B1>25',B4:'=OUTPUT(AND(B3,B2),"Alarm")',
+   B5:'=IF(B4,"ALARM","ok")',B6:'=OUTPUT(IF(B2,B1*2,0),"Heat")',B7:'=OUTPUT(B5,"State")'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   const cat=(k,uid,x,y,extra)=>({...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===k).items[0]),uid,x,y,bindings:{},inputValues:{},...extra});
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{temp:{uid:'nc',port:'value'},door:{uid:'tg',port:'value'}},inputValues:{}},
+     cat('numberControl','nc',800,100,{state:{value:30}}),cat('toggle','tg',800,300,{state:{value:true}}),
+     cat('statusIndicator','si',800,480,{bindings:{value:{uid:'sh',port:'Alarm'}}})];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ const caps=await run('requestSmartCaps(items[0])');
+ assert.deepEqual(caps.inputs,{temp:{type:'number',default:0},door:{type:'boolean',default:false}},'INPUT types: number by default, "boolean" on request');
+ assert.deepEqual(caps.outputs,{Alarm:{type:'boolean'},Heat:{type:'number'},State:{type:'string'}},'OUTPUT types follow the formulas');
+ assert.deepEqual(await outputs(run,0),{Alarm:true,Heat:60,State:'ALARM'});
+ assert.deepEqual(await outputs(run,3),{value:true},'the Boolean output drives a status indicator');
+ await run(`items[2].state={...items[2].state,value:false};ensureEditorComponentGraph()`);
+ assert.deepEqual(await outputs(run,0),{Alarm:false,Heat:0,State:'ok'},'IF follows the Boolean input');
+ assert.deepEqual(await outputs(run,3),{value:false});
+}));
+
+test('spreadsheet VLOOKUP: approximate and exact matches, comma or semicolon separators, typed outputs',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={D1:'0',E1:'none',F1:'0',D2:'10',E2:'small',F2:'2.5',D3:'50',E3:'medium',F3:'2',D4:'100',E4:'large',F4:'1.5',
+   H1:'Apfel',I1:'1.2',H2:'Birne',I2:'0.9',
+   A1:'=INPUT("qty")',B1:'=OUTPUT(VLOOKUP(A1,D1:F4,3)*A1,"Cost")',B2:'=OUTPUT(VLOOKUP(A1;D1:F4;2;TRUE),"Size")',
+   B3:'=OUTPUT(VLOOKUP(„birne“;H1:I2;2;FALSE),‘Pear’)'};   // typographic quotes work like straight ones
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{qty:60}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual((await run('requestSmartCaps(items[0])')).outputs,{Cost:{type:'number'},Size:{type:'string'},Pear:{type:'number'}});
+ assert.deepEqual(await outputs(run,0),{Cost:120,Size:'medium',Pear:0.9},'60 falls in the 50 band: rate 2, size medium; exact text match ignores case');
+ await run(`items[0].inputValues={qty:5};ensureEditorComponentGraph()`);
+ assert.deepEqual(await outputs(run,0),{Cost:0,Size:'none',Pear:0.9},'5 falls in the 0 band');
+ await run(`items[0].state={cells:{...items[0].state.cells,B1:'=OUTPUT(VLOOKUP(11,D1:F4,3,FALSE),"Cost")'}};ensureEditorComponentGraph()`);
+ assert.match((await outputs(run,0)).error,/#N\/A/,'an exact lookup without a match reports #N/A');
+}));
+
+test('a component in error keeps its editor-only handles so a spreadsheet can be repaired in place; ordinary handles stay blocked',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const place=cells=>run(`(async()=>{const script=${JSON.stringify(script)};
+   const nc={...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'nc',x:820,y:100,state:{value:5},bindings:{},inputValues:{}};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:80,y:120,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${'${JSON.stringify(cells)}'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{energy:{uid:'nc',port:'value'}},inputValues:{}},nc];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`.replace("${JSON.stringify(cells)}",JSON.stringify(cells)));
+ // 1. a binding whose INPUT formula was removed: "Unknown input energy"
+ await place({B1:'=OUTPUT(A1*2,"Out")'});
+ assert.match((await outputs(run,0)).error,/Unknown input energy/);
+ {const pt=await editorPoint(page,run,0,'A1');await page.mouse.click(pt.x,pt.y);}
+ let input=page.locator('input[data-smart-number-input]');await input.waitFor();
+ await input.fill('=INPUT("energy")');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A1')==='=INPUT("energy")');
+ await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ assert.deepEqual(await outputs(run,0),{Out:10},'retyping the INPUT formula reconnects the kept binding');
+ // 2. an OUTPUT formula error
+ await place({A1:'=INPUT("energy")',A2:'0',B1:'=OUTPUT(A1/A2,"Out")'});
+ assert.match((await outputs(run,0)).error,/#DIV\/0!/);
+ {const pt=await editorPoint(page,run,0,'A2');await page.mouse.click(pt.x,pt.y);}
+ input=page.locator('input[data-smart-number-input]');await input.waitFor();
+ await input.fill('2');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A2')==='2');
+ await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ assert.deepEqual(await outputs(run,0),{Out:2.5},'fixing the divisor clears the error');
+ // 3. ordinary (non editor-only) handles of a component in error stay blocked
+ const blocked=await run(`(async()=>{
+   const it={...clone(items[0]),uid:'bad',bindings:{nope:{uid:'nc',port:'value'}},
+     script:'({apiVersion:2,initState(){return {n:0};},children(){return [];},handles(){return [{id:"go",x:1,y:1,kind:"click"},{id:"fix",x:2,y:2,kind:"click",editorOnly:true}];},hitEdit(){return "go";},dragEdit(s){return {state:{n:s.n+1}};}})',state:{n:0}};
+   items.push(it);await ensureEditorComponentGraph();
+   return (await requestSmartCall(it,'handles',[it.state,10,10,{}])).map(h=>h.id);})()`);
+ assert.deepEqual(blocked,['fix'],'only editor-only handles remain while the component is in error');
+}));
