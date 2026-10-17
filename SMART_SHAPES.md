@@ -289,10 +289,9 @@ unchanged. The script must validate and bound the text itself, and keep the resu
 the 4,000-character limit. Like `kind:'number'`, it works in editor edit mode and offline HTML.
 
 Add a local `rect` (`{x, y, w, h}`, same frame as `children()`) to edit **in place** instead: the
-host lays a single-line field exactly over that rectangle, rotated with the shape. Enter applies and
-continues in the text handle directly below, Shift+Enter above, Tab to the right, Shift+Tab to the
-left (neighbours are found from the handles' rects); clicking elsewhere applies and stops, Escape
-discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
+host lays a single-line field exactly over that rectangle, rotated with the shape. Enter or a click
+elsewhere applies and stops; Tab applies and continues in the text handle to the right, Shift+Tab to
+the left (neighbours are found from the handles' rects); Escape discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
 An optional `fontSize` (in the shape's units) sets the field's text size, so it matches the drawn
 text; without it the size follows the rect's height. An optional `align` (`'left'` default, `'center'`, `'right'`) aligns the typed text.
 [Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.

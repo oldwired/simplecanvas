@@ -20,7 +20,8 @@
 //                                (number, Boolean or text) follows the formula, e.g. OUTPUT(A1>20,"Alarm")
 // Port names keep letters, digits and underscores ("Total Energy" becomes Total_Energy).
 // Booleans count as 1/0 in arithmetic; SUM/AVERAGE/MIN/MAX ranges skip Booleans, text and empty cells.
-// Enter/Tab apply the cell and move down/right; Escape cancels. An empty entry clears the cell.
+// Enter applies the cell; Tab/Shift+Tab apply and move right/left; Escape cancels. An empty entry
+// clears the cell.
 // Errors show as #DIV/0!, #REF!, #NAME?, #VALUE!, #CYCLE!, #N/A or #ERROR!. An output whose formula
 // fails makes the component report that error. Row and column headers appear outside the sheet only
 // in edit mode. Cells are editable only in the editor; exported HTML recomputes but cannot edit.
@@ -504,7 +505,7 @@
     const msg=typeof io.error==='string'&&io.error?io.error:'Unavailable';
     return this._draw(state,style,w,h,editing,null,msg.length>120?msg.slice(0,117)+'…':msg);
   },
-  // One in-place text field per cell (the host lays it over `rect`; Enter/Tab move to the neighbour).
+  // One in-place text field per cell (the host lays it over `rect`; Tab moves to the neighbour).
   // editorOnly: cells are edited only in the editor. Exported HTML keeps recomputing from its inputs
   // but offers no way to change values or formulas.
   handles(state,w,h,style={}){

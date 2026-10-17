@@ -2012,7 +2012,7 @@ self.onmessage = function(e){
   }
   // In-place editing for a kind:'text' handle with a rect: a single-line field laid exactly over the
   // rectangle, rotated with the shape. toScreen maps the shape's local coordinates to client pixels.
-  // Resolves {value, move} -- move is 'down'/'up' (Enter/Shift+Enter), 'right'/'left' (Tab/Shift+Tab)
+  // Resolves {value, move} -- move is 'right'/'left' (Tab/Shift+Tab)
   // or null (click elsewhere) -- or null on Escape or cancellation.
   function editSmartTextInline(handle,toScreen,valid=()=>true){
     return new Promise(resolve=>{
@@ -2042,7 +2042,7 @@ self.onmessage = function(e){
       input.addEventListener('keydown',event=>{
         event.stopPropagation();   // Delete, arrows, letters must not reach the canvas shortcuts
         if(event.key==='Escape'){event.preventDefault();finish(null);}
-        else if(event.key==='Enter'){event.preventDefault();accept(event.shiftKey?'up':'down');}
+        else if(event.key==='Enter'){event.preventDefault();accept(null);}   // Enter just applies and ends editing
         else if(event.key==='Tab'){event.preventDefault();accept(event.shiftKey?'left':'right');}
       });
       for(const type of ['pointerdown','click','dblclick'])input.addEventListener(type,event=>event.stopPropagation());

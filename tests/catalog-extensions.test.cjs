@@ -226,7 +226,9 @@ test('kind:text handles edit in place over their rect, or in a dialog without on
  assert.equal(await page.locator('dialog[data-smart-number-input]').count(),0,'no dialog for a handle with rect');
  await input.fill('=OUTPUT(A1*100,"Cents")');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.C1')==='=OUTPUT(A1*100,"Cents")');
- await page.locator('input[data-smart-number-input]').waitFor();   // Enter continued in C2
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));   // Enter only applies: no next field
+ {const pt=await editorPoint(page,run,0,'C2');await page.mouse.click(pt.x,pt.y);}
+ await page.locator('input[data-smart-number-input]').waitFor();
  await page.keyboard.type('7');await page.keyboard.press('Tab');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.C2')==='7');
  await page.locator('input[data-smart-number-input]').waitFor();   // Tab continued in D2
@@ -309,7 +311,7 @@ test('a component in error keeps its editor-only handles so a spreadsheet can be
  let input=page.locator('input[data-smart-number-input]');await input.waitFor();
  await input.fill('=INPUT("energy")');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.A1')==='=INPUT("energy")');
- await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await run('smartHitSettled');
  assert.deepEqual(await outputs(run,0),{Out:10},'retyping the INPUT formula reconnects the kept binding');
  // 2. an OUTPUT formula error
  await place({A1:'=INPUT("energy")',A2:'0',B1:'=OUTPUT(A1/A2,"Out")'});
@@ -318,7 +320,7 @@ test('a component in error keeps its editor-only handles so a spreadsheet can be
  input=page.locator('input[data-smart-number-input]');await input.waitFor();
  await input.fill('2');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.A2')==='2');
- await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await run('smartHitSettled');
  assert.deepEqual(await outputs(run,0),{Out:2.5},'fixing the divisor clears the error');
  // 3. ordinary (non editor-only) handles of a component in error stay blocked
  const blocked=await run(`(async()=>{
@@ -418,7 +420,7 @@ test('spreadsheet context menu: Insert function submenu wraps the cell formula a
  assert.equal(await menus.count(),0,'menus close after the choice');
  await page.keyboard.type('0');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.A3')==='=ROUND(A1/A2, 0)');
- await page.locator('input[data-smart-number-input]').waitFor();await page.keyboard.press('Escape');await run('smartHitSettled');
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await run('smartHitSettled');
  const shown=await run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>k.text);})()`);
  assert.ok(shown.includes('3'),'ROUND(10/4, 0) shows 3');
  const bad=await run(`(async()=>{const it={...clone(items[0]),uid:'bad',componentApi:undefined,script:'({initState(){return {};},children(){return [];},contextMenu(){return [{label:"a",items:[{label:"b",items:[{label:"c",items:[{id:"x",label:"x"}]}]}]}];}})'};
