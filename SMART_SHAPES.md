@@ -135,7 +135,7 @@ It's compiled with `new Function('"use strict";return (' + yourScript + ');')()`
   width, height, pointer coordinates) — never `ctx`, `document`, or any other app internal.
 - Each placed instance has an independent JavaScript environment, including copies using identical
   source. Methods may share helpers through `this`, but globals and object-local mutations are
-  disposable caches. Keep durable values in the returned state; idle Workers can be evicted.
+  disposable caches. Keep durable values in the returned state; Workers expire or can be evicted.
 
 Only `children()` is required for an unversioned smart shape. Optional hooks initialize state or
 appearance, define interactions, request live updates, or configure behavior in an HTML export.
@@ -444,6 +444,8 @@ round; when settled it advances to the next scheduled event. The status includes
 and recent signal changes. Pause is session-only and independent per document. Step advances
 logical active-document time; wall-clock Live clock, Stopwatch, and Timer still read actual wall
 time and are not fast-forwarded. Pure inspection and static exports never advance a paused timeline.
+Undo/Redo preserve the tab's Pause setting and simulation time while re-priming transient observation
+from the restored drawing.
 
 Only a current evaluation commits state/memory, and an error in one branch does not stop independent
 branches. Accepted smart-control changes and timed wakes settle in order. Unfinished drag previews
@@ -505,10 +507,13 @@ A boolean **output** may declare `triState:true` to permit `null` as an explicit
 value, shown as **Z**. Ordinary boolean outputs still accept only `true` or `false`; numeric and
 string ports, input literals, and defaults never accept `null`. The graph validates the declared
 output before publishing Z. A component producing Z remains healthy and interactive. A boolean
-consumer of Z does not run `compute()` or receive a fabricated value; it remains unavailable until
-the source drives true or false again. Valid bindings to Z can be saved in **Inputs…**, while other
-input, type, or non-settling-loop errors still prevent saving. This status propagates through dependent
-components in both the editor and exported HTML. Inputs retain one source each; this does not add
+consumer of Z does not run `compute()` or advance `transition()` until the source drives a value
+again. Its pure `publish(state)` output remains available to downstream consumers: a disconnected
+data input does not erase a register's stored bit. Components without independent publication remain
+unavailable, and a published output that is itself Z still blocks its consumers. Valid bindings to Z
+can be saved in **Inputs…**, while other
+input, type, or non-settling-loop errors still prevent saving. Combinational unavailability propagates
+through dependent components in both the editor and exported HTML. Inputs retain one source each; this does not add
 shared buses, pull-up/down resolution, or electrical simulation.
 
 The host appends `{inputs, outputs, name}` as the final `io` argument to these v2 hooks.
@@ -919,13 +924,17 @@ still rescale output. Check a known division on a printed template before use.
   active request; a script's echoed identifiers cannot target another instance. Requests wait in a
   trusted queue, with one dispatched at a time. Worker startup has a separate two-second deadline;
   the 250 ms hook deadline begins after that Worker's startup, so queue wait does not consume it.
+  Each realm also has a nonrenewable 250 ms lifetime from its first dispatched call. Successful
+  replies do not extend it: an idle realm terminates on expiry; an active hook finishes or hits its
+  existing request deadline, then the realm retires before its reply is delivered. This bounds
+  background timers and Promise/async continuations scheduled after a successful return.
   A timeout terminates only that instance's Worker and preserves healthy queued work. Failed live
   drawings retain their last valid children and retry after a three-second backoff without requiring
   another user interaction. Browser-level memory exhaustion is not a resource quota this boundary
   can enforce. The app remains one HTML file and supports hosted and local use.
 - Workers start lazily. At most four instance Workers remain resident; the least recently used idle
   Worker is terminated before its slot is assigned a fresh realm. A resident Worker reuses only its
-  own instance's compiled definition. Initialization, authoring and non-live previews/exports use
+  own instance's compiled definition until its lifetime expires. Initialization, authoring and non-live previews/exports use
   temporary owners, retired when their operation ends. App-owned state survives eviction, save/load,
   and undo/redo; eviction does not rerun initialization. Live drawing/handle caches and execution
   owners are retired when an item leaves the active document or its script is replaced. Late

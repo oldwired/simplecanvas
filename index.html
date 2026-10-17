@@ -1244,14 +1244,22 @@
     if(!raw || typeof raw !== 'object' || ITEM_TYPES.indexOf(raw.type) < 0) return null;
     const it = { type: raw.type };
     const num = (k, d) => { const v = raw[k]; if(isNum(v)) return norm(v); if(d === undefined) throw new Error(k); return d; };
+    // Keep imported geometry within the same range as smart-shape coordinates. Checking before
+    // rounding also prevents a finite value such as 1e308 from overflowing in norm(v).
+    const coordinate = v => isNum(v) && Math.abs(v)<=1000000;
+    const geometry = (k, d) => {
+      if(!isNum(raw[k]) && d!==undefined) return d;
+      if(!coordinate(raw[k])) throw new Error(k);
+      return norm(raw[k]);
+    };
     const pts = min => {
       if(!Array.isArray(raw.points) || raw.points.length < min) throw new Error('points');
       return raw.points.slice(0, MAX_POINTS).map(q => {   // (the same cap the pen applies while drawing)
-        if(!q || !isNum(q.x) || !isNum(q.y)) throw new Error('point');
+        if(!q || !coordinate(q.x) || !coordinate(q.y)) throw new Error('point');
         const out = {x:norm(q.x), y:norm(q.y)};
         // a garbage handle just degrades that segment back to a straight line — never drops the item
-        if(q.c1 && isNum(q.c1.x) && isNum(q.c1.y)) out.c1 = {x:norm(q.c1.x), y:norm(q.c1.y)};
-        if(q.c2 && isNum(q.c2.x) && isNum(q.c2.y)) out.c2 = {x:norm(q.c2.x), y:norm(q.c2.y)};
+        if(q.c1 && coordinate(q.c1.x) && coordinate(q.c1.y)) out.c1 = {x:norm(q.c1.x), y:norm(q.c1.y)};
+        if(q.c2 && coordinate(q.c2.x) && coordinate(q.c2.y)) out.c2 = {x:norm(q.c2.x), y:norm(q.c2.y)};
         return out;
       });
     };
@@ -1270,13 +1278,13 @@
           if(raw.he === true) it.he = true;
           break;
         case 'line': case 'arrow':
-          it.x1 = num('x1'); it.y1 = num('y1'); it.x2 = num('x2'); it.y2 = num('y2');
+          it.x1 = geometry('x1'); it.y1 = geometry('y1'); it.x2 = geometry('x2'); it.y2 = geometry('y2');
           if(raw.hs) it.hs = true;
           if(raw.he === false) it.he = false;
           break;
         case 'rect': case 'ellipse': case 'image': case 'table': case 'text': case 'smart': {
           const dflt = it.type==='text' ? 40 : it.type==='smart' ? 100 : undefined;
-          it.x = num('x'); it.y = num('y'); it.w = num('w', dflt); it.h = num('h', dflt); break;
+          it.x = geometry('x'); it.y = geometry('y'); it.w = geometry('w', dflt); it.h = geometry('h', dflt); break;
         }
       }
       if(it.type === 'table'){
@@ -1327,10 +1335,12 @@
         it.state = normalizeSmartState(raw.state===undefined ? {} : raw.state);
         normalizeComponentFields(raw,it);
       }
-      if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
+      // Angles are periodic; reducing imported values also keeps their sum and the SVG
+      // radians-to-degrees conversion finite even when the file contains enormous numbers.
+      if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation % (2*Math.PI);
       if(typeof raw.group === 'string' && raw.group.length <= 64){
         it.group = raw.group;
-        it.groupRotation = isNum(raw.groupRotation) ? raw.groupRotation : 0;
+        it.groupRotation = isNum(raw.groupRotation) ? raw.groupRotation % (2*Math.PI) : 0;
       }
       if(typeof raw.uid === 'string' && raw.uid.length <= 64) it.uid = raw.uid;
     }catch(e){ return null; }
@@ -1731,12 +1741,19 @@ self.onmessage = function(e){
       const lifecycle = event => emit({version:1,lifecycle:event,resident:workers.size});
       const stop = (slot,error) => {
         if(workers.get(slot.owner)!==slot)return;
-        workers.delete(slot.owner);clearTimeout(slot.timer);slot.worker.terminate();lifecycle('retired');
+        workers.delete(slot.owner);clearTimeout(slot.timer);clearTimeout(slot.lease);slot.worker.terminate();lifecycle('retired');
         if(error && slot.job)emit({version:1,owner:slot.owner,id:slot.job.id,error});
         slot.job=null;
       };
       const send = slot => {
         clearTimeout(slot.timer);
+        // A reply ends the request, but script timers and intrinsic Promise/async continuations
+        // can still execute afterwards. Bound the realm's entire lifetime from its first call;
+        // successful replies and later calls must never renew that lease. An active call keeps
+        // only its existing per-call budget, then its realm retires before delivering the reply.
+        if(!slot.lease)slot.lease=setTimeout(()=>{
+          slot.expired=true;if(!slot.job)stop(slot);
+        },${SMART_CALL_TIMEOUT_MS});
         const job=slot.job;
         slot.timer=setTimeout(()=>stop(slot,'Smart shape timed out'),${SMART_CALL_TIMEOUT_MS});
         emit({version:1,owner:slot.owner,id:job.id,started:true});
@@ -1752,7 +1769,7 @@ self.onmessage = function(e){
           stop(idle); // terminate the old realm before creating its replacement
         }
         const worker=new Worker(workerUrl);
-        slot={owner,worker,ready:false,job:null,timer:null};workers.set(owner,slot);lifecycle('created');
+        slot={owner,worker,ready:false,job:null,timer:null,lease:null,expired:false};workers.set(owner,slot);lifecycle('created');
         slot.timer=setTimeout(()=>stop(slot,'Smart shape Worker did not start'),${SMART_STARTUP_TIMEOUT_MS});
         worker.onerror=e=>{e.preventDefault();stop(slot,'Smart shape Worker failed');};
         worker.onmessage=e=>{
@@ -1771,6 +1788,7 @@ self.onmessage = function(e){
             stop(slot,'Smart shape response exceeds transport limit');return;
           }
           clearTimeout(slot.timer);slot.job=null;
+          if(slot.expired)stop(slot);
           // Ownership comes from this Worker callback and its trusted active job, never the payload.
           port.postMessage(reply);
         };
@@ -2152,13 +2170,21 @@ self.onmessage = function(e){
     const {nodes,byUid,groups,check}=await componentGraphModel(list,call,valid);
     const timeline=options.timeline,now=options.now??0,live=!!timeline;
     let calls=0,changed=false;const trace=[];
+    const definitions=new Map();let definitionRevision=timeline?.definitionRevision||0;
+    for(const n of nodes){
+      const before=timeline?.definitions?.get(n.item.uid),bindings=JSON.stringify(n.bindings);
+      const unchanged=before && before.script===n.item.script && before.api===n.item.componentApi && before.bindings===bindings;
+      const definition=unchanged?before:{script:n.item.script,api:n.item.componentApi,bindings,revision:++definitionRevision};
+      definitions.set(n.item.uid,definition);n.definitionRevision=definition.revision;
+    }
     const invoke=async(n,hook,args)=>{check();if(++calls>16384)throw new Error('Component evaluation budget exceeded');const value=await call(n.item,hook,args);check();return value;};
     const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
     for(const n of nodes){
       if(n.fatal){n.record.error=n.fatal;continue;}
       const dependencies=new Set();
       const collect=p=>{if(dependencies.has(p))return;dependencies.add(p);for(const d of p.deps)collect(d);};collect(n);
-      n.wiring=JSON.stringify([...dependencies].sort((a,b)=>a.item.uid.localeCompare(b.item.uid)).map(d=>[d.item.uid,d.item.script,d.bindings]));
+      // Keep each definition once; transitive keys contain only exact, monotonic revisions.
+      n.wiring=JSON.stringify([...dependencies].map(d=>d.definitionRevision).sort((a,b)=>a-b));
       const old=timeline?.observations.get(n.item);
       n.prior=old?.wiring===n.wiring?old:null;
       n.memory=n.prior?JSON.parse(JSON.stringify(n.prior.memory)):{};
@@ -2182,7 +2208,7 @@ self.onmessage = function(e){
           if(source.fatal)throw new Error('Input '+name+' unavailable: '+source.fatal);
           if(signal.error && !signal.unknown && !signal.highImpedance)throw new Error('Input '+name+' unavailable: '+signal.error);
           const value=signal.outputs[b.port];
-          if(signal.highImpedance || value===null){unavailable={highImpedance:true,error:'Input '+name+' is high impedance (Z)'};continue;}
+          if(value===null || (signal.highImpedance && !source.caps.publish)){unavailable={highImpedance:true,error:'Input '+name+' is high impedance (Z)'};continue;}
           if(value===undefined || (value==='X' && port.type==='boolean' && !port.unknown)){
             unavailable={unknown:true,error:'Input '+name+' is unknown (X)'};continue;
           }
@@ -2207,6 +2233,8 @@ self.onmessage = function(e){
           if(unavailable){
             Object.assign(next.record,unavailable);
             next.outputs=n.caps.publish || n.group.cyclic?n.outputs:componentUnknownOutputs(n.caps);
+            // Stored output publication is independent of whether an input can advance state.
+            next.record.io={inputs,outputs:n.caps.publish?next.outputs:{}};
             // A disconnected signal must re-prime an edge-sensitive component when it returns.
             next.memory={};next.deadline=Infinity;
           }else{
@@ -2257,6 +2285,7 @@ self.onmessage = function(e){
     }
     check();
     if(timeline){
+      timeline.definitions=definitions;timeline.definitionRevision=definitionRevision;
       timeline.trace.push(...trace);if(timeline.trace.length>128)timeline.trace.splice(0,timeline.trace.length-128);
       timeline.deadline=Infinity;
       for(const n of nodes){
@@ -2384,6 +2413,7 @@ self.onmessage = function(e){
       timeline.observations=new Map([...work.observations].map(([item,observation])=>[originals.get(item),observation]));
       timeline.trace=work.trace;timeline.deadline=work.deadline;timeline.changed=changed;
       timeline.rounds=work.rounds;timeline.pendingTime=work.pendingTime;timeline.backlogFaults=faults;
+      timeline.definitions=work.definitions;timeline.definitionRevision=work.definitionRevision;
       timeline.signature=componentGraphSignature(list);
       timeline.committedScene=working.map(item=>({item:originals.get(item),snapshot:copy(originals.get(item))}));
       return new Map([...records].map(([item,record])=>[originals.get(item),record]));
@@ -2391,16 +2421,26 @@ self.onmessage = function(e){
       for(const item of temporary)disposeSmartExecution(smartItemExecutions.get(item));
     }
   }
-  let editorComponentEvaluation=null,editorTimeline=null,editorTimelineScene=null,componentTimelineTimer=null;
-  const editorTimelines=new WeakMap();
+  let editorComponentEvaluation=null,editorTimeline=null,editorTimelineScene=null,editorTimelineTab=null,componentTimelineTimer=null;
+  const editorTimelines=new Map();
   function editorTimelinePaused(){return document.hidden || editorTimeline?.pausedByUser || !!document.getElementById('componentBindingsDialog')?.open || !!document.querySelector('dialog[data-smart-number-input][open]');}
   function syncEditorTimeline(){
-    if(editorTimelineScene!==items){
+    if(editorTimelineScene!==items || editorTimelineTab!==activeTabId){
       if(editorTimeline)pauseComponentTimeline(editorTimeline);
       clearTimeout(componentTimelineTimer);componentTimelineTimer=null;
-      editorTimelineScene=items;
-      if(!editorTimelines.has(items))editorTimelines.set(items,createComponentTimeline());
-      editorTimeline=editorTimelines.get(items);editorComponentEvaluation=null;
+      for(const id of editorTimelines.keys())if(!tabs.some(tab=>tab.id===id))editorTimelines.delete(id);
+      let saved=editorTimelines.get(activeTabId);
+      if(!saved || saved.scene!==items){
+        const timeline=createComponentTimeline(saved?.timeline.clock);
+        if(saved){
+          timeline.elapsed=componentTimelineNow(saved.timeline);
+          timeline.pausedByUser=saved.timeline.pausedByUser;
+        }
+        // History restores durable state and re-primes edges, while time and Pause belong to the tab.
+        saved={scene:items,timeline};editorTimelines.set(activeTabId,saved);
+      }
+      editorTimelineScene=items;editorTimelineTab=activeTabId;
+      editorTimeline=saved.timeline;editorComponentEvaluation=null;
     }
     if(editorTimelinePaused()){
       if(editorTimeline.active){pauseComponentTimeline(editorTimeline);editorComponentEvaluation=null;}
@@ -8215,9 +8255,16 @@ self.onmessage = function(e){
   // existed: undoable (via beginHistory/commitHistory), confirms only if the active tab has content.
   // If accidentally given a WORKSPACE file (several sketches) instead, offers a small picker dialog
   // to choose which one to open, rather than a flat rejection.
-  function importProject(file){
+  function sketchImportTargetCurrent(tabId){
+    if(activeTabId===tabId && tabs.some(tab=>tab.id===tabId)) return true;
+    toast('Opening cancelled because the active tab changed');
+    return false;
+  }
+  function importProject(file, targetTabId=activeTabId){
+    if(!sketchImportTargetCurrent(targetTabId)) return;
     const r = new FileReader();
     r.onload = async ()=>{
+      if(!sketchImportTargetCurrent(targetTabId)) return;
       let data;
       try { data = JSON.parse(r.result); }
       catch(e){ toast('Not a valid sketch file'); return; }
@@ -8231,8 +8278,8 @@ self.onmessage = function(e){
         // to flag "you opened a workspace file, not a plain sketch" -- the dialog, even with only one
         // option, makes that unambiguous).
         const chosen = await askTabPicker(parsed.entries);   // null if cancelled
-        if(!chosen) return;
-        applySketchToActiveTab(chosen.items, chosen.assets);
+        if(!chosen || !sketchImportTargetCurrent(targetTabId)) return;
+        applySketchToActiveTab(chosen.items, chosen.assets, targetTabId);
         return;
       }
       if(!data || data.app !== 'SimpleCanvas' || !Array.isArray(data.items)){
@@ -8240,7 +8287,7 @@ self.onmessage = function(e){
       }
       const scene = normalizeScene(data.items, data.assets, data.version);
       if(!scene.items.length && data.items.length){ toast('No readable objects in that file'); return; }
-      applySketchToActiveTab(scene.items, scene.assets);
+      applySketchToActiveTab(scene.items, scene.assets, targetTabId);
     };
     r.onerror = ()=>toast('Could not read that file');
     r.readAsText(file);
@@ -8248,8 +8295,10 @@ self.onmessage = function(e){
   // Shared by the plain single-sketch path and the tab-picker's chosen entry — the original
   // (pre-multi-tab) importProject's own mutation: undoable, only ever touches the active tab, never
   // creates or removes a tab (an empty active tab needs no confirm — nothing to lose).
-  function applySketchToActiveTab(newItems, newAssets){
+  function applySketchToActiveTab(newItems, newAssets, targetTabId=activeTabId){
+    if(!sketchImportTargetCurrent(targetTabId)) return;
     if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
+    if(!sketchImportTargetCurrent(targetTabId)) return;
     cancelGesture();
     beginHistory();
     items = adoptImageAssets(newItems, newAssets);
@@ -13138,7 +13187,7 @@ self.onmessage = function(e){
     output.setAttribute('aria-busy',String(pending));
     const names=record?.caps?.outputs?Object.keys(record.caps.outputs):session.outputNames;
     output.textContent=pending?'Preview outputs: checking…':names.length
-      ? 'Preview outputs: '+names.map(name=>name+' = '+(record.error || !Object.hasOwn(record.io?.outputs||{},name)
+      ? 'Preview outputs: '+names.map(name=>name+' = '+(!Object.hasOwn(record.io?.outputs||{},name)
         ? 'unavailable':record.io.outputs[name]===null?'Z (high impedance)':String(record.io.outputs[name]))).join(', ')
       : record.error?'Preview outputs: unavailable':'Preview outputs: none.';
     componentBindingsError.textContent=record?.error||'';
@@ -14181,11 +14230,15 @@ self.onmessage = function(e){
   const menuBtn = document.getElementById('menuBtn');
   const menu = document.getElementById('menu');
   let pendingFileAction = null;   // 'open' | 'openWorkspace' -- which menu action opened the file picker
+  let pendingFileTabId = null;
+  function chooseProjectFile(action){
+    pendingFileAction=action;pendingFileTabId=activeTabId;projectInput.click();
+  }
   const MENU_ACTIONS = {
     save: exportProject,
-    open: ()=>{ pendingFileAction='open'; projectInput.click(); },
+    open: ()=>chooseProjectFile('open'),
     saveWorkspace: exportWorkspace,
-    openWorkspace: ()=>{ if(features.workspace){pendingFileAction='openWorkspace';projectInput.click();} },
+    openWorkspace: ()=>{ if(features.workspace)chooseProjectFile('openWorkspace'); },
     newTab: newTab,
     png: savePng,
     svg: saveSvg,
@@ -14228,9 +14281,11 @@ self.onmessage = function(e){
   document.addEventListener('click', e=>{ if(!menu.hidden && !menu.contains(e.target) && e.target!==menuBtn) setMenu(false); });
   projectInput.addEventListener('change', e=>{
     const file = e.target.files[0]; e.target.value = '';
+    const action=pendingFileAction,targetTabId=pendingFileTabId??activeTabId;
+    pendingFileAction=null;pendingFileTabId=null;
     if(!file) return;
-    if(pendingFileAction === 'openWorkspace') openWorkspaceFile(file);
-    else importProject(file);
+    if(action === 'openWorkspace') openWorkspaceFile(file);
+    else importProject(file,targetTabId);
   });
 
   // image insert / paste / drop
@@ -14305,7 +14360,7 @@ self.onmessage = function(e){
     if(mod && e.key.toLowerCase()==='d'){ e.preventDefault(); duplicateSelection(); return; }
     if(mod && e.key.toLowerCase()==='g'){ e.preventDefault(); e.shiftKey?ungroupSelection():groupSelection(); return; }
     if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); exportProject(); return; }
-    if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); pendingFileAction='open'; projectInput.click(); return; }
+    if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); chooseProjectFile('open'); return; }
     if(mod) return;
     if(e.key==='Delete' || e.key==='Backspace'){
       e.preventDefault();
@@ -14675,6 +14730,7 @@ self.onmessage = function(e){
     cancelGesture();
     retiredDocKeys.add(docKey(tabId));
     tabDocuments.delete(tabId);
+    editorTimelines.delete(tabId);
     unsavedTabs.delete(tabId);
     tabs.splice(idx,1);
     if(tabId===activeTabId){

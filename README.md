@@ -676,7 +676,9 @@ disabled, so existing tabs and unsaved changes can always be recovered. Opening 
 
 ### GitHub Pages
 
-The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
+The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` first runs the complete
+Chromium and WebKit regression suites. Deployment proceeds only after both pass, then prepares a
+directory with
 `index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
 `examples/demo-shapes-library.json` to that conventional library name, so the existing loader
 picks it up.
@@ -688,7 +690,8 @@ is uploaded to Pages.
 For a new deployment or fork, ensure the workflow is present on `main`, then open the
 repository's **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
-either settings file, or workflow on `main` deploy automatically.
+either settings file, test dependencies, regression tests, the example generator, or workflow on
+`main` run the test gate before deploying automatically.
 
 ## Development and releases
 
@@ -713,7 +716,7 @@ and preview in sync as well.
 ### Releases
 
 Push a version tag beginning with `v` followed by a digit, such as `v1.0.0`, to create
-a GitHub release with automatically generated release notes:
+a GitHub release with automatically generated release notes after the Chromium and WebKit suites pass:
 
 ```sh
 git tag v1.0.0

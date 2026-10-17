@@ -75,7 +75,7 @@ on drawing/interaction hooks, and an explicit `{state}` return from `dragEdit`. 
 defines the implemented contract and budgets.
 
 Hooks return synchronously inside the Worker; requests and replies cross an asynchronous
-bridge. Globals and definition-local mutations are disposable because idle Workers can be
+bridge. Globals and definition-local mutations are disposable because Workers expire or can be
 evicted. Durable interaction values belong in returned state.
 
 The [scripting reference](../SMART_SHAPES.md#the-script-object),
@@ -654,6 +654,8 @@ Stateful components use this to break the dependency between reading their store
 reacting to their current inputs. `transition` computes next state from the round snapshot; it
 must not commit another component's state. Ordinary `compute` remains pure. Numeric/Boolean
 controls, counters, timers, delays, registers, and editor/export execution share this model.
+An unavailable input, including Z, prevents state advancement but does not hide independently
+published stored outputs. Downstream consumers follow the actual published value.
 
 A held-high pulse counts once. Reset has priority over a simultaneous clock edge. Initial
 observation and restoration re-prime edge memory without creating a pulse. A disabled pulse
@@ -665,6 +667,9 @@ stop that loop, and keep unrelated components and the editor usable. A self-conn
 must never hang the app or quietly depend on item order. Bring forward minimal **Pause / Step /
 Resume** simulation controls so otherwise invisible feedback transitions can be inspected. These
 controls are not the later full Run/Preview authoring mode.
+Pause and simulation time belong to the tab and survive Undo/Redo; restored objects re-prime
+transient edge/deadline observation. Dependency tracking retains each script definition once and
+uses compact revision keys for transitive wiring changes.
 
 Acceptance includes the three counter circuits above, delayed feedback, visible non-settling
 failure, reset priority, stale-result cancellation, save/reload/undo behavior, tab lifecycle, and
@@ -727,6 +732,8 @@ exporter by [the update tool](../tools/update-example-workspace.cjs); it has no 
 - [Feedback runtime](../tests/feedback-runtime.test.cjs): bounded settling, observed intermediate
   signals, unknown logic, feedback memory/restoration, ordering, and independent-branch recovery.
 - [Simulation controls](../tests/feedback-controls.test.cjs): editor and offline Pause/Step/Resume.
+- [Review regressions](../tests/feedback-review.test.cjs): bounded retained wiring keys, stored
+  outputs through Z, offline and Inputs preview parity, and Pause/time preservation across Undo/Redo.
 - [Deadline ordering](../tests/feedback-deadlines.test.cjs): overdue signals settle chronologically,
   so an earlier clock edge samples earlier data after a late wake; cancellation is atomic and
   positive-time feedback has a separate bounded-backlog error/recovery path.
@@ -739,11 +746,18 @@ exporter by [the update tool](../tools/update-example-workspace.cjs); it has no 
   local bindings, the original eight control workflows, counter feedback, latch initialization/hold,
   shared-edge storage, sequences, delayed feedback, and actual offline interaction.
 
-The full regression run passes **447/447 in Chromium**. WebKit records **441 passes, four failures,
-and two skips**; the four failures are the existing HTML-geometry failures reproduced on the
-baseline. The new feedback/runtime/workspace checks pass in both engines. The final Pause fix
-also passes all **3/3 simulation-control checks in each engine**, including draining an overdue
-queued signal before freezing the drawing. The eight workspace checks pass in both browsers.
+After review fixes, the full regression run passes **470/470 in Chromium**. The WebKit full run
+records **468 passes, zero failures, and two skips** for Chromium-only raw touch injection.
+The four earlier WebKit geometry failures were test precision errors: native pointer injection
+quantizes fractional screen positions. The tests now compare the exported drawing with delivered
+pointer coordinates, preserving strict movement, rotation, anchoring, scale, and cancellation
+assertions. The runtime already handled those coordinates correctly. The final import/history
+checks, including the extreme-angle regression, pass **10/10 in each engine**. Worker lifecycle checks
+pass **7/7 in each engine**, covering background timers, Promise/async continuations, and standalone
+HTML. The eight workspace checks also pass in both browsers. Pages and tagged releases now require
+both browser suites to pass, and the workspace generator stages both artifacts before publication,
+with rollback on failure. Review fixes also bind sketch imports to their initiating tab and bound
+imported geometry before rounding.
 Visual inspection covers the new examples, including the latch laboratory layout, readable mobile
 tabs, and reader controls. Phase 3 remains unstarted; shared buses and the later component backlog
 are outside this delivery.

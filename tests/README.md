@@ -3,6 +3,11 @@
 The application still runs by opening `index.html`; these dependencies are only for development.
 
 Install the test tools with `npm install` and `npx playwright install chromium`, then run `npm test`.
+Pull requests, Pages deployment, and tagged releases use the shared **Browser tests** workflow.
+It installs the locked npm dependencies plus each Playwright browser and its system libraries,
+then runs the full suite with two test files at a time in separate Chromium and WebKit jobs.
+Pages publishing and release creation require both jobs to pass.
+
 To use an existing Chromium-based browser, set `BROWSER_EXECUTABLE` to its executable path.
 For WebKit, install `npx playwright install webkit`, then run `BROWSER_ENGINE=webkit npm test`.
 
@@ -24,7 +29,7 @@ still requires a manual integration check.
 
 An iPad-sized touch scenario exercises endpoint cycling and double-tap point editing in Chromium
 and WebKit. Mouse checks cover undo/reload/import, curve tangents, and preserving heads during drags.
-The raw touch-drag test uses Chromium's CDP interface and is skipped in WebKit. A physical iPad
+Two raw touch-drag tests use Chromium's CDP interface and are skipped in WebKit. A physical iPad
 Safari pass is still needed before release to check native touch behavior and the on-screen keyboard.
 
 For the smart-shape rendering and library-preview benchmark, run
@@ -88,6 +93,10 @@ movement, independent rotation permissions, rotation cancellation, absolute Shif
 shared with the editor, independent height resizing, and width extension at fixed scale,
 editor-only visuals/actions, static script permissions,
 state across tabs with colliding UIDs, script/source escaping, and hung-script fallback and isolation.
+Rotated-interaction checks use the pointer coordinates delivered by the browser. WebKit's injected
+native mouse events use whole CSS pixels, so fractional requested coordinates are not an exact reference.
+Movement, free rotation, resize amounts, and scripted values are checked against the delivered
+events; anchoring, snapped angles, and vector scale keep their strict numerical assertions.
 
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.
@@ -189,6 +198,12 @@ their instance names in canvas, SVG, and offline HTML.
 `tests/feedback-runtime.test.cjs` exercises bounded settling, simultaneous stored-state publication,
 unknown Boolean logic, and gate-built memory through the real sandbox.
 `tests/feedback-controls.test.cjs` checks the editor and exported Pause/Step/Resume controls.
+`tests/feedback-review.test.cjs` checks compact retained wiring keys, stored outputs through Z
+in the graph, Inputs preview and offline reader, and per-tab Pause/time across Undo/Redo.
+`tests/import-integrity.test.cjs` checks Open sketch ownership across asynchronous file/picker
+steps and tab switches, plus bounded geometry that cannot overflow during import rounding.
+`tests/sandbox-lifecycle.test.cjs` checks that returned hooks cannot leave timer, microtask, or
+async work running indefinitely, including in standalone HTML, and that realm reuse stays bounded.
 `tests/feedback-deadlines.test.cjs` verifies chronological overdue deadlines, prevents later data
 from reaching an earlier clock edge, and checks atomic cancellation and bounded-backlog recovery.
 `tests/temporal-wake-policies.test.cjs` checks queued/latest metadata and confirms that periodic,
@@ -210,4 +225,8 @@ After changing bundled scripts, the workspace JSON, or the export runtime, regen
 reader with `node tools/update-example-workspace.cjs`. This refreshes each placed component from
 its editable source file, imports the JSON through the real editor, and downloads its HTML export.
 The JSON remains the editable layout and wiring source; new component UIDs must be added to the
-generator's source map.
+generator's source map. Both artifacts are staged before either is replaced; an export failure
+keeps the previous pair, and a failed publication rolls back replaced files. Concurrent edits abort
+publication. If the filesystem also prevents rollback, the tool reports retained recovery copies.
+`tests/example-workspace-generator.test.cjs` covers successful publication, export and second-file
+failures, concurrent edits, and recovery-copy retention without launching a browser.

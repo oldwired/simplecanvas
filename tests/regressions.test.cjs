@@ -1730,17 +1730,63 @@ async function exportedPoint(host,x,y,parent=false){
     return {x:p.x,y:p.y};
   },{x,y,parent});
 }
+// Native pointer injection can quantize screen coordinates. Keep real browser gestures, but
+// assert geometry against the events the app received using matrices captured before the drag.
+async function recordExportGesture(host,gesture){
+  await host.evaluate(el=>{
+    const matrix=el.firstElementChild.getScreenCTM(),inverse=matrix.inverse();
+    const state={down:null,latest:null,up:null};
+    const record=event=>{
+      const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(inverse);
+      const sample={screen:{x:event.clientX,y:event.clientY},local:{x:point.x,y:point.y}};
+      if(event.type==='pointerdown'){state.down=sample;state.latest=null;}
+      else if(state.down)state[event.type==='pointermove'?'latest':'up']=sample;
+    };
+    const types=['pointerdown','pointermove','pointerup'];
+    for(const type of types)window.addEventListener(type,record,true);
+    el.__testGesture={state,stop:()=>{for(const type of types)window.removeEventListener(type,record,true);}};
+  });
+  try{
+    await gesture();
+    const result=await host.evaluate(el=>el.__testGesture.state);
+    assert.ok(result.down,'the gesture must deliver a pointerdown');
+    const end=result.up||result.latest||result.down;
+    return {...result,end,screenDelta:{x:end.screen.x-result.down.screen.x,y:end.screen.y-result.down.screen.y},
+      localDelta:{x:end.local.x-result.down.local.x,y:end.local.y-result.down.local.y}};
+  }finally{await host.evaluate(el=>{el.__testGesture.stop();delete el.__testGesture;});}
+}
+function gestureRotation(gesture,w,h){
+  const end=gesture.latest||gesture.end,start=gesture.down;
+  const delta=Math.atan2(end.local.y-h/2,end.local.x-w/2)-Math.atan2(start.local.y-h/2,start.local.x-w/2);
+  return Math.atan2(Math.sin(delta),Math.cos(delta));
+}
+function rotatedPoint(point,center,angle){
+  const dx=point.x-center.x,dy=point.y-center.y,c=Math.cos(angle),s=Math.sin(angle);
+  return {x:center.x+c*dx-s*dy,y:center.y+s*dx+c*dy};
+}
 async function exportClick(preview,host,x,y){const p=await exportedPoint(host,x,y);await preview.mouse.click(p.x,p.y);}
-async function exportDrag(preview,host,x,y,dx,dy){
+async function exportDrag(preview,host,x,y,dx,dy,release=true){
   const a=await exportedPoint(host,x,y),b=await exportedPoint(host,x+dx,y+dy);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();
-  await preview.mouse.move(b.x,b.y,{steps:5});await preview.mouse.up();
+  const gesture=await recordExportGesture(host,async()=>{
+    await preview.mouse.move(a.x,a.y);await preview.mouse.down();
+    await preview.mouse.move(b.x,b.y,{steps:5});if(release)await preview.mouse.up();
+  });
+  assert.ok(gesture.latest,'drag must deliver a pointermove');
+  if(release)assert.ok(gesture.up,'released drag must deliver a pointerup');
+  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'drag reaches the requested screen endpoint within one CSS pixel');
+  return gesture;
 }
 async function exportRotate(preview,host,w,h,angle,release=true){
   const radius=h/2+30,a=await exportedPoint(host,w/2,-30);
   const b=await exportedPoint(host,w/2+Math.sin(angle)*radius,h/2-Math.cos(angle)*radius);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
-  if(release)await preview.mouse.up();
+  const gesture=await recordExportGesture(host,async()=>{
+    await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
+    if(release)await preview.mouse.up();
+  });
+  assert.ok(gesture.latest,'rotation must deliver a pointermove');
+  if(release)assert.ok(gesture.up,'released rotation must deliver a pointerup');
+  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'rotation reaches the requested screen endpoint within one CSS pixel');
+  return gesture;
 }
 
 test('HTML smart shapes run offline with live timing, direct ordered controls and a locked layout',async()=>app(async({page,run,context})=>{
@@ -1812,30 +1858,34 @@ test('ruler author controls bind moving and rotation; HTML extends opted-in inst
   assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'clicking another shape clears the old selection');
   await exportClick(preview,ruler,50,40);await preview.keyboard.press('Escape');
   assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'Escape clears selection');
-  const initial=await exportedPoint(ruler,0,0),destination=await exportedPoint(ruler,45,20);
-  await exportDrag(preview,ruler,50,40,45,20);
+  const initial=await exportedPoint(ruler,0,0);
+  const movement=await exportDrag(preview,ruler,50,40,45,20);
+  const destination={x:initial.x+movement.screenDelta.x,y:initial.y+movement.screenDelta.y};
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!=='translate(100 100)');
   const moved=await exportedPoint(ruler,0,0);assert.ok(Math.abs(moved.x-destination.x)<.1 && Math.abs(moved.y-destination.y)<.1,'rotated body follows the pointer');
   const oldWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
-  await exportDrag(preview,ruler,oldWidth,shape.h/2,96,0);
-  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+95,oldWidth);
+  const extension=await exportDrag(preview,ruler,oldWidth,shape.h/2,96,0);
+  const expectedWidth=oldWidth+extension.localDelta.x;
+  await preview.waitForFunction(w=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')-w)<.1,expectedWidth);
   const newWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
-  assert.ok(Math.abs(newWidth-oldWidth-96)<.1);
+  assert.ok(Math.abs(newWidth-expectedWidth)<.1);
   assert.equal(await ruler.locator('rect[pointer-events="all"]').getAttribute('height'),String(shape.h));
   const tickPositions=await ruler.locator('rect').evaluateAll(rects=>rects.filter(r=>+r.getAttribute('y')>45 && +r.getAttribute('height')<23 && +r.getAttribute('height')>0)
     .map(r=>+r.getAttribute('x') + +r.getAttribute('width')/2));
   assert.ok(tickPositions.length>100);assert.ok(Math.abs(tickPositions[3]-tickPositions[2]-96/25.4)<.001,'extension retains millimeter spacing');
   const center=await exportedPoint(ruler,newWidth/2,shape.h/2),edge=await exportedPoint(ruler,0,0);
-  await exportRotate(preview,ruler,newWidth,shape.h,Math.PI/2);
+  const rotation=await exportRotate(preview,ruler,newWidth,shape.h,Math.PI/2);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
   const turnedCenter=await exportedPoint(ruler,newWidth/2,shape.h/2),turnedEdge=await exportedPoint(ruler,0,0);
   assert.ok(Math.hypot(turnedCenter.x-center.x,turnedCenter.y-center.y)<.1,'rotation keeps the ruler center fixed');
-  assert.ok(Math.hypot(turnedEdge.x-(center.x-(edge.y-center.y)),turnedEdge.y-(center.y+(edge.x-center.x)))<.1);
-  await exportDrag(preview,ruler,newWidth,shape.h/2,60,0);
-  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+59,newWidth);
+  const expectedEdge=rotatedPoint(edge,center,gestureRotation(rotation,newWidth,shape.h));
+  assert.ok(Math.hypot(turnedEdge.x-expectedEdge.x,turnedEdge.y-expectedEdge.y)<.1);
+  const rotatedExtension=await exportDrag(preview,ruler,newWidth,shape.h/2,60,0);
+  const extendedWidth=newWidth+rotatedExtension.localDelta.x;
+  await preview.waitForFunction(w=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')-w)<.1,extendedWidth);
   const extendedEdge=await exportedPoint(ruler,0,0);
   assert.ok(Math.hypot(extendedEdge.x-turnedEdge.x,extendedEdge.y-turnedEdge.y)<.1,'extending after rotation anchors the left edge');
-  await exportClick(preview,ruler,newWidth+60-44,11);await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('inch'));
+  await exportClick(preview,ruler,extendedWidth-44,11);await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('inch'));
   assert.ok(await ruler.locator('[data-resize-width]').count());assert.ok(initial.x!==moved.x);
   assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
 }));
@@ -1882,32 +1932,32 @@ test('HTML rotation and height resizing work independently of movement and width
   const origin=await exportedPoint(shape,0,0);await exportDrag(preview,shape,70,70,30,20);await preview.waitForTimeout(100);
   assert.deepEqual(await exportedPoint(shape,0,0),origin,'rotation permission does not grant body movement');
   const center=await exportedPoint(shape,90,50),corner=await exportedPoint(shape,0,0);
-  await exportRotate(preview,shape,180,100,Math.PI/2);
+  const rotation=await exportRotate(preview,shape,180,100,Math.PI/2);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
   const rotatedCorner=await exportedPoint(shape,0,0);
-  assert.ok(Math.hypot(rotatedCorner.x-(center.x-(corner.y-center.y)),rotatedCorner.y-(center.y+(corner.x-center.x)))<.1);
+  const expectedCorner=rotatedPoint(corner,center,gestureRotation(rotation,180,100));
+  assert.ok(Math.hypot(rotatedCorner.x-expectedCorner.x,rotatedCorner.y-expectedCorner.y)<.1);
   const transform=await shape.locator(':scope>g').getAttribute('transform');
   await exportRotate(preview,shape,180,100,Math.PI/4,false);
   await preview.waitForFunction(t=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!==t,transform);
   await preview.keyboard.press('Escape');await preview.mouse.up();
   assert.equal(await shape.locator(':scope>g').getAttribute('transform'),transform,'Escape restores rotation');
-  await exportDrag(preview,shape,90,100,0,50);
-  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>149);
+  const resize=await exportDrag(preview,shape,90,100,0,50),height=100+resize.localDelta.y;
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height);
   assert.equal(await shape.locator('rect[pointer-events="all"]').getAttribute('width'),'180');
   const resizedCorner=await exportedPoint(shape,0,0);
   assert.ok(Math.hypot(resizedCorner.x-rotatedCorner.x,resizedCorner.y-rotatedCorner.y)<.1,'height resizing after rotation anchors the top edge');
-  const start=await exportedPoint(shape,90,150),end=await exportedPoint(shape,90,180);
-  await preview.mouse.move(start.x,start.y);await preview.mouse.down();await preview.mouse.move(end.x,end.y);
-  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>179);
+  const pendingResize=await exportDrag(preview,shape,90,height,0,30,false);
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height+pendingResize.localDelta.y);
   await preview.keyboard.press('Escape');await preview.mouse.up();
-  await preview.waitForFunction(()=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-150)<.1);
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height);
   await exportClick(preview,shape,40,40);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"] text').textContent==='1');
   const retained=await shape.locator(':scope>g').getAttribute('transform');
   await preview.locator('.tab-select').nth(1).click();await preview.locator('.tab-select').nth(0).click();
   assert.equal(await shape.locator(':scope>g').getAttribute('transform'),retained);
   assert.equal(await shape.locator('[data-rotate]').isVisible(),false,'tab switches clear selection while keeping transforms');
-  assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-150)<.1);
+  assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-height)<.1);
   assert.deepEqual(errors,[]);
 }));
 
@@ -1934,10 +1984,11 @@ test('editor and HTML Shift-rotation snap to absolute 15-degree steps, including
   assert.ok(Math.abs(await angle()-45)<1e-4,'HTML snaps the visible 38-degree angle to 45, rather than snapping its drag delta');
   await preview.keyboard.up('Shift');await preview.mouse.up();
   assert.ok(Math.abs(await angle()-45)<1e-4,'pointerup keeps the last snapped angle when Shift has been released');
-  await exportRotate(preview,shape,180,180,-7*Math.PI/180);
-  assert.ok(Math.abs(await angle()-38)<1e-4,'rotation stays free without Shift');
+  const freeRotation=await exportRotate(preview,shape,180,180,-7*Math.PI/180);
+  const freeAngle=45+gestureRotation(freeRotation,180,180)*180/Math.PI;
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'rotation follows the received pointer without Shift');
   await preview.keyboard.down('Shift');await exportClick(preview,shape,90,-30);await preview.keyboard.up('Shift');
-  assert.ok(Math.abs(await angle()-38)<1e-4,'a stationary handle click does not change the angle');
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'a stationary handle click does not change the angle');
   await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,-76*Math.PI/180);await preview.keyboard.up('Shift');
   assert.ok(Math.abs(await angle()+45)<1e-4,'negative angles use the same absolute snapping grid');
   await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,43*Math.PI/180);await preview.keyboard.up('Shift');
@@ -1954,27 +2005,29 @@ test('HTML scripted drags use rotated local coordinates, coalesce replies, and c
   await run(`items=[{...${JSON.stringify(smartFixture(script,{value:50}))},rotation:.35}];render();`);
   const {preview,errors}=await openExport(page,run,context),shape=preview.locator('[data-smart-index="0"]');
   await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
-  const box=await shape.boundingBox();await exportDrag(preview,shape,50,60,70,25);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  const box=await shape.boundingBox(),drag=await exportDrag(preview,shape,50,60,70,25);
+  const value=String(Math.round(drag.end.local.x));
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,value);
   assert.deepEqual(await shape.boundingBox(),box,'dragging a scripted control changes state, not the container');
-  const a=await exportedPoint(shape,50,60),b=await exportedPoint(shape,90,80);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='90');
+  const pendingDrag=await exportDrag(preview,shape,50,60,40,20,false);
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(pendingDrag.latest.local.x)));
   await preview.keyboard.press('Escape');await preview.mouse.up();
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,value);
   const frozen=await shape.textContent();
   await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
   await preview.waitForTimeout(100);assert.equal(await shape.textContent(),frozen);
   await preview.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
-  await exportDrag(preview,shape,50,60,30,0);await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='80');
+  const resumedDrag=await exportDrag(preview,shape,50,60,30,0);
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(resumedDrag.end.local.x)));
   assert.deepEqual(errors,[]);
   // Use the same file and runtime on a touch device. Taps need no double-tap edit gesture.
   const touch=await browser.newContext({viewport:{width:1280,height:900},hasTouch:true});
   try{
     const tp=await touch.newPage();await tp.goto(preview.url());
     await tp.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
-    const handle=await exportedPoint(tp.locator('[data-smart-index]'),60,60);await tp.touchscreen.tap(handle.x,handle.y);
-    await tp.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='60');
+    const touchShape=tp.locator('[data-smart-index]'),handle=await exportedPoint(touchShape,60,60);
+    const tap=await recordExportGesture(touchShape,()=>tp.touchscreen.tap(handle.x,handle.y));
+    await tp.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(tap.down.local.x)));
   }finally{await touch.close();}
 }));
 

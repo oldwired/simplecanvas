@@ -1,0 +1,39 @@
+name: Browser tests
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - name: Check out the tested version
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Install browser and system dependencies
+        run: npx playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Run the complete browser suite
+        env:
+          BROWSER_ENGINE: ${{ matrix.engine }}
+        run: node --test --test-concurrency=2 tests/*.test.cjs
