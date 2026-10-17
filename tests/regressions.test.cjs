@@ -2191,7 +2191,7 @@ test('live clock, stopwatch and ruler are available as matching source templates
   for(const [key,file,name] of definitions){
     const source=fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8');
     assert.equal(await run(`SMART_TEMPLATES[${JSON.stringify(key)}].script`),source);
-    assert.equal(entries.find(entry=>entry.name===name+' (smart)').items[0].script,source);
+    assert.equal(entries.find(entry=>entry.name===name).items[0].script,source);
     await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();await page.locator('#newSmartObjectBtn').click();
     await page.locator('#smartTemplateSelect').selectOption(key);
     assert.equal(await page.locator('#smartObjectNameInput').inputValue(),name);
@@ -2624,7 +2624,7 @@ test('fixed libraries block mutations and Iconify while existing smart handles s
   assert.equal(await page.locator('dialog[open]').count(),0);
   assert.equal(iconRequests,0);
   await page.locator('#shapeLibBtn').click();
-  await page.getByRole('button',{name:'Place Clock (smart)',exact:true}).click();
+  await page.getByRole('button',{name:'Place Clock',exact:true}).click();
   let canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+450,canvas.y+240);
   await run('shapePlacementQueue');
   canvas=await page.locator('#canvas').boundingBox();
@@ -2642,10 +2642,10 @@ test('fixed libraries block mutations and Iconify while existing smart handles s
 test('smart authoring can be disabled independently while static library additions remain available',async()=>app(async({page,run})=>{
   await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
-  assert.equal(await page.getByRole('button',{name:'Edit Clock (smart)',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'Edit Drill template',exact:true}).count(),0);
   assert.equal(await page.locator('#newSmartObjectBtn').isVisible(),false);
   assert.equal(await page.locator('#addIconBtn').isVisible(),true,'Iconify is independent of script authoring');
-  await run(`editLibrarySmartSource(shapeLibrary.shapes[6],shapeLibrary.shapes[6].items[0]);
+  await run(`editLibrarySmartSource(shapeLibrary.shapes[8],shapeLibrary.shapes[8].items[0]);
     document.getElementById('newSmartObjectBtn').click();document.getElementById('smartObjectDialogForm').dispatchEvent(new Event('submit',{cancelable:true}));`);
   assert.equal(await page.locator('#smartObjectDialog').isVisible(),false);
   await page.locator('#manageShapesBtn').click();
@@ -2751,8 +2751,50 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'saved previews need no script consent');
   assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0,'browsing the demo runs no smart scripts');
   assert.equal(await run('shapeLibraryDirty'),false);
+  const expectedWorking=JSON.parse(demoLibrary).workingCollection;
+  const canonical={Clock:'builtin:clock:1',Chart:'builtin:chart:1','Live clock':'builtin:liveClock:1',Stopwatch:'builtin:stopwatch:1',Ruler:'builtin:ruler:1'};
+  const expectedCategories={
+    'builtin:clock:1':['Tools & time','Displays'],'builtin:chart:1':['Displays'],
+    'builtin:liveClock:1':['Tools & time','Displays'],'builtin:stopwatch:1':['Tools & time','Displays'],
+    'builtin:ruler:1':['Workshop','Tools & time']
+  };
+  const inspectDemo=()=>run(`({
+    working:shapeLibrary.workingCollection,
+    entries:shapeLibrary.shapes.map(entry=>({id:entry.id,name:entry.name,builtin:builtInShapeEntries.has(entry),
+      canonical:builtInShapeLibrary.find(candidate=>candidate.id===entry.id)===entry,categories:effectiveLibraryCategories(entry),
+      catalogCopies:libraryCatalogEntries().filter(candidate=>candidate.id===entry.id).length})),
+    builtinCount:builtInShapeLibrary.length
+  })`);
+  const loaded=await inspectDemo();
+  assert.equal(loaded.working.length,13);assert.deepEqual(loaded.working,expectedWorking,'the familiar working collection keeps its original order');
+  assert.equal(loaded.entries.filter(entry=>entry.builtin).length,5);
+  assert.equal(loaded.entries.filter(entry=>!entry.builtin).length,8);
+  assert.equal(loaded.entries.some(entry=>entry.name.includes('(smart)')),false,'smart status is no longer repeated in entry names');
+  assert.ok(loaded.entries.some(entry=>entry.name==='Finishing line'));
+  await page.locator('#browseShapesBtn').click();
+  await page.locator('#libraryCollection').selectOption('mine');
+  assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),8,'My shapes contains only the eight demo-owned entries');
+  await page.locator('#libraryCollection').selectOption('builtin');
+  assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),loaded.builtinCount);
+  for(const [name,id] of Object.entries(canonical)){
+    const entry=loaded.entries.find(entry=>entry.name===name);
+    assert.equal(entry.id,id);assert.equal(entry.builtin,true);assert.equal(entry.canonical,true);
+    assert.equal(entry.catalogCopies,1,name+' appears once in the catalog');
+    assert.deepEqual(entry.categories,expectedCategories[id]);
+    const card=page.locator('#libraryBrowserGrid [data-entry-id='+JSON.stringify(id)+']');
+    assert.equal(await card.count(),1);assert.equal(await card.locator('.library-origin').textContent(),'Built-in');
+  }
+  const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.deepEqual(exported.workingCollection,expectedWorking);
+  assert.deepEqual(exported.builtinCategoryTags,expectedCategories,'demo-specific memberships are exported separately from canonical definitions');
+  const revision=await run('shapeLibraryRevision');await importLibrary(page,exported);
+  await page.waitForFunction(previous=>__test.run('shapeLibraryRevision')>previous,revision);
+  assert.deepEqual(await inspectDemo(),loaded,'export/reimport keeps categories, pins, order, and canonical identity without creating personal copies');
+  assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the canonical cached previews remain inert after reimport');
+  assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0);
+  if(await page.locator('#libraryBrowser').isVisible())await page.locator('#closeLibraryBrowserBtn').click();
   let canvas=await page.locator('#canvas').boundingBox();
-  for(const [name,x] of [['Starboard tack boat',180],['Clock (smart)',480],['Bar chart (smart)',820]]){
+  for(const [name,x] of [['Starboard tack boat',180],['Clock',480],['Chart',820]]){
     if(await page.locator('#shapePicker').isHidden()) await page.locator('#shapeLibBtn').click();
     await page.getByRole('button',{name:'Place '+name,exact:true}).click();
     canvas=await page.locator('#canvas').boundingBox();
@@ -2792,14 +2834,14 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
 }}));
 
 test('contributor demo entries keep their source scripts, working controls, and saved state',async()=>app(async({page,run})=>{
-  const sourceFiles=[['Drill template (smart)','drill-template.js'],['Race start timer (smart)','race-start-timer.js']];
+  const sourceFiles=[['Drill template','drill-template.js'],['Race start timer','race-start-timer.js']];
   const entries=JSON.parse(demoLibrary).shapes;
   for(const [name,file] of sourceFiles){
     assert.equal(entries.find(entry=>entry.name===name).items[0].script.replace(/\r\n/g,'\n'),
       fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8').replace(/\r\n/g,'\n'));
   }
   await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
-  for(const [name,x] of [['Drill template (smart)',300],['Race start timer (smart)',800]]){
+  for(const [name,x] of [['Drill template',300],['Race start timer',800]]){
     await page.locator('#shapeLibBtn').click();await page.getByRole('button',{name:'Place '+name,exact:true}).click();
     const canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+x,canvas.y+260);
     await run('shapePlacementQueue');
@@ -2868,7 +2910,7 @@ test('startup libraries keep missing smart previews inert until the library is o
   const library={shapes:[{name:'Startup smart',items:[smartFixture(slowClickScript)]}]};
   await page.route('**/shapes-library.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(library)}));
   await page.reload();
-  await page.waitForFunction(()=>document.querySelector('#shapeLibraryStatus').textContent.includes('1 shape'));
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===1);
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
   await page.locator('#shapeLibBtn').click();
@@ -3302,9 +3344,32 @@ test('Manage opens existing smart source without executing it; cancelling an asy
   assert.equal(await page.getByRole('button',{name:'Edit Box',exact:true}).count(),0);
   await page.getByRole('button',{name:'Edit Counter',exact:true}).click();
   assert.equal(await page.locator('#smartObjectNameInput').inputValue(),'Counter');
+  assert.equal(await page.locator('#smartObjectNameField').isHidden(),true,'editing an existing source does not offer library renaming');
+  assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true,'the hidden creation-only field is excluded from editing');
+  assert.equal(await page.locator('#smartObjectScriptInput').evaluate(element=>element===document.activeElement),true,'source editing focuses the script');
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),slowClickScript);
+  assert.deepEqual(await page.locator('#smartObjectScriptInput').evaluate(input=>({start:input.selectionStart,top:input.scrollTop,left:input.scrollLeft})),
+    {start:0,top:0,left:0},'opening a script starts at its first line');
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),false);
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'reading code alone does not execute it');
+  const assertEditorFits=async(width,height)=>{
+    const dialog=await page.locator('#smartObjectDialog').boundingBox(),editor=await page.locator('#smartObjectScriptInput').boundingBox();
+    const buttons=await Promise.all(['#smartObjectDialogCancel','#smartObjectDialogSubmit'].map(selector=>page.locator(selector).boundingBox()));
+    assert.ok(dialog.x>=-.5 && dialog.y>=-.5 && dialog.x+dialog.width<=width+.5 && dialog.y+dialog.height<=height+.5,
+      'the source dialog fits the '+width+'×'+height+' viewport');
+    assert.ok(editor.width>0 && editor.height>0 && editor.x>=dialog.x && editor.x+editor.width<=dialog.x+dialog.width+.5,
+      'the script editor stays inside the dialog');
+    assert.ok(editor.y+editor.height<=Math.min(...buttons.map(button=>button.y))+.5,'the script editor does not cover Save or Cancel');
+    for(const button of buttons)assert.ok(button.y>=0 && button.y+button.height<=height+.5 && button.x>=0 && button.x+button.width<=width+.5,
+      'Save and Cancel stay visible without scrolling the dialog');
+    return {dialog,editor};
+  };
+  const desktop=await assertEditorFits(1280,900);
+  assert.ok(desktop.dialog.width>850 && desktop.editor.width>800,'desktop source editing uses the available width');
+  assert.ok(desktop.editor.height>350,'desktop source editing provides substantially more than the old ten-row area');
+  await page.setViewportSize({width:390,height:844});await assertEditorFits(390,844);
+  await page.setViewportSize({width:844,height:390});await assertEditorFits(844,390);
+  await page.setViewportSize({width:1280,height:900});
   await page.locator('#smartObjectScriptInput').fill('({children(){return [];}})');
   await page.locator('#smartObjectDialogCancel').click();
   assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);
@@ -3326,6 +3391,9 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
   await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
+  assert.equal(await page.locator('#smartObjectNameField').isHidden(),true);
+  assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true);
+  await page.locator('#smartObjectNameInput').evaluate(input=>{input.value='Renamed by a stale form';});
   await page.locator('#smartObjectScriptInput').fill('({initState(){return {};}})');
   await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>document.querySelector('#smartObjectDialogError').textContent.includes('children'));
@@ -3334,6 +3402,7 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
   const after=await downloadedJSON(page,run,'exportShapeLibrary()');
   assert.equal(after.shapes.length,1,'saving updates the entry instead of adding a duplicate');
+  assert.equal(after.shapes[0].name,'Color box','saving source ignores changes to the hidden creation-only name field');
   assert.deepEqual(after.shapes[0].items[0],{...before.shapes[0].items[0],script:newScript});
   assert.notEqual(after.shapes[0].thumbnail.png,before.shapes[0].thumbnail.png);
   assert.equal(await run('items[0].script'),oldScript,'placed instances keep their own definition');
@@ -3345,6 +3414,9 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.locator('#smartObjectDialogCancel').click();
   await page.locator('#newSmartObjectBtn').click();
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),true);
+  assert.equal(await page.locator('#smartObjectNameField').isVisible(),true,'creation restores the name field after source editing');
+  assert.equal(await page.locator('#smartObjectNameInput').isEnabled(),true);
+  assert.equal(await page.locator('#smartObjectNameInput').evaluate(element=>element===document.activeElement),true,'new-shape creation still starts with its name');
   await page.locator('#smartObjectNameInput').fill('New shape');
   await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
@@ -3361,6 +3433,7 @@ test('composite library entries expose each smart script and edit only the chose
   await page.locator('#smartObjectScriptInput').fill(updated);await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
   const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.equal(exported.shapes[0].name,'Composite');
   assert.equal(exported.shapes[0].items[0].script,first.script);
   assert.equal(exported.shapes[0].items[1].type,'rect');
   assert.deepEqual(exported.shapes[0].items[2].state,{n:2});

@@ -52,7 +52,7 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Library previews | Bundled PNG previews display without executing scripts. Missing imported smart previews use placeholders and require approval before generation; authoring a definition already authorizes its preview. Placement still runs hooks in the sandbox. |
 | Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
 | Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Inputs, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
-| Library browser — feature branch | The existing popup stays the working collection. An optional adjacent browser provides search, categories, Built-in/Mine filters, direct placement, and pins controlling working membership. Built-in definitions and static previews are bundled; library format 2 preserves IDs, metadata, and membership. |
+| Library browser — feature branch | The compact Working collection shows pinned shortcuts. An optional adjacent browser provides search, multiple category memberships, a Built-in/My shapes Source filter, and direct placement. Shared Library actions manage entries and category tags; format 2 preserves IDs, metadata, category organization, and pins. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
 
 The original, still-supported hook contract is:
@@ -101,7 +101,9 @@ These boundaries describe the feature branch, including stage 1.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
 - **Library edits require explicit export.** The browser and working collection last for the
-  current visit. Import replaces the user catalog and its working membership; built-ins remain.
+  current visit. Import replaces personal entries, category organization, and pins; built-in
+  definitions remain. Workspace saves and autosave retain all sketch tabs and placed scripts,
+  state, and connections, but exclude the library, pins, and category organization.
   Constant and Value label are numeric. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
@@ -167,8 +169,8 @@ Make composing a useful connected document possible directly from the library, w
 the script editor. This milestone builds on the existing scalar API and source picker; it does
 not require datasets, events, or a new execution model.
 
-The delivery follows three steps: **2.1** library-entry identity, category/tag serialization,
-and built-in/user collection behavior; **2.2** the expandable browser and scalar controls,
+The delivery follows three steps: **2.1** library-entry identity, category/keyword serialization,
+and built-in/personal entry behavior; **2.2** the expandable browser and scalar controls,
 gates, and displays; **2.3** the complete example, library roundtrips, and offline HTML checks.
 The existing input picker is sufficient; visible wires remain optional later work.
 
@@ -192,28 +194,35 @@ runtime or require the proposed Run/Preview mode.
 
 ### Preserve the working popup
 
-The existing popup keeps its dimensions, grid, management flow, and Add selection/Add icon footer.
+The existing popup keeps its dimensions, grid, and Add selection/Add icon footer. Its stable
+**Working collection** heading identifies pinned shortcuts. **Actions** buttons in the compact
+picker and expanded browser open the same **Library actions** surface on desktop and mobile.
 A Browse control expands a single popover with the library browser alongside it. On narrow screens,
-the browser occupies the popover and Back to collection returns to the original view.
+the browser occupies the popover. **Collapse library** closes the expanded browser.
 
 Every browser entry supports direct placement and a separate pin. A filled pin includes the entry
 in the working collection; an outlined pin leaves it in the catalog only. Unpinning removes membership,
 not the definition or placed instances. Both panes use the same canonical entries. Keeping a built-in
-does not create a personal duplicate; Copy to mine explicitly creates an editable personal definition.
-Info opens details without starting placement. Browsing and placing never require a Manage detour.
+does not create a personal duplicate; built-ins offer **Copy to My shapes**, while personal entries
+offer **Duplicate**. Both create an editable personal definition. **Pin to working collection**
+and **Unpin from working collection** have the same scope
+as the pin icon. Info opens details without starting placement. Browsing and placing do not require
+opening Library actions.
 
 ### Categories and discovery
 
-Use one category per library entry, optional search tags, and a search field. Use
-**categories** for library organization; canvas **groups** continue to mean objects selected
-and transformed together. Nested folders can follow if real collections need them.
+Categories are named tags: each library entry may have several memberships. Users can create,
+rename, and remove categories and organize both built-in and personal entries. Removing a category
+removes its memberships, preserving shapes, pins, and other categories. Empty categories remain
+registered; entries with no category tags appear under **Uncategorized**. Separate **Keywords**
+support search. Canvas **groups** continue to mean objects selected and transformed together.
 
-| Category | Current built-in contents |
+| Default category | Built-in examples |
 | --- | --- |
 | Controls | Number control, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
 | Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Drill template, Race start timer, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -223,30 +232,47 @@ API v2 brings the catalog to 42 API v2 components. The extension also expands Co
 control, Math, and Counter without adding another delivery stage.
 
 All smart-shape templates are also available as built-in library entries. Adding Clock, Arrow,
-Arc, Timer, Chart, Minimal, and Blank, plus the bundled Drill template and Race start timer,
-brings the full catalog to 53 entries. Timer now uses API v2; the other eight retain their existing
+Arc, Timer, Chart, Minimal, and Blank brings the full catalog to 51 entries.
+Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
 empty. Authors can place or pin them offline, and the template authoring dialog remains available.
+Drill template and Race start timer remain standalone examples and entries in the importable
+demo library. Its thirteen-entry working collection combines eight demo-specific definitions
+with five pinned canonical built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Full snapshots
+preserve portability without duplicate browser entries; category overrides preserve demo grouping.
 
-Category and tag metadata survive library import/export. Existing flat libraries remain
-valid and appear under an uncategorized section. Keep library-entry identity separate from
+Format 2 stores category memberships in each entry's `categoryTags` string array, a top-level
+`categories` registry that retains empty categories, and `builtinCategoryTags` organization
+overrides. Existing `tags` remain search Keywords. Legacy single `category` fields migrate on
+import; flat libraries remain valid, and unassigned entries appear under Uncategorized.
+All category organization survives library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
 refreshes alone do not create connected time sources.
 
-### Built-in and user collections
+### Built-in and personal entries
 
-The browser offers a built-in collection alongside the user's collection. Collection origin and category
-serve different purposes: an author can find Logic components across both collections, while
-still seeing which entries are built in and which are their own.
+The **Source** filter distinguishes **Built-in** and **My shapes**. Source and category serve
+different purposes: an author can find Logic components from either source. Built-in definitions
+stay read-only while their category memberships can be organized through user overrides.
 
 Default components are ready to place, with descriptions and bundled previews. Their definitions
 are included in the standalone app, available without a hosted library file or network connection.
-Importing a user library does not replace the built-in collection. Format 2 exports include full
-snapshots of kept built-ins, all personal entries, and ordered working-collection IDs. A matching
+Importing a user library does not replace built-in definitions. Format 2 exports include full
+snapshots of pinned built-ins, all personal entries, ordered working-collection IDs, the category
+registry, and built-in category overrides. A matching
 built-in snapshot can reuse its installed definition; changed snapshots remain personal entries.
-Authors can copy a built-in definition into their own collection to customize it. Preserve
+Authors can copy a built-in definition into My shapes to customize it. Preserve
 existing instance snapshots: changing a library entry never silently updates placed components.
+
+Individual entries transfer through **Export shape…** in entry details or compact Actions and
+**Import shape…** under Library actions. The `name.shape.json` envelope is
+`{app:'SimpleCanvasShape', version:1, shape:<complete entry snapshot>}`. It retains regular and
+smart/component items, grouped internal connections, categories, keywords, description, preview,
+and source metadata. Import adds and pins a personal copy with a fresh ID and unique name, even
+for a built-in snapshot. **Import library…** replaces the user library; individual import adds to it.
+Single-shape export does not mark the whole library saved. These transfers retain existing
+authoring guards and script-preview consent, and introduce no library autosave.
 
 The library and authoring deployment switches still apply, including `smartComponents` and the
 Really SimpleCanvas variant. A fixed deployed library remains placeable when component authoring
@@ -504,8 +530,10 @@ request trigger; remaining true must not imply repeated external actions in late
   entries directly; pinning/unpinning changes only working membership and survives export/import.
 - Categories and search make the default controls, gates, and displays discoverable. They are
   ready to place in the standalone app without importing a file or editing a script.
-- Importing a user library retains the built-in collection. Older flat libraries still load;
-  category/tag metadata survives export and reimport, and placed instances remain unchanged.
+- Importing a user library retains the built-in definitions. Older flat libraries still load;
+  category memberships and Keywords survive export and reimport, and placed instances remain unchanged.
+  Multiple memberships, built-in overrides, and empty categories roundtrip. Renaming/removing
+  categories preserves entries and pins; removal leaves unrelated memberships intact.
 - The complete threshold-and-toggle example can be composed through the library and **Inputs…**.
   With Enabled on, 70 produces false and 71 produces true; Enabled off always produces false.
 - AND, NAND, OR, NOR, XOR, XNOR, NOT, and Buffer satisfy their boolean truth tables; the numeric
@@ -1097,8 +1125,9 @@ handling are tested separately from broker delivery.
 
 ## Decisions before each stage
 
-1. **Stage 2 — established:** Format 2 defines category/tag serialization, stable library-entry
-   identity, catalog definitions, and ordered working membership; flat imports remain supported.
+1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
+   built-in organization overrides, Keywords, stable library-entry identity, catalog definitions,
+   and ordered working membership; flat and legacy single-category imports remain supported.
 2. **Stage 3:** Define the table contract and dataset storage, transfer, and computation budgets
    before accepting embedded tables. Preserve recoverable unsupported data.
 3. **Stage 4:** Define a supported revision for event/action envelopes, receiving hooks, dispatch

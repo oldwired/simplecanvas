@@ -111,11 +111,9 @@ async function readerIndicator(page,text){
   await page.waitForFunction(text=>document.querySelector('[data-smart-index="4"]')?.textContent.includes('Status indicator') && document.querySelector('[data-smart-index="4"]').textContent.includes(text),text,{timeout:10000});
 }
 
-test('every smart-shape template and contributor example has a matching built-in, fresh defaults, and an inert preview',async()=>app(async({page,run})=>{
-  const contributors={drillTemplate:fs.readFileSync(path.join(__dirname,'..','examples','drill-template.js'),'utf8'),
-    raceStartTimer:fs.readFileSync(path.join(__dirname,'..','examples','race-start-timer.js'),'utf8')};
+test('every smart-shape template has a matching built-in, fresh defaults, and an inert preview',async()=>app(async({page,run})=>{
   const catalog=await run(`(()=>{
-    const expected={...Object.fromEntries(Object.entries(SMART_TEMPLATES).map(([key,template])=>[key,template.script])),...${JSON.stringify(contributors)}};
+    const expected=Object.fromEntries(Object.entries(SMART_TEMPLATES).map(([key,template])=>[key,template.script]));
     return Object.entries(expected).map(([key,script])=>{
       const matches=BUILTIN_LIBRARY_DEFINITIONS.filter(entry=>entry.key===key),entry=matches[0];
       const installed=entry && builtInShapeLibrary.find(candidate=>candidate.name===entry.name && candidate.items[0]?.script===entry.items[0]?.script);
@@ -125,10 +123,14 @@ test('every smart-shape template and contributor example has a matching built-in
   })()`);
   for(const entry of catalog){
     assert.equal(entry.matches,1,entry.key+' has exactly one built-in definition');
-    assert.equal(entry.script.trim(),entry.expected.trim(),entry.key+' preserves the authoring template or contributor source');
+    assert.equal(entry.script.trim(),entry.expected.trim(),entry.key+' preserves the authoring template source');
     assert.ok(entry.id && entry.preview,entry.key+' supplies a valid cached thumbnail');
   }
   await browse(page);await page.locator('#libraryCollection').selectOption('builtin');
+  for(const name of ['Drill template','Race start timer']){
+    await page.locator('#librarySearch').fill(name);
+    assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),0,name+' remains an example rather than a built-in');
+  }
   for(const entry of catalog){
     await page.locator('#librarySearch').fill(entry.name);
     const button=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place '+entry.name,exact:true});
@@ -165,8 +167,8 @@ test('every smart-shape template and contributor example has a matching built-in
 test('new template built-ins place and pin through the browser, with independent Chart instances in saved and offline drawings',async()=>app(async({page,run,context})=>{
   const initialWorking=await run('shapeLibrary?.workingCollection?.length||0');
   const first=await place(page,run,'Chart',240,240),second=await place(page,run,'Chart',650,240);
-  await place(page,run,'Clock',1050,240);await place(page,run,'Drill template',240,580);
-  await place(page,run,'Blank',650,580);await place(page,run,'Race start timer',1050,580);
+  await place(page,run,'Clock',1050,240);await place(page,run,'Arc',240,580);
+  await place(page,run,'Blank',650,580);await place(page,run,'Arrow',1050,580);
   assert.notEqual(first.uid,second.uid);
   assert.deepEqual(first.state.values,[30,60,45,80]);assert.deepEqual(second.state.values,first.state.values);
   assert.equal(await run('items[0].state.values===items[1].state.values'),false,'placements own independent mutable state');
@@ -180,8 +182,8 @@ test('new template built-ins place and pin through the browser, with independent
 
   await browse(page);await page.locator('#librarySearch').fill('Chart');
   await page.getByRole('button',{name:'Pin Chart to working collection',exact:true}).click();
-  await page.locator('#librarySearch').fill('Drill template');
-  await page.getByRole('button',{name:'Pin Drill template to working collection',exact:true}).click();
+  await page.locator('#librarySearch').fill('Arc');
+  await page.getByRole('button',{name:'Pin Arc to working collection',exact:true}).click();
   assert.equal(await run('shapeLibrary.workingCollection.length'),initialWorking+2);
   const pinned=await downloadLibrary(page,run);
   const snapshot='items.map(item=>({uid:item.uid,script:item.script,state:item.state,w:item.w,h:item.h}))';
@@ -346,9 +348,13 @@ test('personal metadata can change without renaming an entry that shares a pinne
   await page.locator('#libraryKeepBtn').click();
   assert.equal(await page.locator('#shapeGrid .shape-thumb').count(),2);
   await page.locator('#libraryCollection').selectOption('mine');await details(page,'Rectangle');
+  await run("createLibraryCategory('Routing')");
+  await page.locator('#libraryCategoriesEditBtn').click();
+  await page.locator('#libraryMembershipOptions').getByLabel('Drawing',{exact:true}).uncheck();
+  await page.locator('#libraryMembershipOptions').getByLabel('Routing',{exact:true}).check();
+  await page.locator('#libraryMembershipSave').click();
   await page.locator('#libraryEditBtn').click();
   assert.equal(await page.locator('#libraryEntryName').inputValue(),'Rectangle');
-  await page.locator('#libraryEntryCategory').fill('Routing');
   await page.locator('#libraryEntryDescription').fill('A reusable reviewed route marker.');
   await page.locator('#libraryEntryTags').fill('reviewed, links');
   await page.locator('#libraryMetadataForm').getByRole('button',{name:'Save details',exact:true}).click();

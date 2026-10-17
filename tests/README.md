@@ -40,6 +40,8 @@ editing and undo, drawing with only the HTML file deployed, and an import arrivi
 library response.
 The contributor shapes bundled into the demo must match their `.js` example sources; their actual
 handles, undo/redo, sketch exports, and saved state are exercised from the shipped library file.
+Demo checks retain thirteen pins while distinguishing eight personal definitions from five reused
+canonical built-ins, including category overrides and import/export without duplicate catalog entries.
 Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive document cleanup,
 unchanged history/storage for presentation-only refreshes, live clock updates, stopwatch controls and timestamp recovery, matching
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
@@ -94,9 +96,20 @@ Library browser regressions in `tests/library-browser.test.cjs` exercise direct 
 expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
 metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the
 threshold/AND/indicator example through Inputs and operate the actual downloaded HTML offline.
-Focused template-catalog checks cover the nine added entries: Clock, Arrow, Arc, Timer,
-Chart, Minimal, Blank, Drill template, and Race start timer. They verify source parity and
-availability for direct placement and pinning in the 53-entry offline catalog.
+Category checks cover multiple memberships, create/rename/remove, built-in organization overrides,
+empty-category preservation, legacy single-category imports, and separate search Keywords.
+Removing a category preserves shapes, pins, and other memberships. Shared Library actions,
+Source filtering, and Collapse library are checked without changing the compact picker workflow.
+Workspace saves retain placed scripts/state/connections but exclude library entries, pins, and
+category organization; those remain visit-only until library export/import.
+Individual transfer checks in `tests/library-transfer.test.cjs` use real shape downloads and
+file imports. They cover source-aware Copy/Duplicate actions, additive imports and name
+collisions, preserved categories and attribution, inert smart previews, independently wired
+group placements, unresolved external connections, invalid-file rejection, and feature guards.
+Exporting one shape leaves the library's unexported-change status intact.
+Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
+Chart, Minimal, and Blank. They verify source parity and
+availability for direct placement and pinning in the 51-entry offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming

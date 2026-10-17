@@ -90,7 +90,9 @@ Tool shortcuts: **V** Select, **P** Pen, **M** Highlighter, **B** Felt-tip, **E*
 
 Sketches and tabs are saved automatically to this browser's local storage and restored on the
 next visit. This storage is local to the browser; downloadable JSON files let you keep a backup
-or move your work elsewhere. Sketch/workspace JSON retains smart-shape scripts and saved state.
+or move your work elsewhere. Sketch/workspace JSON retains placed smart-shape scripts, saved state,
+and connections. A workspace contains all open sketch tabs; it excludes the library, pins, and
+category organization. Use the separate **Export library…** action to retain those.
 
 | File action | Scope |
 | --- | --- |
@@ -171,47 +173,65 @@ display size does not guarantee physical dimensions.
 ## Shape libraries and smart shapes
 
 The shape library is optional. The small toolbar popup remains a quick picker for your
-**working collection**. Click a shape, then click the canvas to place it. Open the expanded
-library browser with the **Browse** icon when you want to find more shapes: search by name or
-tags, choose a category, and filter the collection with **All collections**, **Built-in**, or **Mine**.
-**Back to collection** returns to the quick picker.
+**Working collection** of pinned shortcuts. Click a shape, then click the canvas to place it.
+Open the expanded library browser with the **Browse** icon: search by name or
+keywords, choose a category, and use the **Source** filter for **Built-in** or **My shapes**.
+**Collapse library** closes the expanded browser and leaves the quick picker available.
 
-| Category | Examples |
+| Default category | Examples |
 | --- | --- |
 | Controls | Number control, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Drill template, Race start timer, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 53 entries, including 42 connected API v2 components. Every smart-shape
-template is available in **Built-in**, along with Drill template and Race start timer.
+The catalog includes 51 entries, including 42 connected API v2 components. Every smart-shape
+template is available in **Built-in**. Drill template and Race start timer remain in the
+importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
 You can place an entry directly from the browser without adding it to the working collection.
 Each browser entry has a pin: filled means it is in the working collection; outline means it
-is outside. Click the pin to toggle membership, or use **Keep in collection** / **Remove from
-collection** in the entry details. Unpinning only removes the shortcut; its catalog entry and
+is outside. Click the pin to toggle membership, or use **Pin to working collection** / **Unpin from
+working collection** in the entry details. Unpinning only removes the shortcut; its catalog entry and
 already-placed objects remain available. Keeping a built-in entry references the same definition
 rather than creating a user copy.
 
-Built-in entries are available offline and cannot be edited in place. Use **Copy to mine**
-to customize one. This creates a separate entry in Mine and adds it to the working collection.
-**Edit details** changes its name, category, description, and tags. Personal entries also offer
-**Edit source…** and **Delete** from their browser details, including when they are unpinned.
-**Add selection** saves selected canvas objects to your collection, and
-**Manage → Import…** opens a library file. **Manage** also offers **Add smart shape…**, rename,
-delete, and replacement with the current selection. For your smart shapes, **Edit** opens the
-script authoring dialog. Library edits never update already-placed objects. Images cannot be
-included in library entries.
+Built-in shape definitions are available offline and read-only. Use **Copy to My shapes**
+to customize one. This creates a separate entry in My shapes and pins it to the working collection.
+For an entry already in My shapes, the same action is called **Duplicate**.
+**Edit details** changes a personal entry's name, description, and search **Keywords**. Personal
+entries also offer **Edit script…** and **Delete from library** in their browser details, including when unpinned.
+**Add selection** adds selected canvas objects to My shapes and pins the new entry.
+The **Actions** buttons in the compact picker and browser open the same **Library actions**
+surface, including **Import shape…**, **Import library…**, **Export library…**, and
+**Add smart shape…**, on desktop and mobile.
+Library edits never update already-placed objects. Images cannot be included in library entries.
+
+**Export shape…** in an entry's browser details or compact Actions downloads a `name.shape.json`
+file for that entry. It supports ordinary shapes, smart shapes, connected components, and grouped
+items, retaining their internal connections, categories, keywords, description, preview, and source
+credits. **Actions → Import shape…** adds it to My shapes with a fresh ID and unique name, then pins
+it. This adds to the current library; even an exported built-in becomes an editable personal copy.
+Exporting one shape does not mark the whole library as saved.
+
+Categories are named tags: an entry can belong to several, including built-in entries. Create,
+rename, and remove categories through **Library actions**, and assign memberships to entries.
+An entry's **Edit categories…** dialog also offers **New category…** while choosing memberships.
+Removing a category removes that membership, while preserving shapes, pins, and other categories.
+Empty categories remain available; entries with no memberships appear under **Uncategorized**.
+Search **Keywords** are separate from category membership.
 
 **Export library…** downloads a self-contained `shapes-library.json`, including the working
-collection, every entry in Mine, and the definitions they need. Kept built-ins are included as snapshots, so the
-file does not depend on another installation having the same built-in version. Library format 2
-preserves entry IDs, categories, tags, and working-collection membership. Older flat libraries
-still import; their entries appear in **Mine** and initially populate the working collection.
-Importing a user library leaves the built-in catalog available.
+collection, every entry in My shapes, category organization, and the definitions they need.
+Pinned built-ins are included as snapshots, so the file does not depend on another installation
+having the same built-in version. Library format 2
+preserves entry IDs, category memberships (including built-in overrides and empty categories),
+keywords, and working-collection membership. Older flat libraries and single-category entries
+still import; personal entries appear in **My shapes**. **Import library…** replaces the current user library
+and its organization and pins, while leaving the built-in definitions available.
 
-Library edits and working-collection changes last only for the current visit, separately from
+Library edits, category organization, and pins last only for the current visit, separately from
 sketch saves and autosave. An indicator shows unexported changes; importing another library or
 leaving the page warns before those changes are discarded. Export and reimport the file to
 retain your collection for another visit.
@@ -223,7 +243,7 @@ and ask before running scripts to generate pictures; **Use placeholders** still 
 
 ### Smart shapes
 
-**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock,
+**Actions → Add smart shape…** creates script-defined shapes from templates such as Clock,
 Live clock, Stopwatch, Ruler, Timer, Arrow, Arc, and Chart. Double-click a placed smart shape to
 edit its handles, then double-click again or click outside to leave. If it belongs to a group,
 the first double-click enters group editing and the second opens its smart controls. Clicks
@@ -500,23 +520,31 @@ and computations. Datasets, events, and external actions remain future work.
 
 ### Demo library
 
-The public demo library includes thirteen shapes. Open the shape library in the toolbar,
+The public demo working collection contains thirteen entries: eight demo-specific shapes and
+five pinned built-ins (**Clock**, **Chart**, **Live clock**, **Stopwatch**, and **Ruler**). The five
+reuse their existing catalog entries; the eight appear under **My shapes**. Open the shape library,
 choose a shape, then click the canvas to place it. All demo entries include saved previews.
 You can also import [examples/demo-shapes-library.json](examples/demo-shapes-library.json)
-through **Manage → Import…** when using the app locally.
+through **Actions → Import library…** when using the app locally.
+
+**Sailing** groups the boats, course shapes, and race-start timer; **Workshop** groups the drilling
+template and ruler. These also appear in **Drawing** or **Tools & time**. The clocks and stopwatch
+share **Tools & time** and **Displays**, while the chart appears in **Displays**. The format 2 file
+preserves stable entry IDs and category tags, with all thirteen entries pinned in the working collection.
+Built-in category overrides keep the demo grouping, and full built-in snapshots keep the file portable.
 
 | Shapes | What they do |
 | --- | --- |
 | Six sailing shapes | Two boats, start and finish lines, a course mark, and a wind arrow |
 | **Clock** | Manually adjustable clock; double-click to drag its hands |
-| **Bar chart** | Drag bars and add/remove them with the +/− controls in edit mode |
+| **Chart** | Drag bars and add/remove them with the +/− controls in edit mode |
 | **[Drill template](examples/drill-template.js)** | Handles adjust hole diameter and position; resizing changes hole spacing while diameter stays fixed in millimeters |
 | **[Race start timer](examples/race-start-timer.js)** | A draggable clock hand and clickable mast controls for changing flags |
 | **[Live clock](examples/live-clock.js)** | Local or selected timezone, synchronized hands/readout, and connected second/minute/hour/half-day pulse outputs |
 | **[Stopwatch](examples/stopwatch.js)** | Live millisecond display, run/reset inputs, and an elapsed-seconds result published on pause; manual controls and running time survive tab switches and reloads |
 | **[Ruler](examples/ruler.js)** | Extends its markings at fixed spacing; in edit mode, click the unit label to cycle cm with mm divisions, inches with sixteenth-inch divisions, and pixels |
 
-Live clock, Stopwatch, and Ruler are also templates under **Manage → Add smart shape…**.
+Live clock, Stopwatch, and Ruler are also templates under **Actions → Add smart shape…**.
 See [Physical scale](#physical-scale) for printing rulers and drilling templates.
 
 ### Import icons
@@ -539,7 +567,7 @@ unchanged; icons with no usable geometry cannot be imported.
 When hosted, an optional `shapes-library.json` beside the HTML supplies the initial user library
 and working collection alongside the built-in catalog.
 The file is read only at startup; opening the picker never reloads it. File imports work when
-hosted or opened locally, including importing the demo file via **Manage → Import…**.
+hosted or opened locally, including importing the demo file via **Actions → Import library…**.
 For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
 if needed. The HTML works on its own without a library file.
 
@@ -567,8 +595,8 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | --- | --- |
 | `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
 | `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
-| `shapeLibraryManagement` | Hides library management and disables pins, copying to Mine, library import/export, rename, replace, and delete. The browser and direct placement remain available. |
-| `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into Mine, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
+| `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. The browser and direct placement remain available. |
+| `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
 | `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
@@ -621,8 +649,11 @@ requires no build step or runtime dependencies.
 
 ### Update the demo library
 
-Import `examples/demo-shapes-library.json`, edit it in **Manage**, export the library, and save
-the download back as `examples/demo-shapes-library.json`. The contributor shapes embed their
+Import `examples/demo-shapes-library.json`, edit its eight demo-specific entries, export the library,
+and save the download back as `examples/demo-shapes-library.json`. To customize one of its five
+read-only built-ins, use **Copy to My shapes** for an editable personal variant. Keep the shipped
+demo's built-in snapshots identical to their canonical catalog definitions, and store demo category
+memberships in `builtinCategoryTags`. The contributor shapes embed their
 complete `.js` example scripts: keep the drilling template and race-start timer examples and
 library sources in sync. Live clock, Stopwatch, and Ruler also have embedded authoring templates
 in `index.html`; update those copies, their `.js` examples, library sources, and saved previews

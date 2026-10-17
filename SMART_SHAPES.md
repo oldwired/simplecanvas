@@ -30,7 +30,7 @@ app as an end user; see [README.md](README.md) for that.
 
 ## Quick start
 
-1. Open the **Shape Library** panel → **Manage** → **Add smart shape…**.
+1. Open the shape library → **Actions** → **Add smart shape…**.
 2. Pick a starting point from the **Template** dropdown (Clock / Live clock / Stopwatch / Ruler / Number control / Gauge / Arrow / Arc / Timer / Chart /
    Minimal / Blank), or just start typing your own script over it.
 3. Give it a name and click **Create**. The new shape appears in the library, ready to place.
@@ -42,12 +42,14 @@ For a grouped smart shape, the first double-click enters group editing; double-c
 member again to enter its smart-shape controls.
 
 Built-in catalog entries can be placed directly from the expanded library browser. To customize
-one, use **Copy to mine** first; built-in definitions are read-only. Pinning an entry adds a
+one, use **Copy to My shapes** first; built-in definitions are read-only, while their category
+memberships can be organized. Pinning an entry adds a
 reference to the quick popup's working collection and does not create an editable copy.
 
-To edit your library definition, choose **Manage → Edit** beside its name, or **Edit source…**
-in its browser details (also available for unpinned entries). The authoring
-dialog opens with its existing name and script; **Save changes** updates that entry and regenerates
+To edit your library definition, choose **Edit script…** in its browser details (also available
+for unpinned entries). The expanded editor shows the entry name in its heading and gives the
+remaining space to the script. Rename entries through **Edit details**; the script editor only
+changes code. **Save changes** updates that entry and regenerates
 its PNG preview. The definition's saved state, dimensions, and appearance are preserved.
 `initState()` and `initStyle()` run afresh when placing each instance; saved values supply defaults
 for omitted hooks or style fields. Existing canvas instances keep their own scripts and state.
@@ -857,32 +859,59 @@ still rescale output. Check a known division on a printed template before use.
 
 ## Library catalog and snapshots
 
-The small shape popup shows the working collection. The optional expanded browser offers
-**All collections**, **Built-in**, and **Mine** views, search, and the categories Controls, Logic, Displays,
-Tools & time, and Drawing. Entries can be placed directly or kept in the working collection
+The small shape popup keeps the **Working collection** heading and shows pinned shortcuts.
+The optional expanded browser offers a **Source** filter for **Built-in** and **My shapes**,
+search, and categories initially including Controls, Logic, Displays, Tools & time, and Drawing.
+**Collapse library** closes the browser; **Actions** in either pane opens the same **Library actions**
+surface on desktop and mobile. Entries can be placed directly or pinned in the working collection
 for later use. A filled pin means the entry is in that collection; an outline pin means it is
-outside. The pin toggles membership, as do **Keep in collection** / **Remove from collection**
-in the details. Unpinning leaves its definition and placed objects unchanged. **Copy to mine**
-creates an independent definition for authoring and pins that copy. **Edit details** updates a
-user entry's name, category, description, and tags without changing its script.
+outside. The pin toggles membership, as do **Pin to working collection** / **Unpin from working collection**
+in the details. Unpinning leaves its definition and placed objects unchanged. Built-ins offer
+**Copy to My shapes**; personal entries offer **Duplicate**. Both create and pin an independent
+personal definition. **Edit details** updates a
+user entry's name, description, and search **Keywords** without changing its script.
 
-Library format 2 retains the self-contained `shapes` definition table, adds stable entry IDs
-and optional category/tag metadata, and records working membership in `workingCollection`.
+Categories are named tags with multiple memberships per entry. Users can create, rename, and
+remove categories and organize both built-in and personal entries. Removal only removes the
+category and its memberships; shapes, pins, and other categories remain. Empty categories persist,
+and entries without category tags appear as **Uncategorized**.
+The entry's **Edit categories…** dialog can create a **New category…** while selecting memberships.
+
+Library format 2 retains the self-contained `shapes` definition table and stable entry IDs.
+An entry's `categoryTags` string array stores its category memberships; legacy single `category`
+values migrate on import. Top-level `categories` records named tags, including empty categories,
+and `builtinCategoryTags` stores organization overrides for built-in entries. Existing `tags`
+remain search keywords, labelled **Keywords** in the UI. `workingCollection` records pinned entry IDs.
 Library-entry IDs are separate from the UIDs of canvas items and component bindings. Renaming
 or categorizing an entry therefore does not change a placed component's connections.
 Older flat `{shapes:[...]}` libraries remain readable and initially include every imported
 entry in the working collection. Export includes every user entry and the definitions needed by saved references,
 including snapshots of kept built-ins; an import must not silently substitute a newer definition.
-Importing user entries does not replace the built-in catalog.
+Library import replaces personal entries, pins, and category organization while retaining built-in
+definitions. Export retains category registrations and built-in overrides as well as entries.
+
+Individual entry transfer uses **Export shape…** in browser details or compact Actions and
+**Import shape…** under Library actions. A `name.shape.json` file has the envelope
+`{app:'SimpleCanvasShape', version:1, shape:<complete entry snapshot>}`. The snapshot retains
+regular/smart/component items, grouped items and internal bindings, category memberships,
+keywords, description, preview, and source metadata. Import adds an editable personal entry with
+a fresh ID and unique name and pins it, including when the exported entry was built-in.
+It does not replace the library. **Import library…** remains whole-library replacement, and
+**Export library…** saves the full library; exporting one shape does not clear its unsaved status.
+References to objects outside the transferred entry remain unresolved until reconnected after placement.
+Individual shape imports use the same authoring guards and missing-script-preview consent as
+library imports.
 
 The catalog does not change the component API or placement lifecycle. Each placement clones its
 definition, remaps internal component bindings, and initializes smart state and style. Existing
 canvas instances and exported HTML retain their own definition snapshots. Library changes,
-including working membership, require explicit library export; sketch autosave does not save them.
+including pins and category organization, last for the visit and require explicit library export.
+Sketch autosave and workspace files do not save the library. Workspace JSON saves all sketch tabs,
+including placed smart-shape scripts, state, and bindings.
 
 Deployment switches continue to separate authoring from use. `shapeLibrary` hides the library;
 `shapeLibraryManagement` disables catalog changes and pins. Adding smart definitions to the working
-collection or copying them into Mine requires `smartShapeAuthoring`, and API v2 definitions also
+collection or copying them into My shapes requires `smartShapeAuthoring`, and API v2 definitions also
 require `smartComponents`. The browser and direct placement remain available when management or
 authoring is disabled. Those switches do not disable existing controls, connections, or HTML
 playback. They do not grant network access to component scripts.
@@ -931,13 +960,19 @@ the working collection. The template dropdown remains available for source autho
 | **Minimal** | A circle with one radius handle; the [worked example](#a-complete-worked-example) adapts it to constrain the displayed radius after resizing |
 | **Blank** | `{initState(){return{};}, children(){return[];}}` — an empty starting point |
 
-Two additional scripts are also bundled in **Built-in**, with standalone sources for authoring:
+Two additional examples have standalone sources and entries in the importable
+[demo library](examples/demo-shapes-library.json):
 
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
 
-The catalog has 53 entries. Clock, Arrow, Arc, Chart, Minimal, Blank, Drill template, and
-Race start timer retain their original API v1 behavior. Minimal is the circle example; Blank
+The demo's thirteen pinned entries comprise eight demo-specific definitions and five canonical
+built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapshots reuse the built-in
+catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
+Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
+
+The built-in catalog has 51 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
 The built-in catalog includes 42 API v2 components, with editable sources in `examples/`:
@@ -1073,8 +1108,9 @@ Standalone copies of [Live clock](examples/live-clock.js), [Stopwatch](examples/
 [demo shape library](examples/demo-shapes-library.json).
 
 The live-clock, stopwatch, and ruler scripts are included verbatim in the standalone HTML's
-authoring templates and in `examples/demo-shapes-library.json`. Keep those copies and the bundled
-PNG previews in sync when changing an example.
+authoring templates and the demo's canonical built-in snapshots. Keep those copies and the bundled
+PNG previews in sync when changing an example. The demo's Clock and Chart snapshots must likewise
+match their canonical catalog definitions, including metadata and default items.
 
 [Timer](examples/timer.js) must likewise match its embedded authoring template and built-in
 catalog definition, with its bundled preview updated alongside the source.
