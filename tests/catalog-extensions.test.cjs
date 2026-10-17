@@ -490,3 +490,41 @@ test('spreadsheet column width from the header menu: number dialog, the shape gr
  await page.waitForFunction(()=>__test.run('items[0].w')===384);
  assert.equal(await run('items[0].state.weights'),undefined,'a reset sheet stores no widths');
 }));
+
+test('spreadsheet cell pointing: while typing a formula, clicking or dragging over cells inserts references',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1',A2:'2',A3:'3',B1:'10'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ const at=(c,r)=>({x:box.x+120+c*64+32,y:box.y+140+r*24+12});
+ const input=page.locator('input[data-smart-number-input]');
+ // drag over A1..A3 after "=SUM("
+ let q=at(3,0);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('=SUM(');
+ const a1=at(0,0),a3=at(0,2);
+ await page.mouse.move(a1.x,a1.y);await page.mouse.down();await page.mouse.move(a3.x,a3.y,{steps:5});await page.mouse.up();
+ assert.equal(await input.inputValue(),'=SUM(A1:A3','dragging inserts a range');
+ assert.equal(await input.count(),1,'the field stays open');
+ await page.keyboard.type(')');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D1')==='=SUM(A1:A3)');
+ // a second click right after replaces the reference; after an operator pointing works again
+ q=at(3,1);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('=');
+ let c=at(1,0);await page.mouse.click(c.x,c.y);c=at(0,1);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=A2','pointing again replaces the reference just inserted');
+ await page.keyboard.type('*');c=at(1,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=A2*B1','after an operator a click inserts again');
+ await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D2')==='=A2*B1');
+ // plain text: a click on another cell ends editing as before
+ q=at(3,2);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('label');c=at(4,0);await page.mouse.click(c.x,c.y);
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D3')==='label');
+ assert.equal(await page.locator('input[data-smart-number-input]').getAttribute('aria-label'),'Cell E1','the click went on to edit the clicked cell');
+ await page.keyboard.press('Escape');
+}));

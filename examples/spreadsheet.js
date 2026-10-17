@@ -23,7 +23,7 @@
 // Port names keep letters, digits and underscores ("Total Energy" becomes Total_Energy).
 // Booleans count as 1/0 in arithmetic; SUM/AVERAGE/MIN/MAX ranges skip Booleans, text and empty cells.
 // Enter applies the cell; Tab/Shift+Tab apply and move right/left; Escape cancels. An empty entry
-// clears the cell.
+// clears the cell. While typing a formula, click a cell (or drag across cells) to insert its reference.
 // Errors show as #DIV/0!, #REF!, #NAME?, #VALUE!, #CYCLE!, #N/A or #ERROR!. An output whose formula
 // fails makes the component report that error. Row and column headers appear outside the sheet only
 // in edit mode. Cells are editable only in the editor; exported HTML recomputes but cannot edit.
@@ -546,7 +546,7 @@
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const k=this._key(c,r);
       hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value:(state.cells||{})[k]||'',label:'Cell '+k,
-        rect:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh},fontSize,...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{}),editorOnly:true});
+        rect:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh},ref:k,fontSize,...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{}),editorOnly:true});   // ref: pointing at it inserts 'B3'
     }
     // width entries, reached only through "Column width..." in the header menu (never hit directly)
     for(let c=0;c<dims.cols;c++)hs.push({id:'cw'+c,x:L.xs[c]+L.ws[c]/2,y:-L.hgap-L.headH/2,kind:'number',

@@ -293,7 +293,11 @@ host lays a single-line field exactly over that rectangle, rotated with the shap
 elsewhere applies and stops; Tab applies and continues in the text handle to the right, Shift+Tab to
 the left (neighbours are found from the handles' rects); Escape discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
 An optional `fontSize` (in the shape's units) sets the field's text size, so it matches the drawn
-text; without it the size follows the rect's height. An optional `align` (`'left'` default, `'center'`, `'right'`) aligns the typed text.
+text; without it the size follows the rect's height. A text handle may also carry a `ref` (up to 64 characters, e.g.
+the cell name `'B3'`): while another field of the same shape holds a formula (text starting with `=`)
+and its caret follows `=`, `(`, `,`, `;`, an operator or a comparison, clicking such a handle inserts its
+`ref` at the caret instead of ending the edit, dragging across several inserts `first:last`, and
+clicking again right away replaces the reference just inserted. The pointed cells are outlined. An optional `align` (`'left'` default, `'center'`, `'right'`) aligns the typed text.
 [Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.
 
 ```js
