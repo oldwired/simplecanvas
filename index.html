@@ -1963,12 +1963,19 @@ self.onmessage = function(e){
       dialog.style.cssText='border:1px solid #cbd5e1;border-radius:12px;padding:22px;max-width:360px;width:calc(100% - 56px);font:16px system-ui;color:#1f2937;background:white';
       const form=document.createElement('form'),title=document.createElement('h2'),label=document.createElement('label');
       title.textContent=name||'Number control';title.style.cssText='font-size:18px;margin:0 0 18px;overflow-wrap:anywhere';
-      label.textContent='Value';label.htmlFor='smartNumberValue';
-      const input=document.createElement('input');input.type='number';input.id='smartNumberValue';input.required=true;
-      // The component owns snapping, including an off-grid maximum endpoint.
-      input.value=String(handle.value);input.step='any';
-      if(handle.min!==undefined)input.min=String(handle.min);
-      if(handle.max!==undefined)input.max=String(handle.max);
+      const text=handle.kind==='text';
+      label.textContent=text?(handle.label||'Text'):'Value';label.htmlFor='smartNumberValue';
+      const input=document.createElement('input');input.id='smartNumberValue';
+      if(text){
+        // kind:'text' reuses this dialog: one line, may be empty (e.g. clearing a spreadsheet cell).
+        input.type='text';input.maxLength=2000;input.autocomplete='off';input.spellcheck=false;input.value=handle.value;
+      }else{
+        input.type='number';input.required=true;
+        // The component owns snapping, including an off-grid maximum endpoint.
+        input.value=String(handle.value);input.step='any';
+        if(handle.min!==undefined)input.min=String(handle.min);
+        if(handle.max!==undefined)input.max=String(handle.max);
+      }
       input.style.cssText='box-sizing:border-box;width:100%;padding:10px;margin:6px 0 18px;font:inherit;border:1px solid #94a3b8;border-radius:6px';
       const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:10px';
       const cancel=document.createElement('button'),save=document.createElement('button');
@@ -1984,6 +1991,7 @@ self.onmessage = function(e){
       form.addEventListener('submit',event=>{
         event.preventDefault();
         if(!valid()){finish(null);return;}
+        if(text){finish(input.value);return;}
         if(input.reportValidity() && Number.isFinite(input.valueAsNumber))finish(input.valueAsNumber);
       });
       actions.append(cancel,save);form.append(title,label,input,actions);dialog.append(form);document.body.append(dialog);
@@ -1991,7 +1999,52 @@ self.onmessage = function(e){
     });
   }
   function cancelSmartNumberInput(){
-    for(const dialog of document.querySelectorAll('dialog[data-smart-number-input]'))dialog.dispatchEvent(new Event('smartcancel'));
+    for(const dialog of document.querySelectorAll('[data-smart-number-input]'))dialog.dispatchEvent(new Event('smartcancel'));
+  }
+  // In-place editing for a kind:'text' handle with a rect: a single-line field laid exactly over the
+  // rectangle, rotated with the shape. toScreen maps the shape's local coordinates to client pixels.
+  // Resolves {value, move} -- move is 'down'/'up' (Enter/Shift+Enter), 'right'/'left' (Tab/Shift+Tab)
+  // or null (click elsewhere) -- or null on Escape or cancellation.
+  function editSmartTextInline(handle,toScreen,valid=()=>true){
+    return new Promise(resolve=>{
+      const r=handle.rect,a=toScreen(r.x,r.y),b=toScreen(r.x+r.w,r.y),c=toScreen(r.x,r.y+r.h);
+      if(!a || !b || !c){resolve(null);return;}
+      const w=Math.hypot(b.x-a.x,b.y-a.y),h=Math.hypot(c.x-a.x,c.y-a.y),angle=Math.atan2(b.y-a.y,b.x-a.x);
+      const input=document.createElement('input');input.dataset.smartNumberInput='';
+      input.type='text';input.maxLength=2000;input.autocomplete='off';input.spellcheck=false;input.value=handle.value;
+      input.setAttribute('aria-label',handle.label||'Text');
+      input.style.cssText='position:fixed;margin:0;box-sizing:border-box;z-index:1000;transform-origin:0 0;'+
+        'border:2px solid #2563eb;border-radius:0;outline:none;background:#fff;color:#111827;padding:0 4px;'+
+        'font:400 '+Math.max(9,Math.round(h*.55))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
+      Object.assign(input.style,{left:a.x+'px',top:a.y+'px',width:Math.max(24,w)+'px',height:Math.max(14,h)+'px',transform:'rotate('+angle+'rad)'});
+      let done=false;
+      const finish=value=>{if(done)return;done=true;input.remove();resolve(value);};
+      const accept=move=>{if(!valid()){finish(null);return;}finish({value:input.value,move});};
+      input.addEventListener('smartcancel',()=>finish(null));
+      input.addEventListener('keydown',event=>{
+        event.stopPropagation();   // Delete, arrows, letters must not reach the canvas shortcuts
+        if(event.key==='Escape'){event.preventDefault();finish(null);}
+        else if(event.key==='Enter'){event.preventDefault();accept(event.shiftKey?'up':'down');}
+        else if(event.key==='Tab'){event.preventDefault();accept(event.shiftKey?'left':'right');}
+      });
+      for(const type of ['pointerdown','click','dblclick'])input.addEventListener(type,event=>event.stopPropagation());
+      input.addEventListener('blur',()=>accept(null));
+      document.body.append(input);input.focus();input.select();
+    });
+  }
+  // The nearest text handle beside `from` in the given direction, judged by the handles' rects
+  // (overlapping column for up/down, overlapping row for left/right).
+  function smartTextNeighbour(handles,from,move){
+    const f=from.rect,eps=0.5;let best=null,bestD=Infinity;
+    for(const h of handles){
+      const r=h.kind==='text' && h.rect;
+      if(!r || h.id===from.id)continue;
+      const sameCol=r.x<f.x+f.w-eps && r.x+r.w>f.x+eps,sameRow=r.y<f.y+f.h-eps && r.y+r.h>f.y+eps;
+      const d=move==='down'&&sameCol?r.y-(f.y+f.h):move==='up'&&sameCol?f.y-(r.y+r.h):
+        move==='right'&&sameRow?r.x-(f.x+f.w):move==='left'&&sameRow?f.x-(r.x+r.w):-1;
+      if(d>-eps && d<bestD){bestD=d;best=h;}
+    }
+    return best;
   }
   // Geometry, styling, and refresh deadlines do not invalidate computed values.
   function componentGraphSignature(list){
@@ -2355,12 +2408,25 @@ self.onmessage = function(e){
       value=value.map(h=>{
         if(!h || typeof h.id!=='string' || !h.id || h.id.length>64 || ids.has(h.id)) throw new Error('Invalid or duplicate handle ID');
         ids.add(h.id);
-        if(h.kind!==undefined && !['drag','click','number'].includes(h.kind)) throw new Error('Invalid handle kind');
+        if(h.kind!==undefined && !['drag','click','number','text'].includes(h.kind)) throw new Error('Invalid handle kind');
         if(h.editorOnly!==undefined && typeof h.editorOnly!=='boolean') throw new Error('Invalid editorOnly marker');
         const number={};
         if(h.kind==='number'){
           for(const key of ['value','min','max','step'])if(h[key]!==undefined)number[key]=smartNumber(h[key],'Number entry '+key,-Number.MAX_VALUE,Number.MAX_VALUE);
           if(number.value===undefined || (number.step!==undefined && number.step<=0) || (number.min!==undefined && number.max!==undefined && number.min>number.max))throw new Error('Invalid number entry');
+        }
+        if(h.kind==='text'){
+          // A single line of text, e.g. a spreadsheet formula; the script validates its meaning in dragEdit.
+          if(typeof h.value!=='string' || h.value.length>2000)throw new Error('Text entry value must be a string of at most 2000 characters');
+          if(h.label!==undefined && (typeof h.label!=='string' || h.label.length>100))throw new Error('Text entry label must be at most 100 characters');
+          number.value=h.value;if(h.label!==undefined)number.label=h.label;
+          // Optional local rectangle: edit in place over it instead of in a dialog.
+          if(h.rect!==undefined){
+            const r=h.rect;
+            if(!r || typeof r!=='object')throw new Error('Text entry rect must be an object');
+            number.rect={x:smartNumber(r.x,'Text entry rect x'),y:smartNumber(r.y,'Text entry rect y'),
+              w:smartNumber(r.w,'Text entry rect w',0.01,Number.MAX_VALUE),h:smartNumber(r.h,'Text entry rect h',0.01,Number.MAX_VALUE)};
+          }
         }
         return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag',...number,...(h.editorOnly===true?{editorOnly:true}:{})};
       });
@@ -5456,6 +5522,21 @@ self.onmessage = function(e){
     return {clientX:r.left+x,clientY:r.top+y,pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,
       shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey};
   }
+  // Pushes one undo entry when a handle gesture changed the item's state (compared to originalState).
+  function commitSmartHandleState(it,originalState){
+    if(JSON.stringify(it.state||{})===JSON.stringify(originalState))return;
+    // A completed click may settle during or after another edit. Commit only its state, using
+    // the other transaction's baseline when still open; keep that transaction independently undoable.
+    const before=historyBefore===null ? snap() : historyBefore;
+    if(historyBefore!==null){
+      const next=JSON.parse(historyBefore), target=next.find(item=>item.uid===it.uid);
+      if(target) target.state=clone(it.state);
+      historyBefore=JSON.stringify(next);
+    }
+    undoStack.push(before);
+    if(undoStack.length>80) undoStack.shift();
+    redoStack=[];clickCycle=null;save();updateButtons();
+  }
   async function processSmartGesture(p){
     if(!smartGestureValid(p)) return;
     const it=p.it;
@@ -5477,15 +5558,36 @@ self.onmessage = function(e){
       if(p.latest) runSmartDragMove(p.latest.x,p.latest.y,sd);
       await p.releaseDone;
       if(!smartGestureValid(p)) return;
-      if(sd.kind==='number'){
+      if(sd.kind==='number' || sd.kind==='text'){
         if(editorTimeline)pauseComponentTimeline(editorTimeline);
         clearTimeout(componentTimelineTimer);componentTimelineTimer=null;editorComponentEvaluation=null;
-        const value=await editSmartNumber(h,it.componentName,()=>smartGestureValid(p));
-        if(!smartGestureValid(p))return;
-        if(value!==null){
-          const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,value,0,it.w,it.h,smartResolvedStyle(it)]);
+        if(h.kind==='text' && h.rect){
+          // In-place editing; Enter/Tab apply the cell (its own undo step) and continue in the neighbour.
+          const toScreen=(lx,ly)=>{const r=canvas.getBoundingClientRect(),w=toWorld(it,it.x+lx,it.y+ly);return {x:r.left+w.x,y:r.top+w.y};};
+          let cur=h;
+          while(cur){
+            const result=await editSmartTextInline(cur,toScreen,()=>smartGestureValid(p));
+            if(!smartGestureValid(p))return;
+            if(!result)break;
+            const next=await requestSmartCall(it,'dragEdit',[it.state||{},cur.id,result.value,0,it.w,it.h,smartResolvedStyle(it)]);
+            if(!smartGestureValid(p))return;
+            if(next)it.state=next;
+            if(!result.move)break;
+            commitSmartHandleState(it,sd.originalState);sd.originalState=clone(it.state||{});
+            if(it.componentApi===2)await ensureEditorComponentGraph().catch(()=>{});
+            render();
+            const hs2=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+            if(!smartGestureValid(p))return;
+            cur=smartTextNeighbour(hs2,cur,result.move);
+          }
+        }else{
+          const value=await editSmartNumber(h,it.componentName,()=>smartGestureValid(p));
           if(!smartGestureValid(p))return;
-          if(next)it.state=next;
+          if(value!==null){
+            const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,value,0,it.w,it.h,smartResolvedStyle(it)]);
+            if(!smartGestureValid(p))return;
+            if(next)it.state=next;
+          }
         }
       }else if(sd.kind==='click' || !sd.moved){
         const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,sd.lx,sd.ly,it.w,it.h,smartResolvedStyle(it)]);
@@ -5495,19 +5597,7 @@ self.onmessage = function(e){
         if(sd.inFlight) await new Promise(resolve=>sd.onSettle=resolve);
       }
       if(!smartGestureValid(p)) return;
-      if(JSON.stringify(it.state||{})!==JSON.stringify(sd.originalState)){
-        // A completed click may settle during or after another edit. Commit only its state, using
-        // the other transaction's baseline when still open; keep that transaction independently undoable.
-        const before=historyBefore===null ? snap() : historyBefore;
-        if(historyBefore!==null){
-          const next=JSON.parse(historyBefore), target=next.find(item=>item.uid===it.uid);
-          if(target) target.state=clone(it.state);
-          historyBefore=JSON.stringify(next);
-        }
-        undoStack.push(before);
-        if(undoStack.length>80) undoStack.shift();
-        redoStack=[];clickCycle=null;save();updateButtons();
-      }
+      commitSmartHandleState(it,sd.originalState);
       p.sd=null;
       if(it.componentApi===2)await ensureEditorComponentGraph().catch(()=>{});
       render();return;
@@ -7492,15 +7582,34 @@ self.onmessage = function(e){
       }
       if(!valid(p))return;
       // Like the editor, preserve the last moved angle if Shift is released before pointerup.
-      if(handle?.kind==='number'){
+      if(handle?.kind==='number' || handle?.kind==='text'){
         if(timeline)pauseComponentTimeline(timeline);
         clearTimeout(timelineTimer);timelineTimer=null;invalidateComponentGraph();
-        const value=await editSmartNumber(handle,it.componentName,()=>valid(p));
-        if(!valid(p))return;
-        if(value!==null){
-          const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,value,0,it.w,it.h,smartResolvedStyle(it)]);
+        if(handle.kind==='text' && handle.rect){
+          const toScreen=(lx,ly)=>{const m=e.local.getScreenCTM();return m?new DOMPoint(lx,ly).matrixTransform(m):null;};
+          let cur=handle;
+          while(cur){
+            const result=await editSmartTextInline(cur,toScreen,()=>valid(p));
+            if(!valid(p))return;
+            if(!result)break;
+            const next=await requestSmartCall(it,'dragEdit',[it.state||{},cur.id,result.value,0,it.w,it.h,smartResolvedStyle(it)]);
+            if(!valid(p))return;
+            if(next)it.state=next;
+            if(!result.move)break;
+            if(it.componentApi!==undefined)await refreshComponents();else await refresh(e);
+            if(!valid(p))return;
+            const hs2=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
+            if(!valid(p))return;
+            cur=smartTextNeighbour(hs2,cur,result.move);
+          }
+        }else{
+          const value=await editSmartNumber(handle,it.componentName,()=>valid(p));
           if(!valid(p))return;
-          if(next)it.state=next;
+          if(value!==null){
+            const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,value,0,it.w,it.h,smartResolvedStyle(it)]);
+            if(!valid(p))return;
+            if(next)it.state=next;
+          }
         }
         if(timeline && !document.hidden)resumeComponentTimeline(timeline);
       }else if(p.mode==='rotate'){if(p.latest)await apply(p.latest);}
@@ -7589,7 +7698,7 @@ self.onmessage = function(e){
     source+=`\nconst SMART_HOOKS=new Set(${JSON.stringify([...SMART_HOOKS])}),HEAD_STYLES=new Set(${JSON.stringify([...HEAD_STYLES])}),MD_INLINE_RE=${MD_INLINE_RE};\n`;
     source+=[isNum,isColor,norm,scriptOf,smartCancelled,createSmartExecution,smartExecutionCurrent,smartItemExecution,stopSmartOwnerRequests,
       disposeSmartExecution,createSmartSandbox,ensureSmartSandbox,regenerateSmartSandbox,dispatchSmartSandboxNext,requestSmartSandbox,requestSmartCall,requestSmartCaps,
-      componentScalar,componentPortName,normalizeComponentPorts,normalizeComponentOutputs,normalizeComponentSettings,componentSettingValue,editSmartNumber,cancelSmartNumberInput,componentGraphSignature,evaluateComponentGraph,createComponentTimeline,componentTimelineNow,pauseComponentTimeline,resumeComponentTimeline,settleComponentTimeline,componentViewIo,componentStatusChildren,
+      componentScalar,componentPortName,normalizeComponentPorts,normalizeComponentOutputs,normalizeComponentSettings,componentSettingValue,editSmartNumber,cancelSmartNumberInput,editSmartTextInline,smartTextNeighbour,componentGraphSignature,evaluateComponentGraph,createComponentTimeline,componentTimelineNow,pauseComponentTimeline,resumeComponentTimeline,settleComponentTimeline,componentViewIo,componentStatusChildren,
       smartNumber,normalizeSmartRefresh,normalizeSmartState,normalizeSmartChild,validateSmartReply,smartResolvedStyle,snapRotation,
       strokeOn,strokeWidthOf,headsOf,headVariantOf,arrowHeadGeom,arrowHeadSegments,arrowHeadOp,fillOf,strokeOf,dashArrayFor,dashOf,boxStyle,
       nibWidths,chiselOps,smoothSegments,polyCurveSegments,polyBridgeSegments,curveEndFrom,primitiveShapeOps,

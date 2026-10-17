@@ -281,6 +281,25 @@ HTML; `editorOnly:true` can restrict it to authoring.
   min:-20, max:40, step:0.25 }
 ```
 
+`kind:'text'` opens the same dialog with a single-line text field instead. Supply the current
+text as a string `value` (at most 2,000 characters) and an optional `label` (at most 100
+characters, default **Text**) for the field. On acceptance the host calls `dragEdit` once with
+the accepted **string in `lx`** (possibly empty); `ly` is zero. Cancellation leaves state
+unchanged. The script must validate and bound the text itself, and keep the resulting state within
+the 4,000-character limit. Like `kind:'number'`, it works in editor edit mode and offline HTML.
+
+Add a local `rect` (`{x, y, w, h}`, same frame as `children()`) to edit **in place** instead: the
+host lays a single-line field exactly over that rectangle, rotated with the shape. Enter applies and
+continues in the text handle directly below, Shift+Enter above, Tab to the right, Shift+Tab to the
+left (neighbours are found from the handles' rects); clicking elsewhere applies and stops, Escape
+discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
+[Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.
+
+```js
+{ id:'B6', x:cellX+cellW/2, y:cellY+cellH/2, kind:'text', value:state.cells.B6 || '',
+  label:'Cell B6', rect:{x:cellX, y:cellY, w:cellW, h:cellH} }
+```
+
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
 Given a press position, return the `id` of the handle it landed on (within your own chosen hit
@@ -913,6 +932,8 @@ the whole file into the Script field:
 
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race-start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
+- [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 10×10 sheet with arithmetic, SUM/AVERAGE/MIN/MAX, `INPUT("name")` cells that become input ports and `OUTPUT(cell,"Name")` cells that become output ports; cells are edited through `kind:'text'` handles.
 
 The built-in catalog includes 39 API v2 components, with editable sources in `examples/`:
 

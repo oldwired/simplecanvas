@@ -200,3 +200,52 @@ test('numeric dialogs cancel on visibility changes without leaving the offline g
  await preview.getByRole('button',{name:'Apply',exact:true}).click();
  await preview.waitForFunction(()=>[...document.querySelectorAll('[data-smart-index="0"] text')].some(e=>e.textContent==='6'));
 }));
+
+test('kind:text handles edit in place over their rect, or in a dialog without one; the spreadsheet example wires ports',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   const nc={...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'nc',x:820,y:100,state:{value:5},bindings:{},inputValues:{}};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:80,y:120,w:640,h:240,color:'#64748b',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:16,font:fontStr('sans',16),script,state:{cells:{A1:'2',A2:'3',A3:'=SUM(A1:A2)*INPUT("energy")',B1:'=OUTPUT(A3,"Total Energy")'}},
+     componentApi:2,componentName:'Spreadsheet',bindings:{energy:{uid:'nc',port:'value'}},inputValues:{}},nc];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual(await outputs(run,0),{Total_Energy:25},'(2+3) x connected 5, published under a valid port name');
+ assert.deepEqual(Object.keys((await run('requestSmartCaps(items[0])')).inputs),['energy'],'INPUT("energy") declares an input port');
+ const headers=editing=>run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);
+   const kids=await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,${editing},io]);
+   return {outside:kids.filter(k=>k.editorOnly).length,cellsMoved:kids.filter(k=>!k.editorOnly && (k.x<0 || k.y<0)).length};})()`);
+ assert.deepEqual(await headers(false),{outside:0,cellsMoved:0},'no headers outside edit mode');
+ const edit=await headers(true);
+ assert.ok(edit.outside>=40 && edit.cellsMoved===0,'edit mode adds editor-only headers outside the box without moving cells');
+ const undoBefore=await run('undoStack.length');
+ const pt=await editorPoint(page,run,0,'C1');await page.mouse.click(pt.x,pt.y);
+ const input=page.locator('input[data-smart-number-input]');await input.waitFor();
+ const box=await input.boundingBox(),canvas=await page.locator('#canvas').boundingBox();
+ assert.deepEqual([box.x-canvas.x,box.y-canvas.y,box.width,box.height].map(Math.round),[80+128,120,64,24],'the field covers cell C1 exactly');
+ assert.equal(await page.locator('dialog[data-smart-number-input]').count(),0,'no dialog for a handle with rect');
+ await input.fill('=OUTPUT(A1*100,"Cents")');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.C1')==='=OUTPUT(A1*100,"Cents")');
+ await page.locator('input[data-smart-number-input]').waitFor();   // Enter continued in C2
+ await page.keyboard.type('7');await page.keyboard.press('Tab');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.C2')==='7');
+ await page.locator('input[data-smart-number-input]').waitFor();   // Tab continued in D2
+ await page.keyboard.type('99');await page.keyboard.press('Escape');await run('smartHitSettled');
+ assert.equal(await page.locator('input[data-smart-number-input]').count(),0);
+ assert.equal(await run('items[0].state.cells.D2'),undefined,'Escape discards the cell being typed');
+ assert.deepEqual(await outputs(run,0),{Total_Energy:25,Cents:200},'a typed OUTPUT formula adds an output port');
+ assert.equal(await run('undoStack.length'),undoBefore+2,'one undo entry per applied cell');
+ await run('undo()');assert.equal(await run('items[0].state.cells.C2'),undefined);
+ // without a rect the same handle kind uses the dialog
+ await run(`(async()=>{items.push({...clone(items[1]),uid:'dlg',x:300,y:450,w:200,h:80,componentApi:undefined,componentName:'Note',bindings:undefined,inputValues:undefined,
+   script:'({initState(){return {t:"hi"};},children(s,st,w,h){return [{type:"text",x:0,y:0,w,h,text:s.t,strokeOn:false,fill:false}];},handles(s,w,h){return [{id:"t",x:w/2,y:h/2,kind:"text",value:s.t,label:"Note"}];},hitEdit(){return "t";},dragEdit(s,id,v){return {...s,t:v||"-"};}})',
+   state:{t:'hi'}});render();})()`);
+ const dpt=await editorPoint(page,run,2,'t');await page.mouse.click(dpt.x,dpt.y);
+ await page.waitForSelector('dialog[data-smart-number-input]');
+ assert.equal(await page.locator('dialog[data-smart-number-input] label').textContent(),'Note');
+ await page.locator('#smartNumberValue').fill('typed');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
+ assert.equal(await run('items[2].state.t'),'typed');
+ const bad=await run(`(async()=>{const it={...items[0],uid:'bad',script:'({apiVersion:2,initState(){return {};},children(){return [];},handles(){return [{id:"t",x:1,y:1,kind:"text",value:5}];}})'};
+   try{const r=await requestSmartCall(it,'handles',[{},10,10,{}]);return r==null?'rejected':'accepted '+JSON.stringify(r);}catch(e){return 'rejected';}})()`);
+ assert.equal(bad,'rejected','a non-string text value is rejected');
+}));
