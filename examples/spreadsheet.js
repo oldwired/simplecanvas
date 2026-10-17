@@ -168,7 +168,7 @@
       A7:'=AVERAGE(A2:A4)',A8:'=MAX(A2:A4)-MIN(A2:A4)',E1:'Extra',E2:'=INPUT("energy")',
       F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
   },
-  initStyle(){return {w:640,h:240,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#1f2937',size:1};},
+  initStyle(){return {w:640,h:240,fontSize:12,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#1f2937',size:1};},
   compute(inputs,state){
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
@@ -196,9 +196,12 @@
   _draw(state,style,w,h,editing,inputs,errorNote){
     const L=this._layout(w,h),items=[],sheet=this._sheet(state,inputs),ports=this._ports(state);
     const ink=style.color||'#64748b',textInk=style.textColor||'#1f2937',grid='#cbd5e1';
-    const font=(size,bold)=>(bold?'700 ':'400 ')+Math.max(6,Math.round(size))+'px ui-monospace,Menlo,Consolas,"Courier New",monospace';
+    // Cells and headers follow the toolbar's font family and size; the size is capped by the row
+    // height (L.px) so text never spills out of its cell.
+    const family=['sans','serif','mono','cursive'].includes(style.fontFamily)?style.fontFamily:'sans';
+    const cap=size=>Math.max(6,Math.round(Math.min(style.fontSize||L.px,size)));
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
-      font:font(size||L.px,bold),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
+      fontFamily:family,fontSize:cap(size||L.px),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
     const outCells=new Set(ports.outs.map(o=>o.cell));
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
