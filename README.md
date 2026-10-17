@@ -249,6 +249,10 @@ edit its handles, then double-click again or click outside to leave. If it belon
 the first double-click enters group editing and the second opens its smart controls. Clicks
 and drags support undo/redo.
 
+When shapes overlap, separate clicks cycle through the layers for selection and moving.
+A double-click keeps the smart shape the gesture started on and opens its controls, including
+a smart shape you already selected underneath another shape. Double-tapping works the same way.
+
 You can also place any template directly from **Built-in** or pin it to your working collection;
 the authoring dialog remains available for source authoring. **Clock** has manually adjusted
 hands, **Timer** is a connected countdown, and **Chart** retains its editable bars. **Minimal** is the circle starter;

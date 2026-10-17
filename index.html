@@ -3848,6 +3848,9 @@ self.onmessage = function(e){
   const selectionFor = hit => { const g = items[hit].group; return (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit]; };
   const sameSelection = (a,b) => a.length===b.length && a.every((v,i)=>v===b[i]);
   let clickCycle = null;   // {x,y,stack,depth} — repeated clicks on the same spot walk down the stack
+  // Keep the first press's target for smart double-clicks, before either release advances the
+  // selection cycle. The record can finish asynchronously when an earlier smart hit test settles.
+  let selectionPress = null, firstMouseSelectionPress = null;
   // With several objects stacked at one spot, a plain hitTest always hands back the topmost — the
   // ones underneath are simply unreachable by clicking. Clicking again at (about) the same spot
   // instead steps one layer deeper each time, wrapping back to the top after the bottom; clicking
@@ -4913,6 +4916,7 @@ self.onmessage = function(e){
     handledPointerUp = false;
     if(textInput.style.display==='block'){ commitText(); }
     const {x,y} = pos(e);
+    selectionPress = {tab:activeTabId,x,y,it:null,group:null,click:false};
     try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // a pointer that is already gone (or synthetic) has no capture
 
     if(ui.tool==='select'){
@@ -4948,7 +4952,7 @@ self.onmessage = function(e){
           const wp = toLocal(sit, x, y);
           const lp = { x: wp.x - sit.x, y: wp.y - sit.y };
           const pending = {idx:editingSmartIdx,it:sit,script:sit.script,tab:activeTabId,epoch:smartGestureEpoch,
-            x,y,lp,e,latest:null,released:false,mode:'pending',cancelled:false,sd:null};
+            x,y,lp,e,selectionPress,latest:null,released:false,mode:'pending',cancelled:false,sd:null};
           pending.releaseDone=new Promise(resolve=>pending.release=resolve);
           smartCurrentPress=pending;
           smartGestureRecords.add(pending);
@@ -4998,7 +5002,7 @@ self.onmessage = function(e){
   // The rest of onDown's select-tool handling, run either synchronously (no smart object in edit
   // mode) or after hitEdit's async reply resolves "no handle, and not even a body hit" (see
   // processSmartGesture) -- normal selection uses the same code for immediate and delayed presses.
-  function continueOnDownAfterSmartHitEdit(x, y, e){
+  function continueOnDownAfterSmartHitEdit(x, y, e, press=selectionPress){
       // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
       // any anchor square (clicking one makes it active AND starts dragging it)
       // Choose the closest point/handle within the hit radius. Larger touch targets must not let
@@ -5184,7 +5188,10 @@ self.onmessage = function(e){
           cycleHit = null;      // duplicating supersedes any pending click-cycle advance too
         }
         const dragHitItem = items[dragHitIdx];
-        drag = {x0:x, y0:y, appliedDx:0, appliedDy:0, axisLock:null, moved:false, hitIdx:dragHitIdx, wasAlreadySelected:duplicating?false:wasAlreadySelected, shiftToggle, forceCommit, pendingCycleHit:cycleHit};
+        if(press && !e.shiftKey && !duplicating && !e.altKey){
+          press.it=dragHitItem;press.group=editingGroupId;
+        }
+        drag = {x0:x, y0:y, appliedDx:0, appliedDy:0, axisLock:null, moved:false, hitIdx:dragHitIdx, wasAlreadySelected:duplicating?false:wasAlreadySelected, shiftToggle, forceCommit, pendingCycleHit:cycleHit,selectionPress:press};
         // A long press opens the editor -- only when the press actually landed on the text/table
         // itself: a grouped one is also reached as its group's representative for a press in an empty
         // gap of the group's box (see groupBoxHit), and that must not start editing it.
@@ -5580,7 +5587,7 @@ self.onmessage = function(e){
     editingSmartIdx=null;p.mode='normal';
     smartMutationOwner=p;smartReplay=true;
     try{
-      continueOnDownAfterSmartHitEdit(p.x,p.y,p.e);
+      continueOnDownAfterSmartHitEdit(p.x,p.y,p.e,p.selectionPress);
       if(p.latest) onMove(replayPointer(p.latest.e,p.latest.x,p.latest.y));
       if(p.released) onUp(replayPointer(p.upEvent,p.upPoint.x,p.upPoint.y));
     }finally{smartMutationOwner=null;smartReplay=false;}
@@ -5643,6 +5650,7 @@ self.onmessage = function(e){
         commitHistory();
       } else {
         historyBefore=null;
+        if(drag.selectionPress && e.type!=='pointercancel') drag.selectionPress.click=true;
         if(drag.shiftToggle){
           selection = selection.filter(i=>drag.shiftToggle.indexOf(i)<0);
           render();
@@ -6127,6 +6135,7 @@ self.onmessage = function(e){
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
     clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;
+    selectionPress=null;firstMouseSelectionPress=null;
     historyBefore=null;
   }
   // undo/redo keep the selection (so a recolor can be undone and redone while the item stays
@@ -13455,17 +13464,21 @@ self.onmessage = function(e){
     if(e.pointerType==='mouse' || ignoredSmartPointerUps.has(e)) return;
     const now = performance.now();
     const epoch=smartGestureEpoch, tab=activeTabId;
-    const tap={t:now,x:e.clientX,y:e.clientY};
+    const tap={t:now,x:e.clientX,y:e.clientY,press:selectionPress};
     const doubleTap=lastTap && now-lastTap.t<300 && Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<25;
+    const firstPress=doubleTap ? lastTap.press : null;
     lastTap=doubleTap ? null : tap;
     // Recognise the second lift before waiting: replayed clicks must not arm an alignment timer
     // while this double-tap is waiting for its own smart hit tests.
-    if(doubleTap){await onDoubleClick(e);return;}
+    if(doubleTap){await onDoubleClick(e,firstPress);return;}
     // handledPointerUp may still be settling (a smart object's own hitEdit crossing the sandbox
     // asynchronously -- see onDoubleClick's own identical await) -- wait for that before reading it.
     if(smartHitSettled) await smartHitSettled;
     if(epoch!==smartGestureEpoch || tab!==activeTabId || handledPointerUp){if(lastTap===tap)lastTap=null;}
   }
+  canvas.addEventListener('click', e=>{
+    if(e.detail===1 && (!e.pointerType || e.pointerType==='mouse')) firstMouseSelectionPress=selectionPress;
+  });
   canvas.addEventListener('dblclick', onDoubleClick);
   // touch-action:none on canvas/textInput doesn't reliably stop Safari's native double-tap-to-zoom
   // on iPadOS — recognise the same "two quick taps" pattern as onTapUp above, directly on the raw
@@ -13487,8 +13500,10 @@ self.onmessage = function(e){
   }
   canvas.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
-  async function onDoubleClick(e){
+  async function onDoubleClick(e,firstPress=firstMouseSelectionPress){
     if(hasPendingShapePlacement()) return;
+    if(firstPress===firstMouseSelectionPress) firstMouseSelectionPress=null;
+    const lastPress=selectionPress;
     if(alignClickTimer){clearTimeout(alignClickTimer);alignClickTimer=null;}
     const epoch=smartGestureEpoch, tab=activeTabId;
     // A smart object's own hitEdit crosses the sandbox asynchronously now -- a real double-click's two
@@ -13557,7 +13572,19 @@ self.onmessage = function(e){
     // If this dblclick's second tap just advanced a click-cycle through a stack of overlapping
     // objects (see pickWithClickCycle), selection already correctly names the item the user is
     // now on — a fresh hitTest here would ignore that and always jump back to the topmost one.
-    const hit = selection.length===1 ? selection[0] : hitTestWithGroupBox(x,y);
+    let hit = selection.length===1 ? selection[0] : hitTestWithGroupBox(x,y);
+    // Enter the smart controls the gesture started on, even if its two releases cycled to other
+    // layers. Separate clicks still cycle immediately; ordinary shapes retain their existing
+    // double-click behavior. Identity and completed-press checks exclude drags and stale targets.
+    if(firstPress?.click && lastPress?.click && lastPress.it && firstPress.tab===activeTabId && lastPress.tab===activeTabId &&
+       firstPress.it?.type==='smart' && items.includes(firstPress.it) &&
+       pressedOn(firstPress.it,firstPress.x,firstPress.y) && pressedOn(firstPress.it,x,y)){
+      hit=items.indexOf(firstPress.it);
+      editingGroupId=firstPress.group;
+      selection=selectionFor(hit);
+      const stack=hitStack(x,y), depth=stack.indexOf(hit);
+      clickCycle=depth>=0 ? {x,y,stack,depth} : null;
+    }
     // Group edit mode -- double-click a grouped item (any type) to browse/move/resize/recolor/delete
     // its members one at a time without ungrouping. Comes BEFORE the per-type actions below on
     // purpose: a grouped text/table item's FIRST double-click only enters (or, if already browsing a

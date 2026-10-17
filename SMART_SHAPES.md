@@ -41,6 +41,10 @@ app as an end user; see [README.md](README.md) for that.
 For a grouped smart shape, the first double-click enters group editing; double-click the
 member again to enter its smart-shape controls.
 
+Separate clicks on overlapping shapes cycle through the layers. A double-click or double-tap
+keeps the smart shape the gesture started on, so entering its controls does not select a shape
+underneath. You can also cycle to a covered smart shape, then double-click to open its controls.
+
 Built-in catalog entries can be placed directly from the expanded library browser. To customize
 one, use **Copy to My shapes** first; built-in definitions are read-only, while their category
 memberships can be organized. Pinning an entry adds a

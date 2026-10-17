@@ -1167,6 +1167,109 @@ test('grouped smart object: double-click steps group edit mode -> the object\'s 
     'third dblclick (the smart object\'s own re-dblclick-exits toggle) leaves script-edit mode, still in group edit mode');
 }));
 
+// A double-click is two selection clicks before its own event arrives. Smart controls must keep
+// the item grabbed by the first press, while separate clicks still reach the layers behind it.
+const overlappingSmart = uid => ({type:'smart',uid,x:100,y:100,w:180,h:140,
+  color:'#1f2937',fillColor:'#ffd166',fill:false,strokeOn:true,textColor:'#000',size:2,state:{},
+  script:`({children(state,style,w,h){return[{type:'rect',x:0,y:0,w,h,color:style.color,strokeOn:true,fill:false}];}})`});
+async function seedOverlap(run, scene){
+  await run(`cancelGesture();items=${JSON.stringify(scene)};selection=[];setTool('select');render();`);
+}
+test('overlapping smart controls open on a fresh or already-selected double-click', async () => app(async ({page,run}) => {
+  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
+  for(const selected of [false,true]){
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    if(selected) await page.mouse.click(box.x+190,box.y+160);
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.dblclick(box.x+190,box.y+160);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
+    assert.deepEqual(await run('selectedUids()'),['smart']);
+    assert.equal(await run('pointEditIdx'),null,'the background is not converted or edited');
+    assert.deepEqual(await run('items'),scene,'entering controls leaves all drawing data unchanged');
+  }
+}));
+
+test('double-click keeps a selected lower smart component beneath a shape or another component', async () => app(async ({page,run}) => {
+  for(const top of [rectangle('top'),overlappingSmart('top')]){
+    const scene=[rectangle('bottom'),overlappingSmart('selected'),top];
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    assert.deepEqual(await run('selectedUids()'),['selected'],'separate clicks reach the lower component');
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.dblclick(box.x+190,box.y+160);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+    assert.deepEqual(await run('selectedUids()'),['selected']);
+    assert.deepEqual(await run('items'),scene);
+  }
+}));
+
+test('separate clicks still cycle behind smart controls and dragging moves the selected lower shape', async () => app(async ({page,run}) => {
+  const scene=[rectangle('background'),overlappingSmart('smart')];
+  await seedOverlap(run,scene);
+  for(const expected of ['smart','background','smart','background']){
+    const box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    assert.deepEqual(await run('selectedUids()'),[expected]);
+  }
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(box.x+190,box.y+160);await page.mouse.down();
+  await page.mouse.move(box.x+225,box.y+180);await page.mouse.up();
+  assert.deepEqual(await run('selectedUids()'),['background']);
+  assert.deepEqual(await run('items[0]'),{...scene[0],x:135,y:120});
+  assert.deepEqual(await run('items[1]'),scene[1]);
+  assert.equal(await run('editingSmartIdx'),null);
+}));
+
+test('ordinary overlapping shapes keep their cycled double-click target', async () => app(async ({page,run}) => {
+  const scene=['bottom','middle','top'].map(uid=>rectangle(uid));
+  await seedOverlap(run,scene);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  assert.deepEqual(await run('selectedUids()'),['middle']);
+  assert.equal(await run('pointEditIdx'),1);
+  assert.equal(await run('items[1].type'),'polygon');
+  assert.deepEqual(await run('[items[0],items[2]]'),[scene[0],scene[2]]);
+}));
+
+test('overlapping grouped smart controls retain group entry then smart editing', async () => app(async ({page,run}) => {
+  const scene=[rectangle('background'),overlappingSmart('smart')].map(it=>({...it,group:'overlap',groupRotation:0}));
+  await seedOverlap(run,scene);
+  let box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  assert.equal(await run('editingGroupId'),'overlap');
+  assert.equal(await run('editingSmartIdx'),null);
+  assert.deepEqual(await run('selectedUids()'),['smart']);
+  box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  assert.equal(await run('editingGroupId'),'overlap');
+  assert.deepEqual(await run('selectedUids()'),['smart']);
+  assert.deepEqual(await run('items'),scene);
+}));
+
+test('overlapping smart controls keep the first touch target on double-tap', async () => app(async ({page,run}) => {
+  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
+  for(const selected of [false,true]){
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    if(selected){
+      await page.touchscreen.tap(box.x+190,box.y+160);
+      await page.waitForTimeout(400);
+    }
+    box=await page.locator('#canvas').boundingBox();
+    await page.touchscreen.tap(box.x+190,box.y+160);
+    await page.touchscreen.tap(box.x+198,box.y+166);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
+    assert.deepEqual(await run('selectedUids()'),['smart']);
+    assert.equal(await run('pointEditIdx'),null);
+    assert.deepEqual(await run('items'),scene);
+  }
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+
 test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
   await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
     color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2}];setTool('select');render();`);
