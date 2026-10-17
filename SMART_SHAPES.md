@@ -468,7 +468,19 @@ Unversioned scripts keep returning raw state from `dragEdit`, even when their st
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
 
 Select an instance and click **Inputs…** to name it, enter literal inputs, or bind inputs to
-compatible outputs in the same sketch. Deployments can disable component authoring with
+compatible outputs in the same sketch. Sources with the same name receive drawing-order and
+world-position qualifiers such as `#1 (left)` and `#2 (right)` in the picker. These are display
+hints only: instance names and the saved `{uid, port}` binding remain unchanged.
+
+Source and literal edits refresh **Preview outputs:** and any graph or validation error after a
+short debounce. Pending or unavailable results replace stale output values. The latest edit wins,
+without rebuilding the fields or moving keyboard focus. Configuration changes may rebuild dynamic
+fields while retaining matching input drafts. This bounded preview
+uses pure computation on a temporary proposal; it does not call `transition`, consume edges,
+advance timed state, or change the drawing. **Save** validates and commits the proposal;
+**Cancel** discards it. It is not a running simulation of proposed temporal configuration.
+
+Deployments can disable component authoring with
 `features.smartComponents:false` in `settings.json`; existing components still execute and export.
 The flag hides component templates, source editing, and input controls, and blocks adding component
 library entries. Ordinary smart-shape authoring has its own `smartShapeAuthoring` switch, which

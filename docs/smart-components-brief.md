@@ -1,11 +1,11 @@
 # From smart shapes to connected components
 
-Status: stage 1, its authoring setting, and the expanded stage 2 library, logic, routing, and timed
-signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-17.
-Stage 2 includes an editable eight-tab example workspace and offline HTML reader; a focused
-authoring-experience pass remains before closeout.
+Status: stages 1 and 2 are complete on `feature/smart-components`, based on `main`,
+validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, timed signals,
+an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
 Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
+Discuss feedback, sequential logic, and shared buses with the user before starting stage 3.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
@@ -84,7 +84,7 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including stage 1.
+These boundaries describe the feature branch through stage 2.
 
 - **Connections carry scalar values within one sketch.** Number, string, and boolean ports are
   supported. Shared datasets, cross-tab connections, and routed events remain future work.
@@ -127,9 +127,9 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stage 1, the expanded stage 2 catalog, and the example workspace are implemented on the feature
-branch; a focused stage 2 authoring-experience pass remains. The stage numbers give the
-proposed planning order, not a requirement to finish every earlier feature before starting
+Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
+branch. Stages 3–6 remain proposals, with the discussion checkpoint below required before stage 3.
+The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
 Share runtime helpers between editor and export throughout.
@@ -137,7 +137,7 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic — catalog and examples implemented; authoring pass remains | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, and an eight-tab example workspace | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the examples work in editor and offline HTML. |
+| 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
@@ -188,9 +188,9 @@ illustrative arrows are ordinary drawing objects. Countdown starts at 9 with **R
 tab has independent state and timing pauses while it is inactive. Reader tab switches retain
 changes; reloading restores the exported snapshot. JSON remains the editable source.
 
-This fills the shipped-example gap in step 2.3. A focused pass over component discovery, placement,
-input configuration, and error clarity remains before stage 2 closeout; it does not add a new
-runtime or require the proposed Run/Preview mode.
+Step 2.3 and the focused authoring pass are complete. Component discovery, placement, input
+configuration, and error recovery have been checked through the workflow recorded below.
+This keeps the current runtime and does not require the proposed Run/Preview mode.
 
 ### Preserve the working popup
 
@@ -536,6 +536,10 @@ request trigger; remaining true must not imply repeated external actions in late
   categories preserves entries and pins; removal leaves unrelated memberships intact.
 - The complete threshold-and-toggle example can be composed through the library and **Inputs…**.
   With Enabled on, 70 produces false and 71 produces true; Enabled off always produces false.
+- Same-named sources are distinguishable in the input picker without changing instance names
+  or UID/port bindings. Proposed source/literal changes refresh output previews and error feedback;
+  rapid edits retain the latest result and keyboard focus. Cancel leaves saved state and bindings
+  unchanged, while Save validates and commits. Preview never advances temporal state or consumes edges.
 - AND, NAND, OR, NOR, XOR, XNOR, NOT, and Buffer satisfy their boolean truth tables; the numeric
   Inverter switches the sign of finite numbers. Type errors and unavailable inputs
   remain visible and do not masquerade as valid false outputs.
@@ -587,6 +591,28 @@ request trigger; remaining true must not imply repeated external actions in late
   current result, and all existing sandbox and deployment restrictions remain in effect.
 - Disabling component authoring hides creation/editing controls while existing drawings,
   copies, fixed-library placements, and exports continue working.
+
+### Stage 2 closeout evidence — 2026-10-17
+
+The phase 2 suites passed **237/237 in Chromium and 237/237 in WebKit**, with no failures or skips.
+The final authoring walkthrough also passed in both engines; desktop and narrow-screen Inputs
+layouts were visually checked.
+
+- [x] Build the threshold-and-toggle example from a blank canvas, distinguish repeated sources,
+  and inspect proposed outputs/errors before Save. Cancel preserves the drawing; rapid edits and
+  dynamic ports retain correct feedback. Coverage: [Inputs](../tests/components-inputs.test.cjs)
+  and [library browser](../tests/library-browser.test.cjs).
+- [x] Duplicate the connected group, change one copy independently, download/reload JSON, delete
+  a source, and repair its binding. Both copies respond in downloaded HTML without HTTP requests.
+  The [component regressions](../tests/components.test.cjs) retain the wiring and persistence baseline.
+- [x] Roundtrip category memberships, pins, library definitions, and individual grouped shapes.
+  Coverage: [library organization](../tests/library-organization.test.cjs) and
+  [shape transfer](../tests/library-transfer.test.cjs).
+- [x] Exercise all eight shipped workspace tabs in the editor and offline reader.
+  Coverage: [example workspace](../tests/example-workspace.test.cjs).
+
+Stage 2 is complete on the feature branch. This closeout does not authorize implementation of
+feedback, sequential logic, shared buses, or stages 3–6; the next step is the discussion below.
 
 ### Discussion checkpoint: after stage 2, before stage 3
 
@@ -640,7 +666,7 @@ so “4017-style decoded decade counter” is the precise candidate label here. 
 ring-counter analogy describes its sequencing role, not an identical internal design.
 [Texas Instruments CD4017B documentation](https://www.ti.com/product/CD4017B).
 
-Shared-bus support is deferred. Once stage 2 is complete, discuss it with the user before
+Shared-bus support is deferred. With stage 2 complete, discuss it with the user before
 starting stage 3; do not implement it as part of the current stage or automatically at that checkpoint.
 The idea to revisit is connecting several tri-state buffers to one destination, with only one
 enabled at a time, potentially through a dedicated Bus component. Proposed behavior: no active
@@ -776,6 +802,15 @@ Stage 1 provides the **Inputs…** source picker. Internal bindings follow dupli
 selections with remapped IDs; references outside a copied selection remain explicitly unresolved.
 Deleting a source reports an unavailable binding, and undo restores it. Keep these behaviors
 when adding visible wires, new reference types, or richer port editing.
+
+The stage 2 authoring pass distinguishes same-named sources with drawing-order and world-position
+qualifiers, such as `#1 (left)` and `#2 (right)`. These labels do not rename instances or alter
+UID/port identity. Source and literal edits refresh proposed outputs and graph/validation errors
+after a short debounce; stale replies cannot replace the latest edit, and the fields retain focus.
+Pending or unavailable results replace stale output values. Preview is bounded,
+pure inspection of a temporary proposal: it does not run transitions, consume edges, advance
+timed state, or mutate the drawing. Save validates and commits; Cancel discards the proposal.
+This does not add the future document-wide Run/Preview mode.
 
 An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
 and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.

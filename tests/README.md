@@ -116,6 +116,9 @@ errors, visible unavailable inputs, and editor-only configuration controls. Indi
 tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
 input choices from literals and bindings in the editor and offline exports. Failure tests ensure
 unavailable views replace stale results, recover correctly, and leave independent controls usable.
+`tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
+unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
+late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
 A catalog-wide naming check renames every built-in API v2 component through Inputs and verifies its
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,

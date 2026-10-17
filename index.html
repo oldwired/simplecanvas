@@ -272,6 +272,7 @@
   #componentBindingsDialog{width:460px}
   .component-input{margin:14px 0}
   .component-input select{width:100%;margin-bottom:6px}
+  #componentInputsHelp{font-size:12px;color:var(--muted);line-height:1.45}
   #componentBindingsBtn[hidden]{display:none}
   .smart-template-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
   .smart-template-row[hidden]{display:none}
@@ -807,6 +808,7 @@
     <fieldset id="componentBindingFields" style="border:0;padding:0;margin:0;min-width:0">
     <label for="componentNameInput">Name</label><input id="componentNameInput" maxlength="100" autocomplete="off">
     <p>Choose a value or an output from another component in this sketch.</p>
+    <p id="componentInputsHelp">Matching names get instance numbers and position hints. Preview updates as you edit using paused signal values; Save applies your changes.</p>
     <div id="componentSettingFields"></div>
     <div id="componentInputFields"></div>
     </fieldset>
@@ -12123,8 +12125,37 @@ self.onmessage = function(e){
   const componentSettingFields=document.getElementById('componentSettingFields');
   const componentBindingFields=document.getElementById('componentBindingFields');
   let componentDialogSession=null,componentDialogSeq=0;
-  async function inspectComponentGraph(list,valid){
-    const owners=new Map();
+  function componentSourceLabels(scene){
+    const groups=new Map(),labels=new Map();
+    scene.forEach((item,index)=>{
+      if(item.type!=='smart' || item.componentApi===undefined)return;
+      const name=item.componentName||'Component '+(index+1);
+      if(!groups.has(name))groups.set(name,[]);
+      const box=worldBBox(item,scene);
+      groups.get(name).push({item,index,x:box.x+box.w/2,y:box.y+box.h/2});
+    });
+    const used=new Set(),names=new Set(groups.keys());
+    for(const [name,members] of groups){
+      const xs=members.map(m=>m.x),ys=members.map(m=>m.y);
+      const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+      members.forEach((member,index)=>{
+        let label=name;
+        if(members.length>1){
+          const position=[];
+          if(maxY-minY>1){const t=(member.y-minY)/(maxY-minY);if(t<1/3)position.push('top');else if(t>2/3)position.push('bottom');}
+          if(maxX-minX>1){const t=(member.x-minX)/(maxX-minX);if(t<1/3)position.push('left');else if(t>2/3)position.push('right');}
+          if(!position.length && (maxX-minX>1 || maxY-minY>1))position.push('middle');
+          label=name+' #'+(index+1)+(position.length?' ('+position.join(' ')+')':'');
+          // Display labels never become wiring identity; even deliberately similar names
+          // must leave each source distinguishable without renaming the saved instances.
+          while(names.has(label) || used.has(label))label+=' · '+(member.index+1);
+        }
+        used.add(label);labels.set(member.item,label);
+      });
+    }
+    return labels;
+  }
+  async function inspectComponentGraph(list,valid,owners=new Map()){
     const call=async(it,fn,args)=>{
       if(!owners.has(it))owners.set(it,createSmartExecution(it,valid));
       const owner=owners.get(it);
@@ -12145,7 +12176,8 @@ self.onmessage = function(e){
     if(items!==openingScene || activeTabId!==openingTab || items[selection[0]]!==it || componentBindingsDialog.open)return;
     if(editorTimeline)pauseComponentTimeline(editorTimeline);
     clearTimeout(componentTimelineTimer);componentTimelineTimer=null;editorComponentEvaluation=null;
-    const session={it,scene:items,tab:activeTabId,signature:componentGraphSignature(items),seq:++componentDialogSeq,rows:[],settings:[],proposal:clone(it),renderSeq:0};
+    const session={it,scene:items,tab:activeTabId,signature:componentGraphSignature(items),seq:++componentDialogSeq,
+      rows:[],settings:[],proposal:clone(it),renderSeq:0,feedbackSeq:0,feedbackTimer:null,feedbackOwners:null,outputNames:[],rendering:false,saving:false};
     componentDialogSession=session;
     const current=()=>componentDialogSession===session && componentBindingsDialog.open &&
       items===session.scene && activeTabId===session.tab && items.includes(it);
@@ -12154,21 +12186,24 @@ self.onmessage = function(e){
     session.valid=valid;session.current=current;session.changedMessage=changedMessage;
     componentBindingsError.textContent='';componentInputFields.replaceChildren();
     document.getElementById('componentOutputs').textContent='Loading inputs…';
+    document.getElementById('componentOutputs').setAttribute('aria-busy','true');
     componentNameInput.value=it.componentName||'Smart component';
     componentBindingsSave.disabled=true;componentBindingsDialog.showModal();componentNameInput.focus();
     try{
       await renderComponentPortFields(session);
-    }catch(err){if(current())componentBindingsError.textContent=valid()?err.message:changedMessage;}
+    }catch(err){if(current() && (!err.cancelled || !valid()))showComponentInputFeedback(session,{error:valid()?err.message:changedMessage});}
   }
-  function readComponentInputRows(session,proposal){
+  function readComponentInputRows(session,proposal,partial=false){
     proposal.bindings={};proposal.inputValues={};
     for(const {name,port,select,input} of session.rows){
-      if(select.value)proposal.bindings[name]=JSON.parse(select.value);
-      else{
-        const value=port.type==='number'?Number(input.value):port.type==='boolean'?input.value==='true':input.value;
-        if(port.type==='number' && (!input.value.trim() || !Number.isFinite(value)))throw new Error(name+' needs a finite number.');
-        proposal.inputValues[name]=componentScalar(value,port.type);
-      }
+      try{
+        if(select.value)proposal.bindings[name]=JSON.parse(select.value);
+        else{
+          const value=port.type==='number'?Number(input.value):port.type==='boolean'?input.value==='true':input.value;
+          if(port.type==='number' && (!input.value.trim() || !Number.isFinite(value)))throw new Error(name+' needs a finite number.');
+          proposal.inputValues[name]=componentScalar(value,port.type);
+        }
+      }catch(err){if(!partial)throw err;}
     }
   }
   function readComponentSettingRows(session,proposal){
@@ -12179,9 +12214,86 @@ self.onmessage = function(e){
     }
     proposal.state=normalizeSmartState(proposal.state);
   }
-  async function renderComponentPortFields(session){
+  function cancelComponentInputFeedback(session){
+    if(!session)return;
+    clearTimeout(session.feedbackTimer);session.feedbackTimer=null;session.feedbackSeq++;
+    if(session.feedbackOwners){
+      for(const owner of session.feedbackOwners.values())disposeSmartExecution(owner);
+      session.feedbackOwners.clear();session.feedbackOwners=null;
+    }
+  }
+  function showComponentInputFeedback(session,record=null){
+    if(!session.current())return;
+    const output=document.getElementById('componentOutputs'),pending=record===null;
+    output.setAttribute('aria-busy',String(pending));
+    const names=record?.caps?.outputs?Object.keys(record.caps.outputs):session.outputNames;
+    output.textContent=pending?'Preview outputs: checking…':names.length
+      ? 'Preview outputs: '+names.map(name=>name+' = '+(record.error || !Object.hasOwn(record.io?.outputs||{},name)
+        ? 'unavailable':record.io.outputs[name]===null?'Z (high impedance)':String(record.io.outputs[name]))).join(', ')
+      : record.error?'Preview outputs: unavailable':'Preview outputs: none.';
+    componentBindingsError.textContent=record?.error||'';
+  }
+  function queueComponentInputFeedback(session,delay=100){
+    if(!session.current() || session.rendering || session.saving)return;
+    cancelComponentInputFeedback(session);
+    if(!session.valid()){
+      showComponentInputFeedback(session,{error:session.changedMessage});componentBindingsSave.disabled=true;return;
+    }
+    const seq=session.feedbackSeq,renderSeq=session.renderSeq;
+    const valid=()=>session.valid() && session.feedbackSeq===seq && session.renderSeq===renderSeq && !session.rendering && !session.saving;
+    let proposal;
+    try{
+      proposal=clone(session.proposal);readComponentInputRows(session,proposal);readComponentSettingRows(session,proposal);
+      delete proposal.componentInvalid;
+    }catch(err){showComponentInputFeedback(session,{error:err.message});return;}
+    const scene=session.scene.map(it=>it===session.it?proposal:clone(it));
+    showComponentInputFeedback(session);
+    session.feedbackTimer=setTimeout(async()=>{
+      session.feedbackTimer=null;
+      if(!valid()){
+        if(session.current() && session.feedbackSeq===seq && !session.valid()){
+          showComponentInputFeedback(session,{error:session.changedMessage});componentBindingsSave.disabled=true;
+        }
+        return;
+      }
+      const owners=new Map();session.feedbackOwners=owners;
+      try{
+        // Inspection runs caps/compute only: no transitions, temporal memory, history, or canvas edits.
+        const graph=await inspectComponentGraph(scene,valid,owners);
+        if(valid())showComponentInputFeedback(session,graph.get(proposal));
+      }catch(err){
+        if(valid() && !err.cancelled)showComponentInputFeedback(session,{error:err.message});
+        else if(session.current() && session.feedbackSeq===seq && !session.valid()){
+          showComponentInputFeedback(session,{error:session.changedMessage});componentBindingsSave.disabled=true;
+        }
+      }finally{if(session.feedbackOwners===owners)session.feedbackOwners=null;}
+    },delay);
+  }
+  async function changeComponentConfiguration(session){
+    if(!session.current() || session.saving)return;
+    cancelComponentInputFeedback(session);
+    const seq=++session.renderSeq;
+    const drafts=new Map(session.rows.map(({name,port,select,input})=>[name,{type:port.type,source:select.value,value:input.value}]));
+    session.rendering=false;componentBindingFields.disabled=false;
+    try{
+      if(!session.valid())throw new Error(session.changedMessage);
+      const next=clone(session.proposal);
+      // Preserve even an unfinished literal across a mode/count change; its field remains editable.
+      readComponentInputRows(session,next,true);readComponentSettingRows(session,next);
+      session.proposal=next;await renderComponentPortFields(session,drafts);
+      if(session.current() && session.renderSeq===seq+1)queueComponentInputFeedback(session,0);
+    }catch(err){
+      if(!err.cancelled && session.current() && (session.renderSeq===seq || session.renderSeq===seq+1)){
+        showComponentInputFeedback(session,{error:session.valid()?err.message:session.changedMessage});componentBindingsSave.disabled=true;
+      }
+    }
+  }
+  async function renderComponentPortFields(session,drafts=null){
+    cancelComponentInputFeedback(session);
     const seq=++session.renderSeq,valid=()=>session.valid() && session.renderSeq===seq;
+    session.rendering=true;
     componentBindingsSave.disabled=true;componentBindingFields.disabled=true;
+    showComponentInputFeedback(session);
     try{
     const proposal=clone(session.proposal),owner=createSmartExecution(proposal,valid);
     let caps;
@@ -12198,11 +12310,8 @@ self.onmessage = function(e){
     const graph=await inspectComponentGraph(scene,valid);
     if(!valid())throw smartCancelled();
     session.proposal=proposal;
-    const record=graph.get(proposal),outputNames=Object.keys(caps.outputs);
-    document.getElementById('componentOutputs').textContent=outputNames.length
-      ? 'Outputs: '+outputNames.map(k=>k+' = '+(record.error || !Object.hasOwn(record.io.outputs,k)?'unavailable':record.io.outputs[k]===null?'Z (high impedance)':String(record.io.outputs[k]))).join(', ')
-      : 'This component has no outputs.';
-    componentBindingsError.textContent=record.error||'';
+    const record=graph.get(proposal);session.outputNames=Object.keys(caps.outputs);
+    showComponentInputFeedback(session,record);
     componentSettingFields.replaceChildren();session.settings=[];
     for(const [name,field] of Object.entries(caps.settings||{})){
       const row=document.createElement('div');row.className='component-input';
@@ -12219,18 +12328,14 @@ self.onmessage = function(e){
         if(field.max!==undefined)input.max=String(field.max);
       }
       input.value=String(proposal.state[name]??field.default);
-      input.addEventListener('change',async()=>{
-        try{
-          const next=clone(session.proposal);readComponentInputRows(session,next);readComponentSettingRows(session,next);
-          session.proposal=next;await renderComponentPortFields(session);
-        }catch(err){if(!err.cancelled && session.current()){componentBindingsError.textContent=err.message;componentBindingsSave.disabled=true;}}
-      });
+      input.addEventListener('change',()=>changeComponentConfiguration(session));
       row.append(label,input);componentSettingFields.append(row);session.settings.push({name,field,input});
     }
     if(session.settings.length){
       const note=document.createElement('p');note.textContent='Changing configuration may reset stored values or remove ports. Connections to removed outputs become unavailable.';
       componentSettingFields.append(note);
     }
+    const sourceLabels=componentSourceLabels(scene);
     componentInputFields.replaceChildren();session.rows=[];
     for(const [name,port] of Object.entries(caps.inputs)){
       const row=document.createElement('div');row.className='component-input';
@@ -12240,7 +12345,7 @@ self.onmessage = function(e){
       for(const source of scene){
         if(source===proposal)continue;
         for(const [output,descriptor] of Object.entries(graph.get(source)?.caps?.outputs||{})){
-          if(descriptor.type===port.type)select.add(new Option((source.componentName||'Component '+(scene.indexOf(source)+1))+' · '+output,JSON.stringify({uid:source.uid,port:output})));
+          if(descriptor.type===port.type)select.add(new Option(sourceLabels.get(source)+' · '+output,JSON.stringify({uid:source.uid,port:output})));
         }
       }
       const saved=proposal.bindings?.[name];
@@ -12249,24 +12354,38 @@ self.onmessage = function(e){
         if(!Array.from(select.options).some(o=>o.value===value))select.add(new Option('Unavailable source — choose a replacement',value));
         select.value=value;
       }
+      const draft=drafts?.get(name),preserveDraft=draft?.type===port.type;
+      if(preserveDraft){
+        if(draft.source && !Array.from(select.options).some(o=>o.value===draft.source))select.add(new Option('Unavailable source — choose a replacement',draft.source));
+        select.value=draft.source;
+      }
       const input=port.type==='boolean' || port.options?document.createElement('select'):document.createElement('input');
       input.setAttribute('aria-label',name+' value');
       if(port.options){input.className='select';for(const option of port.options)input.add(new Option(option,option));}
       else if(port.type==='boolean'){input.className='select';input.add(new Option('True','true'));input.add(new Option('False','false'));}
       else{input.type=port.type==='number'?'number':'text';if(port.type==='number')input.step='any';else input.maxLength=2000;}
-      const initial=String(proposal.inputValues?.[name]??port.default??port.options?.[0]??(port.type==='number'?0:port.type==='boolean'?false:''));
+      const initial=preserveDraft?draft.value:String(proposal.inputValues?.[name]??port.default??port.options?.[0]??(port.type==='number'?0:port.type==='boolean'?false:''));
       if(port.options && !port.options.includes(initial))input.add(new Option('Unavailable value — choose a replacement',initial));
       input.value=initial;
-      const toggle=()=>{input.hidden=select.value!=='';input.disabled=select.value!=='';};select.addEventListener('change',toggle);toggle();
+      const toggle=()=>{input.hidden=select.value!=='';input.disabled=select.value!=='';};
+      select.addEventListener('change',()=>{toggle();queueComponentInputFeedback(session);});toggle();
+      input.addEventListener('input',()=>queueComponentInputFeedback(session));
+      input.addEventListener('change',()=>queueComponentInputFeedback(session));
       row.append(label,select,input);componentInputFields.append(row);session.rows.push({name,port,select,input});
     }
     if(!session.rows.length)componentInputFields.textContent='No inputs. Other components can use the outputs listed below.';
     componentBindingsSave.disabled=false;
-    }finally{if(session.current() && session.renderSeq===seq)componentBindingFields.disabled=false;}
+    }finally{if(session.current() && session.renderSeq===seq){session.rendering=false;componentBindingFields.disabled=false;}}
   }
   document.getElementById('componentBindingsBtn').addEventListener('click',openComponentBindings);
   document.getElementById('componentBindingsCancel').addEventListener('click',()=>componentBindingsDialog.close());
-  componentBindingsDialog.addEventListener('close',()=>{if(componentBindingsDialog.open)return;componentDialogSession=null;componentDialogSeq++;editorComponentEvaluation=null;render();});
+  componentBindingsDialog.addEventListener('close',()=>{
+    if(componentBindingsDialog.open)return;
+    cancelComponentInputFeedback(componentDialogSession);
+    if(componentDialogSession)componentDialogSession.renderSeq++;
+    document.getElementById('componentOutputs').setAttribute('aria-busy','false');
+    componentDialogSession=null;componentDialogSeq++;editorComponentEvaluation=null;render();
+  });
   componentBindingsDialog.addEventListener('keydown',e=>e.stopPropagation());
   componentBindingsDialog.addEventListener('click',e=>e.stopPropagation());
   document.getElementById('componentBindingsForm').addEventListener('submit',async e=>{
@@ -12274,13 +12393,16 @@ self.onmessage = function(e){
     if(!features.smartComponents)return;
     if(!session?.current() || componentBindingsSave.disabled)return;
     if(!session.valid()){componentBindingsError.textContent=session.changedMessage;componentBindingsSave.disabled=true;return;}
+    cancelComponentInputFeedback(session);session.saving=true;
+    const seq=++session.renderSeq,valid=()=>session.valid() && session.renderSeq===seq;
     componentBindingsSave.disabled=true;componentBindingFields.disabled=true;componentBindingsError.textContent='';
+    showComponentInputFeedback(session);
     try{
       const proposal=clone(session.proposal);proposal.componentName=componentNameInput.value.trim()||'Smart component';
       readComponentInputRows(session,proposal);readComponentSettingRows(session,proposal);delete proposal.componentInvalid;
       const scene=session.scene.map(it=>it===session.it?proposal:clone(it));
-      const graph=await inspectComponentGraph(scene,session.valid);
-      if(!session.valid())throw smartCancelled();
+      const graph=await inspectComponentGraph(scene,valid);
+      if(!valid())throw smartCancelled();
       const result=graph.get(proposal);
       // A valid connection to an undriven output can be saved before its source is enabled.
       if(result?.error && !result.highImpedance)throw new Error(result.error);
@@ -12288,8 +12410,11 @@ self.onmessage = function(e){
       session.it.componentName=proposal.componentName;session.it.bindings=proposal.bindings;session.it.inputValues=proposal.inputValues;session.it.state=proposal.state;
       delete session.it.componentInvalid;
       commitHistory();componentBindingsDialog.close();render();
-    }catch(err){if(session.current())componentBindingsError.textContent=session.valid()?err.message:session.changedMessage;}
-    finally{if(session.valid()){componentBindingsSave.disabled=false;componentBindingFields.disabled=false;}}
+    }catch(err){if(session.current() && session.renderSeq===seq)showComponentInputFeedback(session,{error:session.valid()?err.message:session.changedMessage});}
+    finally{
+      session.saving=false;
+      if(valid()){componentBindingsSave.disabled=false;componentBindingFields.disabled=false;}
+    }
   });
 
   // ---------- icon import dialog (Iconify) ----------

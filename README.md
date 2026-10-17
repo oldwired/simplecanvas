@@ -291,7 +291,12 @@ Their script templates also remain available for authoring. Select the gauge, cl
 choose **Number control · value** for its
 `value` input, and save. The same dialog can name an instance or set a literal input value.
 It lists compatible outputs from components in the active sketch.
-Give repeated instances distinct names in **Inputs…** so their outputs are easy to identify.
+When several sources share a name, the picker adds qualifiers such as **#1 (left)** and
+**#2 (right)**. These drawing-order and position hints help identify the source; they do not
+rename instances or change their connections. You can still give instances distinct names.
+After changing a source or literal, the dialog previews the proposed outputs and reports errors.
+**Save** applies the changes; **Cancel** leaves the drawing unchanged. This is a paused preview:
+it does not advance timers, consume pulse edges, or change component state.
 Every built-in API v2 component displays that instance name as its caption, separately from its
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports.
