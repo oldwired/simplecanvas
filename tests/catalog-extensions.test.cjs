@@ -415,11 +415,11 @@ test('spreadsheet context menu: Insert function submenu wraps the cell formula a
  await menus.nth(1).getByRole('menuitem',{name:/Math/}).hover();
  await menus.nth(2).getByRole('menuitem',{name:'ROUND(value, digits)'}).click();
  const input=page.locator('input[data-smart-number-input]');await input.waitFor();
- assert.deepEqual(await input.evaluate(e=>[e.value,e.value.slice(e.selectionStart,e.selectionEnd)]),['=ROUND(A1/A2, digits)','digits'],
+ assert.deepEqual(await input.evaluate(e=>[e.value,e.value.slice(e.selectionStart,e.selectionEnd)]),['=ROUND(A1/A2,digits)','digits'],
    'the formula is wrapped and the first open placeholder is selected');
  assert.equal(await menus.count(),0,'menus close after the choice');
  await page.keyboard.type('0');await page.keyboard.press('Enter');
- await page.waitForFunction(()=>__test.run('items[0].state.cells.A3')==='=ROUND(A1/A2, 0)');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A3')==='=ROUND(A1/A2,0)');
  await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await run('smartHitSettled');
  const shown=await run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>k.text);})()`);
  assert.ok(shown.includes('3'),'ROUND(10/4, 0) shows 3');

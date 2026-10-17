@@ -405,9 +405,9 @@
     else if(raw)first=this._bool(raw)!==null||Number.isFinite(Number(raw))?raw:'"'+raw.replace(/"/g,'')+'"';
     const filled=first!==null&&args.length?1:0;
     if(filled)args[0]=first;
-    const head='='+name+'(',text=head+args.join(', ')+')';
+    const head='='+name+'(',text=head+args.join(',')+')';   // no spaces: arguments start right after ','
     if(filled<args.length){
-      let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+2;
+      let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+1;
       const ph=args[filled],q=ph[0]==='"';
       return {text,select:[at+(q?1:0),at+ph.length-(q?1:0)]};
     }
