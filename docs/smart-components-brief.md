@@ -7,7 +7,9 @@ These additions are not yet part of the main-branch baseline below.
 Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
-fifteen-tab workspace. Shared buses and multiple drivers are deferred; each input retains one source.
+fifteen-tab workspace. A subsequent text-passing milestone adds Text input, Number input, Text label,
+Memo, and a sixteenth example tab before stage 3. Shared buses and multiple drivers are deferred;
+each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
@@ -86,7 +88,7 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including the feedback milestone.
+These boundaries describe the feature branch, including the feedback and text-passing milestones.
 
 - **Connections carry scalar values within one sketch.** Number, string, and boolean ports are
   supported. Shared datasets, cross-tab connections, and routed events remain future work.
@@ -108,7 +110,8 @@ These boundaries describe the feature branch, including the feedback milestone.
   organization, and pins; built-in definitions remain. Export is for backups and sharing.
   Workspace saves/autosave retain sketch tabs and placed scripts, state, and connections, but
   exclude the library, pins, and category organization.
-  Constant and Value label are numeric. Compare accepts two numbers and a selectable relation;
+- **Ports remain explicitly typed.** Text input and Text label carry strings; Number input,
+  Constant, and Value label carry numbers. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
   document-wide Run/Preview mode inside the editor would be an additional feature.
@@ -132,7 +135,8 @@ Keep these checks as the regression baseline for subsequent stages.
 ## Delivery stages
 
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
-branch. The implemented feedback milestone below follows stage 2 and precedes stage 3.
+branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
+Both precede stage 3 and reuse the scalar graph.
 Stages 3–6 remain proposals; shared buses are explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -144,6 +148,7 @@ Share runtime helpers between editor and export throughout.
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
+| 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
 | 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
@@ -186,7 +191,7 @@ The [editable workspace](../examples/smart-components-workspace.json) covers **B
 logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Shift memory**, and
 **LED patterns**, plus seven feedback/sequential tabs: **Self-reset**, **Stop at zero**,
 **Reset and stop**, **Latch laboratory**, **Shared-edge storage**, **Sequences**, and
-**Delayed feedback**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
+**Delayed feedback**, followed by **Text and notes**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
 the current workspace first if it should be retained. The matching
 [self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
 
@@ -198,8 +203,8 @@ changes; reloading restores the exported snapshot. JSON remains the editable sou
 
 Step 2.3 and the focused authoring pass are complete. Component discovery, placement, input
 configuration, and error recovery have been checked through the workflow recorded below.
-The feedback milestone extends these examples and adds Pause/Step/Resume without requiring
-the proposed full Run/Preview authoring mode.
+The feedback milestone extends these examples and adds Pause/Step/Resume; the text milestone
+adds typed entry and stored notes. Neither requires the proposed full Run/Preview authoring mode.
 
 ### Preserve the working popup
 
@@ -228,9 +233,9 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 
 | Default category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Toggle, numeric Constant, Trigger |
+| Controls | Number control, Text input, Number input, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
-| Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
@@ -242,8 +247,9 @@ control, Math, and Counter without adding another delivery stage.
 
 All smart-shape templates are also available as built-in library entries. Adding Clock, Arrow,
 Arc, Timer, Chart, Minimal, and Blank brought the stage 2 catalog to 51 entries. The feedback
-milestone adds eight storage/sequencing entries, bringing the current catalog to **59 entries**,
-including **50 API v2 components**.
+milestone adds eight storage/sequencing entries, bringing that catalog to 59 entries,
+including 50 API v2 components. Text input, Number input, Text label, and Memo bring the current
+catalog to **63 entries**, including **54 API v2 components**.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
 empty. Authors can place or pin them offline, and the template authoring dialog remains available.
@@ -754,8 +760,8 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The expanded [fifteen-tab workspace](../examples/smart-components-workspace.json) keeps the original
-eight examples and adds the seven feedback/sequential tabs described above. It includes all three
+The feedback milestone contributed fifteen tabs to the [current sixteen-tab workspace](../examples/smart-components-workspace.json):
+the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
 Its [HTML reader](../examples/smart-components-workspace.html) is regenerated through the real editor
@@ -774,7 +780,7 @@ exporter by [the update tool](../tools/update-example-workspace.cjs); it has no 
 - [Sequential contracts](../tests/sequential-components.test.cjs): all eight new built-ins,
   three-valued gate truth tables, priorities, bounded ports, source parity, and rendering.
 - [Workspace](../tests/example-workspace.test.cjs) and
-  [feedback examples](../tests/feedback-workspace.test.cjs): all fifteen tabs, current source snapshots,
+  [feedback examples](../tests/feedback-workspace.test.cjs): the fifteen feedback-milestone tabs, current source snapshots,
   local bindings, the original eight control workflows, counter feedback, latch initialization/hold,
   shared-edge storage, sequences, delayed feedback, and actual offline interaction.
 
@@ -840,6 +846,63 @@ arithmetic components combine numbers. Revisit a Bus only when a drawing needs s
 wiring and contention diagnosis. Its potential no-driver Z / one-driver value / multiple-driver
 error policy remains a proposal, not an implicit behavior of ordinary connections.
 
+## Text passing: implemented milestone before stage 3
+
+String ports already belonged to API v2; this milestone makes them useful through ready-to-place
+controls and displays. It follows feedback and precedes embedded datasets. Text passing does not
+introduce routed events, downloads, or network effects: submission is an ordinary bounded Boolean
+pulse connected through the existing graph.
+
+- **Text input** exposes string `value` and Boolean `submitted`. Its host-owned field appears directly
+  on the control and accepts Enter or Submit, with maximum length, required-value, and placeholder settings. It preserves
+  strings such as `0012`; masks, regular-expression validation, and password input remain later work.
+  Its Boolean `clear` input (default false) empties the value on a rising edge, cancels pending
+  submissions, and lowers Submitted without emitting a new submission. Initial high Clear primes
+  the detector without erasing stored text. A self-connection from Submitted to Clear empties the
+  field after consumers such as Memo have captured the accepted value.
+- **Number input** exposes numeric `value` and Boolean `submitted`, with inclusive min/max and a
+  positive step anchored at min. Invalid, non-finite, off-grid, and out-of-range entries are rejected.
+  It uses the same inline entry interaction. The existing Number control retains its slider,
+  step buttons, and dialog-based direct entry.
+- **Inline editing** keeps focus after submission for repeated entries. Escape or clicking outside
+  discards an unsubmitted draft and exits; blur never submits. The simulation continues while typing,
+  with an existing user pause respected. Tab changes and stale gestures close the field. Optional
+  Show submission state and Show hints settings start off on both input controls; validation errors
+  remain visible.
+- **Submission** normally emits one 100 ms high pulse per accepted entry, with at least 10 ms low
+  between queued pulses, even for repeated equal values. Clear can end a pulse early and cancel
+  the remaining queue. Each pulse retains its own associated value. Up to 64
+  pending submissions fit within the existing state budget; a full queue rejects further entries
+  visibly. Paused submissions wait for Step or Resume. Reopening, copying, or undo restoration
+  preserves the latest value without replaying pending actions. Canceled drafts and failed validation emit nothing.
+- **Text label** displays and republishes its string `value` input. Wrapping/truncation affects only
+  the drawing; the complete output remains available. Connected text renders literally as a plain
+  label without a frame. The normal stroke controls can add an outline with the selected color,
+  thickness, and line style. Show name and Show hints are optional and start off.
+- **Memo** takes string `content` and `line`, plus Boolean `set`, `append`, and `clear` commands.
+  Commands act on rising edges, with Clear > Set > Append priority when several rise together.
+  Set replaces the stored content; Append adds a logical line/block; Clear empties it. Its outputs
+  are complete string `text` and numeric `lineCount`. An empty buffer has zero lines; appending an
+  empty line creates one blank line. CRLF and lone CR normalize to LF. Initial high commands
+  establish baselines without changing saved contents. A compact inset leaves most of its area
+  for the stored text. Show counts and Show hints start off; rejected-update notices and input
+  errors always remain visible.
+- **Bounds** remain explicit: strings use at most 2,000 UTF-16 code units and state at most 4,000
+  serialized JSON characters. Memo defaults to 100 lines and 2,000 characters. Rejected updates
+  preserve the old buffer atomically and show a notice; lowering limits never truncates existing
+  content. Long buffers show their latest wrapped lines while retaining the complete output.
+
+The **Text and notes** workspace tab connects Text input `value` to Text label `value` and Memo
+`line`, and Text input `submitted` to Memo `append`. Separate buttons demonstrate Set and Clear;
+a line-count readout and a separate Number input/Gauge pair show the two output types. It belongs
+to the same editable workspace and offline HTML reader as the earlier examples.
+
+Acceptance covers literal rendering, independent instances, accepted versus rejected submissions,
+repeated equal values, queued ordering, Pause/Step/Resume, restoration without replay, Text input
+Clear and clear-after-submit, Memo command priority, blank lines, and budget rejection. Inline entry
+shares commit/cancel behavior between the editor and reader. Sensitive input handling for external
+integrations remains part of step 6.1 rather than an implied capability of ordinary text ports.
+
 ## The connected document
 
 This is the target model. Stage 1 implements scalar inputs/outputs and persistent instance
@@ -890,9 +953,11 @@ these fields and rebuilds port choices. Port-defining settings are not live port
 and reader interactions must not change the declared port layout. This supports a bounded channel
 count while retaining stable names (`in1`, `out1`, etc.) for connection identity.
 
-A `kind:'number'` handle declares a finite value and optional min/max/step. The host owns the entry
-dialog, validates acceptance, and invokes `dragEdit` with the accepted number in `lx`; cancellation
-makes no state change. Editor and offline HTML use this same contract.
+A `kind:'number'` handle declares a finite value and optional min/max/step. A `kind:'text'` handle
+declares a string and optional maxLength/required/placeholder. The host owns the entry dialog,
+validates acceptance, and invokes `dragEdit` with the accepted typed value in `lx`; cancellation
+makes no state change. Editor and offline HTML use this same contract. Text children can set
+`plainText:true` to render connected/user-entered content literally rather than enabling Markdown.
 
 An optional `unavailableChildren(state, style, w, h, editing, io)` view hook can retain a component's
 recognizable silhouette before its inputs are connected. The host supplies empty inputs/outputs
@@ -1102,9 +1167,10 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
 - **Configuration and references.** Persist operation definitions and instance-scoped references,
   never live clients or request handles. Define copy/remapping, deletion, and missing-reference
   behavior. Reference validity does not itself authorize an operation.
-- **Reusable input fields.** Text, number, toggle, and password fields need shared focus, keyboard,
-  commit/cancel, and validation behavior in editor and exported HTML. This small field-control
-  capability is required before configurable connections; it need not wait for full Run/Preview.
+- **Reusable input fields.** Text and number entry already share host-owned keyboard, commit/cancel,
+  and validation behavior in editor and exported HTML; Toggle is also available. Reuse those
+  contracts for configurable connections, and design password entry and sensitive-value handling
+  separately. This does not need to wait for full Run/Preview.
   Sensitive values use a host-managed session store and restricted references to approved
   configuration consumers, not ordinary persisted string outputs visible to arbitrary scripts.
 - **Execution policy.** Keep network execution separate from `smartComponents`, which only hides

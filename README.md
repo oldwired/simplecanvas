@@ -183,13 +183,13 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 
 | Default category | Examples |
 | --- | --- |
-| Controls | Number control, Toggle, Constant, Trigger |
+| Controls | Number control, Text input, Number input, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
-| Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 59 entries, including 50 connected API v2 components. Every smart-shape
+The catalog includes 63 entries, including 54 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -280,7 +280,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore fifteen connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore sixteen connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -301,6 +301,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Shared-edge storage | Clock two flip-flops together and sample a numeric value. |
 | Sequences | Circulate a bit, construct a Johnson sequence, and clock a decoded decade counter. |
 | Delayed feedback | Watch a NOT/Delay loop alternate with a real time boundary. |
+| Text and notes | Submit text to a label and memo, replace or clear the memo, and enter a numeric value. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -308,6 +309,40 @@ directly. Select a component and open **Inputs…** in the editor to inspect or 
 bindings. The illustrative arrows are ordinary drawing objects. Each tab is independent;
 timing pauses while that tab is inactive. Reader changes survive tab switches, and reloading
 the HTML restores the exported snapshot.
+
+**Text input** and **Number input** provide typed entry with a **Submitted** Boolean pulse.
+Click their entry field, type directly on the canvas, and press **Enter** or **Submit**. The field
+stays focused for the next entry. Accepting the same value again produces another pulse. **Escape**
+or clicking outside discards an unsubmitted draft; invalid entries stay open with an error.
+Editing leaves the simulation running unless you have paused it. Text input has maximum-length,
+required-value, and placeholder settings. Number input has minimum, maximum, and step settings;
+its output is a number, while Text input preserves a string such as `0012`. Input masks and
+additional text-validation rules are deferred. These are separate from the slider-based Number control.
+
+Connect **Text input · value** to **Text label · value** to display a string. To collect submissions,
+also connect **Text input · value** to **Memo · line**, and **Text input · submitted** to
+**Memo · append**. Each accepted entry then appends exactly once, including repeated identical text.
+The input queues up to 64 pending submissions within its storage budget, preserving their values
+and order while paused; Step or Resume processes them. Reopening, copying, or restoring history
+retains the text/number but does not replay pending submissions.
+
+Text input also has a Boolean **Clear** input. A false-to-true pulse empties the field and cancels
+pending submissions without emitting Submitted. Connect a Trigger button to Clear for a separate
+reset, or connect the Text input's own **submitted** output to its **clear** input to empty the field
+after submission. Memo still captures the accepted text before the field clears. A Clear input
+already high when the drawing starts establishes a baseline without erasing the saved value.
+
+**Memo** stores text until a rising edge on **Set**, **Append**, or **Clear**. Set replaces it with
+**Content**; Append adds **Line** as a new line; Clear empties it. If several triggers rise together,
+Clear wins over Set, then Append. Outputs are the complete **Text** and **Line count**. An empty memo
+has zero lines; appending an empty line creates one blank line. Limits default to 100 lines and
+2,000 characters; a rejected update leaves the previous contents intact and shows a notice. A long
+memo displays its latest lines while its output retains the full text. Text label and Memo display
+incoming text literally. Text label starts as plain text without a frame; Memo uses a compact
+content area. Enable Text label's normal stroke controls to add an outline using the selected
+color, thickness, and line style. In **Inputs…**, enable **Show submission state** or **Show hints** for the input
+controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
+label. These optional details start hidden; errors and rejected-update notices remain visible.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.

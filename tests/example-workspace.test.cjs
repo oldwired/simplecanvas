@@ -39,7 +39,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===15 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===16 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -55,14 +55,15 @@ async function editorHandle(page,run,tab,id,handleId){
   })()`);
   assert.ok(handle,target+' has interactive '+handleId);
   const box=await page.locator('#canvas').boundingBox();
-  await page.mouse.click(box.x+item.x+handle.x,box.y+item.y+handle.y);await run('smartHitSettled');
+  await page.mouse.click(box.x+item.x+handle.x,box.y+item.y+handle.y);
+  if(!['text','number'].includes(handle.kind))await run('smartHitSettled');
 }
 const outputs=(run,tab,id)=>run(`(async()=> (await resolveSmartComponentIo(items.find(item=>item.uid===${JSON.stringify(uid(tab,id))}))).outputs)()`);
 async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all fifteen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all sixteen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -77,7 +78,7 @@ test('shipped workspace imports all fifteen tabs with valid local bindings and c
     }
     return result;
   })()`);
-  assert.equal(checked.length,15);
+  assert.equal(checked.length,16);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -90,7 +91,7 @@ test('shipped workspace imports all fifteen tabs with valid local bindings and c
   assert.equal(new Set(allIds).size,allIds.length);
 }));
 
-test('all eight imported examples respond to their controls and inactive timers pause',async()=>app(async({page,run})=>{
+test('imported controls, routing, displays, and text examples respond while inactive timers pause',async()=>app(async({page,run})=>{
   await importExample(page,run);
   await activate(run,1);await editorHandle(page,run,1,'source','plus');
   assert.equal((await outputs(run,1,'readout')).value,51);
@@ -129,11 +130,26 @@ test('all eight imported examples respond to their controls and inactive timers 
   await editorHandle(page,run,8,'even-rows','toggle');await editorHandle(page,run,8,'even-cols','toggle');
   assert.deepEqual(Object.values(await outputs(run,8,'crossings')),Array(8).fill(255));
   await editorHandle(page,run,8,'row-byte','plus');assert.equal((await outputs(run,8,'smiley')).r1,61);
+
+  await activate(run,16);assert.deepEqual(await outputs(run,16,'memo'),{text:'',lineCount:0});
+  await editorHandle(page,run,16,'entry','entry');await page.locator('#smartTextValue').fill('Workspace note');
+  await page.locator('#smartTextValue').press('Enter');
+  await page.waitForFunction(()=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>0);await run('smartHitSettled');
+  await waitState(page,16,'memo','state.text==="Workspace note"');
+  assert.equal((await outputs(run,16,'label')).value,'Workspace note');assert.equal((await outputs(run,16,'count')).value,1);
+  await editorHandle(page,run,16,'clear','trigger');await waitState(page,16,'memo','state.lineCount===0');
+  await editorHandle(page,run,16,'number','entry');await page.locator('#smartNumberValue').fill('73');
+  await page.locator('#smartNumberValue').press('Enter');
+  await page.waitForFunction(()=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>0);await run('smartHitSettled');
+  assert.equal((await outputs(run,16,'gauge')).percentage,73);
 }));
 
 function readerHost(page,tab,id){
-  const name=itemFor(tab,id).componentName,escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  return page.locator('.tab-panel').nth(tab-1).locator('[data-smart-index]').filter({has:page.locator('text').filter({hasText:new RegExp('^'+escaped+'$')})});
+  // Display captions are optional (Text label is just its text by default).
+  // The reader uses the original item index for each smart host.
+  const index=workspace.tabs[tab-1].items.findIndex(item=>item.uid===uid(tab,id));
+  assert.ok(index>=0,'example contains '+uid(tab,id));
+  return page.locator('.tab-panel').nth(tab-1).locator('[data-smart-index="'+index+'"]');
 }
 async function readerTab(page,tab){
   await page.locator('.tab-select').nth(tab-1).click();
@@ -141,7 +157,7 @@ async function readerTab(page,tab){
   await page.waitForFunction(panel=>[...panel.querySelectorAll('[data-smart-index]')].every(host=>host.dataset.smartReady==='true'),await panel.elementHandle());
 }
 async function readerHandle(page,tab,id,kind){
-  const item=itemFor(tab,id),point=kind==='plus'?{x:item.w*.75,y:item.h*.84}:kind==='trigger'?{x:item.w*.38,y:item.h*.49}:{x:item.w*.5,y:item.h*.69};
+  const item=itemFor(tab,id),point=kind==='plus'?{x:item.w*.75,y:item.h*.84}:kind==='trigger'?{x:item.w*.38,y:item.h*.49}:kind==='entry'?{x:item.w*.5,y:item.h*.67}:{x:item.w*.5,y:item.h*.69};
   const host=readerHost(page,tab,id);assert.equal(await host.count(),1,item.componentName+' identifies one exported component');
   const position=await host.evaluate((host,point)=>{const at=new DOMPoint(point.x,point.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:at.x,y:at.y};},point);
   await page.mouse.click(position.x,position.y);
@@ -150,14 +166,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has fifteen working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has sixteen working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),15);
-    for(let tab=1;tab<=15;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),16);
+    for(let tab=1;tab<=16;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -174,6 +190,12 @@ test('shipped offline HTML has fifteen working tabs and needs no HTTP dependenci
     },await readerHost(page,7,'second').elementHandle());
     await readerTab(page,8);await readerHandle(page,8,'even-rows','toggle');await readerHandle(page,8,'even-cols','toggle');
     await page.waitForFunction(host=>host.querySelectorAll('ellipse[fill="#ef4444"]').length===64,await readerHost(page,8,'crossings').elementHandle());
+    await readerTab(page,16);await readerHandle(page,16,'entry','entry');await page.locator('#smartTextValue').fill('Offline note');
+    await page.locator('#smartTextValue').press('Enter');await readerText(page,16,'memo','Offline note');await readerText(page,16,'label','Offline note');
+    await readerHandle(page,16,'clear','trigger');
+    await page.waitForFunction(host=>!host.textContent.includes('Offline note'),await readerHost(page,16,'memo').elementHandle());
+    await readerHandle(page,16,'number','entry');await page.locator('#smartNumberValue').fill('73');await page.locator('#smartNumberValue').press('Enter');
+    await readerText(page,16,'gauge','73%');
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

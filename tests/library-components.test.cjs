@@ -85,7 +85,7 @@ async function settledDrawings(page){
   await page.waitForFunction(()=>__test.run('items.every(item=>smartChildrenCache.has(item.uid))'));
 }
 
-const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
+const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
   delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
@@ -431,7 +431,7 @@ test('Math operations are configured per instance in Inputs and persist through 
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
-test('every API2 catalog component uses its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
+test('every API2 catalog component can show its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
     const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2);
@@ -445,6 +445,7 @@ test('every API2 catalog component uses its instance name in canvas, SVG, and of
     };
     items=definitions.map((definition,index)=>({
       ...clone(definition.items[0]),uid:'catalog-name-'+index,x:40+(index%4)*360,y:40+Math.floor(index/4)*200,
+      ...(definition.key==='textLabel'?{state:{...clone(definition.items[0].state),showName:true}}:{}),
       inputValues:{...Object.fromEntries(Object.entries(definition.ports.inputs).map(([name,port])=>[
         name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:'sample')
       ])),...validInputs[definition.key]}

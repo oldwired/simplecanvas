@@ -251,7 +251,7 @@ Returns `[{id, x, y, kind?, editorOnly?}, ...]` — one entry per point `hitEdit
 same **local** coordinate frame as `children()` (container's own top-left as origin).
 Every interactive ID must be declared here; a script with no handles cannot receive a valid
 handle action. The app draws a small solid-blue dot for each `'drag'` handle. It draws no dot
-for `'click'` or `'number'` handles: draw their buttons or labels yourself in `children()`. The four corner
+for `'click'`, `'number'`, or `'text'` handles: draw their buttons or labels yourself in `children()`. The four corner
 markers indicate edit mode and are not interactive handles.
 IDs are unique, nonempty strings of at most 64 characters. `hitEdit()` must return one of these
 IDs or `null`/`undefined`. A response can contain at most 128 handles. An optional boolean `editorOnly`
@@ -287,6 +287,31 @@ HTML; `editorOnly:true` can restrict it to authoring.
   min:-20, max:40, step:0.25 }
 ```
 
+`kind:'text'` provides host-owned single-line text entry. Its `value` is a string
+of at most 2,000 UTF-16 code units. Optional metadata is integer `maxLength` from 0 to 2,000,
+Boolean `required`, and a `placeholder` string of at most 120 characters. Successful Enter or Apply
+passes the accepted **string in `lx`**, with `ly` zero. The script validates domain rules before
+the dialog closes; a rejected update keeps it open. Cancel, Escape, tab changes, and stale gestures
+leave state unchanged. Scripts draw the entry field and receive values; they do not create DOM inputs.
+
+```js
+{ id:'entry', x:w/2, y:h/3, kind:'text', value:state.text,
+  maxLength:2000, required:false, placeholder:'Enter a message' }
+```
+
+Text and number handles can supply `inline:{x,y,w,h,fontSize}` to place the host-owned field
+directly over the drawn control. These are local coordinates in the same frame as `children()`.
+The entry box must fit inside the component's width and height.
+The built-in Text input and Number input use this mode. Enter or Submit validates and commits
+the draft, then keeps the field focused for repeated entries. Escape or clicking outside cancels
+the unsubmitted draft and exits; blur never submits. Tab changes and stale gestures also close
+the field. Editing an inline field does not pause simulation; an existing user pause is respected.
+The older Number control keeps its dialog-based numeric entry.
+
+The handle itself does not emit a pulse. The built-in Text input and Number input implement
+`submitted` through their state/transition contract, so another accepted entry with the same value
+can trigger a consumer again. Do not infer submission from a change to the `value` output.
+
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
 Given a press position, return the `id` of the handle it landed on (within your own chosen hit
@@ -307,7 +332,7 @@ hitEdit(state, lx, ly, w, h){
 Given the `id` `hitEdit` returned and the current (local) pointer position, return the new
 state. Called continuously while dragging a `'drag'`-kind handle, or exactly once (from the
 original press position) for a `'click'`-kind handle or a zero-movement click. A `'number'` handle
-uses the accepted numeric entry as `lx`, as described above.
+uses the accepted numeric entry as `lx`; a `'text'` handle uses the accepted string, as described above.
 
 The [worked example](#a-complete-worked-example) uses the same layout helper in `dragEdit()`
 and the drawing hooks to keep its radius within the current box.
@@ -389,7 +414,7 @@ discards superseded results. Size, style, and presentation refreshes do not reco
 The built-in Live clock samples wall time in `transition` and publishes that snapshot through
 pure `compute`, keeping its hands, readout, and connected outputs synchronized.
 
-The optional API v2 `transition(inputs, state, memory, {now, historical})` hook adds explicit stateful,
+The optional API v2 `transition(inputs, state, memory, {now, historical, runtimeId})` hook adds explicit stateful,
 timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
 instance state; `memory` is a transient JSON object, isolated per instance and never saved or
 exported. Both use the existing 4,000-character state limit and JSON validation. `nextWakeAt`
@@ -516,11 +541,12 @@ input, type, or non-settling-loop errors still prevent saving. Combinational una
 through dependent components in both the editor and exported HTML. Inputs retain one source each; this does not add
 shared buses, pull-up/down resolution, or electrical simulation.
 
-The host appends `{inputs, outputs, name}` as the final `io` argument to these v2 hooks.
+The host appends `{inputs, outputs, name, runtimeId}` as the final `io` argument to these v2 hooks.
 `name` is the instance name from **Inputs…**, or an empty string for unnamed imports. It is
 presentation metadata: renaming redraws the instance without changing computed port values.
-Every built-in API v2 component uses it as the visible caption, falling back to its catalog name
-when empty. Captions fit within the shape, with wrapping or truncation for long names, and remain
+Built-in API v2 components use it for their captions, falling back to their catalog names
+when empty. Text label shows its caption only when **Show name** is enabled.
+Captions fit within the shape, with wrapping or truncation for long names, and remain
 separate from numeric readouts, state labels, and operation symbols.
 
 ```text
@@ -530,6 +556,13 @@ hitEdit(state, lx, ly, w, h, style, io)
 dragEdit(state, handle, lx, ly, w, h, style, io)
 exportBehavior(state, io)
 ```
+
+`runtimeId` is an opaque, host-generated identifier for the current instance object. It is stable
+while that object remains in the current runtime and is also provided to `transition` in its context.
+Loading, copying, and history restoration create new objects with new identifiers. It is metadata,
+not a port or saved component identity. The typed input built-ins stamp accepted interactions with
+this identifier so their first transition can distinguish submissions made while paused from old
+queued actions restored from a document. Scripts must not treat it as a secret or an authorization token.
 
 V2 `dragEdit` must return **`{state: newState}`**. Only that envelope field is supported;
 events and effects are not part of v2. `initState()` still returns the raw state object.
@@ -661,7 +694,7 @@ yourself. Every child needs a supported `type` and its required geometry:
 | `line` | Required `x1`, `y1`, `x2`, `y2` |
 | `arrow` | Line geometry, plus optional `hs`, `he`, `hsStyle`, `heStyle` (see [Arrowheads](#arrowheads)) |
 | `path` | Required `points`: at least one `{x,y}` point. Optional `mode`: `'pen'` (default), `'marker'` (translucent), or `'brush'` (chisel stroke) |
-| `text` | Required `x`, `y`, `w`, `h`, `text`; optional `font`, `fontFamily`, `fontSize`, and `align` (`'left'`, `'center'` (default), or `'right'`) |
+| `text` | Required `x`, `y`, `w`, `h`, `text`; optional `font`, `fontFamily`, `fontSize`, `plainText`, and `align` (`'left'`, `'center'` (default), or `'right'`) |
 | `polygon` | Required `points`: `{x,y}` points with optional Bézier controls or arcs. `closed` defaults to `true` and requires at least three points; `closed:false` requires at least two. Optional `fillRule`: `'nonzero'` (default) or `'evenodd'`. Open polygons also support arrowheads |
 
 ### Shared fields and defaults
@@ -695,6 +728,8 @@ the default weight is 600. Use the family keys instead of hand-writing font stac
 
 Text beginning with a bare `---` first line uses the app's Markdown renderer, just like ordinary
 text boxes; see [Text formatting](README.md#text-formatting-and-copying) for supported Markdown syntax.
+Set `plainText:true` on a text child to display that marker and all content literally. Use this for
+user-entered or connected text that should never opt into Markdown formatting.
 
 ### Arrowheads
 
@@ -1073,11 +1108,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 59 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 63 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 50 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 54 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1086,6 +1121,45 @@ The built-in catalog includes 50 API v2 components, with editable sources in `ex
 - [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
   step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
   at `min`; the upper bound is reachable even if not on that grid.
+- [Text input](examples/text-input.js) and [Number input](examples/number-input.js): host-owned
+  inline single-line entry and typed `value` plus Boolean `submitted` outputs. Enter/Submit validates and
+  normally queues one 100 ms pulse per accepted value, separated by at least 10 ms low, including
+  equal consecutive values. Each rising pulse carries its own submitted value. The bounded inbox holds
+  at most 64 pending entries, also limited by serialized state size; rejected entries leave it intact.
+  Submissions made while paused wait for Step/Resume. Restoring, copying, and reopening preserve
+  the latest accepted value without replaying stored submission actions. Text settings are
+  `maxLength` (1–2,000; default 2,000), `required` (default false), and `placeholder` (single line,
+  at most 120 characters). Whitespace-only entries fail Required. Numeric settings are `min`, `max`,
+  and positive `step` (defaults 0, 100, 1); entries must be finite, inside the inclusive bounds, and
+  on the step grid anchored at `min`. These inputs reject invalid entries instead of snapping them.
+  Boolean `showSubmitted` (Show submission state) and `showHints` (Show hints) both default false;
+  they control the optional pulse/queue readout and guidance without hiding validation errors.
+  Text input additionally declares Boolean `clear` (default false). A rising edge empties the
+  value, cancels queued submissions, and lowers `submitted`; it does not submit an empty entry.
+  Clear can therefore shorten an active pulse. Text input waits 10 ms before the first queued
+  pulse so an upstream Clear command can settle before submissions begin. A high Clear value
+  during initial observation only primes the edge detector. Binding its own
+  `submitted` output to `clear` supports clear-after-submit: consumers observe the accepted value
+  with the rising submission before the next transition clears it. Number input has no Clear port.
+- [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
+  It wraps and truncates the visible preview while preserving the complete output; incoming content
+  renders literally, including leading `---` and HTML-looking text. It starts as plain text with
+  no frame; normal `strokeOn`, `color`, `size`, and `dash` styling can add an outline, and `fill`
+  controls its background. Boolean `showName` and `showHints` (both false) optionally add its instance caption
+  and empty/truncated-text guidance. Input errors remain visible.
+- [Memo](examples/memo.js): string `content`/`line` inputs (default empty), Boolean
+  `set`/`append`/`clear` inputs (default false), and stored `text`/numeric `lineCount` outputs.
+  Each action requires a false-to-true transition. A high input at startup establishes a baseline;
+  it does not change saved contents. Simultaneous rising edges prioritize Clear, then Set, then Append.
+  Set replaces the buffer; Append inserts a separating newline only after an existing logical line;
+  Clear produces empty text and zero lines. Appending an empty string creates a blank line, so empty
+  `text` may have `lineCount:1`. CRLF and lone CR normalize to LF. `maxLines` is 1–1,000 (default 100)
+  and `maxLength` is 1–2,000 (default 2,000). Updates exceeding either limit or the 4,000-character
+  serialized-state budget retain the complete previous buffer and show a notice. Lowering a limit
+  never truncates stored content. The preview shows the latest wrapped lines, and the full string
+  remains available from `text`. The compact text area uses the available height; optional Boolean
+  `showCounts` and `showHints` (both false) add line/character counts and empty/truncated-text guidance.
+  Rejected-update notices and input errors stay visible when those options are off.
 - [Seven-segment display](examples/seven-segment-display.js): authoring Input mode selects
   `number` (default) or `segments`. Number mode requires integer `value` in 0–9; segments mode
   exposes boolean `a`…`g` inputs, all default false. Both modes include boolean `decimalPoint`

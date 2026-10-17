@@ -125,13 +125,20 @@ save status; restoring library data does not execute smart scripts or bypass pre
 
 Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
 Chart, Minimal, and Blank. They verify source parity and
-availability for direct placement and pinning in the 59-entry offline catalog.
+availability for direct placement and pinning in the 63-entry offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
 tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
 input choices from literals and bindings in the editor and offline exports. Failure tests ensure
 unavailable views replace stale results, recover correctly, and leave independent controls usable.
+`tests/text-input-contracts.test.cjs` and `tests/text-memo-contracts.test.cjs` cover typed
+submission queues, validation, literal text, Memo trigger priority, blank lines, and bounded storage.
+`tests/text-components.test.cjs` checks editor and offline-reader entry, repeated submissions,
+Pause/Resume, independent instances, restoration without replay, and literal rendering. Text and
+Number input entry happens in place, with Enter/Submit keeping focus and Escape/outside-click
+discarding drafts. Appearance settings control optional submission state, counts, names, and hints;
+errors remain visible when those details are hidden.
 `tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
 unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
 late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
@@ -198,7 +205,7 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 50 API v2 catalog definitions match their editable source files and retain
+verify that all 54 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.
 
 
@@ -218,7 +225,7 @@ phase-based, and wall-clock components preserve their no-catch-up behavior durin
 `tests/sequential-components.test.cjs` checks the dedicated latch/register/counter contracts,
 three-valued gate truth tables, pure publication, rendering, and bundled source parity.
 
-`tests/example-workspace.test.cjs` validates all fifteen shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all sixteen shipped tabs and preserves the original
 control/HTML walkthrough. `tests/feedback-workspace.test.cjs` verifies the three practical counter
 loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
 positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:

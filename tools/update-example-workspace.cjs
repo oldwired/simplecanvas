@@ -87,7 +87,15 @@ const sources={
   "demo-14-decade": "decade-counter.js",
   "demo-15-delay": "delay.js",
   "demo-15-invert": "not-gate.js",
-  "demo-15-output": "status-indicator.js"
+  "demo-15-output": "status-indicator.js",
+  "demo-16-entry": "text-input.js",
+  "demo-16-label": "text-label.js",
+  "demo-16-memo": "memo.js",
+  "demo-16-set": "trigger.js",
+  "demo-16-clear": "trigger.js",
+  "demo-16-count": "value-label.js",
+  "demo-16-number": "number-input.js",
+  "demo-16-gauge": "gauge.js"
 };
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){
