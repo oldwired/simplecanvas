@@ -379,23 +379,71 @@ available ports in the authoring dialog. Bindings to a removed output become una
 reconnected. Runtime-only position changes must not change the declared channel set.
 
 `compute(inputs, state)` synchronously returns an object containing exactly the declared outputs
-with matching types. It is required when outputs are declared. Treat it as a pure computation:
+with matching types. A component declaring outputs must provide `compute`, `publish`, or both.
+Use `compute` for values derived from current inputs; use `publish(state)` for stored outputs that
+must be available before resolving feedback. Treat both as pure computations:
 no state changes, actions, or dependence on definition-local mutations. The host evaluates the
-graph asynchronously in dependency order when component state, scripts, or wiring change, and
+graph asynchronously in bounded settling rounds when component state, scripts, or wiring change, and
 discards superseded results. Size, style, and presentation refreshes do not recompute values.
 `refreshMs` remains a drawing refresh; connected clock outputs require an explicit transition.
 The built-in Live clock samples wall time in `transition` and publishes that snapshot through
 pure `compute`, keeping its hands, readout, and connected outputs synchronized.
 
-The optional API v2 `transition(inputs, state, memory, {now})` hook adds explicit stateful,
+The optional API v2 `transition(inputs, state, memory, {now, historical})` hook adds explicit stateful,
 timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
 instance state; `memory` is a transient JSON object, isolated per instance and never saved or
 exported. Both use the existing 4,000-character state limit and JSON validation. `nextWakeAt`
 is an absolute nonnegative timestamp in active-document milliseconds, or `null`/omitted to stop
 waking. The host provides monotonic `now`, owns the timer, and clamps wake delays to at least 10 ms.
-It invokes `transition` before pure `compute`, so downstream components see the staged next state.
-A transition may also run when an input changes before its deadline: inspect `memory` and `now`
+
+A top-level `wakePolicy` is either `'queued'` (the default) or `'latest'`. Queued deadlines, such
+as Delay transitions, replay in timestamp order after a late browser wake. Each timestamp settles
+before the next one, using the last committed drawing snapshot. For example, a clock due at
+100 ms samples the data from 100 ms even if data also changes at 200 ms and the browser wakes
+at 250 ms. Current external state, input, script, and binding changes are applied after those
+already scheduled earlier events; unrelated state-field edits preserve intervening stored changes.
+
+`historical` is true while processing an earlier queued timestamp and false at the current
+observed time. Components with `wakePolicy:'latest'` do not wake merely because an old periodic
+deadline is due during historical replay, but may still receive a changed input. Their transition
+must suppress autonomous expiration when `historical` is true while still handling commands.
+The built-in Pulse generator, Trigger, Edge to pulse, Random integer, Sample & hold, and
+wall-clock components use this policy to preserve their existing no-catch-up behavior. The replay is capped at 128 historical
+timestamps per run; excessive pending work becomes a visible scheduled-backlog error in the
+affected branch, recoverable after an input/configuration change. This is separate from the
+256-round zero-time settling limit.
+
+A transition may run when an input changes before its deadline: inspect `memory` and `now`
 to decide whether to sample. Do not depend on hook-call counts, Worker-local state, or script timers.
+Every transition in one round reads the same resolved input snapshot. The host stages results and
+publishes them together for the next round, so shared-edge storage cannot sample a producer's
+new value prematurely. Reset/clock priority belongs in the component contract; built-in storage
+makes reset win over a clock edge. The dedicated SR latch has no clock and treats simultaneous
+set/reset as unknown X rather than giving either command priority.
+
+Stateful components can add the pure `publish(state)` hook. It returns the declared outputs from
+stored state without needing current inputs, allowing the host to expose those outputs before
+resolving feedback. Return exactly the declared output names and types, as for `compute`.
+`publish` must not mutate state, sample time, consume edges, or depend on Worker-local memory.
+Use `transition` to react to resolved inputs and update durable state. A feedback-compatible
+counter therefore publishes its stored count first, then reacts to clock/reset in a later round.
+
+Settling rounds do not advance simulation time. Brief output changes still reach observers even
+if the canvas never paints their intermediate value: `reached → reset` can emit true, reset the
+counter, then emit false during one event. Positive Delay schedules a later event; zero Delay
+stays in the current bounded calculation. The runtime stops a non-settling loop with a visible
+error after at most 256 rounds while independent branches remain usable. A run also has a
+16,384-hook-call budget. Drawing order and Worker completion order do not choose the result.
+The host persists accepted combinational-cycle outputs
+as `signalState` on the item so a gate-built latch retains its bit through save/reload/copy/undo;
+scripts do not directly manipulate that field.
+
+The editor and exported HTML provide **Pause / Step / Resume** for the active document. Pause
+retains the current snapshot and stops active simulation time. Step advances one propagation
+round; when settled it advances to the next scheduled event. The status includes time, round,
+and recent signal changes. Pause is session-only and independent per document. Step advances
+logical active-document time; wall-clock Live clock, Stopwatch, and Timer still read actual wall
+time and are not fast-forwarded. Pure inspection and static exports never advance a paused timeline.
 
 Only a current evaluation commits state/memory, and an error in one branch does not stop independent
 branches. Accepted smart-control changes and timed wakes settle in order. Unfinished drag previews
@@ -411,10 +459,10 @@ and seeds an already-high input without counting it. Its held reset follows the 
 holding the mode's baseline, so releasing reset during high does not add or subtract an edge.
 Shift registers likewise preserve their durable cells and last `shiftedOut` value while
 re-priming pulse observation. Their `shiftedOut` port captures the old final cell on an accepted
-rising edge. Connect that port to the next register's data input when sharing a pulse: ordinary
-stage outputs already contain the producer's staged next state when the consumer evaluates.
-This supports an acyclic cascade; it does not change the graph's rejection of feedback loops.
-The built-in Delay retains up to 64 queued transitions and emits at most one per settle, preserving
+rising edge. For shared-pulse cascades, connect current `value` (or `qN`) to the next register's
+data input: all registers sample before any new cells are published. `shiftedOut` remains a
+held observation of the last removed cell, not a correction for execution order.
+The built-in Delay retains up to 64 queued transitions and emits at most one per propagation round, preserving
 short pulses for downstream counters even after a late wake. Changing its seconds resets its queue.
 Random integer and Sample & hold sample once on a late wake and schedule their next interval from
 that wake. Duration inputs use seconds; the host contract uses milliseconds.
@@ -436,10 +484,22 @@ rendering read the settled snapshot without advancing time. Inactivity/reload pr
 running deadline; missed unit boundaries do not produce catch-up ticks, and expiry is reflected
 by `reached` when active evaluation resumes.
 
-Static exports, library thumbnails, and input inspection call only `compute`, never `transition`.
-Offline HTML starts a new timeline from the exported durable state and uses the same transition
-contract. Timed changes save state without creating an undo entry on every tick. This extension
-keeps the graph acyclic; it does not add events, actions, feedback loops, or shared-bus resolution.
+Static exports, library thumbnails, and input inspection use only pure `publish`/`compute`, never
+`transition`. Offline HTML starts a new timeline from the exported durable state and uses the same
+settling and transition contract. Timed changes save state without creating an undo entry on every
+tick. Feedback support does not add external actions, a routed-event API, or shared-bus resolution.
+
+A Boolean input or output can declare `unknown:true` to admit the string `'X'` as an explicit
+unknown logic value received through a binding or produced by a hook. Defaults and literal
+inputs remain true/false. Only opted-in Boolean ports accept X; ordinary Boolean ports do not coerce
+it to true. Unknown-aware gates use three-valued logic: `false AND X` resolves false, `true OR X`
+resolves true, while `NOT X` remains X. An uninitialized gate-built latch retains X until a definite
+set/reset establishes its state. A dedicated SR latch sets Q/notQ to X when set and reset are both
+asserted and retains X after release until a definite command. A NOR pair instead drives both
+outputs false during that forbidden input; a NAND pair drives both true. Releasing both controls
+at once can leave a non-settling loop, which reports an error rather than choosing a bit through
+iteration order. Missing sources, script errors, and high-impedance Z remain separate from X. Unknown Boolean
+storage exposes X visibly through its output/rendering contract.
 
 A boolean **output** may declare `triState:true` to permit `null` as an explicit high-impedance
 value, shown as **Z**. Ordinary boolean outputs still accept only `true` or `false`; numeric and
@@ -447,7 +507,7 @@ string ports, input literals, and defaults never accept `null`. The graph valida
 output before publishing Z. A component producing Z remains healthy and interactive. A boolean
 consumer of Z does not run `compute()` or receive a fabricated value; it remains unavailable until
 the source drives true or false again. Valid bindings to Z can be saved in **Inputs…**, while other
-input, type, or cycle errors still prevent saving. This status propagates through dependent
+input, type, or non-settling-loop errors still prevent saving. This status propagates through dependent
 components in both the editor and exported HTML. Inputs retain one source each; this does not add
 shared buses, pull-up/down resolution, or electrical simulation.
 
@@ -490,7 +550,7 @@ The flag hides component templates, source editing, and input controls, and bloc
 library entries. Ordinary smart-shape authoring has its own `smartShapeAuthoring` switch, which
 must also be enabled to author components. A binding takes precedence over a saved literal; an
 unbound input uses its literal, then its declared default. Missing required inputs, missing
-sources/ports, type mismatches, cycles, and failed computations report errors. Failed outputs
+sources/ports, type mismatches, non-settling loops, and failed computations report errors. Failed outputs
 are unavailable to consumers; healthy independent components continue working.
 
 ### Unavailable drawings
@@ -987,11 +1047,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 51 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 59 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 42 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 50 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1045,14 +1105,31 @@ The built-in catalog includes 42 API v2 components, with editable sources in `ex
   4), required typed `value`, and boolean `pulse`/`reset` inputs (both default false). Each rising
   pulse shifts one snapshot of the old cells: data enters `q1`, old `q1` enters `q2`, and so on.
   Dynamic outputs `q1`…`qN` expose every cell; `value` aliases current `qN`. `shiftedOut` captures
-  old `qN` on that edge and holds it between edges. For a shared-pulse cascade, wire `shiftedOut`
-  to the next register's `value` and share pulse/reset. With independent clocks, `qN` can supply
-  the current last cell instead. Numbers must be finite; they need not be integers.
+  old `qN` on that edge and holds it between edges. For a shared-pulse cascade, wire `value`
+  (or `qN`) to the next register's `value` and share pulse/reset. Every register samples the same
+  pre-edge snapshot. Numbers must be finite; they need not be integers.
   Reset clears cells and `shiftedOut` to false/0. Held reset tracks pulse so release-high does
   not shift; manual Reset works in editor and reader. Changing Stages clears storage and
   re-primes pulse detection. Reload/copy/undo preserve storage and start fresh observation;
   library placement initializes empty cells. Each cell is drawn individually alongside the
-  instance name, with optional indicators. This bounded internal state does not permit graph cycles.
+  instance name, with optional indicators. Stored-output publication supports feedback connections.
+- [SR latch](examples/sr-latch.js): Boolean `set`/`reset` controls and unknown-aware `q`, `notQ`,
+  and `value` outputs. Starts X; a definite command sets/clears the stored bit, neither holds it,
+  and simultaneous set/reset produces X. Cross-connected NOR/NAND gates are also supported.
+- [D latch](examples/d-latch.js): unknown-aware `d`, Boolean `enable`/`reset`; follows data while
+  enabled, otherwise holds. Reset clears Q. Outputs are `q`, `notQ`, and `value`.
+- [D flip-flop](examples/d-flip-flop.js): captures unknown-aware `d` on a rising Boolean `clock`;
+  `reset` wins and clears Q. An initial/held-high clock does not invent another edge.
+- [Register (Boolean)](examples/register-boolean.js) and
+  [Register (number)](examples/register-number.js): typed `value`, `pulse`, `enable`, and `reset`;
+  rising pulse captures when enabled and reset clears. Boolean starts X, number starts zero.
+- [Ring counter](examples/ring-counter.js): 1–16 Stages, rising `clock`, `enable`, and `reset`;
+  outputs `q1`…`qN` and zero-based `position`. Reset selects q1; one bit circulates every N clocks.
+- [Johnson counter](examples/johnson-counter.js): same settings/controls, starts all false;
+  advances an inverted-tail sequence over 2N positions. Outputs `q1`…`qN`, `value` (qN), and `position`.
+- [Decoded decade counter](examples/decade-counter.js): 4017-style logical model with `clock`,
+  `enable`, `reset`, ten outputs `q0`…`q9`, `position`, and `carry` high for positions 0–4.
+  Reset selects q0. All clocked storage samples together before any state is published.
 - [Trigger](examples/trigger.js): a pushbutton producing a 100 ms boolean pulse per click;
   queued presses have a 10 ms low gap. Transient observation prevents replay after restoration.
 - [Live clock](examples/live-clock.js): string `timezone` input, default `local`, also accepting

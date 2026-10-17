@@ -2,6 +2,7 @@
 // Input changes do not restart the interval; changing seconds begins a new interval.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{value:{type:'number'},seconds:{type:'number',default:1}},
   outputs:{value:{type:'number'}},
   initState(){return {value:0,showIndicators:true};},
@@ -14,11 +15,12 @@
     this._validate(inputs,state);
     const now=context.now;
     if(!Number.isFinite(now) || now<0)throw new Error('Sample and hold requires a valid monotonic time');
-    const sample=!Number.isFinite(memory?.nextAt) || memory.seconds!==inputs.seconds || now>=memory.nextAt;
+    const sample=!Number.isFinite(memory?.nextAt) || memory.seconds!==inputs.seconds || (!context.historical && now>=memory.nextAt);
     const nextAt=sample?now+inputs.seconds*1000:memory.nextAt;
     if(!Number.isFinite(nextAt))throw new Error('Hold wake time is outside the numeric range');
     return {state:{...state,value:sample?inputs.value:state.value},memory:{seconds:inputs.seconds,nextAt},nextWakeAt:nextAt};
   },
+  publish(state){if(!Number.isSafeInteger(state.value))throw new Error('Output state must contain a safe integer');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

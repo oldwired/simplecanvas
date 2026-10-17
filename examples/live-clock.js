@@ -3,6 +3,7 @@
 // The host schedules transitions; compute and image exports use the last settled snapshot.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{timezone:{type:'string',default:'local'}},
   outputs:{second:{type:'boolean'},minute:{type:'boolean'},hour:{type:'boolean'},halfDay:{type:'boolean'},time:{type:'string'}},
   initState(){return {time:'00:00:00',second:false,minute:false,hour:false,halfDay:false,showIndicators:true};},
@@ -18,7 +19,8 @@
     if(typeof state.time!=='string' || !/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(state.time) ||
        ['second','minute','hour','halfDay'].some(key=>typeof state[key]!=='boolean') || typeof state.showIndicators!=='boolean')throw new Error('Invalid Live clock state');
   },
-  transition(inputs,state,memory,{now}){
+  transition(inputs,state,memory,context){
+    const {now}=context;
     this._validate(state);
     if(!Number.isFinite(now) || now<0)throw new Error('Live clock requires a valid monotonic time');
     const formatter=this._formatter(inputs.timezone),wall=Date.now();
@@ -31,6 +33,11 @@
     if(!fresh && (typeof memory.zone!=='string' || !Number.isFinite(memory.wall) || !Number.isSafeInteger(memory.epochSecond) ||
        memory.epochSecond!==Math.floor(memory.wall/1000) || !Number.isFinite(memory.now) || memory.now<0 ||
        (memory.until!==null && (!Number.isFinite(memory.until) || memory.until<=memory.now))))throw new Error('Invalid Live clock scheduling memory');
+    // Replaying an earlier queued signal must not consume this wall-clock wake.
+    if(context.historical && !fresh && memory.zone===zone){
+      const nextWakeAt=memory.until===null?memory.now+1000-((memory.wall%1000+1000)%1000):memory.until;
+      return {state,memory,nextWakeAt};
+    }
     // Active-document time pauses while hidden. A wall/active-time discontinuity resets observation,
     // as does a backwards clock adjustment. Small scheduling jitter does not erase a normal tick.
     const restart=fresh || memory.zone!==zone || wall<memory.wall || now<memory.now ||
@@ -51,6 +58,10 @@
     if(!Number.isFinite(nextWakeAt) || nextWakeAt<=now)throw new Error('Live clock wake time is outside the numeric range');
     return {state:{...state,time,second:secondTick,minute:minuteTick,hour:hourTick,halfDay:halfDayTick},
       memory:{zone,wall,now,epochSecond,until},nextWakeAt};
+  },
+  publish(state){
+    this._validate(state);
+    return {second:state.second,minute:state.minute,hour:state.hour,halfDay:state.halfDay,time:state.time};
   },
   compute(inputs,state){
     this._formatter(inputs.timezone);this._validate(state);

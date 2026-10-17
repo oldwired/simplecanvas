@@ -1,17 +1,17 @@
 // Shift all stages simultaneously on each observed rising pulse. Q1 receives the input.
 // value aliases the last stage; shiftedOut holds the OLD final stage from the latest shift.
-// Cascade via shiftedOut with a shared pulse, so upstream-first evaluation keeps one-stage delay.
+// Cascade through value with a shared pulse: every register samples the old outputs together.
 ({
   apiVersion:2,
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
-  inputs:{value:{type:'boolean'},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
+  inputs:{value:{type:'boolean',unknown:true},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
   outputs(state){
-    const ports={};for(let i=1;i<=this._stages(state);i++)ports['q'+i]={type:'boolean'};
-    return {...ports,value:{type:'boolean'},shiftedOut:{type:'boolean'}};
+    const ports={};for(let i=1;i<=this._stages(state);i++)ports['q'+i]={type:'boolean',unknown:true};
+    return {...ports,value:{type:'boolean',unknown:true},shiftedOut:{type:'boolean',unknown:true}};
   },
   initState(){return {stages:4,configuredStages:4,cells:Array(4).fill(false),shiftedOut:false,showIndicators:true};},
   initStyle(){return {w:440,h:240,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
-  _valid(value){return typeof value==='boolean';},
+  _valid(value){return typeof value==='boolean'||value==='X';},
   _stages(state){
     if(!Number.isInteger(state.stages) || state.stages<1 || state.stages>16)throw new Error('Stages must be an integer from 1 to 16');
     return state.stages;
@@ -38,8 +38,9 @@
     }
     return {state:{...state,configuredStages:stages,cells,shiftedOut},memory:{stages,previous:inputs.pulse},nextWakeAt:null};
   },
-  compute(inputs,state){
-    this._validate(inputs,state);const {cells,shiftedOut}=this._snapshot(state),outputs={};
+  compute(inputs,state){this._validate(inputs,state);return this.publish(state);},
+  publish(state){
+    const {cells,shiftedOut}=this._snapshot(state),outputs={};
     for(let i=0;i<cells.length;i++)outputs['q'+(i+1)]=cells[i];
     return {...outputs,value:cells[cells.length-1],shiftedOut};
   },
@@ -66,7 +67,7 @@
     const available=!io.error&&this._valid(rawInputs.value)&&typeof rawInputs.pulse==='boolean'&&typeof rawInputs.reset==='boolean'&&
       this._valid(rawOutputs.value)&&this._valid(rawOutputs.shiftedOut)&&Array.from({length:stages},(_,i)=>rawOutputs['q'+(i+1)]).every(value=>this._valid(value));
     const inputs=available?rawInputs:{},outputs=available?rawOutputs:{};
-    const label=value=>!this._valid(value)?'—':typeof value==='boolean'?(value?'1':'0'):String(value).length<=8?String(value):Number(value.toPrecision(3)).toString();
+    const label=value=>!this._valid(value)?'—':value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):String(value).length<=8?String(value):Number(value.toPrecision(3)).toString();
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const arrow=(x1,y,x2)=>[line(x1,y,x2,y),line(x2-4*scale,y-3*scale,x2,y),line(x2-4*scale,y+3*scale,x2,y)];

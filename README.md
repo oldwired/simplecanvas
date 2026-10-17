@@ -186,7 +186,7 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 51 entries, including 42 connected API v2 components. Every smart-shape
+The catalog includes 59 entries, including 50 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -265,7 +265,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore eight connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore fifteen connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -279,6 +279,13 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Routing | Step through four values with pulse and reset controls. |
 | Shift memory | Move a bit through two cascaded registers. |
 | LED patterns | Drive matrices with Boolean lines and row bytes. |
+| Self-reset | Let completion reset its own countdown; count every completed cycle. |
+| Stop at zero | Disable a pulse generator when its counter reaches zero. |
+| Reset and stop | Reset the counter and retain the stop command in an SR latch. |
+| Latch laboratory | Compare a dedicated SR latch with cross-connected NOR and NAND gates. |
+| Shared-edge storage | Clock two flip-flops together and sample a numeric value. |
+| Sequences | Circulate a bit, construct a Johnson sequence, and clock a decoded decade counter. |
+| Delayed feedback | Watch a NOT/Delay loop alternate with a real time boundary. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -389,16 +396,49 @@ true does not shift again. Each stage has its own output and visible value; `val
 the current last stage, `qN`. The numeric variant accepts finite numbers, including fractions.
 
 `shiftedOut` holds the last value removed from the end of the register. To cascade registers on
-**the same pulse**, connect **shiftedOut → value** and share the pulse and reset signals. Connecting
-current `qN` would pass the already-updated last stage and move data one stage too early. With
-separate clocks, connect `qN` when you want to sample the upstream register's current last stage.
+**the same pulse**, connect **value → value** (or `qN → value`) and share pulse/reset. All registers
+sample the pre-edge values together before any publishes its next state, so one pulse advances
+exactly one cell across a register boundary. `shiftedOut` is available for observing removed data;
+it is not the shared-clock cascade connection.
 
 Reset clears all stages and `shiftedOut` to false or 0; hold the `reset` input true or use **Reset**
 in the component controls, also available in exported HTML. An initial high pulse and reset release
 during high do not shift. Changing Stages clears the stored sequence and starts fresh pulse
 observation. Reload, copying canvas instances, and undo preserve contents without replaying a pulse;
 fresh placement from the library starts empty. Instance names and optional indicators work as for
-other logic components. Internal storage does not enable feedback connections between components.
+other logic components. Feedback can circulate stored data through a register or an explicit delay.
+
+**Feedback and memory.** Connections may form loops. The runtime processes changed signals in
+bounded settling rounds: each round reads one consistent snapshot and commits state changes
+together. A counter can connect its own `reached` output to `reset`; downstream components still
+observe the brief completion pulse. To stop at zero, connect `reached → NOT → Pulse generator.enable`.
+To reset and remain stopped, also set an SR latch and use its stored output to disable the generator.
+
+**SR latch** has `set`/`reset` inputs and `q`, `notQ`, and `value` outputs. **D latch** follows `d`
+while `enable` is true. **D flip-flop** captures `d` on a rising `clock`. **Register (Boolean)** and
+**Register (number)** capture `value` on a rising `pulse` when enabled. Reset wins over clock and
+clears storage; a held-high clock never repeatedly captures. Boolean memory can display **X** for
+unknown state; the SR latch also becomes X if set and reset are asserted together.
+Cross-connected NOR/NAND gates can also form latches; an explicit set/reset command
+establishes their initial state. X is distinct from **Z**, which means no driven signal.
+
+**Ring counter**, **Johnson counter**, and **Decoded decade counter (4017-style)** advance on rising
+`clock` while `enable` is true. Reset wins and returns to the initial pattern. Ring and Johnson have
+1–16 configurable stages; ring starts with only `q1` true and repeats after N clocks, while Johnson
+starts all false and repeats after 2N. The decade counter exposes `q0`–`q9`, a zero-based `position`,
+and `carry` high for positions 0–4. These are logical models with explicit saved state.
+
+**Pause / Step / Resume** controls appear when the drawing contains components, in both editor
+and exported HTML. Pause stops active simulation time and keeps the visible signals. Step advances
+one propagation round; if the circuit is settled, it moves to the next scheduled event. The status
+shows time, round, and a recent signal change. Resume continues the simulation. Pause belongs to
+the current tab/session; it is not saved as part of the drawing. Step advances the active-document
+schedule; Live clock, Stopwatch, and Timer still read real wall time and are not fast-forwarded.
+
+A loop that cannot settle reports an error instead of hanging the drawing. Use a positive Delay
+when a loop should advance over time; zero delay is still subject to the settling limit. Each input
+continues to have one source. Combine signals with gates, arithmetic, or selectors; shared buses
+and multiple drivers remain deferred.
 
 **Trigger**, in **Controls**, is a pushbutton with a boolean `value` output. Double-click it to
 enter its controls, then click **Press**: each completed click emits `true` for 0.1 seconds and
@@ -496,9 +536,9 @@ Configure and connect them in **Inputs…**. For example, connect Random integer
 The controls, names, indicators, and connections work in exported HTML too.
 Interval timing uses active document time: hidden/inactive documents and the open **Inputs…**
 dialog pause it. Live clock resumes at current wall time; running Stopwatch and Timer instances
-retain elapsed wall time. Late wakes replay Delay transitions
-and queued pulses from Edge to pulse in order. Pulse generator advances
-one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
+retain elapsed wall time. Late wakes replay queued Delay transitions in timestamp order, so an
+earlier clock edge samples the earlier data even when a later change is also overdue. Queued
+pulses remain distinct. Pulse generator advances one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
 without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
 Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:
 reload, copy, undo, rewiring, or recovery from unavailable inputs starts fresh observation without

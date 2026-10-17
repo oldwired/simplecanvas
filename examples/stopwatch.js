@@ -3,6 +3,7 @@
 // The display uses saved wall-clock timestamps, so a running stopwatch continues across tabs and reloads.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{run:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
   outputs:{elapsed:{type:'number'}},
   initState(){return {elapsedMs:0,startedAt:null,observedRun:false};},
@@ -36,6 +37,7 @@
     next={...next,observedRun:inputs.run};
     return {state:next,memory:{},nextWakeAt:null};
   },
+  publish(state){this._validate(state);return {elapsed:state.elapsedMs/1000};},
   compute(inputs,state){
     this._validate(state);this._validateInputs(inputs);
     return {elapsed:state.elapsedMs/1000};

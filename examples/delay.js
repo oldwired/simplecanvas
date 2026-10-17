@@ -30,6 +30,7 @@
     if(!emitted && queue.length && queue[0].at<=now)value=queue.shift().value;
     return {state:{...state,value},memory:{previous:inputs.value,seconds:inputs.seconds,queue},nextWakeAt:queue.length?queue[0].at:null};
   },
+  publish(state){if(typeof state.value!=='boolean')throw new Error('Output state must contain a Boolean value');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

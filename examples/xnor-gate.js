@@ -1,12 +1,13 @@
+// Boolean X means unknown; controlling AND/OR inputs still resolve a definite output.
 // Required boolean inputs stay unavailable until connected or given literal values.
 // Indicator visibility is an instance setting; its control is author-only.
 ({
   apiVersion:2,
-  inputs:{a:{type:'boolean'},b:{type:'boolean'}},
-  outputs:{value:{type:'boolean'}},
+  inputs:{a:{type:'boolean',unknown:true},b:{type:'boolean',unknown:true}},
+  outputs:{value:{type:'boolean',unknown:true}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:240,h:150,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
-  compute(inputs){return {value:inputs.a===inputs.b};},
+  compute(inputs){return {value:inputs.a==='X'||inputs.b==='X'?'X':inputs.a===inputs.b};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -27,7 +28,7 @@
   children(state,style,w,h,editing,io){
     const inputs=io?.inputs||{},outputs=io?.outputs||{},scale=Math.min(w/240,h/150);
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
-    const label=value=>typeof value==='boolean'?String(value):'—';
+    const label=value=>value==='X'?'X':typeof value==='boolean'?String(value):'—';
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor,strokeOn:false,fill:false});
     const ports=[{name:'A',value:inputs.a,y:h*.37},{name:'B',value:inputs.b,y:h*.61}],outputY=h*.49;

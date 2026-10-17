@@ -1,6 +1,6 @@
 // Shift all stages simultaneously on each observed rising pulse. Q1 receives the input.
 // value aliases the last stage; shiftedOut holds the OLD final stage from the latest shift.
-// Cascade via shiftedOut with a shared pulse, so upstream-first evaluation keeps one-stage delay.
+// Cascade through value with a shared pulse: every register samples the old outputs together.
 ({
   apiVersion:2,
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
@@ -38,8 +38,9 @@
     }
     return {state:{...state,configuredStages:stages,cells,shiftedOut},memory:{stages,previous:inputs.pulse},nextWakeAt:null};
   },
-  compute(inputs,state){
-    this._validate(inputs,state);const {cells,shiftedOut}=this._snapshot(state),outputs={};
+  compute(inputs,state){this._validate(inputs,state);return this.publish(state);},
+  publish(state){
+    const {cells,shiftedOut}=this._snapshot(state),outputs={};
     for(let i=0;i<cells.length;i++)outputs['q'+(i+1)]=cells[i];
     return {...outputs,value:cells[cells.length-1],shiftedOut};
   },

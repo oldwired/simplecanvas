@@ -1,12 +1,13 @@
+// Boolean X means unknown; controlling AND/OR inputs still resolve a definite output.
 // Active-high enable: pass the Boolean input through when enabled, otherwise output Z.
 // null is the declared high-impedance output, never an unavailable or false value.
 ({
   apiVersion:2,
-  inputs:{value:{type:'boolean'},enable:{type:'boolean'}},
-  outputs:{value:{type:'boolean',triState:true}},
+  inputs:{value:{type:'boolean',unknown:true},enable:{type:'boolean',unknown:true}},
+  outputs:{value:{type:'boolean',unknown:true,triState:true}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:260,h:190,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
-  compute(inputs){return {value:inputs.enable?inputs.value:null};},
+  compute(inputs){return {value:inputs.enable==='X'?'X':inputs.enable?inputs.value:null};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -26,10 +27,10 @@
   },
   children(state,style,w,h,editing,io={}){
     const rawInputs=io.inputs||{},rawOutput=io.outputs?.value,scale=Math.min(w/260,h/190);
-    const available=!io.error && typeof rawInputs.value==='boolean' && typeof rawInputs.enable==='boolean' && (typeof rawOutput==='boolean' || rawOutput===null);
+    const available=!io.error && (typeof rawInputs.value==='boolean'||rawInputs.value==='X') && (typeof rawInputs.enable==='boolean'||rawInputs.enable==='X') && (typeof rawOutput==='boolean' || rawOutput==='X' || rawOutput===null);
     const inputs=available?rawInputs:{},output=available?rawOutput:undefined;
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
-    const label=value=>value===null?'Z':typeof value==='boolean'?String(value):'—';
+    const label=value=>value==='X'?'X':value===null?'Z':typeof value==='boolean'?String(value):'—';
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     const cy=h*.55,enableX=w*.46,enableY=h*.25;

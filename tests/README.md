@@ -64,7 +64,7 @@ Connected-component regressions in `tests/components.test.cjs` cover the Number 
 input-picker workflow, scalar computation, actual drawing/SVG results, JSON and undo/redo,
 duplicate/clipboard binding remapping, cross-tab UID isolation, and downloaded offline HTML.
 They check rapid changes, unsupported-version recovery, legacy raw-state compatibility, missing
-or incompatible ports, source deletion, cycles, and isolation of failed computations. Format 4
+or incompatible ports, source deletion, non-settling loops, and isolation of failed computations. Format 4
 retains component API markers and wiring; earlier drawing formats remain readable.
 The `smartComponents` deployment switch is checked for disabled authoring, preserved legacy
 authoring, and working saved connections, copies, deployed-library placements, and offline HTML.
@@ -109,7 +109,7 @@ group placements, unresolved external connections, invalid-file rejection, and f
 Exporting one shape leaves the library's unexported-change status intact.
 Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
 Chart, Minimal, and Blank. They verify source parity and
-availability for direct placement and pinning in the 51-entry offline catalog.
+availability for direct placement and pinning in the 59-entry offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
@@ -123,7 +123,7 @@ A catalog-wide naming check renames every built-in API v2 component through Inpu
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
 connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
-invalid inputs and cycles must not be hidden by a Z input.
+invalid inputs and non-settling loops must not be hidden by a Z input.
 
 `tests/live-clock.test.cjs` checks timezone inputs, second pulses connected to Counter, synchronized
 time-string consumers, independent instances, invalid-zone validation, reload, and offline HTML.
@@ -158,7 +158,7 @@ offline HTML countdown/reset behavior. Run with `node --test tests/counter-modes
 prefixed with `BROWSER_ENGINE=webkit`.
 
 `tests/shift-register.test.cjs` checks Boolean and numeric cascades using a shared pulse and
-`shiftedOut`, independent stored stages, pure inspection, and restoration without phantom shifts.
+current `value`, independent stored stages, pure inspection, and restoration without phantom shifts.
 Editor checks configure stages through Inputs, connect a parallel output, and exercise Trigger
 sampling, JSON reload, and actual offline HTML shifting/reset. Run with
 `node --test tests/shift-register.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
@@ -182,5 +182,32 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 42 API v2 catalog definitions match their editable source files and retain
+verify that all 50 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.
+
+
+`tests/feedback-runtime.test.cjs` exercises bounded settling, simultaneous stored-state publication,
+unknown Boolean logic, and gate-built memory through the real sandbox.
+`tests/feedback-controls.test.cjs` checks the editor and exported Pause/Step/Resume controls.
+`tests/feedback-deadlines.test.cjs` verifies chronological overdue deadlines, prevents later data
+from reaching an earlier clock edge, and checks atomic cancellation and bounded-backlog recovery.
+`tests/temporal-wake-policies.test.cjs` checks queued/latest metadata and confirms that periodic,
+phase-based, and wall-clock components preserve their no-catch-up behavior during historical replay.
+`tests/sequential-components.test.cjs` checks the dedicated latch/register/counter contracts,
+three-valued gate truth tables, pure publication, rendering, and bundled source parity.
+
+`tests/example-workspace.test.cjs` validates all fifteen shipped tabs and preserves the original
+control/HTML walkthrough. `tests/feedback-workspace.test.cjs` verifies the three practical counter
+loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
+positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:
+
+```sh
+node --test tests/example-workspace.test.cjs tests/feedback-workspace.test.cjs
+BROWSER_ENGINE=webkit node --test tests/example-workspace.test.cjs tests/feedback-workspace.test.cjs
+```
+
+After changing bundled scripts, the workspace JSON, or the export runtime, regenerate the shipped
+reader with `node tools/update-example-workspace.cjs`. This refreshes each placed component from
+its editable source file, imports the JSON through the real editor, and downloads its HTML export.
+The JSON remains the editable layout and wiring source; new component UIDs must be added to the
+generator's source map.

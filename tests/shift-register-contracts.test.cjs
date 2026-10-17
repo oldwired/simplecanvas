@@ -30,7 +30,7 @@ for(const type of ['boolean','number']){
   const component=source(type),zero=type==='boolean'?false:0,one=type==='boolean'?true:1.5;
   test(type+' shift register declares 1–16 taps, final-value alias, and shifted-out data',()=>{
     assert.deepEqual(plain(component.settings),{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}});
-    assert.deepEqual(plain(component.inputs),{value:{type},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}});
+    assert.deepEqual(plain(component.inputs),{value:{type,...(type==='boolean'?{unknown:true}:{})},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}});
     for(const stages of [1,4,16]){
       const state=stateFor(component,stages,zero),ports=plain(component.outputs(state)),outputs=plain(component.compute({value:one,pulse:false,reset:false},state));
       assert.deepEqual(Object.keys(ports),[...Array.from({length:stages},(_,i)=>'q'+(i+1)),'value','shiftedOut']);
@@ -114,14 +114,15 @@ for(const type of ['boolean','number']){
     assert.equal(rt.state.cells[0],one);assert.ok(rt.state.cells.slice(1).every(value=>value===zero));
   });
 
-  test(type+' cascading two 2-stage registers through shiftedOut equals one 4-stage register',()=>{
+  test(type+' cascading two 2-stage registers through old value snapshots equals one 4-stage register',()=>{
     const first=runtime(component,stateFor(component,2,zero)),second=runtime(component,stateFor(component,2,zero)),whole=runtime(component);
     const stream=type==='boolean'?[true,false,true,true,false,false,true,false,true]:[1.5,-2.25,0,17,Math.PI,-0.001,1e100,1e-100,42];
-    let outputFirst=first.step(zero);second.step(outputFirst.shiftedOut);whole.step(zero);
+    let outputFirst=first.step(zero);second.step(outputFirst.value);whole.step(zero);
     for(const value of stream){
-      outputFirst=first.step(value,false);second.step(outputFirst.shiftedOut,false);whole.step(value,false);
+      outputFirst=first.step(value,false);second.step(outputFirst.value,false);whole.step(value,false);
+      const sampled=outputFirst.value;
       outputFirst=first.step(value,true);
-      const outputSecond=second.step(outputFirst.shiftedOut,true),outputWhole=whole.step(value,true);
+      const outputSecond=second.step(sampled,true),outputWhole=whole.step(value,true);
       assert.deepEqual([...first.state.cells,...second.state.cells],whole.state.cells);
       assert.equal(outputSecond.value,outputWhole.value);
       assert.equal(outputSecond.shiftedOut,outputWhole.shiftedOut);

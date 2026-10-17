@@ -2,6 +2,7 @@
 // Queue up to 64 waiting pulses, with at least 10 ms low between them. Timing changes re-prime.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{value:{type:'boolean'},edge:{type:'string',default:'rising',options:['rising','falling','either']},seconds:{type:'number',default:0.1}},
   outputs:{value:{type:'boolean'}},
   initState(){return {value:false,showIndicators:true};},
@@ -30,13 +31,14 @@
       pending++;
     }
     // Every evaluation changes at most one phase so consumers observe each pulse separately.
-    if(phase==='high' && now>=nextAt){phase='low';nextAt=now+10;}
-    else if((phase==='idle' || (phase==='low' && now>=nextAt)) && pending){
+    if(phase==='high' && !context.historical && now>=nextAt){phase='low';nextAt=now+10;}
+    else if((phase==='idle' || (phase==='low' && !context.historical && now>=nextAt)) && pending){
       pending--;phase='high';nextAt=now+inputs.seconds*1000;
-    }else if(phase==='low' && now>=nextAt){phase='idle';nextAt=null;}
-    if(nextAt!==null && (!Number.isFinite(nextAt) || nextAt<=now))throw new Error('Edge pulse wake time is outside the numeric range');
+    }else if(phase==='low' && !context.historical && now>=nextAt){phase='idle';nextAt=null;}
+    if(nextAt!==null && (!Number.isFinite(nextAt) || (!context.historical && nextAt<=now)))throw new Error('Edge pulse wake time is outside the numeric range');
     return {state:{...state,value:phase==='high'},memory:{previous:inputs.value,seconds:inputs.seconds,edge:inputs.edge,pending,phase,nextAt},nextWakeAt:nextAt};
   },
+  publish(state){if(typeof state.value!=='boolean')throw new Error('Output state must contain a Boolean value');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

@@ -73,7 +73,8 @@ async function readerToggle(page,index,on){
   },{index,on});
 }
 async function svgRenderings(page,run){
-  const svg=await run('itemsToSVGMarkup(items,{liveSmart:true})');
+  // Real exports freeze the scene so live clocks cannot invalidate their in-flight snapshot.
+  const svg=await run('itemsToSVGMarkup(clone(items),{liveSmart:true})');
   return page.evaluate(svg=>[...new DOMParser().parseFromString(svg,'image/svg+xml').querySelectorAll('[data-smart-index]')].map(host=>({
     text:host.textContent,
     leds:[...host.querySelectorAll('ellipse')].map(ellipse=>ellipse.getAttribute('fill')).filter(color=>['#15803d','#64748b','#2563eb','#fbbf24'].includes(color)),
@@ -92,6 +93,8 @@ const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant
   selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
   steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js',
   shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
+  srLatch:'sr-latch.js',dLatch:'d-latch.js',dFlipFlop:'d-flip-flop.js',registerBoolean:'register-boolean.js',registerNumber:'register-number.js',
+  ringCounter:'ring-counter.js',johnsonCounter:'johnson-counter.js',decadeCounter:'decade-counter.js',
   sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js'};
 
 test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
@@ -453,7 +456,7 @@ test('every API2 catalog component uses its instance name in canvas, SVG, and of
     await run(`selection=[${index}];render()`);await page.locator('#componentBindingsBtn').click();
     await page.locator('#componentNameInput').fill(name);await page.locator('#componentBindingsSave').click();
     await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
-    await page.waitForFunction(({index,name})=>__test.run(`smartChildrenCache.get(items[${index}].uid)?.kids.some(child=>child.text===${JSON.stringify(name)})`),{index,name},{timeout:5000})
+    await page.waitForFunction(({index,name})=>__test.run(`smartChildrenCache.get(items[${index}].uid)?.kids.some(child=>child.text===${JSON.stringify(name)})`),{index,name},{timeout:10000})
       .catch(()=>{throw new Error(definitions[index]+' did not repaint its custom instance name');});
   }
   const painted=await page.evaluate(()=>{

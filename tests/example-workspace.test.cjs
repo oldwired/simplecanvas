@@ -39,7 +39,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===8 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===15 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -62,7 +62,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all eight tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all fifteen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -77,7 +77,7 @@ test('shipped workspace imports all eight tabs with valid local bindings and cur
     }
     return result;
   })()`);
-  assert.equal(checked.length,8);
+  assert.equal(checked.length,15);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -150,14 +150,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has eight working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has fifteen working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),8);
-    for(let tab=1;tab<=8;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),15);
+    for(let tab=1;tab<=15;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }

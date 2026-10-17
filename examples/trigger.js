@@ -2,6 +2,7 @@
 // Saved press tokens are primed on a fresh runtime, so reload/copy/undo never replays them.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{},
   outputs:{value:{type:'boolean'}},
   initState(){return {value:false,press:0,showIndicators:true};},
@@ -22,13 +23,14 @@
     if(presses>64-memory.pending)throw new Error('Trigger queue is full (64 pending pulses)');
     let pending=memory.pending+presses,phase=memory.phase,nextAt=memory.nextAt;
     // Emit only one phase per evaluation so downstream counters observe every rising edge.
-    if(phase==='high' && now>=nextAt){phase='low';nextAt=now+10;}
-    else if((phase==='idle' || (phase==='low' && now>=nextAt)) && pending){
+    if(phase==='high' && !context.historical && now>=nextAt){phase='low';nextAt=now+10;}
+    else if((phase==='idle' || (phase==='low' && !context.historical && now>=nextAt)) && pending){
       pending--;phase='high';nextAt=now+100;
-    }else if(phase==='low' && now>=nextAt){phase='idle';nextAt=null;}
+    }else if(phase==='low' && !context.historical && now>=nextAt){phase='idle';nextAt=null;}
     if(nextAt!==null && !Number.isFinite(nextAt))throw new Error('Trigger wake time is outside the numeric range');
     return {state:{...state,value:phase==='high'},memory:{press:state.press,pending,phase,nextAt},nextWakeAt:nextAt};
   },
+  publish(state){this._validate(state);return {value:state.value};},
   compute(inputs,state){this._validate(state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

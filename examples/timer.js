@@ -3,6 +3,7 @@
 // Reloads, inactivity, and missed boundaries never replay old tick pulses.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   settings:{unit:{type:'string',default:'minutes',options:['minutes','seconds'],label:'Unit'},
     duration:{type:'number',default:45,min:0,max:60,step:1,label:'Starting duration'}},
   inputs:{run:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
@@ -33,7 +34,8 @@
     if(endsAt!==null && !Number.isSafeInteger(endsAt))throw new Error('Timer deadline is outside the numeric range');
     return {...next,endsAt,tick:false};
   },
-  transition(inputs,state,memory,{now}){
+  transition(inputs,state,memory,context){
+    const {now}=context;
     this._validate(state);this._validateInputs(inputs);
     if(!Number.isFinite(now) || now<0)throw new Error('Timer requires a valid monotonic time');
     const wall=this._now(),changed=this._changed(state),fresh=memory==null || (typeof memory==='object' && !Array.isArray(memory) && Object.keys(memory).length===0);
@@ -44,6 +46,17 @@
        (memory.until!==null && (!Number.isFinite(memory.until) || memory.until<=memory.now))))throw new Error('Invalid Timer scheduling memory');
     const restart=fresh || wall<memory.wall || now<memory.now || Math.abs((wall-memory.wall)-(now-memory.now))>500;
     const command=changed || inputs.reset || inputs.run!==state.observedRun;
+    // Historical signal changes still apply commands, but scheduled wall-clock ticks wait
+    // for the current observation. Keep the original deadline so it remains due then.
+    if(context.historical && !fresh && !command){
+      let nextWakeAt=memory.until;
+      if(state.endsAt!==null){
+        const period=this._period(memory.unit),unitRemaining=memory.remainingMs%period||period;
+        const wake=memory.now+Math.min(1000,memory.remainingMs,unitRemaining);
+        nextWakeAt=nextWakeAt===null?wake:Math.min(nextWakeAt,wake);
+      }
+      return {state,memory,nextWakeAt};
+    }
     let next=this._snapshot(state);
     const priorEnd=next.endsAt;
     if(changed || inputs.reset)next=this._refill(next,inputs.run);
@@ -73,6 +86,7 @@
     if(nextWakeAt!==null && (!Number.isFinite(nextWakeAt) || nextWakeAt<=now))throw new Error('Timer wake time is outside the numeric range');
     return {state:next,memory:{wall,now,endsAt:next.endsAt,remainingMs:next.remainingMs,unit:next.unit,duration:next.duration,until},nextWakeAt};
   },
+  publish(state){const view=this._snapshot(state);return {tick:view.tick,reached:view.remainingMs===0};},
   compute(inputs,state){this._validateInputs(inputs);const view=this._snapshot(state);return {tick:view.tick,reached:view.remainingMs===0};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

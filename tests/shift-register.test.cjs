@@ -75,10 +75,10 @@ test('typed shift registers cascade on the same pulse without skipping the old t
       const data=make(sourceKey,'data'),pulse=make('toggle','pulse');
       const first=make(key,'first',{bindings:{value:{uid:'data',port:'value'},pulse:{uid:'pulse',port:'value'}}});
       first.state={...first.state,stages:2,configuredStages:2,cells:[empty,empty],shiftedOut:empty};
-      const second=make(key,'second',{bindings:{value:{uid:'first',port:'shiftedOut'},pulse:{uid:'pulse',port:'value'}}});
+      const second=make(key,'second',{bindings:{value:{uid:'first',port:'value'},pulse:{uid:'pulse',port:'value'}}});
       second.state={...second.state,stages:2,configuredStages:2,cells:[empty,empty],shiftedOut:empty};
       const independent=clone(first);independent.uid='independent';independent.state.cells=[empty,empty];
-      // Reverse scene order: dependency order must govern the shared pulse and ejected value.
+      // Reverse scene order: all registers sample the same old output snapshot on the shared pulse.
       const list=[second,independent,first,pulse,data],owners=new Map(list.map(item=>[item,createSmartExecution(item)]));
       let transitions=0;const timeline=createComponentTimeline(()=>0);resumeComponentTimeline(timeline);
       const call=(item,hook,args)=>{
