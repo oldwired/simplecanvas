@@ -70,9 +70,15 @@ async function canvasTexts(page){
 }
 async function downloadLibrary(page,run){
   const download=page.waitForEvent('download');await run('exportShapeLibrary()');
-  return JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  const data=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  // Roundtrip tests reload immediately afterward. Include the export bookkeeping in the
+  // durable snapshot, rather than accepting a beforeunload warning for a pending save.
+  await page.waitForFunction(()=>__test.run('!shapeLibraryDirty && !shapeLibrarySavePending && !shapeLibraryStorageError'));
+  return data;
 }
 async function importLibrary(page,data){
+  // setInputFiles bypasses the inert startup UI; wait for normal user interaction readiness.
+  await page.evaluate(()=>__test.run('appReady'));
   await page.locator('#shapeLibraryInput').setInputFiles({name:'library.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
 }
 async function openExport(page,run,context){

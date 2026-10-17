@@ -110,12 +110,19 @@ empty-category preservation, legacy single-category imports, and separate search
 Removing a category preserves shapes, pins, and other memberships. Shared Library actions,
 Source filtering, and Collapse library are checked without changing the compact picker workflow.
 Workspace saves retain placed scripts/state/connections but exclude library entries, pins, and
-category organization; those remain visit-only until library export/import.
+category organization; those have separate browser persistence and library export/import.
 Individual transfer checks in `tests/library-transfer.test.cjs` use real shape downloads and
 file imports. They cover source-aware Copy/Duplicate actions, additive imports and name
 collisions, preserved categories and attribution, inert smart previews, independently wired
 group placements, unresolved external connections, invalid-file rejection, and feature guards.
 Exporting one shape leaves the library's unexported-change status intact.
+
+`tests/library-persistence.test.cjs` checks automatic IndexedDB storage of personal definitions,
+scripts, inert previews, categories, built-in overrides, and Working collection pins across reloads.
+It covers restored-library precedence over hosted starters, URL-path isolation, fixed/disabled
+library settings, and visible save-failure recovery. Export status remains separate from browser
+save status; restoring library data does not execute smart scripts or bypass preview consent.
+
 Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
 Chart, Minimal, and Blank. They verify source parity and
 availability for direct placement and pinning in the 59-entry offline catalog.

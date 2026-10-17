@@ -466,15 +466,16 @@
     box-shadow:var(--shadow);
   }
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  #autosaveWarning{position:absolute;right:12px;bottom:12px;z-index:6;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;border:1px solid #d97706;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px;box-shadow:var(--shadow)}
-  #autosaveWarning[hidden]{display:none}
-  #autosaveWarning button{font:inherit;min-height:44px;padding:8px 12px;background:#fff;border:1px solid #d97706;border-radius:7px;color:inherit;cursor:pointer}
+  #autosaveWarning,#libraryStorageWarning{position:absolute;right:12px;bottom:12px;z-index:6;max-width:calc(100% - 24px);box-sizing:border-box;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;border:1px solid #d97706;border-radius:10px;background:#fffbeb;color:#78350f;font-size:13px;box-shadow:var(--shadow)}
+  #libraryStorageWarning{top:12px;bottom:auto;width:520px}
+  #autosaveWarning[hidden],#libraryStorageWarning[hidden]{display:none}
+  #autosaveWarning button,#libraryStorageWarning button{font:inherit;min-height:44px;padding:8px 12px;background:#fff;border:1px solid #d97706;border-radius:7px;color:inherit;cursor:pointer}
   #settingsWarning{margin:8px 16px 0;padding:10px 12px;border:1px solid #d97706;border-radius:7px;background:#fffbeb;color:#78350f;font-size:13px}
   #settingsWarning[hidden],button[hidden],.menu-sep[hidden],.shape-picker-footer[hidden],#shapeLibWrap[hidden]{display:none}
 
   @media print{
     body{background:#fff}
-    .toolbar,.tabbar,.hint,#toast,#autosaveWarning,#settingsWarning{display:none !important}
+    .toolbar,.tabbar,.hint,#toast,#autosaveWarning,#libraryStorageWarning,#settingsWarning{display:none !important}
     .stage{padding:0}
     .wrap{box-shadow:none;border-radius:0;background:#fff}
   }
@@ -602,8 +603,8 @@
           <div class="shape-library-actions"><button type="button" id="importShapeBtn">Import shape…</button></div>
           <div class="shape-library-help">Adds one shape to My shapes and pins it without replacing your library.</div>
           <div class="shape-library-actions"><button type="button" id="importLibraryBtn">Import library…</button><button type="button" id="exportLibraryBtn">Export library…</button></div>
-          <div class="shape-library-help">Export library keeps My shapes, category tags and pins. Import library replaces them. Library changes are not autosaved.</div>
-          <div class="shape-library-help">Workspace files save sketch tabs. Save your library separately.</div>
+          <div class="shape-library-help">My shapes, category tags and pins are saved automatically in this browser. Export library makes a backup; Import library replaces the collection.</div>
+          <div class="shape-library-help">Workspace files save sketch tabs. Export your library separately to back it up or share it.</div>
           <div class="shape-library-actions"><button type="button" id="manageCategoriesBtn">Edit categories…</button></div>
           <div class="shape-library-actions"><button type="button" id="newSmartObjectBtn">Add smart shape…</button><button type="button" id="addIconBtn">Add icon…</button></div>
           <div class="shape-library-help" id="shapeLibraryHelp">Replace uses the selected canvas objects. Library edits do not change placed shapes.</div>
@@ -801,6 +802,7 @@
     <canvas id="canvas"></canvas>
     <textarea id="textInput" autocomplete="off" spellcheck="false"></textarea>
     <div id="autosaveWarning" role="status" hidden><span>Changes aren't being saved automatically. Save a workspace file before leaving.</span><button type="button" id="saveRecoveryWorkspace">Save workspace…</button></div>
+    <div id="libraryStorageWarning" role="status" hidden><span id="libraryStorageMessage"></span><button type="button" id="retryLibraryStorage">Retry</button><button type="button" id="exportRecoveryLibrary">Export library…</button></div>
     <div class="hint" id="hint">
       Pick a tool and start sketching.<br>
       <span style="font-size:13px">Saved automatically · paste or drop an image · <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> to undo</span>
@@ -6736,7 +6738,7 @@ self.onmessage = function(e){
     return copies;
   }
 
-  // ---------- optional shape library: one active, in-memory collection ----------
+  // ---------- optional shape library: one active collection, saved in this browser ----------
   const SHAPE_LIBRARY_FILE = 'shapes-library.json';
   let shapeLibrary = null;
   let shapeLibraryDirty = false;
@@ -6752,6 +6754,157 @@ self.onmessage = function(e){
   const LIBRARY_CATEGORIES = ['Controls','Logic','Displays','Tools & time','Drawing'];
   const MAX_LIBRARY_CATEGORIES = 128;
   const newLibraryEntryId = ()=>'entry-'+(crypto.randomUUID?.() || Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+
+  // Keep scripts/PNGs out of the small synchronous localStorage budget used by sketches.
+  // Each installation (URL path, without query/hash) has its own library in this origin.
+  const LIBRARY_DATABASE = 'SimpleCanvasLibrary';
+  const LIBRARY_STORAGE_KEY = location.pathname;
+  let libraryDatabasePromise = null;
+  let shapeLibraryStorageLoaded = false, shapeLibraryStorageOwned = false;
+  let shapeLibrarySavePending = false, shapeLibraryStorageError = '';
+  let shapeLibraryStorageRevision = 0, shapeLibraryStorageToken = null;
+  let shapeLibrarySaveJob = null;
+  function openLibraryDatabase(){
+    if(libraryDatabasePromise)return libraryDatabasePromise;
+    libraryDatabasePromise=new Promise((resolve,reject)=>{
+      let request,finished=false;
+      const fail=error=>{if(finished)return;finished=true;clearTimeout(timer);reject(error);};
+      const timer=setTimeout(()=>fail(new Error('Browser library storage did not respond')),3000);
+      try{request=indexedDB.open(LIBRARY_DATABASE,1);}catch(error){fail(error);return;}
+      request.onupgradeneeded=()=>request.result.createObjectStore('libraries');
+      request.onerror=()=>fail(request.error);
+      request.onblocked=()=>fail(new Error('Browser library storage is blocked by another tab'));
+      request.onsuccess=()=>{
+        const db=request.result;
+        if(finished){db.close();return;}
+        finished=true;clearTimeout(timer);
+        db.onversionchange=()=>{db.close();libraryDatabasePromise=null;};
+        db.onclose=()=>{libraryDatabasePromise=null;};
+        resolve(db);
+      };
+    }).catch(error=>{libraryDatabasePromise=null;throw error;});
+    return libraryDatabasePromise;
+  }
+  function readStoredShapeLibrary(db){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('libraries','readonly');
+      const request=tx.objectStore('libraries').get(LIBRARY_STORAGE_KEY);
+      tx.oncomplete=()=>resolve(request.result);
+      tx.onabort=()=>reject(tx.error || new Error('Could not read the saved library'));
+      tx.onerror=()=>{}; // onabort reports transaction failures once
+    });
+  }
+  function restoredShapeLibrary(record){
+    if(record?.version!==1 || !record.library || !Array.isArray(record.builtinIds) ||
+      record.builtinIds.length>MAX_ITEMS || new Set(record.builtinIds).size!==record.builtinIds.length ||
+      record.builtinIds.some(id=>typeof id!=='string' || !id.startsWith('builtin:')))
+      throw new Error('The saved library is not readable');
+    const raw=record.library;
+    if(!Array.isArray(raw.shapes) || !Array.isArray(raw.workingCollection))throw new Error('The saved library is not readable');
+    // Factory entries remain references to the installed definitions; personal copies keep
+    // their scripts. Updating SimpleCanvas must not turn pinned built-ins into old duplicates.
+    const builtins=record.builtinIds.map(id=>builtInShapeLibrary.find(entry=>entry.id===id)).filter(Boolean);
+    const removed=new Set(record.builtinIds.filter(id=>!builtins.some(entry=>entry.id===id)));
+    const knownBuiltins=new Set(builtInShapeLibrary.map(entry=>entry.id));
+    return normalizeShapeLibrary({...raw,shapes:[...raw.shapes,...builtins],
+      workingCollection:raw.workingCollection.filter(id=>!removed.has(id)),
+      builtinCategoryTags:Object.fromEntries(Object.entries(raw.builtinCategoryTags||{}).filter(([id])=>knownBuiltins.has(id)))});
+  }
+  async function restoreShapeLibrary(){
+    if(!features.shapeLibraryManagement)return;
+    const revision=shapeLibraryRevision;
+    try{
+      const record=await readStoredShapeLibrary(await openLibraryDatabase());
+      if(revision!==shapeLibraryRevision || shapeLibraryStorageOwned)return;
+      shapeLibraryStorageLoaded=true;
+      shapeLibraryStorageToken=record?.revision ?? null;
+      if(record){
+        const lib=restoredShapeLibrary(record);
+        shapeLibrary=lib;shapeLibraryDirty=record.unexported===true;
+        shapeLibraryStorageOwned=true;shapeLibraryRevision++;
+        ui.pendingShape=null;
+        if(ui.tool==='shape')setTool('select');
+      }
+      shapeLibraryStorageError='';
+    }catch(error){
+      if(revision===shapeLibraryRevision && !shapeLibraryStorageOwned)
+        shapeLibraryStorageError='Could not restore the library saved in this browser. Retry before editing, or import a backup.';
+    }
+    updateShapeLibraryUI();
+  }
+  function updateLibraryStorageUI(){
+    const warning=document.getElementById('libraryStorageWarning');
+    warning.hidden=!features.shapeLibraryManagement || !shapeLibraryStorageError;
+    document.getElementById('libraryStorageMessage').textContent=shapeLibraryStorageError;
+    document.getElementById('exportRecoveryLibrary').disabled=!shapeLibrary;
+    const status=document.getElementById('shapeLibraryStatus');
+    const count=libraryCatalogEntries().length,pinned=workingLibraryEntries().length;
+    const storage=shapeLibraryStorageError ? 'Not saved in this browser' : shapeLibrarySavePending ? 'Saving in this browser…' :
+      shapeLibraryStorageOwned ? 'Saved in this browser' : '';
+    status.textContent=count+' entries available · '+pinned+' pinned'+(storage?' · '+storage:'')+(shapeLibraryDirty?' · Unexported changes':'');
+    status.classList.toggle('dirty',shapeLibraryDirty || !!shapeLibraryStorageError);
+  }
+  function queueShapeLibrarySave(){
+    if(!features.shapeLibraryManagement || !shapeLibrary)return;
+    shapeLibraryStorageOwned=true;
+    shapeLibraryStorageRevision++;
+    shapeLibrarySavePending=true;
+    updateLibraryStorageUI();
+    void persistShapeLibrary();
+  }
+  function writeStoredShapeLibrary(db){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('libraries','readwrite'),store=tx.objectStore('libraries');
+      const request=store.get(LIBRARY_STORAGE_KEY);
+      let failure=null, revision, token;
+      request.onsuccess=()=>{
+        try{
+          // A stale browser tab must not silently replace changes saved by another one.
+          if((request.result?.revision ?? null)!==shapeLibraryStorageToken || (!shapeLibraryStorageLoaded && request.result)){
+            failure=new Error('The library changed in another tab. Export your changes, then reload to load the saved library.');
+            failure.conflict=true;tx.abort();return;
+          }
+          if(shapeLibrary.shapes.length>MAX_ITEMS || shapeLibrary.shapes.some(entry=>entry.items.length>MAX_ITEMS))
+            throw new Error('Library is too large to restore');
+          revision=shapeLibraryStorageRevision;token=newLibraryEntryId();
+          const builtinIds=shapeLibrary.shapes.filter(entry=>builtInShapeEntries.has(entry)).map(entry=>entry.id);
+          // put() takes an immutable structured clone here, after the ownership check.
+          store.put({version:1,revision:token,unexported:shapeLibraryDirty,builtinIds,
+            library:{...shapeLibrary,shapes:shapeLibrary.shapes.filter(entry=>!builtInShapeEntries.has(entry))}},LIBRARY_STORAGE_KEY);
+        }catch(error){failure=error;tx.abort();}
+      };
+      tx.oncomplete=()=>resolve({revision,token});
+      tx.onabort=()=>reject(failure || tx.error || new Error('Could not save the library'));
+      tx.onerror=()=>{};
+    });
+  }
+  function persistShapeLibrary(){
+    if(shapeLibrarySaveJob)return shapeLibrarySaveJob;
+    if(!features.shapeLibraryManagement || !shapeLibrary || !shapeLibrarySavePending)return Promise.resolve(true);
+    shapeLibrarySaveJob=(async()=>{
+      try{
+        const db=await openLibraryDatabase();
+        while(shapeLibrarySavePending){
+          const saved=await writeStoredShapeLibrary(db);
+          shapeLibraryStorageLoaded=true;shapeLibraryStorageToken=saved.token;
+          if(saved.revision===shapeLibraryStorageRevision)shapeLibrarySavePending=false;
+        }
+        shapeLibraryStorageError='';return true;
+      }catch(error){
+        shapeLibraryStorageError=error.conflict ? error.message : 'Library changes could not be saved in this browser. Retry or export the library before leaving.';
+        return false;
+      }finally{shapeLibrarySaveJob=null;updateLibraryStorageUI();}
+    })();
+    return shapeLibrarySaveJob;
+  }
+  async function retryShapeLibraryStorage(){
+    if(shapeLibraryStorageOwned)return persistShapeLibrary();
+    await restoreShapeLibrary();
+  }
+  document.getElementById('retryLibraryStorage').addEventListener('click',retryShapeLibraryStorage);
+  document.getElementById('exportRecoveryLibrary').addEventListener('click',exportShapeLibrary);
+  // Writes start at each edit, not at unload, when browsers may discard asynchronous work.
+  document.addEventListener('visibilitychange',()=>{if(document.hidden && shapeLibrarySavePending)void persistShapeLibrary();});
 
   function normalizeLibraryCategoryTags(values, label='category tags'){
     if(!Array.isArray(values) || values.length>MAX_LIBRARY_CATEGORIES)throw new Error('Invalid library '+label);
@@ -6882,7 +7035,7 @@ self.onmessage = function(e){
       shapeLibrary.workingCollection.push(entry.id);
     }
     shapeLibraryChanged();
-    toast((pinned?'Unpinned from':'Pinned to')+' the working collection — export to keep changes');
+    toast((pinned?'Unpinned from':'Pinned to')+' the working collection');
   }
   function copyLibraryEntry(entry){
     if(!activeLibraryShape(entry) || !canAddLibraryEntry(entry))return;
@@ -6895,7 +7048,7 @@ self.onmessage = function(e){
     librarySelectedEntry=copy;
     libraryCollection.value='mine';librarySearch.value='';libraryCategory.value='';
     shapeLibraryChanged();
-    toast((builtInShapeEntries.has(entry)?'Copied to My shapes':'Duplicated shape')+' and pinned to the working collection — export to keep changes');
+    toast((builtInShapeEntries.has(entry)?'Copied to My shapes':'Duplicated shape')+' and pinned to the working collection');
   }
   const shapePreviewJobs = new WeakMap();
   const shapePreviewFailures = new WeakMap();
@@ -7021,6 +7174,7 @@ self.onmessage = function(e){
     const job=createShapeThumbnail(list).then(png=>{
       if(!current())return;
       tpl.thumbnail={version:1,source,png};shapeLibraryRevision++;
+      if(shapeLibraryStorageOwned && shapeLibrary?.shapes.includes(tpl))queueShapeLibrarySave();
     }).catch(err=>{if(current()){
       shapePreviewFailures.set(tpl,source);
       toast('Could not generate preview for '+tpl.name+(err?.message?': '+err.message.slice(0,160):''));
@@ -7073,6 +7227,7 @@ self.onmessage = function(e){
     shapeLibraryDirty = true;
     shapeLibraryEditRevision++;
     shapeLibraryRevision++;
+    queueShapeLibrarySave();
     syncShapeLibraryEntries(true);
     ui.pendingShape = null;
     if(ui.tool==='shape') setTool('select');
@@ -7093,7 +7248,7 @@ self.onmessage = function(e){
     if(!list) return;
     if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
     if(!features.smartComponents && list.some(it=>it.componentApi!==undefined)){toast('Adding smart components is disabled');return;}
-    const name = await askLibrary({title:'Add selection to library', message:'This adds one reusable shape. Export the library when you want to keep your changes.', name:'', submit:'Add shape', validate:validateShapeName});
+    const name = await askLibrary({title:'Add selection to library', message:'This adds one reusable shape. Library changes are saved automatically in this browser; export a file for a backup or to share.', name:'', submit:'Add shape', validate:validateShapeName});
     if(name===null) return;
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
     shapeLibrary.shapes.push({name, savedAt:new Date().toISOString(), items:list});
@@ -7101,7 +7256,7 @@ self.onmessage = function(e){
     shapeLibraryChanged();
     managingShapes = false;
     setShapePicker(true);
-    toast('Added "'+name+'" to the library — export to keep it');
+    toast('Added "'+name+'" to the library');
   }
 
   async function renameLibraryShape(tpl){
@@ -7124,7 +7279,7 @@ self.onmessage = function(e){
     invalidateShapePreview(tpl);smartPreviewConsent.add(tpl);
     tpl.savedAt = new Date().toISOString();
     shapeLibraryChanged();
-    toast('Replaced "'+tpl.name+'" — export to keep the change');
+    toast('Replaced "'+tpl.name+'"');
   }
 
   async function deleteLibraryShape(tpl){
@@ -7145,9 +7300,12 @@ self.onmessage = function(e){
     // Download one synchronous snapshot. Preview completion may advance the revision;
     // user edits during the wait must remain visibly unexported rather than cleared.
     downloadJSON(SHAPE_LIBRARY_FILE, clone(lib));
-    if(revision===shapeLibraryEditRevision)shapeLibraryDirty = false;
+    if(revision===shapeLibraryEditRevision){
+      shapeLibraryDirty = false;
+      if(shapeLibraryStorageOwned)queueShapeLibrarySave();
+    }
     updateShapeLibraryUI();
-    toast('Library download started — keep the file to use it next time');
+    toast('Library download started — keep the file as a backup or to share');
   }
 
   async function exportLibraryShape(entry){
@@ -7168,7 +7326,7 @@ self.onmessage = function(e){
   }
 
   async function loadInitialShapeLibrary(){
-    if(!features.shapeLibrary) return;
+    if(!features.shapeLibrary || shapeLibraryStorageOwned) return;
     if(location.protocol!=='http:' && location.protocol!=='https:') return;
     const revision = shapeLibraryRevision;
     try{
@@ -8585,7 +8743,7 @@ self.onmessage = function(e){
     entry.description=document.getElementById('libraryEntryDescription').value.trim();
     entry.tags=[...new Set(document.getElementById('libraryEntryTags').value.split(',').map(t=>t.trim().slice(0,50)).filter(Boolean))].slice(0,20);
     entry.savedAt=new Date().toISOString();libraryMetadataEntry=null;libraryMetadataForm.hidden=true;
-    shapeLibraryChanged();toast('Details updated — export the library to keep changes');
+    shapeLibraryChanged();toast('Details updated');
     if(!document.getElementById('libraryBrowserDetails').hidden)document.getElementById('libraryEditBtn').focus();
     else librarySearch.focus();
   });
@@ -8759,13 +8917,7 @@ self.onmessage = function(e){
   function updateShapeLibraryUI(){
     if(shapeLibrary)prepareShapeLibrary(shapeLibrary);
     syncShapeLibraryEntries(true);
-    const count=libraryCatalogEntries().length, pinned=workingLibraryEntries().length;
-    const status=count+' entries available · '+pinned+' pinned'+(shapeLibraryDirty?' · Unexported changes':'');
-    for(const id of ['shapeLibraryStatus']){
-      const el = document.getElementById(id);
-      el.textContent = status;
-      el.classList.toggle('dirty', shapeLibraryDirty);
-    }
+    updateLibraryStorageUI();
     shapeLibBtn.classList.toggle('dirty', shapeLibraryDirty);
     shapeLibBtn.title = 'Shape library' + (shapeLibraryDirty ? ' — unexported changes' : ' — pick a shape to place');
     document.getElementById('exportLibraryBtn').disabled = !shapeLibrary;
@@ -13020,7 +13172,7 @@ self.onmessage = function(e){
         }
         edit.entry.savedAt=new Date().toISOString();
         shapeLibraryChanged();smartObjectDialog.close();setShapePicker(true);
-        toast('Updated "'+name+'" — export the library to keep your changes');
+        toast('Updated "'+name+'"');
         return;
       }
       const st = styleFor('smart');
@@ -13060,7 +13212,7 @@ self.onmessage = function(e){
       smartObjectDialog.close();
       managingShapes = false;
       setShapePicker(true);
-      toast('Added "'+name+'" to the library — export to keep it');
+      toast('Added "'+name+'" to the library');
     }catch(err){if(current() && !err.cancelled)smartObjectDialogError.textContent=err.message;}
     finally{disposeSmartExecution(execution);if(seq===smartObjectSubmitSeq) smartObjectDialogSubmit.disabled=false;}
   });
@@ -13612,7 +13764,7 @@ self.onmessage = function(e){
     iconDialog.close();
     managingShapes = false;
     setShapePicker(true);
-    toast('Added "'+shapeName+'" to the library — export to keep it');
+    toast('Added "'+shapeName+'" to the library');
   }
 
   // Where a library shape came from (currently only Iconify imports): kept so the icon's license
@@ -13877,7 +14029,7 @@ self.onmessage = function(e){
       managingShapes=false;
       shapeLibraryChanged();
       setShapePicker(true);
-      toast('Imported "'+entry.name+'" into My shapes and the working collection — export the library to keep it');
+      toast('Imported "'+entry.name+'" into My shapes and the working collection');
     };
     r.onerror=()=>{if(request===shapeLibraryImportSeq)toast('Could not read that file');};
     r.readAsText(file);
@@ -13886,6 +14038,7 @@ self.onmessage = function(e){
   function importShapeLibraryFile(file){
     if(!features.shapeLibraryManagement) return;
     const request = ++shapeLibraryImportSeq;
+    shapeLibraryRevision++; // A pending restore/startup fetch must not replace an explicit import.
     const r = new FileReader();
     r.onload = async ()=>{
       if(request!==shapeLibraryImportSeq) return;
@@ -13899,6 +14052,7 @@ self.onmessage = function(e){
       shapeLibrary = lib;
       shapeLibraryDirty = false;
       shapeLibraryRevision++;
+      queueShapeLibrarySave();
       ui.pendingShape = null;
       if(ui.tool==='shape') setTool('select');
       managingShapes = false;
@@ -13919,7 +14073,7 @@ self.onmessage = function(e){
   }
 
   function warnUnexportedLibrary(e){
-    if(!shapeLibraryDirty && !unsavedTabs.size && !tabListDirty) return;
+    if(!shapeLibrarySavePending && !unsavedTabs.size && !tabListDirty) return;
     e.preventDefault();
     e.returnValue = '';   // browsers supply their own leave-page warning text
   }
@@ -14814,6 +14968,7 @@ self.onmessage = function(e){
     loadTabList();
     enterTab(activeTabId);
     tidySeps();
+    await restoreShapeLibrary();
     updateShapeLibraryUI();
     renderShapeLibrary();
     loadInitialShapeLibrary();

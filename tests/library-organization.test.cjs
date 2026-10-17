@@ -90,9 +90,13 @@ async function assignCategories(page,name,names){
 }
 async function exportLibrary(page){
   await actions(page);const download=page.waitForEvent('download');await page.locator('#exportLibraryBtn').click();
-  return JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  const data=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  // Preserve the completed export bookkeeping when the roundtrip test reloads next.
+  await page.waitForFunction(()=>__test.run('!shapeLibraryDirty && !shapeLibrarySavePending && !shapeLibraryStorageError'));
+  return data;
 }
 async function importLibrary(page,data){
+  await page.evaluate(()=>__test.run('appReady'));
   await page.locator('#shapeLibraryInput').setInputFiles({name:'library.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
 }
 const personalLibrary={app:'SimpleCanvasShapeLibrary',version:2,workingCollection:['my-box','my-arrow'],shapes:[

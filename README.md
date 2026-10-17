@@ -92,7 +92,8 @@ Sketches and tabs are saved automatically to this browser's local storage and re
 next visit. This storage is local to the browser; downloadable JSON files let you keep a backup
 or move your work elsewhere. Sketch/workspace JSON retains placed smart-shape scripts, saved state,
 and connections. A workspace contains all open sketch tabs; it excludes the library, pins, and
-category organization. Use the separate **Export library…** action to retain those.
+category organization. The library is saved separately in this browser. **Export library…** makes
+a portable backup of it.
 
 | File action | Scope |
 | --- | --- |
@@ -106,7 +107,9 @@ The app asks before closing a tab that contains objects.
 
 Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
 offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
-Library changes are separate from sketch saves and autosave: use **Export library…** to retain them.
+Library changes are saved separately in this browser, including the Working collection and
+categories. If that save is pending or fails, the app warns before leaving; a visible failure banner
+offers **Retry** and **Export library…**. Export also provides a backup if browser data is cleared.
 
 ## Export and print
 
@@ -213,7 +216,7 @@ file for that entry. It supports ordinary shapes, smart shapes, connected compon
 items, retaining their internal connections, categories, keywords, description, preview, and source
 credits. **Actions → Import shape…** adds it to My shapes with a fresh ID and unique name, then pins
 it. This adds to the current library; even an exported built-in becomes an editable personal copy.
-Exporting one shape does not mark the whole library as saved.
+Exporting one shape does not clear the whole library’s unexported-change indicator.
 
 Categories are named tags: an entry can belong to several, including built-in entries. Create,
 rename, and remove categories through **Library actions**, and assign memberships to entries.
@@ -231,15 +234,27 @@ keywords, and working-collection membership. Older flat libraries and single-cat
 still import; personal entries appear in **My shapes**. **Import library…** replaces the current user library
 and its organization and pins, while leaving the built-in definitions available.
 
-Library edits, category organization, and pins last only for the current visit, separately from
-sketch saves and autosave. An indicator shows unexported changes; importing another library or
-leaving the page warns before those changes are discarded. Export and reimport the file to
-retain your collection for another visit.
+Your personal library, scripts, PNG previews, category organization (including built-in overrides),
+and Working collection pins are saved automatically in IndexedDB. They survive reloads and closing
+the tab in the same browser/profile at the same site and application URL path. Sketch/workspace
+files remain separate; importing a library also saves its replacement contents to this browser.
+Built-ins are saved by ID and use the installed definitions on restore; personal scripts are retained.
+If another tab saves a newer library, the conflict banner asks you to export your changes and reload
+before continuing, preventing this tab from silently overwriting that newer copy.
+
+An indicator tracks changes since the last **Export library…**; it does not mean the browser copy
+is unsaved. Leaving the page warns only while a browser save is pending or has failed. A failure
+banner offers **Retry** and **Export library…**, and the library remains usable in memory. Export
+is for backups and sharing, rather than a prerequisite for the next visit. Keep a downloaded copy
+when the collection matters: clearing site data or ending a private-browsing session can remove
+the browser copy.
 
 Libraries include PNG thumbnails, which display without running shape scripts. Ordinary missing
 previews are generated automatically. Imported smart shapes with missing previews show placeholders
 and ask before running scripts to generate pictures; **Use placeholders** still loads the library.
-**Generate missing previews…** lets you generate them later. Export the library to retain new previews.
+**Generate missing previews…** lets you generate them later. Browser saves retain previews with
+your personal library, and library exports include them. Restoring the library does not execute
+shape scripts or grant permission to generate missing smart previews.
 
 ### Smart shapes
 
@@ -614,9 +629,12 @@ unchanged; icons with no usable geometry cannot be imported.
 ## Deployment and settings
 
 When hosted, an optional `shapes-library.json` beside the HTML supplies the initial user library
-and working collection alongside the built-in catalog.
-The file is read only at startup; opening the picker never reloads it. File imports work when
-hosted or opened locally, including importing the demo file via **Actions → Import library…**.
+and working collection alongside the built-in catalog. A personal library already saved in this
+browser takes precedence, so changing the hosted starter file does not replace your collection.
+An unchanged starter is not cached merely by loading it; the first library edit or import creates
+the personal browser copy. The starter is read only at startup; opening the picker never reloads
+it. File imports work when hosted or opened locally, including importing the demo file via
+**Actions → Import library…**.
 For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
 if needed. The HTML works on its own without a library file.
 
@@ -643,8 +661,8 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | Feature | Effect when `false` |
 | --- | --- |
 | `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
-| `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
-| `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. The browser and direct placement remain available. |
+| `shapeLibrary` | Hides the entire library and skips its starter file and browser storage. Objects in existing drawings still render and remain editable. |
+| `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
 | `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |

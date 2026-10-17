@@ -982,20 +982,37 @@ regular/smart/component items, grouped items and internal bindings, category mem
 keywords, description, preview, and source metadata. Import adds an editable personal entry with
 a fresh ID and unique name and pins it, including when the exported entry was built-in.
 It does not replace the library. **Import library…** remains whole-library replacement, and
-**Export library…** saves the full library; exporting one shape does not clear its unsaved status.
+**Export library…** downloads the full library; exporting one shape does not clear its unexported status.
 References to objects outside the transferred entry remain unresolved until reconnected after placement.
 Individual shape imports use the same authoring guards and missing-script-preview consent as
 library imports.
 
 The catalog does not change the component API or placement lifecycle. Each placement clones its
 definition, remaps internal component bindings, and initializes smart state and style. Existing
-canvas instances and exported HTML retain their own definition snapshots. Library changes,
-including pins and category organization, last for the visit and require explicit library export.
-Sketch autosave and workspace files do not save the library. Workspace JSON saves all sketch tabs,
-including placed smart-shape scripts, state, and bindings.
+canvas instances and exported HTML retain their own definition snapshots. Personal library changes
+and imports are saved automatically to IndexedDB, including full definitions/scripts, inert PNG
+previews, Working collection pins, categories, and built-in category overrides. Built-in references
+use canonical IDs and the installed definitions on restore; personal scripts are retained. The saved library
+belongs to the current browser/profile and site/application URL path and survives reloads or closing
+the tab. Sketch autosave and workspace files remain separate: workspace JSON saves all sketch tabs,
+including placed smart-shape scripts, state, and bindings, but not the library.
 
-Deployment switches continue to separate authoring from use. `shapeLibrary` hides the library;
-`shapeLibraryManagement` disables catalog changes and pins. Adding smart definitions to the working
+A restored personal library takes precedence over the hosted `shapes-library.json` starter; a changed
+starter cannot silently replace it. Loading an unchanged starter alone does not cache it as a personal
+library. The first library edit or import enables persistence of that collection. Restoring stored
+entries and thumbnails does not execute scripts; missing smart previews retain their existing
+explicit-consent requirement.
+
+The unexported-change indicator tracks the last library export, independently of browser saving.
+Leaving the page warns only when browser saving is pending or failed. A visible failure banner
+provides **Retry** and **Export library…** while preserving the current in-memory library. Exports
+are portable backups and sharing files, not a requirement for reload persistence. Clearing site
+data or ending a private browsing session may remove the browser copy, so retain an exported backup
+for collections that must be kept.
+
+Deployment switches continue to separate authoring from use. `shapeLibrary:false` skips the library,
+its starter, and its browser storage. `shapeLibraryManagement:false` disables catalog changes and
+pins and bypasses personal storage, keeping the fixed deployment starter in use. Adding smart definitions to the working
 collection or copying them into My shapes requires `smartShapeAuthoring`, and API v2 definitions also
 require `smartComponents`. The browser and direct placement remain available when management or
 authoring is disabled. Those switches do not disable existing controls, connections, or HTML
@@ -1010,8 +1027,8 @@ Ordinary shape previews are generated automatically. A missing imported smart-sh
 placeholder until you approve script execution. Opening an automatically loaded library asks once;
 declining still lets you use the library. **Generate missing previews…** offers the choice again.
 Automatic preview creation or recovery does not mark the library as having unexported changes.
-Newly authored or replaced entries regenerate previews, and exporting retains generated PNGs so
-future imports can display them without running scripts. Placing/editing a smart shape still runs
+Newly authored or replaced entries regenerate previews. Personal browser saves and library exports
+retain generated PNGs, so restored/imported entries can display them without running scripts. Placing/editing a smart shape still runs
 its hooks inside the sandbox. Built-in previews ship with the app. Renaming, categorizing,
 tagging, or keeping an entry does not require a new picture; changing its drawing or script does.
 

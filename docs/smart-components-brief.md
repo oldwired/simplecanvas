@@ -102,10 +102,12 @@ These boundaries describe the feature branch, including the feedback milestone.
   characters. Invalid state updates are rejected. Bulk datasets need a separate representation.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
-- **Library edits require explicit export.** The browser and working collection last for the
-  current visit. Import replaces personal entries, category organization, and pins; built-in
-  definitions remain. Workspace saves and autosave retain all sketch tabs and placed scripts,
-  state, and connections, but exclude the library, pins, and category organization.
+- **The library saves separately in this browser.** IndexedDB retains the modified/imported personal
+  library, Working collection pins, scripts, inert previews, categories, and built-in overrides for
+  this browser/profile and site/application URL path. Import replaces personal entries,
+  organization, and pins; built-in definitions remain. Export is for backups and sharing.
+  Workspace saves/autosave retain sketch tabs and placed scripts, state, and connections, but
+  exclude the library, pins, and category organization.
   Constant and Value label are numeric. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
@@ -254,7 +256,7 @@ Format 2 stores category memberships in each entry's `categoryTags` string array
 `categories` registry that retains empty categories, and `builtinCategoryTags` organization
 overrides. Existing `tags` remain search Keywords. Legacy single `category` fields migrate on
 import; flat libraries remain valid, and unassigned entries appear under Uncategorized.
-All category organization survives library export/import. Keep library-entry identity separate from
+All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
 refreshes alone do not create connected time sources.
@@ -280,14 +282,44 @@ Individual entries transfer through **Export shape…** in entry details or comp
 smart/component items, grouped internal connections, categories, keywords, description, preview,
 and source metadata. Import adds and pins a personal copy with a fresh ID and unique name, even
 for a built-in snapshot. **Import library…** replaces the user library; individual import adds to it.
-Single-shape export does not mark the whole library saved. These transfers retain existing
-authoring guards and script-preview consent, and introduce no library autosave.
+Single-shape export does not clear the whole library’s unexported-change indicator. Transfers retain
+existing authoring guards and script-preview consent; successful imports join browser persistence.
 
 The library and authoring deployment switches still apply, including `smartComponents` and the
 Really SimpleCanvas variant. A fixed deployed library remains placeable when component authoring
 is disabled. Exported documents carry the definitions they use and remain independent of the
-author's library. Browser persistence for user library edits is a separate decision; this
-milestone must keep the existing explicit library export workflow clear.
+author's library. Personal library persistence is an improvement to the existing library workflow;
+it does not advance phases 3–6 or add shared definitions between placed instances.
+
+### Browser persistence for the library and Working collection
+
+Save the full modified/imported personal library automatically in IndexedDB: definitions and
+scripts, inert PNG previews, personal entries, ordered Working collection pins, the category
+registry, and built-in category overrides. Store built-ins by canonical ID so restore uses the
+installed definitions, while retaining actual personal scripts. Scope the record to the current browser/profile and
+site/application URL path, so it survives reloads and closing the tab without mixing separate
+deployments. Workspace/sketch serialization continues to exclude library data.
+
+Restore a saved personal collection before using a hosted starter. A changed `shapes-library.json`
+seed must not overwrite a restored library. An unchanged hosted seed is not cached merely by
+loading it; editing/importing the library establishes the personal saved copy. With
+`shapeLibraryManagement:false`, bypass personal storage and retain the fixed deployment starter;
+with `shapeLibrary:false`, skip the library and its storage altogether.
+
+Restore stored definitions and thumbnails without running scripts. Missing smart previews keep
+the existing consent flow. Browser persistence must never convert an import/restore into execution
+consent or regenerate a smart preview automatically.
+
+Keep the unexported-change indicator independent of browser-save status. Leaving the page warns
+only while saving is pending or has failed. A visible storage-failure banner offers Retry and
+Export library, preserving the usable in-memory collection. Export remains important for backups
+and sharing: site-data deletion or private browsing can remove the browser copy. It is no longer
+required merely to retain a collection for the next visit.
+
+Acceptance is covered by [library persistence](../tests/library-persistence.test.cjs): full
+collection reload, category/built-in overrides and pins, inert scripts/previews, starter precedence,
+URL-path isolation, fixed/disabled deployment behavior, and save-failure recovery. Keep this within
+the completed library milestone; the feedback and later-phase boundaries stay unchanged.
 
 ### Logic components
 
