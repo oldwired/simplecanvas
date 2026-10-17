@@ -510,6 +510,9 @@ test('spreadsheet cell pointing: while typing a formula, clicking or dragging ov
  await page.mouse.move(a1.x,a1.y);await page.mouse.down();await page.mouse.move(a3.x,a3.y,{steps:5});await page.mouse.up();
  assert.equal(await input.inputValue(),'=SUM(A1:A3','dragging inserts a range');
  assert.equal(await input.count(),1,'the field stays open');
+ const frame=await page.evaluate(()=>{const el=[...document.querySelectorAll('div')].find(d=>d.style.borderStyle==='dashed');const r=el.getBoundingClientRect();return [r.x,r.y,r.width,r.height];});
+ const cellsBox=[box.x+120,box.y+140,64,72];   // A1:A3
+ frame.forEach((v,i)=>assert.ok(Math.abs(v-(cellsBox[i]+(i<2?-1:2)))<=.5,'the dashed frame reaches 1 px past every side of A1:A3: '+frame));
  await page.keyboard.type(')');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.D1')==='=SUM(A1:A3)');
  // a second click right after replaces the reference; after an operator pointing works again
@@ -521,6 +524,20 @@ test('spreadsheet cell pointing: while typing a formula, clicking or dragging ov
  assert.equal(await input.inputValue(),'=A2*B1','after an operator a click inserts again');
  await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.D2')==='=A2*B1');
+ // argument by argument: after pointing the first, selecting the next placeholder points into that one
+ q=at(3,3);await page.mouse.click(q.x,q.y);await input.waitFor();
+ const pick=word=>input.evaluate((el,w)=>{const i=el.value.indexOf(w);el.setSelectionRange(i,i+w.length);},word);
+ await page.keyboard.type('=ROUND(value,digits)');await pick('value');
+ c=at(0,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A1,digits)');
+ await input.evaluate(el=>el.setSelectionRange(el.value.indexOf('digits'),el.value.indexOf('digits')+6));
+ c=at(1,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A1,B1)','the selected placeholder is replaced, not the first argument');
+ await input.evaluate(el=>{const i=el.value.indexOf('A1');el.setSelectionRange(i,i+2);});
+ c=at(0,2);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A3,B1)','selecting an earlier argument and pointing replaces it');
+ await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D4')==='=ROUND(A3,B1)');
  // plain text: a click on another cell ends editing as before
  q=at(3,2);await page.mouse.click(q.x,q.y);await input.waitFor();
  await page.keyboard.type('label');c=at(4,0);await page.mouse.click(c.x,c.y);
