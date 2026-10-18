@@ -644,16 +644,6 @@ anchored at `min` (or zero when omitted). A `label` of at most 100 characters su
 field name. At most 16 settings are allowed. The host edits and validates these fields in
 **Edit…**. Settings are not ports and cannot be bound to live sources.
 
-A setting may add `visibleWhen:{otherSetting:value|[values], …}`: **Edit…** then shows the field
-only while every listed setting currently has one of the given values, and updates as they change.
-A hidden field keeps its stored value. [Spreadsheet](examples/spreadsheet.js) shows its dataset options
-only for `source:'Dataset'`:
-
-```js
-dataRows: { type:'number', default:5, min:1, max:99, step:1, label:'Dataset rows shown',
-  visibleWhen:{ source:'Dataset' } },
-```
-
 ```js
 settings: { channels: { type:'number', default:4, min:2, max:16, step:1, label:'Channels' } },
 inputs(state) {

@@ -2485,25 +2485,7 @@ self.onmessage = function(e){
       }
       componentSettingValue(field.default,field,name);
     }
-    // visibleWhen:{otherSetting:value|[values], ...} shows the field in Edit only while every listed
-    // setting has one of the given values; a hidden field keeps its stored value.
-    for(const [name,field] of Object.entries(fields)){
-      const when=raw[name].visibleWhen;
-      if(when===undefined)continue;
-      if(!when || typeof when!=='object' || Array.isArray(when) || !Object.keys(when).length)throw new Error('Invalid visibleWhen for setting '+name);
-      field.visibleWhen={};
-      for(const [other,allowed] of Object.entries(when)){
-        if(other===name || !Object.hasOwn(fields,other))throw new Error('visibleWhen of '+name+' refers to an unknown setting');
-        const list=Array.isArray(allowed)?allowed:[allowed];
-        if(!list.length || list.length>32)throw new Error('Invalid visibleWhen for setting '+name);
-        field.visibleWhen[other]=list.map(value=>componentSettingValue(value,fields[other],other));
-      }
-    }
     return fields;
-  }
-  function componentSettingVisible(field,state,fields){
-    return !field.visibleWhen || Object.entries(field.visibleWhen).every(([other,allowed])=>
-      allowed.includes(Object.hasOwn(state||{},other)?state[other]:fields[other].default));
   }
   function componentSettingValue(value,field,name){
     if(field.format==='choices')parseComponentChoices(value);
@@ -17435,7 +17417,6 @@ self.onmessage = function(e){
       notice.className='component-section-note';componentSettingFields.append(notice);
     }
     for(const [name,field] of Object.entries(caps.settings||{})){
-      if(!componentSettingVisible(field,proposal.state,caps.settings))continue;   // e.g. dataset options while the grid uses cells
       if(field.format==='choices'){
         const choiceEditor=createComponentChoicesEditor(session,name,field,String(proposal.state[name]??field.default));
         componentSettingFields.append(choiceEditor.element);session.settings.push({name,field,input:choiceEditor.input});continue;

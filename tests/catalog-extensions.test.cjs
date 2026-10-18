@@ -706,30 +706,6 @@ test('script-driven resizing in offline HTML preserves the origin of rotated com
  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
-test('settings visibleWhen: the spreadsheet shows its dataset options only for Grid source: Dataset',async()=>app(async({page,run})=>{
- await run(`(()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'sheet',x:80,y:120}];
-   setTool('select');selection=[0];render();})()`);
- const labels=()=>page.locator('#componentSettingFields label').allTextContents();
- const choose=async(label,value)=>{await page.getByLabel(label,{exact:true}).selectOption(value);
-   await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled);};
- await page.locator('#componentBindingsBtn').click();
- await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled);
- assert.deepEqual(await labels(),['Grid source'],'Cells: no dataset fields');
- await choose('Grid source','Dataset');
- assert.deepEqual(await labels(),['Grid source','Dataset rows shown','Dataset columns shown','Edit dataset cells'],'Allow reader edits waits for Edit dataset cells');
- await choose('Edit dataset cells','true');
- assert.ok((await labels()).includes('Allow reader edits'));
- await choose('Grid source','Cells');
- assert.ok(!(await labels()).includes('Edit dataset cells'),'switching back hides the dataset options again');
- await page.locator('#componentBindingsSave').click();
- await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
- assert.equal(await run('items[0].state.editDataset'),true,'a hidden setting keeps its stored value');
- const bad=await run(`(async()=>{const it={type:'smart',uid:'bad',x:0,y:0,w:10,h:10,componentApi:2,state:{},bindings:{},inputValues:{},
-   script:'({apiVersion:2,settings:{a:{type:"boolean",default:false,visibleWhen:{missing:true}}},initState(){return {a:false};},children(){return [];}})'};
-   try{return await requestSmartCaps(it)?'accepted':'rejected';}catch(e){return 'rejected';}})()`);
- assert.equal(bad,'rejected','visibleWhen must refer to another declared setting');
-}));
-
 test('an edit-mode cell field grows to the right with long text and shrinks back to its cell',async()=>app(async({page,run})=>{
  await run(`(async()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'sheet',x:80,y:120}];
    setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
