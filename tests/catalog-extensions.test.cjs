@@ -463,6 +463,14 @@ test('spreadsheet context menu opens on a touch long press; a short tap still ed
  assert.equal(await input.getAttribute('aria-label'),'Cell B2');
  assert.equal(await menus.count(),0);
  await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await page.waitForTimeout(400);
+ // the headers lie outside the shape's box: a long press there opens the header menu too
+ const headB=[120+64+32,140-8-10];
+ await touch('pointerdown',...headB);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),1,'a long press on a column header opens its menu');
+ await touch('pointerup',...headB);await run('smartHitSettled');
+ assert.ok((await menus.first().textContent()).includes('Column width'),'the column header menu');
+ assert.equal(await run('editingSmartIdx'),0,'still in edit mode');
 }));
 
 test('spreadsheet context menu: Number format and Alignment per cell, moved with inserted columns',async()=>app(async({page,run})=>{

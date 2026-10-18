@@ -5116,7 +5116,9 @@ self.onmessage = function(e){
           if(e.pointerType!=='mouse'){
             pending.longPress=setTimeout(()=>{
               pending.longPress=null;
-              if(pending.released || pending.cancelled || smartCurrentPress!==pending || editingSmartIdx!==pending.idx || hitTest(x,y)!==pending.idx)return;
+              // on one of the shape's handles (which may lie outside its box, e.g. spreadsheet headers) or its body
+              if(pending.released || pending.cancelled || smartCurrentPress!==pending || editingSmartIdx!==pending.idx ||
+                 (pending.mode!=='handle' && pending.mode!=='body'))return;
               pending.longPressed=true;
               void openSmartContextMenu(pending.e);
             },500);
