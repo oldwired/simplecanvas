@@ -40,7 +40,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===25 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===26 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -64,7 +64,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all twenty-five tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all twenty-six tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -79,7 +79,7 @@ test('shipped workspace imports all twenty-five tabs with valid local bindings a
     }
     return result;
   })()`);
-  assert.equal(checked.length,25);
+  assert.equal(checked.length,26);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -181,14 +181,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has twenty-five working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has twenty-six working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),25);
-    for(let tab=1;tab<=25;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),26);
+    for(let tab=1;tab<=26;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -511,5 +511,65 @@ test('shipped live and calculated-result examples allow reader edits and refresh
     assert.equal(download.suggestedFilename(),'calculated-readings.json');assert.deepEqual(JSON.parse(fs.readFileSync(await download.path(),'utf8').replace(/^\uFEFF/,'')),[{label:'Alpha',value:24},{label:'Beta',value:50},{label:'Gamma',value:80}]);
     await page.reload();await readerTab(page,25);await readerText(page,25,'result-editor','20');
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+
+test('views and stored results demo edits original records through sorted views and copies calculated results explicitly',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,26);
+  const inspect=async id=>run(`(async()=>{const item=items.find(item=>item.uid===${JSON.stringify(uid(26,id))});return {io:await resolveSmartComponentIo(item),handles:await requestSmartCall(item,'handles',[item.state,item.w,item.h,smartResolvedStyle(item)])};})()`);
+  let view=await inspect('view'),calculated=await inspect('calculated'),stored=await inspect('stored');
+  assert.deepEqual(view.io.inputs.data,{datasetId:'readings',rows:[1,0]});
+  assert.deepEqual(view.io.tables.inputs.data.rowIds,['r1','r0']);
+  assert.deepEqual(view.io.tables.inputs.data.rows,[['Gamma',40],['Beta',25]]);
+  assert.equal(view.handles.find(handle=>handle.id==='cell-0-1').datasetCell.rowId,'r1','the first sorted row retains Gamma’s original record identity');
+  assert.equal(view.handles.some(handle=>handle.id==='addRow'),false,'a filtered/sorted selection cannot append an unspecified record');
+  assert.equal(calculated.io.tables.inputs.data.editable,false,'calculated rows have no write-back owner');
+  assert.equal(calculated.handles.some(handle=>handle.datasetCell||handle.kind==='action'),false,'requesting edits does not make a calculated table editable');
+  assert.notEqual(calculated.io.inputs.data.datasetId,'readings');assert.notEqual(calculated.io.inputs.data.datasetId,'saved');
+  assert.equal(stored.io.inputs.data.datasetId,'saved');assert.equal(stored.io.tables.inputs.data.editable,true);
+  const edit=async(id,handle,value)=>{await editorHandle(page,run,26,id,handle);await saveInlineText(page,value);await run('smartHitSettled');};
+  const sum=async()=> (await inspect('calculated')).io.tables.inputs.data.rows;
+  await edit('view','cell-0-1','50');
+  assert.deepEqual(await run('datasets.readings.rows'),[['Beta',25],['Gamma',50],['Alpha',10]],'view edits reach the original record without sorting stored rows');
+  assert.deepEqual(await run('datasets.readings.rowIds'),['r0','r1','r2']);assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run('datasets.saved.rows'),[[65]],'a stored copy waits for an explicit replacement');
+  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows[0][0]===75'));await run('smartHitSettled');
+  await edit('stored','cell-0-0','99');assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run('datasets.readings.rows'),[['Beta',25],['Gamma',50],['Alpha',10]],'editing the independent copy never changes its contributors');
+  await edit('original','cell-0-1','30');assert.deepEqual(await sum(),[[80]]);assert.deepEqual(await run('datasets.saved.rows'),[[99]],'later source changes leave the edited Manual copy alone');
+  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows[0][0]===80'));await run('smartHitSettled');
+  assert.deepEqual((await inspect('view')).io.tables.inputs.data.rows,[['Gamma',50],['Beta',30]]);
+}));
+
+test('shipped views and stored results comparison keeps view edits shared and calculated copies independent offline',async()=>{
+  const context=await browser.newContext({viewport:{width:1600,height:1100}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  const tab=workspace.tabs[25],readings=tab.datasets.readings,saved=tab.datasets.saved;
+  const cellPoint=async(id,row,column)=>{
+    const item=itemFor(26,id),definition=vm.runInNewContext(item.script),selected=id==='view',derived=id==='calculated',table=derived||id==='stored'?saved:readings;
+    const reference={datasetId:derived?'derived-results':id==='stored'?'saved':'readings',...(selected?{rows:[1,0]}:{})};
+    const snapshot={...table,datasetId:reference.datasetId,rows:selected?[table.rows[1],table.rows[0]]:table.rows,rowIds:selected?[table.rowIds[1],table.rowIds[0]]:table.rowIds,rowCount:selected?2:table.rows.length,editable:!derived};
+    const io={inputs:{data:reference,startRow:0,startColumn:0},tables:{inputs:{data:snapshot}}};
+    // Derive the actual rendered cell center. WebKit text bounds are not reliable inside the SVG host.
+    const g=definition._view(item.state,item.w,item.h,io),point={x:g.pad+g.numberWidth+(column+.5)*g.cellWidth,y:g.bodyY+g.header+(row+.5)*g.rowHeight};
+    return readerHost(page,26,id).evaluate((host,point)=>{const p=new DOMPoint(point.x,point.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};},point);
+  };
+  const edit=async(id,row,column,before,after)=>{
+    await readerText(page,26,id,before);const point=await cellPoint(id,row,column);await page.mouse.click(point.x,point.y);
+    const field=page.locator('#smartTextValue');await field.waitFor({state:'visible'});assert.equal(await field.inputValue(),before);
+    await saveInlineText(page,after);await readerText(page,26,id,after);
+  };
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,26);
+    await readerText(page,26,'calculated','65');await readerText(page,26,'stored','65');
+    const readOnlyPoint=await cellPoint('calculated',0,0);await page.mouse.click(readOnlyPoint.x,readOnlyPoint.y);
+    assert.equal(await page.locator('[data-smart-inline-input]').count(),0,'aggregate results do not offer a misleading editing field');
+    await edit('view',0,1,'40','50');await readerText(page,26,'original','50');await readerText(page,26,'calculated','75');await readerText(page,26,'stored','65');
+    await readerHandle(page,26,'copy','trigger');await readerText(page,26,'stored','75');
+    await edit('stored',0,0,'75','99');await readerText(page,26,'calculated','75');await readerText(page,26,'original','25');
+    await edit('original',0,1,'25','30');await readerText(page,26,'view','30');await readerText(page,26,'calculated','80');await readerText(page,26,'stored','99');
+    await readerHandle(page,26,'copy','trigger');await readerText(page,26,'stored','80');
+    await readerTab(page,25);await readerTab(page,26);await readerText(page,26,'view','50');await readerText(page,26,'stored','80');
+    await page.reload();await readerTab(page,26);await readerText(page,26,'view','40');await readerText(page,26,'calculated','65');await readerText(page,26,'stored','65');
+    assert.equal(await page.locator('.tab-panel').nth(25).locator('[data-component-error]').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

@@ -296,7 +296,7 @@ notice, and the shared 2,000,000-character snapshot budget.
 Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
 Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
 
-`tests/example-workspace.test.cjs` validates all twenty-five shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all twenty-six shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
 and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner
@@ -333,6 +333,10 @@ Dataset editing and calculated table checks:
   materializes evaluated tables, and verifies the offline reader and linked-page results.
 - The workspace tests exercise tabs 24 and 25 together: independent working edits, Live overwrite,
   source-to-formula-to-Dataset refresh, and current result downloads.
+- Tab 26 compares editable filtered/sorted views, read-only aggregate results, and independent
+  Manual Dataset copies. Editor and offline-reader tests edit a sorted row by its stable identity,
+  verify the source order is preserved, copy an aggregate explicitly, edit that copy independently,
+  and confirm later source edits wait for the next Copy pulse. Reader reload restores embedded data.
 - `tests/dataset-live.test.cjs` checks publication provenance, same-data refreshes, initial setup,
   restored baselines, exact snapshots, failure recovery, chains/cycles, and paused stepping.
 - `tests/dataset-live-browser.test.cjs` checks destination-edit persistence, Undo, actual same-data

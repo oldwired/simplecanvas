@@ -25,7 +25,8 @@ tab demonstrates spreadsheet formulas consuming and publishing signals. A twenty
 to the formula grid and demonstrates the editable-copy workflow. A twenty-second tab demonstrates
 capture, editing, and several views of one shared dataset. A twenty-third tab separates incoming sources
 from owned data with explicit Replace/Append pulses. The twenty-fourth tab demonstrates Live dataset
-editing; the twenty-fifth separates an authored formula grid from its stored result table.
+editing; the twenty-fifth separates an authored formula grid from its stored result table. The
+twenty-sixth compares editable filtered/sorted views, read-only aggregates, and independently stored results.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -808,7 +809,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current twenty-five-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current twenty-six-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -1295,6 +1296,27 @@ Trigger connects to Dataset's reload input.
 
 **Shared dataset model — implemented milestone**
 
+**Storage and transforms remain separate.** Filter, Sort, and Aggregate are independent table
+transforms, usable before storage or as views over stored records:
+
+| Arrangement | Responsibility |
+| --- | --- |
+| Source → transforms → Dataset | Prepare incoming records before the owner stores them. |
+| Dataset → transforms → views | Select, order, or calculate the records presented to consumers. |
+| Dataset A → transforms → Dataset B | Materialize an independent result with its own owner and update policy. |
+
+Filter/Sort preserve record identity, so an editable view of owned records writes edits/deletions
+back to the correct source row; it does not own a copy. Adding requires the whole stored table.
+Aggregate produces new calculated rows without source identities. Its direct output is read-only;
+a second Dataset can store it as independently editable records. Editing that destination never
+writes upstream. Manual destinations accept incoming data only through explicit actions; Live destinations replace
+local edits on the next source publication. A transform's position determines its use; separate
+"dataset" and "stream" versions are unnecessary.
+
+The current flow carries successive table snapshots. Aggregation processes the current selected
+rows, not individual arriving-row events; it does not imply event history or time windows. Capture
+row can explicitly accumulate scalar samples in stored data before the same transforms process them.
+
 The **Dataset** component explicitly owns one stored table. Records live once in the document's
 dataset pool; Spreadsheet, table, chart, and choice components consume the owner's output. A provider
 supplies incoming data and is separate from its destination owner. Services for validation, editing,
@@ -1393,6 +1415,14 @@ Tab 24, **Live dataset editor**, demonstrates independent source and working rec
 and refresh overwriting edits. Tab 25, **Spreadsheet result tables**, keeps formulas beside a linked
 rectangle and publishes their values into a separate editable Dataset with downloads. Both work in
 the editor and offline HTML.
+
+Tab 26, **Views and stored results**, demonstrates the distinctions on one source: an original
+records view, an editable Filter → Sort view, a read-only aggregate preview, and a Manual Dataset
+that copies that aggregate through **Copy current total**, which sends a Replace pulse. Editing the filtered view changes its original record
+and the aggregate. Editing a copied aggregate row changes only the destination. Subsequent source
+edits update the views and aggregate while preserving the copied edits until **Copy current total** is clicked again.
+Together with tab 24's Live refresh, this demonstrates both destination update policies in the editor
+and offline HTML.
 
 These components share validation, stable row identity, ownership, and mutation services. They do
 not share cell formulas or duplicate record stores. Spreadsheet imports remain independent cell

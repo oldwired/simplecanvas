@@ -281,7 +281,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore twenty-five connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore twenty-six connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -310,6 +310,9 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Dataset spreadsheet | Connect live rows, calculate over full columns, or copy data into editable cells. |
 | Shared dataset | Capture live values into one table, edit its rows in a spreadsheet, and update connected views. |
 | Source to dataset | Explicitly replace or append a filtered source into independent stored data. |
+| Live dataset editor | Edit a working copy, then refresh its source to overwrite those edits. |
+| Spreadsheet result tables | Publish calculated cells as a table and store an independently editable result. |
+| Views and stored results | Compare edits through a filtered/sorted view with edits to a stored copy of aggregate results. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -408,7 +411,27 @@ selected, plus a numeric `result` column. **Table sort** orders rows by a select
 or descending order, keeping equal values stable and missing values last. Both use every accepted
 row, so the output can feed another filter, table, chart, or download.
 
-Both transforms have an **enabled** Boolean input and a visible on/off switch. Without a connection,
+**Dataset stores records; Filter, Sort, and Aggregate transform table values.** The same transform
+components work before storage and between stored data and its displays:
+
+| Flow | Purpose |
+| --- | --- |
+| Source → Filter / Sort / Aggregate → Dataset | Prepare incoming data before storing it. |
+| Dataset → Filter / Sort / Aggregate → Dataset editor or chart | Present selected, ordered, or calculated views of the current records. |
+| Dataset A → Filter / Sort / Aggregate → Dataset B | Store an independent result, updated by explicit Replace/Append or by Live mode. |
+
+Filter and Sort preserve record identity. When their input belongs to an editable Dataset, editing
+or deleting through the resulting view changes the original record and every view of it. Adding a
+record requires the whole stored table. Aggregate calculates new rows, so its results are read-only;
+store them in another Dataset to edit an independent copy. Such edits never write back upstream.
+In Manual mode the copy stays unchanged until Replace/Append; in Live mode the next source publication
+overwrites its local edits.
+
+The table flow carries **successive table snapshots**, not individual arriving-row events. Aggregate
+recalculates over the current selected rows; it does not accumulate events, history, or time windows.
+Use Capture row to explicitly record scalar samples before aggregating them.
+
+Table sort and Table aggregate have an **enabled** Boolean input and a visible on/off switch. Without a connection,
 clicking the switch changes that input directly; the editor records one undo step. With a connected
 signal, the switch reflects it and is read-only. Turn off **Show on/off switch** in **Inputs…** to
 hide it while keeping the input active. Off bypasses the transform and passes the original rows
@@ -540,6 +563,14 @@ and formula/type errors reject the table result. Connect its **table** output di
 download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
 tables**, demonstrates this in the editor and offline HTML. A formula referring to a linked cell is
 positional: paging or sorting can change which record that cell displays.
+
+Tab 26, **Views and stored results**, compares these behaviors using the same source records:
+
+1. Edit a value through the filtered/sorted view. The original record and aggregate result update.
+2. Click **Copy current total** to copy the aggregate result into the separate Dataset, then edit that stored copy.
+   The source records and calculated aggregate stay unchanged.
+3. Edit a source value again. The views and aggregate update, but the stored Manual copy keeps its
+   edits until you click **Copy current total** again. Tab 24 demonstrates the Live alternative, where refresh overwrites edits.
 
 Dedicated remote providers, coordinated current-record controls, and calculated dataset columns remain future work.
 

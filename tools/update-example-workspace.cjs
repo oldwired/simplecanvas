@@ -4,6 +4,16 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
 const sources={
+  "demo-26-source": "data-source.js",
+  "demo-26-filter": "table-filter.js",
+  "demo-26-sort": "table-sort.js",
+  "demo-26-aggregate": "table-aggregate.js",
+  "demo-26-saved": "data-source.js",
+  "demo-26-copy": "trigger.js",
+  "demo-26-original": "data-table.js",
+  "demo-26-view": "data-table.js",
+  "demo-26-calculated": "data-table.js",
+  "demo-26-stored": "data-table.js",
   "demo-24-source": "data-source.js",
   "demo-24-working": "data-source.js",
   "demo-24-source-editor": "data-table.js",

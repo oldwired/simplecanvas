@@ -1001,6 +1001,32 @@ presentation payload still has a 2,000,000-character budget. Spreadsheet opts in
 cell editing, and published outputs use identical values. `inputs` and `outputs` themselves remain
 compact references. The host caches these views with the settled graph.
 
+### Table transforms and storage
+
+Table filter, Table sort, and Table aggregate use the same table-port contract regardless of where
+they appear in a flow:
+
+```text
+Source    → transforms → Dataset                (prepare stored records)
+Dataset   → transforms → Dataset editor / chart (present current records)
+Dataset A → transforms → Dataset B              (store an independent result)
+```
+
+Transforms do not mutate their inputs or own stored records. Filter and Sort retain the source
+dataset reference and selected row identities. If that source has a healthy owner, an enabled view
+can edit/delete the original record through the transformed selection; append requires a whole
+stored table. Applying Filter or Sort to a derived table does not make it editable.
+
+Aggregate publishes new calculated rows with no source row identity. Its result is read-only until
+a Dataset copies it into owned storage, assigning independent row identities. Edits to this copy
+never propagate upstream. Manual destinations accept Replace/Append pulses; Live destinations replace
+their records on a source publication, overwriting local edits. Editing a destination does not count as a refresh of its own incoming source. If another Dataset
+consumes that destination, those edits are new publications for that downstream consumer.
+
+Table flow means successive current snapshots, not arriving-row events. Each aggregate calculation
+covers its current input selection. It does not retain event history or implement time windows;
+explicit Capture row actions can accumulate scalar samples in a Dataset first.
+
 ### Bound dataset cell editors
 
 An API v2 inline text handle can declare a host-owned cell edit instead of calling `dragEdit`:
@@ -1112,7 +1138,12 @@ once in the document. **Source to dataset** demonstrates a separate incoming tab
 Replace/Append pulses, and independently editable destination rows. A provider supplies candidate data;
 it does not own the destination. File import remains an owner convenience. **Live dataset editor** demonstrates refresh overwriting
 a working copy; **Spreadsheet result tables** materializes calculated values into another editable
-Dataset. Coordinated current-record controls, calculated dataset columns, and dedicated HTTP GET/POST
+Dataset. Tab 26, **Views and stored results**, uses one source to compare an editable filtered/sorted
+view, a read-only aggregate, and an independently editable Manual copy of that aggregate. Edit through
+the view to update the source and total; click **Copy current total** (a Replace pulse), then edit the
+copied total to leave both unchanged. A later source edit updates the views but leaves the stored copy
+alone until **Copy current total** is clicked again.
+Coordinated current-record controls, calculated dataset columns, and dedicated HTTP GET/POST
 providers remain future extensions.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
