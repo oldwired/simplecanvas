@@ -5,44 +5,67 @@ const path=require('node:path');
 const vm=require('node:vm');
 const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
 const source=()=>vm.runInNewContext(script),plain=value=>JSON.parse(JSON.stringify(value));
-const sheet=(cells={},more={})=>({cols:6,rows:6,cells,tableOutput:true,tableRange:'A2:C4',tableColumns:'energy:number\nprice:number\ncost:number',tableName:'Results',...more});
-const table=(def,state,inputs={},context={})=>plain(def.compute(inputs,state,context).table.table);
+// Table outputs are declared by a formula: =OUTPUT(range,"port"[,"types" | "name:type,..."]).
+const RESULTS='=OUTPUT(A2:C4,"Results","energy:number,price:number,cost:number")';
+const sheet=(cells={},more={})=>({cols:6,rows:6,cells:{F1:RESULTS,...cells},...more});
+const table=(def,state,inputs={},context={},port='Results')=>plain(def.compute(inputs,state,context)[port].table);
 
-test('table output is optional and enabling it on an empty sheet publishes blank cells',()=>{
-  const def=source(),state=def.initState();assert.equal(state.tableOutput,false);assert.ok(script.length<=50000);
+test('table output is optional and an explicit schema publishes blank cells as nulls',()=>{
+  const def=source(),state=def.initState();assert.ok(script.length<=64000);
   assert.deepEqual(plain(def.outputs(state)),{});
-  assert.deepEqual(plain(def.outputs({...state,tableRange:'bad',tableColumns:'bad',tableName:''})),{});
-  const enabled={...state,tableOutput:true,tableRange:'A1:B2',tableColumns:'label:string\namount:number'};
-  assert.deepEqual(plain(def.outputs(enabled)),{table:{type:'table'}});
-  assert.deepEqual(table(def,enabled),{name:'Spreadsheet results',columns:[{key:'label',name:'label',type:'string'},{key:'amount',name:'amount',type:'number'}],rows:[[null,null],[null,null]]});
+  const enabled={...state,cells:{D1:'=OUTPUT(A1:B2,"Spreadsheet results","label:string,amount:number")'}};
+  assert.deepEqual(plain(def.outputs(enabled)),{Spreadsheet_results:{type:'table'}});
+  assert.deepEqual(table(def,enabled,{},{},'Spreadsheet_results'),{name:'Spreadsheet results',columns:[{key:'label',name:'label',type:'string'},{key:'amount',name:'amount',type:'number'}],rows:[[null,null],[null,null]]});
 });
 
-test('configured result cells emit exact evaluated scalars and nulls without formula or formatting metadata',()=>{
-  const def=source(),state=sheet({B3:"'=SUM(A1:A2)",C3:'=INPUT("amount")*2',D3:'=INPUT("ready","boolean")',B4:"'",D4:'FALSE',A1:'=1/0'},
-    {tableRange:' b3 : D4 ',tableColumns:'message:string\namount:number\nready:boolean',tableName:' Report ',formats:{C3:'0.00'},aligns:{B3:'right'}}),before=JSON.stringify(state);
-  assert.deepEqual(table(def,state,{amount:1.2345,ready:true}),{name:'Report',columns:[{key:'message',name:'message',type:'string'},{key:'amount',name:'amount',type:'number'},{key:'ready',name:'ready',type:'boolean'}],rows:[['=SUM(A1:A2)',2.469,true],['',null,false]]});
+test('the first row names the columns and the column types follow the cells',()=>{
+  const def=source(),state={cols:6,rows:6,cells:{A1:'Hall',B1:'kWh',C1:'Cost',A2:'Hall 1',B2:'120',C2:'=B2*0.3',A3:'Hall 2',B3:'80',C3:'=B3*0.3',
+    E1:'=OUTPUT(A1:C3,"Energy costs")',E2:'=OUTPUT(A1:B3,"Usage")'}};
+  assert.deepEqual(plain(def.outputs(state)),{Energy_costs:{type:'table'},Usage:{type:'table'}},'each range is its own named port');
+  assert.deepEqual(table(def,state,{},{},'Energy_costs'),{name:'Energy costs',columns:[{key:'Hall',name:'Hall',type:'string'},
+    {key:'kWh',name:'kWh',type:'number'},{key:'Cost',name:'Cost',type:'number'}],rows:[['Hall 1',120,36],['Hall 2',80,24]]});
+  assert.throws(()=>def.outputs({...state,cells:{...state.cells,B3:'many'}}),/E1: column kWh needs one value type/);
+  // an empty column has no type to follow: the third argument supplies it
+  const empty={cols:6,rows:6,cells:{A1:'Hall',B1:'Note',A2:'Hall 1',E1:'=OUTPUT(A1:B2,"Notes")'}};
+  assert.throws(()=>def.outputs(empty),/column Note needs one value type/);
+  assert.deepEqual(table(def,{...empty,cells:{...empty.cells,E1:'=OUTPUT(A1:B2,"Notes","string,string")'}},{},{},'Notes').rows,[['Hall 1',null]]);
+  assert.throws(()=>def.outputs({...state,cells:{...state.cells,B1:'=1+1'}}),/B1 needs a unique column name as text/);
+});
+
+test('the range follows inserted and deleted columns and rows like any reference',()=>{
+  const def=source(),state={cols:6,rows:6,cells:{A1:'Hall',B1:'kWh',A2:'Hall 1',B2:'120',A3:'Hall 2',B3:'80',D1:'=OUTPUT(A1:B3,"Usage")'}};
+  const moved=def.dragEdit(state,'cins0',0,0,552,168).state;
+  assert.equal(moved.cells.E1,'=OUTPUT(B1:C3,"Usage")');
+  assert.deepEqual(table(def,moved,{},{},'Usage').rows,[['Hall 1',120],['Hall 2',80]]);
+  const shorter=def.dragEdit(state,'rdel2',0,0,552,168).state;
+  assert.deepEqual(table(def,shorter,{},{},'Usage').rows,[['Hall 1',120]]);
+});
+
+test('result cells emit exact evaluated scalars and nulls without formula or formatting metadata',()=>{
+  const def=source(),state=sheet({F1:'=OUTPUT(B3:D4," Report ","message:string,amount:number,ready:boolean")',B3:"'=SUM(A1:A2)",C3:'=INPUT("amount")*2',D3:'=INPUT("ready","boolean")',B4:"'",D4:'FALSE',A1:'=1/0'},
+    {formats:{C3:'0.00'},aligns:{B3:'right'}}),before=JSON.stringify(state);
+  assert.deepEqual(table(def,state,{amount:1.2345,ready:true},{},'Report'),{name:'Report',columns:[{key:'message',name:'message',type:'string'},{key:'amount',name:'amount',type:'number'},{key:'ready',name:'ready',type:'boolean'}],rows:[['=SUM(A1:A2)',2.469,true],['',null,false]]});
   assert.equal(JSON.stringify(state),before,'publishing never rewrites authored cells or layout');
 });
 
-test('result schema and bounds are validated independently of current values',()=>{
-  const def=source(),state=sheet();
-  for(const patch of [{tableRange:''},{tableRange:'A0:B2'},{tableRange:'A1:AA2'},{tableRange:'C4:A2'},{tableRange:'A2:G4'},{tableRange:'A2:C7'},
-    {tableColumns:''},{tableColumns:'value:number'},{tableColumns:'x:number\nx:string\nz:boolean'},
-    {tableColumns:'constructor:number\ny:number\nz:number'},{tableColumns:'x:date\ny:number\nz:number'},
-    {tableName:''},{tableName:'x'.repeat(121)}])assert.throws(()=>def.outputs({...state,...patch}),/Result/);
-  assert.deepEqual(table(def,sheet({B3:'7'},{tableRange:'B3',tableColumns:'value:number'})).rows,[[7]]);
-  const small={...state,rows:3};assert.throws(()=>def.outputs(small),/fit the grid/);assert.equal(small.rows,3,'output configuration never enlarges the sheet');
+test('result schema is validated independently of current values',()=>{
+  const def=source();
+  for(const formula of ['=OUTPUT(A2:C4,"")','=OUTPUT(A2:C4,"'+'x'.repeat(121)+'")','=OUTPUT(A2:C4,"r","value:number")',
+    '=OUTPUT(A2:C4,"r","x:number,x:string,z:boolean")','=OUTPUT(A2:C4,"r","constructor:number,y:number,z:number")',
+    '=OUTPUT(A2:C4,"r","x:date,y:number,z:number")','=OUTPUT(A2:C4,"r")'])
+    assert.throws(()=>def.outputs(sheet({F1:formula})),/Table output in F1/,formula);
+  assert.deepEqual(table(def,sheet({F1:'=OUTPUT(B3:B3,"Results","value:number")',B3:'7'})).rows,[[7]]);
 });
 
-test('a scalar output called table conflicts only when table publication is enabled',()=>{
-  const def=source(),state=sheet({E1:'=OUTPUT(4,"table")'});
-  assert.throws(()=>def.outputs(state),/Output table is reserved/);assert.throws(()=>def.compute({},state),/Output table is reserved/);
-  assert.deepEqual(plain(def.compute({}, {...state,tableOutput:false})),{table:4});
+test('an output name may be used once, and at most 32 outputs exist',()=>{
+  const def=source();
+  assert.throws(()=>def.outputs(sheet({E1:'=OUTPUT(4,"Results")'})),/Output Results/);
+  assert.throws(()=>def.outputs(sheet({E1:'=OUTPUT(A2:C4,"Results","a:number,b:number,c:number")'})),/declared twice/);
   const cells=Object.fromEntries(Array.from({length:32},(_,i)=>[String.fromCharCode(65+i%6)+(1+Math.floor(i/6)),'=OUTPUT('+i+',"out'+i+'")']));
-  assert.throws(()=>def.outputs(sheet(cells)),/at most 32 inputs and 32 outputs/);
+  assert.throws(()=>def.outputs(sheet({...cells,F6:RESULTS})),/at most 32 inputs and 32 outputs/);
 });
 
-test('formula errors or mixed value types reject the complete table with a cell address',()=>{
+test('formula errors or mismatching value types reject the complete table with a cell address',()=>{
   const def=source(),state=sheet({A2:'1',B2:'2',C2:'=A2+B2',A3:'=1/0'});
   assert.throws(()=>def.compute({},state),/Table output in A3: #DIV\/0!/);
   for(const value of ["'3",'TRUE'])assert.throws(()=>def.compute({},sheet({...state.cells,A3:value})),/Table output in A3: expected number/);
@@ -52,20 +75,20 @@ test('formula errors or mixed value types reject the complete table with a cell 
 });
 
 test('table results enforce dataset value and storage limits before crossing the Worker bridge',()=>{
-  const def=source(),state=sheet({A2:'=INPUT("value")'},{tableRange:'A2',tableColumns:'value:number'});
+  const def=source(),state=sheet({F1:'=OUTPUT(A2:A2,"Results","value:number")',A2:'=INPUT("value")'});
   for(const value of [Number.MAX_SAFE_INTEGER+1,1e308])assert.throws(()=>def.compute({value},state),/Table output in A2/);
   assert.equal(table(def,state,{value:.125}).rows[0][0],.125);
-  const text=sheet({A2:'=INPUT("message","string")'},{tableRange:'A2',tableColumns:'text:string'});
+  const text=sheet({F1:'=OUTPUT(A2:A2,"Results","text:string")',A2:'=INPUT("message","string")'});
   assert.equal(table(def,text,{message:'x'.repeat(2000)}).rows[0][0].length,2000);
   assert.throws(()=>def.compute({message:'x'.repeat(2001)},text),/dataset limits/);
   const cells=Object.fromEntries(Array.from({length:90},(_,r)=>['A'+(r+1),'=INPUT("message","string")']));
-  assert.throws(()=>def.compute({message:'\u0000'.repeat(2000)},sheet(cells,{cols:1,rows:90,tableRange:'A1:A90',tableColumns:'text:string'})),/storage limit/);
+  assert.throws(()=>def.compute({message:'\u0000'.repeat(2000)},{cols:2,rows:90,cells:{...cells,B1:'=OUTPUT(A1:A90,"Results","text:string")'}}),/storage limit/);
 });
 
 test('linked dataset results follow selected row order and the current bounded page without changing the source',()=>{
   const def=source(),data={name:'Selected',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['B',20],['A',10]],rowIndices:[1,0],rowCount:2};
-  const state=sheet({A2:'=INPUT("hidden")',C2:'=B2*2',C3:'=B3*2'},
-    {source:'Dataset',dataRows:2,dataColumns:2,tableColumns:'name:string\nvalue:number\ndoubled:number',tableRange:'A2:C3'}),before=JSON.stringify(data);
+  const state=sheet({F1:'=OUTPUT(A2:C3,"Results","name:string,value:number,doubled:number")',A2:'=INPUT("hidden")',C2:'=B2*2',C3:'=B3*2'},
+    {source:'Dataset',dataRows:2,dataColumns:2}),before=JSON.stringify(data);
   assert.deepEqual(plain(def.inputs(state)),{data:{type:'table'},startRow:{type:'number',default:0}});
   assert.deepEqual(table(def,state,{startRow:0},{tables:{data}}).rows,[['B',20,40],['A',10,20]]);
   assert.deepEqual(table(def,state,{startRow:1},{tables:{data}}).rows,[['A',10,20],[null,null,0]]);

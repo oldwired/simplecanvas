@@ -4,14 +4,10 @@
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
   settings:{source:{type:'string',default:'Cells',options:['Cells','Dataset'],label:'Grid source'},
-    dataRows:{type:'number',default:5,min:1,max:99,step:1,label:'Dataset rows shown'},
-    dataColumns:{type:'number',default:3,min:1,max:26,step:1,label:'Dataset columns shown'},
-    editDataset:{type:'boolean',default:false,label:'Edit dataset cells'},
-    allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'},
-    tableOutput:{type:'boolean',default:false,label:'Publish table output'},
-    tableRange:{type:'string',default:'A2:C4',label:'Result cells'},
-    tableColumns:{type:'string',default:'column1:number\ncolumn2:number\ncolumn3:number',format:'lines',label:'Result columns (name:type)'},
-    tableName:{type:'string',default:'Spreadsheet results',label:'Result table name'}},
+    dataRows:{type:'number',default:5,min:1,max:99,step:1,label:'Dataset rows shown',visibleWhen:{source:'Dataset'}},
+    dataColumns:{type:'number',default:3,min:1,max:26,step:1,label:'Dataset columns shown',visibleWhen:{source:'Dataset'}},
+    editDataset:{type:'boolean',default:false,label:'Edit dataset cells',visibleWhen:{source:'Dataset'}},
+    allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits',visibleWhen:{source:'Dataset',editDataset:true}}},
   _COLS:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   _key(c,r){return this._COLS[c]+(r+1);},
   _dims(state){
@@ -33,22 +29,31 @@
     try{this.inputs(state);this.outputs(state);}catch{try{this.inputs(cleared);this.outputs(cleared);conflict=true;}catch{}}
     return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Inputs keeps the original sheet.'}:null;
   },
-  _tableSpec(state,dims=this._dims(state)){
-    if(state.tableOutput!==true)return null;
-    const get=key=>state[key]??this.settings[key].default,range=get('tableRange'),name=get('tableName'),raw=get('tableColumns');
-    const m=typeof range==='string'&&/^([A-Z])([1-9]\d?)(?:\s*:\s*([A-Z])([1-9]\d?))?$/.exec(range.trim().toUpperCase());
-    if(!m)throw new Error('Result cells must be a cell or range such as A2:C4');
-    const c1=this._COLS.indexOf(m[1]),r1=+m[2]-1,c2=this._COLS.indexOf(m[3]||m[1]),r2=+(m[4]||m[2])-1;
-    if(c2<c1||r2<r1||c2>=dims.cols||r2>=dims.rows)throw new Error('Result cells must fit the grid in top-left to bottom-right order');
-    if(typeof name!=='string'||!name.trim()||name.length>120)throw new Error('Result table name needs 1–120 characters');
-    if(typeof raw!=='string')throw new Error('Result columns need one name:type per line');
-    const keys=new Set(),columns=raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
-      const at=line.lastIndexOf(':'),key=line.slice(0,at).trim(),type=line.slice(at+1).trim().toLowerCase();
-      if(at<1||!key||key.length>100||['__proto__','prototype','constructor'].includes(key)||keys.has(key)||!['number','string','boolean'].includes(type))throw new Error('Result columns need unique names and number, string or boolean types');
-      keys.add(key);return {key,name:key,type};
-    });
-    if(columns.length!==c2-c1+1)throw new Error('Result columns must match the width of Result cells');
-    return {name:name.trim(),columns,c1,r1,c2,r2,range:this._key(c1,r1)+':'+this._key(c2,r2)};
+  // OUTPUT(A1:C4,"name"[,"string,number,..."]): the range's first row names the columns, the rows below
+  // are the records; column types follow the cells or the third argument. With "col:type,..." there the
+  // whole range is records (e.g. a dataset area, whose header is not cell text).
+  _rangeTable(n,ctx,at){
+    const a=n.args,t=a[0],fail=m=>{throw new Error('Table output in '+at+': '+m);};
+    if(a.length<2||a.length>3||a[1].k!=='str'||!a[1].v.trim()||a[1].v.length>120)fail('use OUTPUT(A1:C4,"name")');
+    const keys=new Set(),cols=t.c2-t.c1+1,given=a[2]?(a[2].k==='str'?a[2].v.split(/[,;]/).map(x=>x.trim()):[]):null;
+    if(given&&given.length!==cols)fail('give one type per column');
+    const named=!!given&&given.every(x=>x.includes(':'));
+    const columns=[];
+    for(let c=t.c1;c<=t.c2;c++){
+      const k=this._key(c,t.r1),src=ctx.cells[k],at=named?given[c-t.c1].lastIndexOf(':'):-1;
+      const key=named?given[c-t.c1].slice(0,at).trim():typeof src==='string'&&src[0]!=='='?src.replace(/^'/,'').trim():'';
+      if(!key||key.length>100||['__proto__','prototype','constructor'].includes(key)||keys.has(key))fail((named?'column names':k)+' need'+(named?'':'s')+' a unique column name'+(named?'s':' as text'));
+      keys.add(key);
+      let type=given?(named?given[c-t.c1].slice(at+1):given[c-t.c1]).trim().toLowerCase():'';
+      if(!given){
+        const types=[];
+        for(let r=t.r1+(named?0:1);r<=t.r2;r++){const q=this._key(c,r);if(ctx.cells[q]!==undefined&&ctx.cells[q]!=='')types.push(this._cellType(q,ctx));}
+        type=this._joinTypes(types);
+      }
+      if(!['number','string','boolean'].includes(type))fail('column '+key+' needs one value type; add types as the third argument, e.g. "string,number"');
+      columns.push({key,name:key,type});
+    }
+    return {name:a[1].v.trim(),columns,c1:t.c1,r1:t.r1+(named?0:1),c2:t.c2,r2:t.r2,range:this._key(t.c1,t.r1)+':'+this._key(t.c2,t.r2)};
   },
   _resultTable(run,spec){
     const rows=[];
@@ -252,7 +257,7 @@
           if(f==='INPUT')return this._inputType(node)||'error';
           if(f==='DATA')return this._dataCall(node)?.type||'error';
           if(f==='COLUMN')return 'mixed';
-          if(f==='OUTPUT')return this._outputType(node,ctx)||'error';
+          if(f==='OUTPUT')return a[0]?.k==='range'?'string':this._outputType(node,ctx)||'error';
           if(f==='IF'){
             if(a.length<2||a.length>3)return 'error';
             const condition=this._staticValue(a[0],ctx);
@@ -300,7 +305,11 @@
           const type=this._inputType(n);if(type)add(this._port(n.args[0].v),type,cell);
         }
         const data=this._dataCall(n);if(data)add(data.port,'table',cell);
-        if(n.name==='OUTPUT'){
+        if(n.name==='OUTPUT'&&n.args[0]?.k==='range'){
+          const table=this._rangeTable(n,ctx,cell),port=this._port(n.args[1].v);
+          if(outs.some(o=>o.port===port))throw new Error('Output '+port+' is declared twice');
+          outs.push({port,type:'table',cell,table});
+        }else if(n.name==='OUTPUT'){
           const type=this._outputType(n,ctx);
           if(type){const port=this._port(n.args[1].v),prior=outs.find(o=>o.port===port);
             if(prior&&prior.type!==type)throw new Error('Output '+port+' has conflicting types');
@@ -308,11 +317,6 @@
           }
         }
       });
-    }
-    const table=this._tableSpec(state,dims);
-    if(table){
-      if(outs.some(o=>o.port==='table'))throw new Error('Output table is reserved while Publish table output is enabled');
-      outs.push({port:'table',type:'table',cell:table.range,table});
     }
     if(ins.length>32||outs.length>32)throw new Error('Spreadsheet supports at most 32 inputs and 32 outputs');
     return {ins,outs};
@@ -472,6 +476,7 @@
             if(typeof v!==type||type==='number'&&!Number.isFinite(v))throw {e:'#N/A'};
             return v;
           }
+          if(f==='OUTPUT'&&a[0]?.k==='range')return a[1]?.k==='str'?a[1].v.trim():'#VALUE!';
           if(f==='OUTPUT'){const type=this._outputType(n,ctx);if(!type)throw {e:'#VALUE!'};const value=val(a[0]);if(a.length===3&&typeof value!==type)throw {e:'#VALUE!'};return value;}
           throw {e:'#NAME?'};
         }
@@ -487,13 +492,13 @@
   },
 
   initState(){
-    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,tableOutput:false,tableRange:'A2:C4',tableColumns:'column1:number\ncolumn2:number\ncolumn3:number',tableName:'Spreadsheet results',cols:6,rows:6,cells:{}};
+    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,cols:6,rows:6,cells:{}};
   },
   initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state,context={}){
     const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={};
     for(const o of this._ports(state).outs){
-      if(o.table){out.table=this._resultTable(run,o.table);continue;}
+      if(o.table){out[o.port]=this._resultTable(run,o.table);continue;}
       if(o.type==='mixed')throw new Error('Output '+o.port+' in '+o.cell+': result type is ambiguous; use OUTPUT(expression,\"port\",\"number\"|\"string\"|\"boolean\") or one consistent value type');
       let value;
       try{value=run.value(o.expression);}catch(err){throw new Error('Output '+o.port+' in '+o.cell+': '+(err&&err.e||'#ERROR!'));}

@@ -28,7 +28,7 @@ async function exportReader(page,run,context){const download=page.waitForEvent('
 
 async function flush(run){await run('ensureEditorComponentGraph()');await run('smartGestureQueue');await run('ensureEditorComponentGraph()');await run('smartGestureQueue');}
 async function mirror(run){
-  const value=item('spreadsheet','mirror',370,50,{source:'Dataset',dataRows:2,dataColumns:2,cols:2,rows:3,cells:{},tableOutput:true,tableRange:'A2:B3',tableColumns:'label:string\nvalue:number',tableName:'Mirror'},{bindings:{data:{uid:'incoming',port:'data'}}});
+  const value=item('spreadsheet','mirror',370,50,{source:'Dataset',dataRows:2,dataColumns:2,cols:3,rows:3,cells:{C1:'=OUTPUT(A2:B3,"table","label:string,value:number")'}},{bindings:{data:{uid:'incoming',port:'data'}}});
   await run(`items[1]=${JSON.stringify(value)};items[2].bindings.source={uid:'mirror',port:'table'};items[2].state.updateMode='Live';items[0].state.allowReaderImport=true;items[0].bindings.reload={uid:'replace',port:'value'};delete items[2].bindings.replace;save();editorComponentEvaluation=null;ensureEditorComponentGraph()`);await flush(run);
 }
 async function filePicker(page){await page.evaluate(()=>{

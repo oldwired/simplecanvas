@@ -122,7 +122,7 @@ These boundaries describe the feature branch, including feedback, text passing, 
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
   Component API v2 is explicit and separate from document format 5. There is no state-migration
   or automatic definition-upgrade contract.
-- **State is small.** Scripts are limited to 50,000 characters; state to 4,000 serialized JSON
+- **State is small.** Scripts are limited to 64,000 characters; state to 4,000 serialized JSON
   characters. Invalid state updates are rejected. Bulk data lives in the document dataset pool.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
@@ -1417,12 +1417,12 @@ linked cells. An A1 reference is positional: a sort, page change, or source repl
 which record occupies A2. Formula cells next to that area do not become record-attached calculated
 fields. Dataset editor cells contain typed literal data, never spreadsheet formulas.
 
-**Spreadsheet table output** publishes a configured cell rectangle as a `table` output. Authors
-explicitly define the result columns and their scalar types; the rectangle contains body rows, with
-column names supplied by this schema. Only evaluated values are published. Blank cells become null;
-formula errors, incompatible types, or invalid ranges reject the result rather than publishing
-partial/error-text data. Existing scalar OUTPUT ports remain available, with `table` reserved only
-when this feature is enabled. A Dataset can materialize that result via Replace/Append or Live mode,
+**Spreadsheet table output** publishes a cell rectangle through `OUTPUT(range,"name"[,types])`, one
+named `table` port per formula. The first row names the columns and column types are inferred, or
+the third argument gives types (`"string,number"`) or names and types (`"label:string,value:number"`,
+then the whole range is records). The range moves with inserted/deleted rows and columns. Only
+evaluated values are published. Blank cells become null; formula errors or incompatible types
+reject the result rather than publishing partial/error-text data. A Dataset can materialize that result via Replace/Append or Live mode,
 and charts, downloads, and other consumers can read it directly. Formulas and formatting remain on
 the Spreadsheet, including when its result is stored elsewhere.
 

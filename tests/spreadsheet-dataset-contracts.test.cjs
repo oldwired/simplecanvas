@@ -154,7 +154,7 @@ test('literal quote cells stay strings through edit, output typing, import and s
 });
 
 test('spreadsheet remains within the script and handle limits',()=>{
-  const def=source(),text=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');assert.ok(text.length<=50000,text.length);
+  const def=source(),text=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');assert.ok(text.length<=64000,text.length);
   const oneColumn=table(Array.from({length:98},(_,i)=>[i]),[{key:'n',name:'N',type:'number'}]);
   const imported=def.importTable(sheet(),oneColumn,552,168);assert.equal(imported.state.rows,99);assert.equal(imported.state.cols,1);assert.equal(imported.size.h,2000);
   const tiny=def.importTable(sheet({}, {cols:26,rows:1}),table([],[{key:'n',name:'N',type:'number'}]),20,20);

@@ -562,12 +562,14 @@ reload of identical source data also counts. Source failures preserve accepted r
 or Undo does not replay a refresh. Enable **Allow source updates in HTML export** for this behavior
 in the reader. Tab 24, **Live dataset editor**, makes the source/working-copy distinction visible.
 
-Spreadsheet can publish a range as a table: enable **Publish table output**, enter **Result cells**
-(for example `D2:E4`), and define **Result columns (name:type)** with one column per line, such as
-`label:string` and `value:number`. The range contains body rows; the column definitions provide names.
-Only calculated values leave the sheet; formulas and formatting stay with it. Blank cells become null,
-and formula/type errors reject the table result. Connect its **table** output directly to a chart or
-download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
+Spreadsheet publishes a range as a table with a formula: `=OUTPUT(A1:C4,"Energy costs")` creates an
+output port **Energy_costs**. The range's first row names the columns and the rows below are the
+records; column types follow the cells. A third argument sets the types (`"string,number,number"`,
+e.g. for an empty column) or names and types (`"label:string,value:number"`, then the whole range is
+records). The range follows inserted and deleted rows and columns, and a sheet may publish several
+tables. Only calculated values leave the sheet; formulas and formatting stay with it. Blank cells
+become null, and formula/type errors reject the table result. Connect the output directly to a chart
+or download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
 tables**, demonstrates this in the editor and offline HTML. A formula referring to a linked cell is
 positional: paging or sorting can change which record that cell displays.
 

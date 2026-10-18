@@ -618,6 +618,16 @@ anchored at `min` (or zero when omitted). A `label` of at most 100 characters su
 field name. At most 16 settings are allowed. The host edits and validates these fields in
 **Inputs…**. Settings are not ports and cannot be bound to live sources.
 
+A setting may add `visibleWhen:{otherSetting:value|[values], …}`: **Inputs…** then shows the field
+only while every listed setting currently has one of the given values, and updates as they change.
+A hidden field keeps its stored value. [Spreadsheet](examples/spreadsheet.js) shows its dataset options
+only for `source:'Dataset'`:
+
+```js
+dataRows: { type:'number', default:5, min:1, max:99, step:1, label:'Dataset rows shown',
+  visibleWhen:{ source:'Dataset' } },
+```
+
 ```js
 settings: { channels: { type:'number', default:4, min:2, max:16, step:1, label:'Channels' } },
 inputs(state) {
@@ -1107,13 +1117,16 @@ formatting while keeping grid size, column widths, and settings. The clearing is
 **Save**. Formulas outside the linked area remain intact without a prompt when their port
 declarations remain valid. The example workspace supplies its demonstration values and formulas explicitly.
 
-Spreadsheet optionally publishes a calculated range through the fixed **table** output:
-`tableOutput:true`, `tableRange:'A2:C4'`, `tableColumns:'energy:number\nprice:number\ncost:number'`,
-`tableName:'Spreadsheet results'`. The range is body cells, within the authored grid, with one unique
-`name:type` line per column (string, number, or boolean). The normal derived-table wrapper contains
-evaluated scalar/null values only. Blank cells become null, literal empty strings stay strings, and
-formula/type/range errors reject the entire result. The scalar OUTPUT port name `table` is reserved
-only when table output is enabled. A linked rectangle contributes the current visible page; whole
+Spreadsheet publishes a calculated range as a table through `OUTPUT(range, "name"[, types])`, one
+table output port per formula, named like scalar OUTPUT ports. Without a third argument the range's
+first row holds the column names (literal text, unique) and the rows below are the records; each
+column's type is inferred from its non-empty cells and must be one of string, number, or boolean.
+A third argument `"string,number,..."` sets the types, one per column, keeping the header row;
+`"name:type,..."` sets names and types and makes the whole range records, as a linked dataset area
+needs. A single cell is a scalar OUTPUT; write `A2:A2` for a one-cell table. References in the range
+are rewritten on insert/delete like any other. The normal derived-table wrapper contains evaluated
+scalar/null values only. Blank cells become null, literal empty strings stay strings, and
+formula/type errors reject the entire result. The formula's own cell shows the table name. A linked rectangle contributes the current visible page; whole
 column calculations can still use COLUMN. Consumers can read the result directly, or a Dataset can
 store it with Replace/Append or Live mode. Formulas and formatting are never stored in the result.
 
@@ -1510,7 +1523,7 @@ still rescale output. Check a known division on a printed template before use.
 
 ## Constraints and sandbox
 
-- **Script length**: 50,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
+- **Script length**: 64,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
   Both are enforced at execution as well as load. Oversized state updates are rejected, not
   truncated. State contains only JSON data, has at most 16 levels, and cannot use the keys
   `__proto__`, `prototype`, or `constructor`. The longest shipped example is below this limit.
