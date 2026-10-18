@@ -714,7 +714,7 @@
       const value=reserved?(x?x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):String(x.v)):''):(state.cells||{})[k]||'';
       hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value,
         label:bound?('Dataset '+(table.name||'data')+' · row '+index+' · '+(column.name||column.key)).slice(0,100):'Cell '+k,
-        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:g.port,datasetId:table.datasetId,rowId,column:column.key,revision:table.revision}}:{}),
+        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:g.port,datasetId:table.datasetId,rowId,column:column.key,revision:table.revision,...(g.reader?{reader:true}:{})}}:{}),
         inline:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh,fontSize,mode:'edit',navigation:'horizontal',references:!bound,
           ...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{})},ref:k,editorOnly:!bound||!g.reader});
     }
