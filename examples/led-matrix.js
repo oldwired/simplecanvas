@@ -1,22 +1,24 @@
-// Boolean rows/columns light their intersections; row-byte mode uses bit 7 at the left.
-// Disabling masks every displayed/output row to zero; invalid input is never treated as off.
+// Boolean rows/columns light their intersections; bytes use bit 7 at the left (rows) or top (columns).
+// Every mode publishes row and column bytes. Disabling masks all outputs to zero; invalid input is never treated as off.
 ({
   apiVersion:2,
-  settings:{mode:{type:'string',default:'boolean',options:['boolean','rows'],label:'Input mode'}},
+  settings:{mode:{type:'string',default:'boolean',options:['boolean','rows','columns'],label:'Input mode'}},
   inputs(state){
     const mode=this._mode(state),ports={};
     if(mode==='boolean'){
       for(let row=0;row<8;row++)ports['row'+row]={type:'boolean',default:false};
-      for(let column=0;column<8;column++)ports['col'+column]={type:'boolean',default:false};
-    }else for(let row=0;row<8;row++)ports['r'+row]={type:'number',default:0};
-    return {...ports,enable:{type:'boolean',default:true}};
+      for(let column=0;column<8;column++)ports['col'+column]={type:'boolean',default:false,side:'top'};
+    }else for(let index=0;index<8;index++)ports[(mode==='rows'?'r':'c')+index]={type:'number',default:0,...(mode==='columns'?{side:'top'}:{})};
+    return {...ports,enable:{role:'control',type:'boolean',default:true}};
   },
-  outputs:{r0:{type:'number'},r1:{type:'number'},r2:{type:'number'},r3:{type:'number'},r4:{type:'number'},r5:{type:'number'},r6:{type:'number'},r7:{type:'number'}},
+  outputs:{r0:{type:'number'},r1:{type:'number'},r2:{type:'number'},r3:{type:'number'},r4:{type:'number'},r5:{type:'number'},r6:{type:'number'},r7:{type:'number'},
+    c0:{type:'number',side:'bottom'},c1:{type:'number',side:'bottom'},c2:{type:'number',side:'bottom'},c3:{type:'number',side:'bottom'},
+    c4:{type:'number',side:'bottom'},c5:{type:'number',side:'bottom'},c6:{type:'number',side:'bottom'},c7:{type:'number',side:'bottom'}},
   initState(){return {mode:'boolean'};},
   initStyle(){return {w:400,h:420,fontSize:18,fill:true,fillColor:'#ef4444',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _byte(value){return Number.isInteger(value) && value>=0 && value<=255;},
   _mode(state){
-    if(!['boolean','rows'].includes(state.mode))throw new Error('LED matrix input mode must be boolean or rows');
+    if(!['boolean','rows','columns'].includes(state.mode))throw new Error('LED matrix input mode must be boolean, rows or columns');
     return state.mode;
   },
   _validate(inputs,state){
@@ -27,7 +29,8 @@
         if(typeof inputs[prefix+index]!=='boolean')throw new Error('LED matrix '+prefix+index+' must be Boolean');
       }
     }else{
-      for(let row=0;row<8;row++)if(!this._byte(inputs['r'+row]))throw new Error('LED matrix row r'+row+' must be a whole number from 0 to 255');
+      const prefix=mode==='rows'?'r':'c',axis=mode==='rows'?'row':'column';
+      for(let index=0;index<8;index++)if(!this._byte(inputs[prefix+index]))throw new Error('LED matrix '+axis+' '+prefix+index+' must be a whole number from 0 to 255');
     }
   },
   compute(inputs,state){
@@ -37,8 +40,14 @@
       let value=0;
       if(mode==='boolean'){
         if(inputs['row'+row])for(let column=0;column<8;column++)if(inputs['col'+column])value+=128>>column;
-      }else value=inputs['r'+row];
+      }else if(mode==='rows')value=inputs['r'+row];
+      else for(let column=0;column<8;column++)if(inputs['c'+column] & (128>>row))value+=128>>column;
       outputs['r'+row]=inputs.enable?value:0;
+    }
+    for(let column=0;column<8;column++){
+      let value=0;
+      for(let row=0;row<8;row++)if(outputs['r'+row] & (128>>column))value+=128>>row;
+      outputs['c'+column]=value;
     }
     return outputs;
   },
@@ -74,7 +83,7 @@
     for(let column=0;column<8;column++)children.push(text(mode==='rows'?String(128>>column):'C'+column,left+column*dx,h*.145,dx,h*.055,10));
     for(let row=0;row<8;row++){
       const cy=top+(row+.5)*dy;
-      children.push(text('R'+row,w*.02,cy-h*.0275,w*.09,h*.055,10));
+      children.push(text(mode==='columns'?String(128>>row):'R'+row,w*.02,cy-h*.0275,w*.09,h*.055,10));
       for(let column=0;column<8;column++){
         const on=available && (outputs['r'+row] & (128>>column))!==0,cx=left+(column+.5)*dx;
         children.push({type:'ellipse',x:cx-diameter/2,y:cy-diameter/2,w:diameter,h:diameter,
@@ -83,9 +92,9 @@
       }
     }
     const error=typeof io.error==='string'?io.error:'';
-    const description=mode==='boolean'?'On = row AND column':'8 × 8 · row bytes';
+    const description=mode==='boolean'?'On = row AND column':mode==='columns'?'8 × 8 · column bytes':'8 × 8 · row bytes';
     const note=available?(inputs.enable?description:'Disabled'):
-      /whole number from 0 to 255/.test(error)?'Rows require whole numbers from 0 to 255':/^Missing value or binding/.test(error)?'Input required':'Input unavailable';
+      /whole number from 0 to 255/.test(error)?(mode==='columns'?'Columns':'Rows')+' require whole numbers from 0 to 255':/^Missing value or binding/.test(error)?'Input required':'Input unavailable';
     children.push({...text(note,w*.04,h*.93,w*.92,h*.055,10),color:available?(style.textColor||style.color):'#92400e',textColor:available?(style.textColor||style.color):'#92400e'});
     return children;
   },

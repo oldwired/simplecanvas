@@ -2,7 +2,7 @@
 // Initial high clocks establish a baseline. Reset dominates clock; SR set+reset produces X.
 ({
   apiVersion:2,
-  inputs:{set:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
+  inputs:{set:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}},
   outputs:{q:{type:'boolean',unknown:true},notQ:{type:'boolean',unknown:true},value:{type:'boolean',unknown:true}},
   initState(){return {value:'X',showIndicators:true};},
   initStyle(){return {w:320,h:230,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

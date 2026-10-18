@@ -4,7 +4,7 @@
   apiVersion:2,
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   settings:{caseSensitive:{type:'boolean',default:false,label:'Case-sensitive text'}},
-  inputs:{data:{type:'table'},column:{type:'string',default:'',columnOf:'data'},operation:{type:'string',default:'contains',options:['contains','=','≠','>','≥','<','≤','is empty','is not empty']},text:{type:'string',default:''},number:{type:'number',default:0},boolean:{type:'boolean',default:true}},
+  inputs:{data:{type:'table'},column:{role:'control',type:'string',default:'',columnOf:'data'},operation:{role:'control',type:'string',default:'contains',options:['contains','=','≠','>','≥','<','≤','is empty','is not empty']},text:{role:'control',type:'string',default:''},number:{role:'control',type:'number',default:0},boolean:{role:'control',type:'boolean',default:true}},
   outputs:{data:{type:'table'},rowCount:{type:'number'}},
   initState(){return {caseSensitive:false};},
   initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
@@ -63,7 +63,7 @@
       {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},
       text(io.name?.trim()||'Table filter',pad,pad,w-pad*2,22*scale,16,undefined,600)
     ];
-    if(!available){children.push(text(io.error||'Connect a table in Inputs',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}
+    if(!available){children.push(text(io.error||'Connect a table in Edit',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}
     const column=table.columns.find(column=>column.key===inputs.column),target=column?.type==='number'?inputs.number:column?.type==='boolean'?inputs.boolean:inputs.text;
     const condition=column?column.name+' '+inputs.operation+(['is empty','is not empty'].includes(inputs.operation)?'':' '+(typeof target==='string'?'“'+target+'”':typeof target==='number'?this._number(target):target)):'All rows';
     children.push(text(condition,pad,47*scale,w-pad*2,24*scale,14));

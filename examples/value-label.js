@@ -1,4 +1,4 @@
-// A numeric display and pass-through. Connect value through Inputs before use.
+// A numeric display and pass-through. Connect value through Edit before use.
 ({
   apiVersion:2,
   inputs:{value:{type:'number'}},

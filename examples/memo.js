@@ -8,7 +8,7 @@
     maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},
     maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum characters'}
   },
-  inputs:{content:{type:'string',default:''},line:{type:'string',default:''},set:{type:'boolean',default:false},append:{type:'boolean',default:false},clear:{type:'boolean',default:false}},
+  inputs:{content:{type:'string',default:''},line:{type:'string',default:''},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false}},
   outputs:{text:{type:'string'},lineCount:{type:'number'}},
   initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false};},
   initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

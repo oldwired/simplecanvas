@@ -2,7 +2,7 @@
 // Scheduling memory is transient; only the current output and display setting are saved.
 ({
   apiVersion:2,
-  inputs:{value:{type:'boolean'},seconds:{type:'number',default:1}},
+  inputs:{value:{type:'boolean'},seconds:{role:'control',type:'number',default:1}},
   outputs:{value:{type:'boolean'}},
   initState(){return {value:false,showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

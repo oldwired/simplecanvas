@@ -1,7 +1,7 @@
-// Range map. Configure literals or connect numeric inputs through Inputs.
+// Range map. Configure literals or connect numeric inputs through Edit.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'},inMin:{type:'number',default:0},inMax:{type:'number',default:100},outMin:{type:'number',default:0},outMax:{type:'number',default:1},clamp:{type:'boolean',default:true}},
+  inputs:{value:{type:'number'},inMin:{role:'control',type:'number',default:0},inMax:{role:'control',type:'number',default:100},outMin:{role:'control',type:'number',default:0},outMax:{role:'control',type:'number',default:1},clamp:{role:'control',type:'boolean',default:true}},
   outputs:{value:{type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
@@ -66,7 +66,7 @@
     }
     if(io.error || !available){
       const error=typeof io.error==='string'?io.error:'';
-      const note=!error || /^Missing value or binding/.test(error)?'Input required':/minimum|range|operation|Clamp must/i.test(error)?'Check configuration in Inputs':'Calculation unavailable';
+      const note=!error || /^Missing value or binding/.test(error)?'Input required':/minimum|range|operation|Clamp must/i.test(error)?'Check configuration in Edit':'Calculation unavailable';
       children.push({...text(note,w*.04,h*.84,w*.92,h*.13,10.5),color:'#92400e'});
     }
     if(editing && available && !io.error){

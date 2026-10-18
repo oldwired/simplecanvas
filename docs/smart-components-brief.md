@@ -11,7 +11,10 @@ editing, pulse-triggered row capture, and explicit Dataset ownership with source
 Dataset editor provides record editing and paging; Spreadsheet publishes evaluated table ranges.
 Datasets can follow source publications in Live mode, overwriting local records on refresh.
 Reload, source updates, capture, and downloads use narrow host-owned actions.
-General routed events and stages 5–6 remain proposals.
+Visual wiring is brought forward into stage 3: the editor exposes typed flow links and distinct
+Dataset associations, with drag-to-connect editing over the existing bindings. Data ports default
+to left/right and control ports to top/bottom, with optional per-port side overrides.
+General routed events, the remaining stage 5 reader workflow, and stage 6 integrations remain proposals.
 Stage 3 remains active; the shared dataset milestone does not close it.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -46,7 +49,7 @@ simpler interfaces without maintaining a separate application.
 
 The first milestone is **one numeric control driving a separate gauge,
 working in both the editor and an exported HTML file**. It is implemented with API v2,
-an **Inputs…** source picker, saved bindings, and independent instance IDs. Open
+an **Edit…** source picker, saved bindings, and independent instance IDs. Open
 [the connected example](../examples/connected-components.json) as a sketch to try it.
 The second milestone adds a categorized library, ready-to-place default components, logic gates,
 numeric helpers, typed routing, and bounded timed signals. This comes before data tables, events, downloads, and external integrations, so actual
@@ -74,7 +77,7 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Library authoring | Existing library scripts can be edited and their previews regenerated. Each new placement initializes independently. Already-placed instances retain their own script and state. |
 | Library previews | Bundled PNG previews display without executing scripts. Missing imported smart previews use placeholders and require approval before generation; authoring a definition already authorizes its preview. Placement still runs hooks in the sandbox. |
 | Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
-| Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Inputs, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
+| Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Edit, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
 | Library browser — feature branch | The compact Working collection shows pinned shortcuts. An optional adjacent browser provides search, multiple category memberships, a Built-in/My shapes Source filter, and direct placement. Shared Library actions manage entries and category tags; format 2 preserves IDs, metadata, category organization, and pins. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
 
@@ -145,7 +148,8 @@ and examples. Dropdown selects index 0 by default. A missing selection or lookup
 with false Valid/Found; it never aliases the first choice. Stepped switches reset to channel 0,
 use `in0`/`out0` onwards, and wrap N−1 → 0. Shift, ring, and Johnson taps start at `q0`;
 `value` aliases `q(N−1)` where a final-stage output exists. The LED matrix starts at `row0`,
-`col0`, and `r0`; row 0 is topmost and column 0 leftmost, with bit 7 (128) still at the left.
+`col0`, `r0`, and `c0`; row 0 is topmost and column 0 leftmost. Bit 7 (128) is leftmost in a
+row byte and topmost in a column byte.
 Counts, stage/channel quantities, durations, and ordinary tab/instruction numbering keep their
 existing meanings. Stable keys survive reordered indices. There is one convention, with no
 per-component base setting. The unmerged branch and bundled examples are rewritten directly;
@@ -174,9 +178,9 @@ Keep these checks as the regression baseline for subsequent stages.
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stage 3 implements the agreed data workflow and now includes a connected formula sheet and shared
-dataset editing/capture, while
-remaining open for testing and follow-up. Stage 4 has a narrow host-owned download
+Stage 3 implements the agreed data workflow and now includes a connected formula sheet, shared
+dataset editing/capture, and visual connection authoring brought forward from stage 5. It
+remains open for testing and follow-up. Stage 4 has a narrow host-owned download
 action plus explicitly declared dataset reloads and row capture; general events and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
@@ -187,12 +191,12 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
+| 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Edit feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data — active; agreed workflow and shared model implemented | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas, and optional bound-cell editing | One accepted capture or cell edit updates all views of the shared data in editor and opted-in HTML. Filtered/sorted edits reach the intended source row; invalid or oversized changes preserve accepted data. |
+| 3. Embedded data and visual connections — active | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas, optional bound-cell editing, and visual wiring over existing bindings | One accepted capture or cell edit updates all views of the shared data in editor and opted-in HTML. Typed flow links and Dataset associations are distinguishable; compatible connections can be created, replaced, and removed with Undo. Invalid data or incompatible links preserve accepted state. |
 | 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, and declared row-capture pulses; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, or captures one sampled row. Page refresh, restoration, retries, and Undo do not replay actions. |
-| 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
+| 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
@@ -224,7 +228,7 @@ not require datasets, events, or a new execution model.
 The delivery follows three steps: **2.1** library-entry identity, category/keyword serialization,
 and built-in/personal entry behavior; **2.2** the expandable browser and scalar controls,
 gates, and displays; **2.3** the complete example, library roundtrips, and offline HTML checks.
-The existing input picker is sufficient; visible wires remain optional later work.
+The input picker remains available; stage 3 adds optional visual wiring over the same bindings.
 
 ### Shipped example workspace
 
@@ -236,9 +240,13 @@ logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Sh
 the current workspace first if it should be retained. The matching
 [self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
 
+**LED patterns** demonstrates all three matrix input modes. The row-driven matrix's `c0`…`c7`
+outputs feed the column-driven matrix's matching inputs, reproducing the same image. Changing
+**Top row byte** updates both and demonstrates conversion from row bytes to column bytes.
+
 Double-click controls in the editor; use them directly in HTML. Number controls also accept typed
-values by clicking their displayed number. **Inputs…** exposes the actual saved bindings, while
-illustrative arrows are ordinary drawing objects. Countdown starts at 9 with **Run** off. Each
+values by clicking their displayed number. **Edit…** and **Wiring** expose the actual saved bindings;
+the examples' illustrative arrows remain ordinary drawing objects. Countdown starts at 9 with **Run** off. Each
 tab has independent state and timing pauses while it is inactive. Reader tab switches retain
 changes; reloading restores the exported snapshot. JSON remains the editable source.
 
@@ -390,7 +398,7 @@ Compare bridges numeric controls and boolean logic with two live operands (`valu
 selectable >, ≥, <, ≤, =, or ≠. Defaults remain > and B = 70; equality compares numbers exactly.
 String/boolean constants can be added as later catalog extensions.
 Math combines two required numeric inputs with a selectable +, −, ×, ÷, min, or max operation and one
-numeric output. Configure the operation in Inputs alongside the bindings; each instance saves
+numeric output. Configure the operation in Edit alongside the bindings; each instance saves
 its own choice. Subtraction and division preserve operand order, and division by zero or overflow
 make the result unavailable until corrected. The same computation runs in exported HTML.
 Clamp limits a number to inclusive bounds. Range mapper converts an increasing input range into an
@@ -418,7 +426,7 @@ Use traditional curved gate silhouettes, including inversion bubbles, with reada
 current input/output values. Built-in API v2 controls display their instance name as the caption,
 including Number control, Constant, Gauge, and the gates. Captions fit within the shape; operation
 symbols, readouts, and state labels remain separate. Spreadsheet deliberately fills its box with
-cells and omits a caption; its instance name remains available in Inputs and wiring. Optional
+cells and omits a caption; its instance name remains available in Edit and wiring. Optional
 per-instance LEDs default on: green means true, grey false,
 blue an available numeric value, and amber unavailable. The editor-only Indicators control toggles
 the LEDs without changing computation, port stubs, or inversion bubbles; its setting survives saves
@@ -438,19 +446,20 @@ flowchart LR
     A --> I["Status indicator"]
 ```
 
-Authors place these components from the library and connect them through **Inputs…**. Repeated
+Authors place these components from the library and connect them through **Edit…** or **Wiring**. Repeated
 instances retain their own names, state, and bindings; duplicating the complete example creates
 an independent working copy. One output may also feed several consumers.
-Toggle, Value label, and Status indicator display the instance name from Inputs as their caption,
+Toggle, Value label, and Status indicator display the instance name from Edit as their caption,
 separately from the current value or state. Renaming redraws the caption without changing wiring
 or computation, and the caption remains visible in exports.
 
-Visual input pins sit on the left and outputs on the right. Future physical attachment points
-should occupy those same positions, so wires meet the logical symbol and its indicator directly.
-That later interaction needs named port anchors in component-local coordinates, transformed with
-the instance when moved, resized, or rotated. Bindings should continue to reference instance UID
-and port name; screen coordinates must never become connection identity. Inputs remains the
-current connection editor.
+The drawn gate symbols have input pins on the left and outputs on the right. Their Boolean
+operands and results remain data ports. Stage 3's Wiring overlay derives positions from the
+component box, using declared port roles and optional side overrides. A later named-anchor API can align them
+exactly with the symbol and its indicator, using component-local coordinates transformed with
+the instance when moved, resized, or rotated. Bindings continue to reference instance UID and
+port name; screen coordinates must never become connection identity. Edit remains an
+alternative connection editor.
 
 ### Segment and matrix displays
 
@@ -462,7 +471,7 @@ shown after applying enable; disabled outputs are all false. Switching modes cha
 while retaining the output contract. The drawing shows the conventional segment diagram and
 instance name, with dim off segments and amber unavailable values rather than a fabricated zero.
 
-LED matrix (8×8) has an authoring **Input mode** setting: `boolean` (default) or `rows`.
+LED matrix (8×8) has an authoring **Input mode** setting: `boolean` (default), `rows`, or `columns`.
 Boolean mode exposes `row0`…`row7` and `col0`…`col7`, each default false. Row 0 is at
 the top and column 0 at the left. An LED lights only when its row and column are both true;
 all active crossings are shown together, without simulated scanning or retained illumination.
@@ -471,10 +480,19 @@ Rows mode instead takes numeric `r0`…`r7`, each default 0 and restricted to in
 `r0` is the top row, with bit positions 7–0 ordered left to right (values 128–1): 129 lights both ends, 255
 lights the full row, and 0 lights none.
 
-Both modes have boolean `enable` (default true) and fixed numeric outputs `r0`…`r7` reflecting
-the visible row bytes; disabling publishes eight zero rows. Mode changes expose distinct input
-names and must not reinterpret old Boolean row/column assignments as numeric row bytes. Outputs
-keep their names and types across modes, and the instance name remains visible.
+Columns mode takes numeric `c0`…`c7`, each default 0 and restricted to integers 0–255. `c0` is
+the leftmost column, with bit positions 7–0 ordered top to bottom (values 128–1). A value of 129
+lights the top and bottom LEDs, 255 lights the full column, and 0 lights none.
+
+All modes have boolean `enable` (default true) and fixed numeric outputs `r0`…`r7` and
+`c0`…`c7`, reflecting the visible row and column bytes simultaneously with the same bit order
+as their inputs. Disabling publishes sixteen zeros. Mode changes expose distinct input names
+and must not reinterpret Boolean row/column assignments as numeric bytes. Outputs keep their
+names and types across modes, and the instance name remains visible.
+
+In Wiring, Boolean and numeric column inputs explicitly sit on top and column-byte outputs on
+the bottom. Row inputs stay left and row-byte outputs right. Columns remain data ports; their
+placement is a side override. The `enable` control appears on top in all modes.
 
 Both are pure displays of current scalar inputs in editor and offline HTML. They introduce no
 scanning clock, frame persistence, or feedback behavior, and do not depend on the deferred
@@ -488,7 +506,7 @@ input, so an unselected unavailable branch still makes the selector unavailable;
 not suspend upstream work.
 
 Stepped switch and Stepped distributor each have number and Boolean entries. Authors choose
-2–16 Channels (initially 4) in **Inputs…**. Channel count is saved authoring configuration that
+2–16 Channels (initially 4) in **Edit…**. Channel count is saved authoring configuration that
 changes declared ports, rather than a live data input. The selector routes `in0`…`in(N−1)` to `value`,
 with unbound channels defaulting to 0/false. The distributor routes required `value` to one of
 `out0`…`out(N−1)`; inactive outputs are numeric 0 or Boolean false. These are separate outputs, not
@@ -508,7 +526,7 @@ to a different channel. All declared inputs still follow the ordinary typed avai
 ### Shift registers
 
 Shift register has separate Boolean and number entries in Logic. Authors set 1–16 Stages
-(initially 4) in **Inputs…**. Stages is durable authoring configuration that defines outputs
+(initially 4) in **Edit…**. Stages is durable authoring configuration that defines outputs
 `q0`…`q(N−1)`; it is not a live input. The required `value` input supplies typed data; boolean `pulse`
 and `reset` default to false. Number cells accept finite numbers, including fractions.
 
@@ -548,7 +566,7 @@ their user-facing timing behavior while giving all of them the shared settling c
   Hands, digital readout, and outputs share the same per-second transition snapshot. Fresh
   placement, reload, and timezone changes prime pulses false; missed boundaries and clock jumps
   never replay pulses. The named clock has optional LEDs labelled 1s, 1m, 1h, and 12h.
-  Connect `second` to Counter's `value` through **Inputs…** to count observed seconds. `time`
+  Connect `second` to Counter's `value` through **Edit…** to count observed seconds. `time`
   is a string and cannot feed the existing numeric Value label.
 - **Stopwatch:** boolean `run` and `reset` inputs, and one numeric `elapsed` output in seconds
   including milliseconds. A change of run to true starts/resumes, and to false pauses and
@@ -561,7 +579,7 @@ their user-facing timing behavior while giving all of them the shared settling c
   A fresh placement supplies these ports and starts stopped; older instances keep their source.
 - **Timer:** the red-wedge countdown retains its template/built-in identity and gains API v2.
   Unit is minutes (default) or seconds; Starting duration is 0–60, default 45. Dial-hand edits
-  also set starting duration, refill, and stop; top means 0, with 60 entered through Inputs.
+  also set starting duration, refill, and stop; top means 0, with 60 entered through Edit.
   Unit/duration setting changes refill and stop. Boolean run/reset inputs default false; run
   changes start/resume or pause. Manual Start/Pause and Reset remain available, with the latest
   action effective until run changes; held reset overrides and refills/stops, and releasing it
@@ -611,7 +629,7 @@ have the same 4 KB limit. Only current successful nodes commit; failed branches 
 An accepted control change settles before the next accepted change; drag previews do not consume
 edges until released. Timed changes do not create an undo entry for every tick.
 
-Interval clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
+Interval clocks use active-document time and pause for hidden/inactive documents and the Edit dialog.
 Delay preserves its pending queue across those pauses. Random and Sample & hold sample once after
 a late wake, without replaying missed intervals. For these interval and edge components, current
 outputs/counts persist, while queues, deadlines, and previous-input observations do not. Reload,
@@ -640,7 +658,7 @@ must not imply repeated external actions in later stages.
   category memberships and Keywords survive export and reimport, and placed instances remain unchanged.
   Multiple memberships, built-in overrides, and empty categories roundtrip. Renaming/removing
   categories preserves entries and pins; removal leaves unrelated memberships intact.
-- The complete threshold-and-toggle example can be composed through the library and **Inputs…**.
+- The complete threshold-and-toggle example can be composed through the library and **Edit…**.
   With Enabled on, 70 produces false and 71 produces true; Enabled off always produces false.
 - Same-named sources are distinguishable in the input picker without changing instance names
   or UID/port bindings. Proposed source/literal changes refresh output previews and error feedback;
@@ -656,7 +674,8 @@ must not imply repeated external actions in later stages.
 - Seven-segment display accepts decimal digits or direct segment inputs according to its mode,
   includes the decimal point, and keeps fixed outputs consistent with its enabled visible pattern.
   LED matrix defaults to Boolean row/column intersections and validates all eight bytes in Rows
-  mode. Its fixed row-byte outputs match the visible pattern across both input modes.
+  and Columns modes. Its fixed row-byte and column-byte outputs match the visible pattern across
+  all three input modes, including the transpose between the two byte representations.
   Disabled displays publish dark patterns; unavailable inputs remain distinct from valid off
   states. Instance names, mode/configuration, and connections survive save/load and offline HTML.
 - Typed selectors route valid values; all declared inputs retain eager availability checks.
@@ -692,7 +711,7 @@ must not imply repeated external actions in later stages.
   Repeated instances remain independent. Random stays within its inclusive bounds; both
   Sample & hold variants retain values until the next sampling boundary.
 - Temporal signals pause/resume across visibility and tabs, re-prime correctly after restoration,
-  and do not advance during static export, thumbnails, or Inputs inspection.
+  and do not advance during static export, thumbnails, or Edit inspection.
 - The example works in downloaded HTML without network access. Static exports capture its
   current result, and all existing sandbox and deployment restrictions remain in effect.
 - Disabling component authoring hides creation/editing controls while existing drawings,
@@ -701,12 +720,12 @@ must not imply repeated external actions in later stages.
 ### Stage 2 closeout evidence — 2026-10-17
 
 The phase 2 suites passed **237/237 in Chromium and 237/237 in WebKit**, with no failures or skips.
-The final authoring walkthrough also passed in both engines; desktop and narrow-screen Inputs
+The final authoring walkthrough also passed in both engines; desktop and narrow-screen Edit
 layouts were visually checked.
 
 - [x] Build the threshold-and-toggle example from a blank canvas, distinguish repeated sources,
   and inspect proposed outputs/errors before Save. Cancel preserves the drawing; rapid edits and
-  dynamic ports retain correct feedback. Coverage: [Inputs](../tests/components-inputs.test.cjs)
+  dynamic ports retain correct feedback. Coverage: [Edit](../tests/components-inputs.test.cjs)
   and [library browser](../tests/library-browser.test.cjs).
 - [x] Duplicate the connected group, change one copy independently, download/reload JSON, delete
   a source, and repair its binding. Both copies respond in downloaded HTML without HTTP requests.
@@ -768,7 +787,7 @@ uses compact revision keys for transitive wiring changes.
 
 Acceptance includes the three counter circuits above, delayed feedback, visible non-settling
 failure, reset priority, stale-result cancellation, save/reload/undo behavior, tab lifecycle, and
-identical offline HTML behavior. Pure Inputs previews and static exports must not consume edges
+identical offline HTML behavior. Pure Edit dialog previews and static exports must not consume edges
 or advance timers.
 
 ### Increment 2: dedicated and gate-built latches
@@ -828,7 +847,7 @@ exporter by [the update tool](../tools/update-example-workspace.cjs); it has no 
   signals, unknown logic, feedback memory/restoration, ordering, and independent-branch recovery.
 - [Simulation controls](../tests/feedback-controls.test.cjs): editor and offline Pause/Step/Resume.
 - [Review regressions](../tests/feedback-review.test.cjs): bounded retained wiring keys, stored
-  outputs through Z, offline and Inputs preview parity, and Pause/time preservation across Undo/Redo.
+  outputs through Z, offline and Edit preview parity, and Pause/time preservation across Undo/Redo.
 - [Deadline ordering](../tests/feedback-deadlines.test.cjs): overdue signals settle chronologically,
   so an earlier clock edge samples earlier data after a late wake; cancellation is atomic and
   positive-time feedback has a separate bounded-backlog error/recovery path.
@@ -1006,13 +1025,13 @@ outputs must provide `compute`, `publish`, or both; an input-only display is val
 
 `inputs` and `outputs` can be static descriptor maps or pure `inputs(state)` / `outputs(state)`
 functions. Optional `settings` metadata describes authoring fields stored in state: scalar type,
-required default, optional label, numeric min/max/positive step, and string options. Inputs edits
+required default, optional label, numeric min/max/positive step, and string options. The Edit dialog changes
 these fields and rebuilds port choices. Port-defining settings are not live ports; transitions
 and reader interactions must not change the declared port layout. This supports a bounded channel
 count while retaining stable names (`in0`, `out0`, etc.) for connection identity.
 
-An optional API v2 `configure(nextState, previousState)` hook runs when an author changes an
-Inputs setting, before the proposed ports are resolved. Draft-only settings, including choice
+An optional API v2 `configure(nextState, previousState)` hook runs when an author changes a
+setting in Edit, before the proposed ports are resolved. Draft-only settings, including choice
 lists, also pass through the hook when Save is pressed; the author reviews the configuration
 and saves again to apply it. It returns `null` to accept the proposed
 state unchanged, or `{state, confirm?}` with an optional confirmation message of at most 500
@@ -1091,7 +1110,7 @@ Computation crosses the asynchronous Worker bridge. Document/item ownership, gra
 and timeline revisions discard replies superseded by edits, undo, deletion, or tab changes.
 Preserve these guarantees and accepted interaction order when optimizing evaluation. Do not
 depend on Worker residency or completion order. `compute` and `publish` stay pure; rendering,
-Inputs previews, and static exports do not consume edges or trigger external actions.
+Edit dialog previews, and static exports do not consume edges or trigger external actions.
 `refreshMs` remains presentation refresh. Stateful/timed execution belongs in `transition`.
 
 **Pause / Step / Resume** is per document and lasts for the current session. Pause retains the
@@ -1120,17 +1139,58 @@ Bindings are semantic records on each receiving item, for example:
 ```
 
 IDs and bindings are scoped to one sketch. Cross-tab connections remain future work.
-A future signal wire is an authoring view of a binding; ordinary drawing arrows keep their existing
-meaning. Shared-state associations must have a distinct visual treatment when wiring is introduced:
-use line style or symbols as well as color, with clear read, write, and read/write markers. A value
-flow, a command trigger, and access to one shared dataset must remain distinguishable. Existing
-snapping provides useful geometry, but it does not yet store component identity or port attachment.
-This milestone does not add visible signal or state wiring.
+Stage 3 brings the first visual connection editor forward from stage 5. **Wiring** starts off and
+is available only when smart-component authoring is enabled. Ports and links are visible only
+while Wiring is on. It adds an editor overlay derived
+from identities, current port declarations, bindings, and dataset ownership. Ordinary drawing
+arrows keep their existing meaning. The overlay follows component geometry without adding drawing
+items or persisted wire paths; PNG, SVG, print, and HTML reader UI omit it. Saved connections still
+execute in exported HTML.
 
-Stage 1 provides the **Inputs…** source picker. Internal bindings follow duplicated or copied
+The first visual vocabulary separates two relationships without relying on color alone:
+
+- **Flow:** directed links with Boolean, Number, Text, or Table markers. Filter, Sort, and
+  Aggregate connections remain table flows. An owner's incoming Source also remains a directed
+  table flow: it supplies the snapshot used by Replace/Append or Live synchronization.
+- **Dataset association:** dashed links with a neutral Dataset marker when an owner publishes
+  its own records directly to a consumer, or a consumer selects that owned dataset by literal
+  reference. Sibling views share records without implying a direct wire between those views.
+  The marker does not claim read/write access. Explicit access metadata and permission markers
+  remain future work; component settings and host validation still govern mutations.
+
+Ports show names and types. Optional descriptor metadata `role:'data'|'control'` sets the general
+layout convention: data inputs left, data outputs right, control inputs top, control outputs
+bottom. Omitted roles mean data. Optional `side:'left'|'right'|'top'|'bottom'` overrides the default
+side, for example to put LED matrix columns on top. Roles must be declared explicitly; Boolean
+logic-gate operands and results remain data. These fields govern layout only: they neither add
+signal types nor prevent a data output from driving a matching control input. Positions are
+distributed along component bounds and transformed with the instance; custom coordinate anchors
+remain future work.
+
+Drag either from an output to an input or from an input to an output;
+only exact type matches are accepted. One output can supply many inputs, while each input keeps
+one source. A compatible drop on a connected input replaces its binding in one undo step. Scalar
+self-feedback is allowed under the existing settling rules. Owned dataset configuration is not
+exposed as a wireable input. Select a link and use Disconnect or Delete to remove it; Escape cancels
+an unfinished drag. Edit remains available for literals, settings, and the existing source picker.
+
+The former **Inputs…** command is now **Edit…**, reflecting its role as the component inspector.
+The dialog separates naming and configuration, data inputs, control inputs, and output preview.
+Declared port roles determine the input sections; mode settings remain configuration. A scrollable
+body and fixed Save/Cancel actions keep large components manageable, with stacked fields on
+narrow screens. Changes still remain drafts until Save, and Cancel preserves the original instance.
+
+These are authoring views of the established contracts, not new transports or execution modes.
+Table flow still means successive current snapshots, not arriving-row events. Visual rewiring
+does not introduce multiple drivers, event dispatch, implicit dataset writes, or network access.
+Acceptance covers scalar and table flows alongside shared Dataset associations, drag in both
+directions, type rejection, replacing/disconnecting with Undo, component movement, and export
+without authoring overlays. A future physical-port API can refine attachment locations separately.
+
+Stage 1 provides the **Edit…** source picker. Internal bindings follow duplicated or copied
 selections with remapped IDs; references outside a copied selection remain explicitly unresolved.
 Deleting a source reports an unavailable binding, and undo restores it. Keep these behaviors
-when adding visible wires, new reference types, or richer port editing.
+with visual wiring, new reference types, or richer port editing.
 
 The stage 2 authoring pass distinguishes same-named sources with drawing-order and world-position
 qualifiers, such as `#1 (left)` and `#2 (right)`. These labels do not rename instances or alter
@@ -1149,7 +1209,7 @@ and authoring controls stay hidden there. Existing smart editing remains usable 
 The initial slice is **Dataset → Table filter → Dataset editor + Data bar chart**, controlled
 by a Text input and shipped as the **Embedded data** workspace tab. Import the matching
 [sailing-results CSV](../examples/sailing-results.csv) or [JSON](../examples/sailing-results.json) through
-**Inputs…** on a table port. The same drawing and its data work in the offline HTML export.
+**Edit…** on a table port. The same drawing and its data work in the offline HTML export.
 
 - Each sketch stores one current immutable revision per table in `datasets`, separate from 4,000-character component
   state. A table has a name, ordered typed columns (`key`, `name`, `type`), and scalar/null cells.
@@ -1171,7 +1231,7 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
   remain available. `tablePresentation:'full'` opts into complete input snapshots under the same transfer
   budget. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
   remain unsupported.
-- **Inputs…** previews imported column types and initial rows before Save. **New dataset…** creates
+- **Edit…** previews imported column types and initial rows before Save. **New dataset…** creates
   an empty table with named, nullable typed columns. Cancel discards pending data; tab/session changes
   cancel stale imports. Existing datasets can be selected directly.
 - Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
@@ -1237,7 +1297,7 @@ Trigger connects to Dataset's reload input.
 **Dropdown and Text lookup** extend the data workflow with a shared choice-list model:
 
 - Both offer authoring **Choices from: list / dataset**. List rows have editable text and an optional key;
-  the Inputs dialog supports adding, removing, and reordering rows. The list is stored in instance
+  the Edit dialog supports adding, removing, and reordering rows. The list is stored in instance
   state as a JSON string, bounded to 64 rows and 2,000 serialized characters, with no JSON authoring
   required. Switching to Dataset keeps the list available for switching back.
 - Dataset mode declares table `data`, string `textColumn`, and optional string `keyColumn` inputs.
@@ -1297,7 +1357,7 @@ Trigger connects to Dataset's reload input.
   and ambiguous output types that clearing the cells can resolve. A
   confirmation offers to discard all cell contents, formulas, and cell formatting, retaining grid
   size, column widths, and settings. Declining restores the previous draft configuration; accepting
-  stages the clear until Inputs Save, as one undoable change. Inputs Cancel keeps the original
+  stages the clear until Edit Save, as one undoable change. Edit Cancel keeps the original
   sheet. Formulas outside the linked rectangle are retained without a prompt when their port
   declarations remain valid.
 - `DATA("port",row,"column",type?)`, `COLUMN("port","column")`, and `ROWS("port")` declare named
@@ -1307,9 +1367,9 @@ Trigger connects to Dataset's reload input.
   aggregate functions. These functions also work in Cells mode and can read multiple datasets.
   `OUTPUT(value,"name",type)` gives runtime-dependent dataset cell references a stable scalar port
   type, checked against the actual result. Schema reloads do not silently change output types.
-- **Copy dataset to editable cells** in Inputs copies the selected or connected table, or a file
+- **Copy dataset to editable cells** in Edit copies the selected or connected table, or a file
   imported through the existing CSV/TSV/JSON preview. Connected tables capture their published live
-  snapshot when Inputs opens, including stored and derived results. This is a one-time copy, not
+  snapshot when Edit opens, including stored and derived results. This is a one-time copy, not
   continuous recording. It replaces the sheet grid, disconnects inputs
   removed by the new state, and switches to Cells mode. Save applies the staged copy as one undoable
   change; Cancel discards it. Copied text remains literal even when it starts with `=` or resembles
@@ -1351,8 +1411,9 @@ capture, replacement, and graph invalidation are shared by the editor and offlin
 keep separate copies.
 Shared state is separate from signal flow: sibling views update through their common dataset without
 a direct wire between them. Compute remains read-only, and explicit host commands commit writes.
-When visible wiring is added, state associations must be visually distinct from signal bindings,
-including read/write direction markers and a difference beyond color alone.
+The stage 3 visual editor distinguishes Dataset associations from signal bindings with dashed
+lines and a Dataset marker. It leaves read/write permission claims to a future explicit metadata
+contract, rather than inferring them from a table port or component name.
 
 - Stored datasets have stable IDs and stable row IDs. Each accepted append/update/delete/replace
   operation increments the revision and creates a validated immutable table. Update
@@ -1511,15 +1572,10 @@ current lack of direct DOM, storage, and network access.
 
 Use the library-and-logic example to improve binding discovery and reusable property controls.
 Add a document-wide Run/Preview mode that reuses exported reader interaction, with layout and
-authoring controls hidden. Visible wires are optional; the source picker remains sufficient
-to connect a document.
-
-If this stage introduces visible wiring, acceptance must show both ordinary signal flow and shared
-state access in the same example without confusing them. Give state associations a distinct line
-style or symbol, plus read, write, or read/write markers; color is an additional cue. A table and
-chart attached to one dataset must visibly communicate that shared association without implying a
-direct value-flow connection between the two views. This is a future authoring requirement, not
-implemented wiring UI.
+authoring controls hidden. Initial visual wiring is now a stage 3 milestone; this stage can refine
+its discovery and controls while retaining Edit as an alternative. If read, write, or read/write
+markers are added, first define explicit access metadata and account for per-instance editing and
+reader permissions. The existing neutral Dataset association does not promise any of those rights.
 
 Decide how preview state is retained or discarded on return to authoring before implementing
 the mode, and make that choice visible. Distinguish this editor behavior from reader persistence:
@@ -1807,14 +1863,15 @@ handling are tested separately from broker delivery.
    identities, immutable revisions, storage/transfer budgets, atomic imports, bound-cell edits, and
    captured rows are defined above. Dataset owns records, Dataset editor follows records/schema, and
    Spreadsheet owns its layout/formulas and publishes evaluated results. Manual and Live source
-   policies are explicit. Coordinated current-record controls and record-wise calculated columns
+   policies are explicit. Visual wiring distinguishes typed flows from Dataset associations and
+   edits the existing bindings; access-permission metadata remains deferred. Coordinated current-record controls and record-wise calculated columns
    remain follow-ups.
 3. **Stage 4 — narrow data actions established:** Explicit host controls download current table
    results, reload triggers reread a session-selected file, and capture triggers append sampled rows
    under the rules above. Record controls and Live source synchronization share the same bounded
    mutation service. Define a supported revision for general event/action envelopes, receiving hooks, dispatch
    identity, and propagation limits before adding routed events or further action types.
-4. **Stage 5:** Use the library example to choose binding/control improvements and define preview
+4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
    connection identity, and artifact-specific credential/startup policy before either transport.

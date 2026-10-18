@@ -74,6 +74,12 @@ retains component API markers and wiring; earlier drawing formats remain readabl
 The `smartComponents` deployment switch is checked for disabled authoring, preserved legacy
 authoring, and working saved connections, copies, deployed-library placements, and offline HTML.
 
+`tests/component-wiring-contracts.test.cjs` and `tests/component-wiring-runtime.test.cjs` cover
+visual wiring's typed flow/Dataset distinction and its use of existing bindings: bidirectional
+drag gestures, incompatible types, replacement/disconnection with Undo, and editor-only overlays.
+They also check explicit data/control roles and side overrides, rotated four-sided port banks,
+LED matrix column placement, and self-feedback paths that stay outside the component.
+
 Icon-import regressions compare the browser-rendered source SVG with native canvas, SVG and PNG
 output after library/sketch roundtrips and point-edit conversion. They also exercise delayed
 imports across Close, Escape and library replacement. Sketch format 3 retains polygon fill rules;
@@ -104,7 +110,7 @@ exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and
 Library browser regressions in `tests/library-browser.test.cjs` exercise direct placement from the
 expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
 metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the
-threshold/AND/indicator example through Inputs and operate the actual downloaded HTML offline.
+threshold/AND/indicator example through Edit and operate the actual downloaded HTML offline.
 Category checks cover multiple memberships, create/rename/remove, built-in organization overrides,
 empty-category preservation, legacy single-category imports, and separate search Keywords.
 Removing a category preserves shapes, pins, and other memberships. Shared Library actions,
@@ -147,7 +153,7 @@ errors remain visible when those details are hidden.
 `tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
 unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
 late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
-A catalog-wide naming check renames captioned built-in API v2 components through Inputs and verifies each
+A catalog-wide naming check renames captioned built-in API v2 components through Edit and verifies each
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
 connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
@@ -181,26 +187,30 @@ offline interaction. Run it with `node --test tests/temporal-components.test.cjs
 
 `tests/counter-modes.test.cjs` checks up/down counting, configurable countdown starts, zero clamping,
 reset and held-input behavior, and configuration changes that coincide with rising edges. It uses
-the real Inputs dialog and Trigger controls, then verifies saved progress, undo/redo, reload, and
+the real Edit dialog and Trigger controls, then verifies saved progress, undo/redo, reload, and
 offline HTML countdown/reset behavior. Run with `node --test tests/counter-modes.test.cjs`, optionally
 prefixed with `BROWSER_ENGINE=webkit`.
 
 `tests/shift-register.test.cjs` checks Boolean and numeric cascades using a shared pulse and
 current `value`, independent stored stages, pure inspection, and restoration without phantom shifts.
-Editor checks configure stages through Inputs, connect a parallel output, and exercise Trigger
+Editor checks configure stages through Edit, connect a parallel output, and exercise Trigger
 sampling, JSON reload, and actual offline HTML shifting/reset. Run with
 `node --test tests/shift-register.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
 The browser-independent `node --test tests/shift-register-contracts.test.cjs` checks stage
 limits, simultaneous shifts, held reset, reconfiguration, finite numeric values, and state isolation.
 
-`tests/led-displays.test.cjs` exercises both seven-segment input modes and both matrix modes
-through the real Inputs dialog and sandbox. It checks segment/pixel positions, enable masking,
+`tests/led-displays.test.cjs` exercises both seven-segment input modes and Boolean/row-byte matrix modes
+through the real Edit dialog and sandbox. It checks segment/pixel positions, enable masking,
 mode changes, unavailable inputs, saving, and interaction in offline HTML. Run with
 `node --test tests/led-displays.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
 The browser-independent `tests/seven-segment-contracts.test.cjs` and
-`tests/led-matrix-contracts.test.cjs` cover digit patterns, every pixel, input bounds, and pure rendering.
+`tests/led-matrix-contracts.test.cjs` cover digit patterns, every pixel, input bounds, and pure rendering,
+including row/column byte conversion and all sixteen matrix outputs.
+`tests/led-matrix-runtime.test.cjs` adds column mode editing, save/reload, top/bottom wiring,
+and offline HTML orientation and connected column-value updates. Run with
+`node --test tests/led-matrix-runtime.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
 
-`tests/catalog-extensions.test.cjs` checks configurable channel counts through the real Inputs
+`tests/catalog-extensions.test.cjs` checks configurable channel counts through the real Edit
 dialog, library placement, undo/redo, removed-output errors, pulse-driven stepped routing,
 and typed numeric entry in the editor and downloaded offline HTML. It also checks dialog
 cancellation when visibility changes and connects the new pulse sources to counters.
@@ -219,7 +229,7 @@ whole box for the cell grid and is excluded from the caption check.
 unknown Boolean logic, and gate-built memory through the real sandbox.
 `tests/feedback-controls.test.cjs` checks the editor and exported Pause/Step/Resume controls.
 `tests/feedback-review.test.cjs` checks compact retained wiring keys, stored outputs through Z
-in the graph, Inputs preview and offline reader, and per-tab Pause/time across Undo/Redo.
+in the graph, Edit preview and offline reader, and per-tab Pause/time across Undo/Redo.
 `tests/import-integrity.test.cjs` checks Open sketch ownership across asynchronous file/picker
 steps and tab switches, plus bounded geometry that cannot overflow during import rounding.
 `tests/sandbox-lifecycle.test.cjs` checks that returned hooks cannot leave timer, microtask, or
@@ -263,7 +273,7 @@ Undo/copies, full dataset labels, and offline reader behavior through the real s
 between editable lists and dataset column selectors without losing the saved list.
 
 `tests/component-indexing.test.cjs` audits every indexed built-in port family for contiguous
-zero-based names at default/minimum/maximum sizes, including both matrix modes. It also verifies
+zero-based names at default/minimum/maximum sizes, including all three matrix modes. It also verifies
 choice index 0 is valid and missing selections/lookups return −1.
 
 `tests/spreadsheet-contracts.test.cjs` checks independent/nested OUTPUT arguments, deleted and
@@ -334,7 +344,7 @@ Dataset editing and calculated table checks:
   explicit HTML editing permission/session reset.
 - `tests/spreadsheet-table-output.test.cjs` validates result schemas, range bounds, scalar-port
   collisions, nulls, literal values, formula/type errors, and dataset limits.
-- `tests/spreadsheet-table-output-runtime.test.cjs` uses real Workers and the Inputs dialog,
+- `tests/spreadsheet-table-output-runtime.test.cjs` uses real Workers and the Edit dialog,
   materializes evaluated tables, and verifies the offline reader and linked-page results.
 - The workspace tests exercise tabs 24 and 25 together: independent working edits, Live overwrite,
   source-to-formula-to-Dataset refresh, and current result downloads.

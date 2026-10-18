@@ -1,8 +1,8 @@
 // Compare two numbers. A uses the value port; B defaults to 70 and can also be connected.
-// Choose the comparison in Inputs. The output indicator is green for true, grey for false.
+// Choose the comparison in Edit. The output indicator is green for true, grey for false.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'},b:{type:'number',default:70},operation:{type:'string',default:'>',options:['>','≥','<','≤','=','≠']}},
+  inputs:{value:{type:'number'},b:{type:'number',default:70},operation:{role:'control',type:'string',default:'>',options:['>','≥','<','≤','=','≠']}},
   outputs:{value:{type:'boolean'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
@@ -67,7 +67,7 @@
     }
     if(io.error || !available){
       const error=typeof io.error==='string'?io.error:'';
-      const note=/Unsupported comparison/i.test(error)?'Choose a comparison in Inputs':
+      const note=/Unsupported comparison/i.test(error)?'Choose a comparison in Edit':
         !error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
       children.push({...text(note,w*.04,h*.77,w*.92,h*.22,10.5),color:'#92400e'});
     }

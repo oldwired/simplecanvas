@@ -2,8 +2,8 @@
 // Reset/configuration changes re-prime the input; a held or restored high never invents an edge.
 ({
   apiVersion:2,
-  inputs:{value:{type:'boolean'},direction:{type:'string',default:'up',options:['up','down']},start:{type:'number',default:3},threshold:{type:'number',default:3},reset:{type:'boolean',default:false}},
-  outputs:{count:{type:'number'},reached:{type:'boolean'}},
+  inputs:{value:{role:'control',type:'boolean'},direction:{role:'control',type:'string',default:'up',options:['up','down']},start:{role:'control',type:'number',default:3},threshold:{role:'control',type:'number',default:3},reset:{role:'control',type:'boolean',default:false}},
+  outputs:{count:{type:'number'},reached:{role:'control',type:'boolean'}},
   initState(){return {count:0,configuredDirection:'up',configuredStart:3,configuredThreshold:3,showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _configuration(inputs={}){

@@ -3,7 +3,7 @@
 // null is the declared high-impedance output, never an unavailable or false value.
 ({
   apiVersion:2,
-  inputs:{value:{type:'boolean',unknown:true},enable:{type:'boolean',unknown:true}},
+  inputs:{value:{type:'boolean',unknown:true},enable:{role:'control',type:'boolean',unknown:true}},
   outputs:{value:{type:'boolean',unknown:true,triState:true}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:260,h:190,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

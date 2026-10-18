@@ -118,8 +118,8 @@ test('Counter up/down contracts preserve edges, configuration, reset, and saved 
     }finally{disposeSmartExecution(owner);}
   })()`);
   assert.equal(result.initial.configuredDirection,'up');assert.equal(result.initial.configuredStart,3);
-  assert.deepEqual(result.caps.inputs.direction,{type:'string',default:'up',options:['up','down']});
-  assert.deepEqual(result.caps.inputs.start,{type:'number',default:3});
+  assert.deepEqual(result.caps.inputs.direction,{role:'control',type:'string',default:'up',options:['up','down']});
+  assert.deepEqual(result.caps.inputs.start,{role:'control',type:'number',default:3});
   assert.deepEqual(result.results.map(output=>output.count),[3,3,3,2,2,5,5,5,4,5,5,5,5,5,4,0,0,0,1,1,1,0,0,0,0]);
   assert.deepEqual(result.results.map(output=>output.reached),Array(20).fill(false).concat([true,true,true,true,true]));
   assert.equal(result.restored.count,4,'a restored high input preserves the saved down count');

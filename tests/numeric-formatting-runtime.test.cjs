@@ -67,7 +67,7 @@ test('Inputs previews format numbers but saving an unchanged literal retains eve
   await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
   const field=page.getByLabel('value value',{exact:true});assert.equal(await field.inputValue(),String(artifact));
   await page.waitForFunction(()=>document.querySelector('#componentOutputs').getAttribute('aria-busy')==='false');
-  assert.equal(await page.locator('#componentOutputs').textContent(),'Preview outputs: percentage = 56');
+  assert.equal(await page.locator('#componentOutputs').textContent(),'percentage = 56');
   await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
   assert.equal(await run('items[0].inputValues.value'),artifact);assert.equal((await output(run,0)).percentage,artifact);
 }));

@@ -85,6 +85,7 @@ const sources={
   "demo-8-crossings": "led-matrix.js",
   "demo-8-row-byte": "number-control.js",
   "demo-8-smiley": "led-matrix.js",
+  "demo-8-columns": "led-matrix.js",
   "demo-9-run": "toggle.js",
   "demo-9-clock": "pulse-generator.js",
   "demo-9-countdown": "counter.js",

@@ -4,9 +4,9 @@
   settings:{source:{type:'string',default:'list',options:['list','dataset'],label:'Choices from'},choices:{type:'string',default:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',format:'choices',label:'Editable list'},caseSensitive:{type:'boolean',default:true,label:'Case-sensitive matching'},trim:{type:'boolean',default:false,label:'Ignore surrounding whitespace'}},
   inputs(state){
     const ports={text:{type:'string',default:''}};
-    return this._source(state)==='dataset'?{...ports,data:{type:'table'},textColumn:{type:'string',default:'',columnOf:'data',columnType:'string'},keyColumn:{type:'string',default:'',columnOf:'data',columnType:'string'}}:ports;
+    return this._source(state)==='dataset'?{...ports,data:{type:'table'},textColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'},keyColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'}}:ports;
   },
-  outputs:{index:{type:'number'},key:{type:'string'},found:{type:'boolean'}},
+  outputs:{index:{type:'number'},key:{type:'string'},found:{role:'control',type:'boolean'}},
   initState(){return {source:'list',choices:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',caseSensitive:true,trim:false};},
   initStyle(){return {w:300,h:100,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state,context={}){

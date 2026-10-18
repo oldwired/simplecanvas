@@ -18,7 +18,7 @@
     });
   },
   inputs(state){
-    const ports={data:{type:'table'},capture:{type:'boolean',default:false}};
+    const ports={data:{type:'table'},capture:{role:'control',type:'boolean',default:false}};
     for(const {port,type} of this._fields(state))ports[port]={type,default:type==='number'?0:type==='boolean'?false:''};
     return ports;
   },
@@ -53,7 +53,7 @@
     const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},
       text(io.name?.trim()||'Capture row',12,16,undefined,600)];
     if(io.error || !table || !Number.isInteger(io.outputs?.rowCount)){
-      children.push(text(io.error||'Choose a dataset and map its columns in Inputs',60,12,'#92400e'));return children;
+      children.push(text(io.error||'Choose a dataset and map its columns in Edit',60,12,'#92400e'));return children;
     }
     children.push(text(table.name,43,13),text(io.outputs.rowCount+' '+(io.outputs.rowCount===1?'row':'rows'),73,22,undefined,600),
       text('Pulse Capture to add one row',116,11,'#64748b'));

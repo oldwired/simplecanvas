@@ -1,7 +1,7 @@
 // Boolean-controlled two-way Boolean selector: false chooses A; true chooses B.
 ({
   apiVersion:2,
-  inputs:{a:{type:'boolean'},b:{type:'boolean'},select:{type:'boolean',default:false}},
+  inputs:{a:{type:'boolean'},b:{type:'boolean'},select:{role:'control',type:'boolean',default:false}},
   outputs:{value:{type:'boolean'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

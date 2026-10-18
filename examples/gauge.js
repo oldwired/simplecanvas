@@ -1,4 +1,4 @@
-// Select this shape and choose Inputs to connect value to a Number control's value output.
+// Select this shape and choose Edit to connect value to a Number control's value output.
 ({
   apiVersion: 2,
   inputs: { value: { type:'number', default:0 } },

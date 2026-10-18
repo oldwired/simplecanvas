@@ -294,7 +294,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Delayed pulses | Follow a pulse through a delay. |
 | Routing | Step through four values with pulse and reset controls. |
 | Shift memory | Move a bit through two cascaded registers. |
-| LED patterns | Drive matrices with Boolean lines and row bytes. |
+| LED patterns | Compare Boolean, Rows, and Columns modes; change **Top row byte** and watch the row-driven matrix feed the same pattern to a column-driven matrix. |
 | Self-reset | Let completion reset its own countdown; count every completed cycle. |
 | Stop at zero | Disable a pulse generator when its counter reaches zero. |
 | Reset and stop | Reset the counter and retain the stop command in an SR latch. |
@@ -316,8 +316,9 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
-directly. Select a component and open **Inputs…** in the editor to inspect or change its actual
-bindings. The illustrative arrows are ordinary drawing objects. Each tab is independent;
+directly. Select a component and open **Edit…** in the editor to inspect or change its actual
+bindings, or enable **Wiring** to see and edit them on the canvas. The examples' illustrative
+arrows remain ordinary drawing objects. Each tab is independent;
 timing pauses while that tab is inactive. Reader changes survive tab switches, and reloading
 the HTML restores the exported snapshot.
 
@@ -352,12 +353,12 @@ has zero lines; appending an empty line creates one blank line. Limits default t
 memo displays its latest lines while its output retains the full text. Text label and Memo display
 incoming text literally. Text label starts as plain text without a frame; Memo uses a compact
 content area. Enable Text label's normal stroke controls to add an outline using the selected
-color, thickness, and line style. In **Inputs…**, enable **Show submission state** or **Show hints** for the input
+color, thickness, and line style. In **Edit…**, enable **Show submission state** or **Show hints** for the input
 controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
 label. These optional details start hidden; errors and rejected-update notices remain visible.
 
 **Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
-library. Place Dataset, select it, and open **Inputs…**. Its **Owned dataset** section selects or creates
+library. Place Dataset, select it, and open **Edit…**. Its **Owned dataset** section selects or creates
 the table this component owns; it is not a signal connection. Choose **Import CSV/TSV/JSON…** to
 load a file. Inspect the first rows and column types, then **Save**.
 **New dataset…** creates an empty table: name it, add columns with string, number, or Boolean types,
@@ -376,7 +377,7 @@ JSON imports an array of flat objects with scalar or null values; missing proper
 and a column cannot mix non-null types. Nested objects and arrays are rejected. Try the matching
 [sailing-results CSV](examples/sailing-results.csv) or [JSON](examples/sailing-results.json).
 
-In Table filter's **Inputs…**, choose a column key and operation, then set or connect the matching
+In Table filter's **Edit…**, choose a column key and operation, then set or connect the matching
 **text**, **number**, or **boolean** comparison input. A blank column passes every row. Connect a
 Text input's **value** to **text** for live search; the example starts with `Aurora`, and a blank
 search shows all boats. Numeric columns support comparisons; text supports contains/equality;
@@ -433,7 +434,7 @@ Use Capture row to explicitly record scalar samples before aggregating them.
 
 Table sort and Table aggregate have an **enabled** Boolean input and a visible on/off switch. Without a connection,
 clicking the switch changes that input directly; the editor records one undo step. With a connected
-signal, the switch reflects it and is read-only. Turn off **Show on/off switch** in **Inputs…** to
+signal, the switch reflects it and is read-only. Turn off **Show on/off switch** in **Edit…** to
 hide it while keeping the input active. Off bypasses the transform and passes the original rows
 and columns through unchanged. In particular, disabling Aggregate restores the original schema;
 downstream column choices must work with that schema too.
@@ -455,7 +456,7 @@ Counts remain quantities: four channels have indices 0–3. Keys stay attached t
 their order changes. Tab numbers and ordinary numbered instructions remain human-readable ordinals.
 
 **Dropdown** maps a choice to its **index**, **key**, and **text** outputs, with **valid** indicating
-whether the selection exists. In **Inputs…**, choose **List** to edit rows of text and optional keys,
+whether the selection exists. In **Edit…**, choose **List** to edit rows of text and optional keys,
 or **Dataset** to connect a table and choose its text and optional key columns. Indices start at 0
 and follow the list or selected dataset row order. A connected **select** input controls the choice;
 the dropdown then becomes read-only. Without a connection, choose directly on the control.
@@ -481,7 +482,7 @@ its error for correction.
 `=INPUT("amount")` declares a numeric input; `=INPUT("enabled","boolean")` declares a Boolean input.
 Use `=INPUT("message","string")` for text.
 `=OUTPUT(B2*B3,"total")` publishes a formula argument as a typed output. Connect these ports through
-**Inputs…**, just like other components. Functions include IF, IFERROR, SUM, AVERAGE, VLOOKUP,
+**Edit…**, just like other components. Functions include IF, IFERROR, SUM, AVERAGE, VLOOKUP,
 Boolean operations, rounding, and text operations; commas or semicolons separate arguments.
 Spreadsheet A1 row references, VLOOKUP column numbers, and MID character positions conventionally
 start at 1. Component selection indices and indexed ports remain zero-based. Output types are
@@ -492,14 +493,14 @@ The twentieth tab, **Connected spreadsheet**, connects a Number control and Togg
 shows its three result types. Try changing B3 from 2 to 3 in the editor. In exported HTML, cells are
 read-only, but controls still drive the formulas and connected output displays entirely offline.
 
-To use a dataset, open the sheet's **Inputs…**, set **Grid source** to **Dataset**, and choose a dataset,
+To use a dataset, open the sheet's **Edit…**, set **Grid source** to **Dataset**, and choose a dataset,
 connect a table output, or import CSV/TSV/JSON. **Dataset rows shown** and **Dataset columns shown** reserve a data
 area at the top left, read-only by default; other cells remain editable. The `startRow` input pages through data from index 0.
 
 If switching to Dataset or expanding this area overlaps existing cells or invalidates formula ports,
 you can discard all cell contents, formulas, and cell formatting. Grid size, column widths, and
 settings stay in place. Declining keeps your previous configuration; accepting stages the clear
-until **Save**, as one undoable change. **Cancel** in Inputs keeps the original sheet. Formulas
+until **Save**, as one undoable change. **Cancel** in Edit keeps the original sheet. Formulas
 outside the data area remain intact without a prompt when their input and output types remain valid.
 
 `=SUM(COLUMN("data","Points"))` calculates across the complete selected column, even beyond the visible
@@ -515,7 +516,7 @@ limits; larger data can remain connected and be used in formulas. The twenty-fir
 **Dataset spreadsheet**, demonstrates the live grid, paging, calculations, and copy workflow.
 
 To edit the shared data itself, connect the Dataset owner's output to **Dataset editor** and enable
-**Edit dataset records** in **Inputs…**. **Edit dataset cells** remains available in a Spreadsheet's bounded dataset area. A table without a live, unique owner remains read-only.
+**Edit dataset records** in **Edit…**. **Edit dataset cells** remains available in a Spreadsheet's bounded dataset area. A table without a live, unique owner remains read-only.
 Edits change the original typed cells, so other sheets, tables, charts, and choices using that dataset
 update together. Sorting and filtering preserve row identity: an edit targets the displayed source
 record even when its position has changed. Aggregate results remain read-only. Dataset text is literal,
@@ -587,20 +588,52 @@ For a smaller starting point, open [the control-and-gauge sketch](examples/conne
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
 
 To build your own pair, place **Number control** and **Gauge** from the built-in library.
-Their script templates also remain available for authoring. Select the gauge, click **Inputs…**,
+Enable **Wiring**, then drag Number control's **value** output to Gauge's **value** input;
+starting at the input and dropping on the output works too. Their script templates also remain
+available for authoring. Alternatively, select the gauge, click **Edit…**,
 choose **Number control · value** for its
 `value` input, and save. The same dialog can name an instance or set a literal input value.
 It lists compatible outputs from components in the active sketch.
 When several sources share a name, the picker adds qualifiers such as **#1 (left)** and
 **#2 (right)**. These drawing-order and position hints help identify the source; they do not
 rename instances or change their connections. You can still give instances distinct names.
+
+**Wiring** starts off and is available when component authoring is enabled. Ports show their
+names and types. Directed flow links carry **Boolean**, **Number**, **Text**, or **Table** markers;
+Dataset associations use a dashed line and a **Dataset** marker. This difference also works
+without color. A Dataset publishing its owned records to a view shows an association, as does
+a view selecting that owned dataset directly. Filter, Sort, and Aggregate connections remain
+directed table flows, and a Dataset's **source** input is a flow of incoming snapshots to copy.
+Dataset associations identify shared records; they do not claim read or write permission.
+
+Data inputs sit on the left and data outputs on the right; control inputs sit on top and control
+outputs below. A script declares which ports are controls and can override a port's side when
+the component benefits from a different arrangement. Boolean signals are not automatically
+controls: a logic gate's operands and result remain data on the left and right. Placement does
+not restrict connections; a matching data output can drive a control input. Ports and links
+are visible only while **Wiring** is on.
+
+Drag between an input and a compatible output to connect them. Types must match exactly;
+one output can feed several inputs, and each input has one source. Dropping a new compatible
+output on an already connected input replaces its binding in one undo step. Select a link and
+use **Disconnect** or **Delete** to remove it; **Escape** cancels a drag. An owner's **Owned dataset**
+setting remains in Edit rather than becoming a connectable port. Scalar feedback connections
+use the existing simulation rules.
+
+Links follow their components and are an editor overlay, not drawing objects. They stay out of
+PNG, SVG, print, and HTML reader views; the saved bindings still work in those documents.
+**Edit…** opens the component inspector for its name, settings, literal values, and connections.
+The dialog groups configuration, data inputs, control inputs, and the output preview so that
+mode switches and connections are easier to distinguish. Its body scrolls independently of
+**Save** and **Cancel**, and fields stack on narrow screens.
+
 After changing a source or literal, the dialog previews the proposed outputs and reports errors.
 **Save** applies the changes; **Cancel** leaves the drawing unchanged. This is a paused preview:
 it does not advance timers, consume pulse edges, or change component state.
 Built-in API v2 components display that instance name as their caption, separately from their
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports. Spreadsheet deliberately uses its whole box for cells and omits a caption;
-its instance name remains available in Inputs and connection choices.
+its instance name remains available in Edit and connection choices.
 
 Built-in numeric readouts use up to eight significant digits and keep safe integers exact.
 This is display formatting only: editing fields, saved values, connections, calculations, and
@@ -609,19 +642,19 @@ clock readouts, and measurement labels keep their chosen precision. Numeric-look
 remain literal text.
 
 **Number control** has `min`, `max`, and `step` inputs, initially 0, 100, and 1. Set literals or
-connect these values through **Inputs…**. Negative bounds and fractional steps work. The slider,
+connect these values through **Edit…**. Negative bounds and fractional steps work. The slider,
 step buttons, and direct entry stay within the bounds and snap to the step grid anchored at `min`;
 the maximum remains reachable even when it is between grid points. The step must be positive,
 and `min` must not exceed `max`. Direct number entry also works in exported HTML.
 
-**Seven-segment display**, in **Displays**, has two **Input mode** settings in **Inputs…**.
+**Seven-segment display**, in **Displays**, has two **Input mode** settings in **Edit…**.
 **Number** (the default) takes a required integer `value` from 0 to 9. **Segments** exposes boolean
 `a`…`g` inputs, each initially false, for direct control of the conventional seven segments.
 Both modes accept `decimalPoint` (initially false) and `enable` (initially true). The fixed boolean
 outputs `a`…`g` and `decimalPoint` report the visible segments; disabling the display makes them
 all false. Dim segments mean off; amber means an unavailable input, not the digit zero.
 
-**LED matrix (8×8)** has two **Input mode** settings:
+**LED matrix (8×8)** has three **Input mode** settings:
 
 - **Boolean** (the default): `row0`…`row7` and `col0`…`col7`, all initially false. Row 0 is at the
   top and column 0 at the left. An LED lights when both its row and column are true. Every active
@@ -629,17 +662,23 @@ all false. Dim segments mean off; amber means an unavailable input, not the digi
 - **Rows**: numeric `r0`…`r7`, each initially 0 and restricted to integers 0–255. `r0` is the top
   row; bit 7 (128) is at the left and bit 0 (1) at the right. A row value of 129 lights both ends, 255
   lights all eight LEDs, and 0 leaves the row dark.
+- **Columns**: numeric `c0`…`c7`, each initially 0 and restricted to integers 0–255. `c0` is the
+  leftmost column; bit 7 (128) is at the top and bit 0 (1) at the bottom. A column value of 129
+  lights its top and bottom LEDs.
 
-Both modes have `enable`, initially true. The fixed numeric outputs `r0`…`r7` report the visible
-row bytes in every mode; disabling blanks the display and sets these outputs to zero. Changing
+All modes have `enable`, initially true. The fixed numeric outputs `r0`…`r7` and `c0`…`c7`
+report the visible row and column bytes simultaneously in every mode, using the same bit order as
+their inputs. Disabling blanks the display and sets all sixteen outputs to zero. Changing
 Input mode exposes its own input ports while preserving those output names. Both displays show
 their instance name and work in offline HTML. They show current inputs directly, with no scanning
-clock or stored frame.
+clock or stored frame. In Wiring mode, Boolean and numeric column inputs sit on top, row inputs
+on the left, row-byte outputs on the right, and column-byte outputs on the bottom. Column ports
+remain data ports despite their top/bottom placement. The `enable` control is on top in all modes.
 
 The built-in logic components use the same typed connections. **AND**, **NAND**, **OR**, **NOR**,
 **XOR**, **XNOR**, **NOT**, and **Buffer** use traditional logic-gate shapes and boolean ports.
 **Compare** takes two numbers: `value` (A) and `b` (B, initially 70). Both can be connected or set
-as literals. Choose **>**, **≥**, **<**, **≤**, **=**, or **≠** in **Inputs…**; the boolean output
+as literals. Choose **>**, **≥**, **<**, **≤**, **=**, or **≠** in **Edit…**; the boolean output
 reports the selected comparison. Equality compares the actual numbers without a tolerance.
 **Inverter (×−1)** takes and returns a number; **NOT** takes and returns a boolean.
 For example, **Compare** and **Toggle** can feed **AND**, whose output drives a **Status indicator**.
@@ -651,7 +690,7 @@ to Z shows an unavailable state until the buffer is enabled; you can save that c
 is disabled. Missing connections still show amber, not Z. Each input has one source; shared-bus
 resolution and electrical simulation are outside this component's behavior.
 
-**Math** takes two numeric inputs, `a` and `b`, and outputs `value`. In **Inputs…**, connect each
+**Math** takes two numeric inputs, `a` and `b`, and outputs `value`. In **Edit…**, connect each
 input or enter a number, then choose **+**, **−**, **×**, **÷**, **min**, or **max** in the `operation` dropdown.
 Subtraction means `a − b`; division means `a ÷ b`. Each instance keeps its own operation.
 You can connect its result to another Math block, Compare, Gauge, or Value label. Division by
@@ -662,14 +701,14 @@ restores the connected calculation, including in exported HTML.
 into `outMin`…`outMax`, initially 0…100 → 0…1. It clamps to the input range by default; set `clamp`
 false to extrapolate. Input bounds must increase; reversed output bounds are supported.
 **Number function** applies **abs**, **round**, **floor**, or **ceil** to a number. `round` uses
-nearest-integer rounding with half values toward positive infinity. All settings are in **Inputs…**.
+nearest-integer rounding with half values toward positive infinity. All settings are in **Edit…**.
 
 **Selector (number)** and **Selector (Boolean)** choose between `a` and `b`: `select=false`
 chooses A, and `select=true` chooses B. Both data inputs must be valid, including the unselected
 one. These are value-routing components; they do not pause or disable an upstream branch.
 
 **Stepped switch** and **Stepped distributor** each have number and Boolean variants. Set
-**Channels** in **Inputs…** to 2–16 (initially 4); this changes the available ports. Connect a
+**Channels** in **Edit…** to 2–16 (initially 4); this changes the available ports. Connect a
 Trigger or Pulse generator to `pulse`. Every false → true pulse advances from channel 0 through
 N−1 and wraps to 0; holding true does not advance again. A true `reset` holds channel 0. The numeric
 `position` output reports the selected channel.
@@ -685,7 +724,7 @@ to flow through the selected route between pulses. Reducing the channel count ca
 to removed outputs unavailable until they are rewired.
 
 **Shift register (Boolean)** and **Shift register (number)**, in **Logic**, store a sequence of
-values. Set **Stages** in **Inputs…** to 1–16 (initially 4), connect data to `value`, and connect
+values. Set **Stages** in **Edit…** to 1–16 (initially 4), connect data to `value`, and connect
 Trigger or Pulse generator to `pulse`. Each false → true pulse stores the data in `q0` and moves
 the previous contents of `q0` to `q1`, and so on, using the same snapshot of the old cells. Holding
 true does not shift again. Each stage has its own output and visible value; `value` also exposes
@@ -741,11 +780,11 @@ enter its controls, then click **Press**: each completed click emits `true` for 
 returns to `false`. Holding the button does not repeat. Rapid clicks queue distinct pulses,
 separated by at least 0.01 seconds of `false`, so a Counter can register every press. Each instance
 holds up to 64 waiting presses and reports an error if full. Connect **Trigger · value** to a
-Counter's `value` input through **Inputs…**. In exported HTML, click the button directly.
+Counter's `value` input through **Edit…**. In exported HTML, click the button directly.
 Queued presses are transient; reopening, copying, or undoing never replays old presses.
 
 The **Tools & time** category includes **Live clock**, which follows wall time in the selected
-timezone. In **Inputs…**, set its string `timezone` input to `local` (the default), `UTC`, or an
+timezone. In **Edit…**, set its string `timezone` input to `local` (the default), `UTC`, or an
 IANA name such as `Europe/Berlin` or `America/New_York`. Invalid timezones show an error.
 Its hands, digital readout, and string `time` output share the same `HH:mm:ss` snapshot.
 Place a fresh Live clock from the built-in library to use these ports; existing instances retain
@@ -754,7 +793,7 @@ their embedded scripts.
 Four boolean outputs emit nominal 100 ms pulses: `second` on each observed consecutive second,
 `minute` at second 00, `hour` at minute/second 00, and `halfDay` at noon and midnight in the
 selected timezone. For example, connect **Live clock · second** to **Counter · value** through
-**Inputs…** to count observed seconds. The `time` output is a string, so it cannot connect to the
+**Edit…** to count observed seconds. The `time` output is a string, so it cannot connect to the
 existing numeric Value label. Optional LEDs labelled **1s**, **1m**, **1h**, and **12h** show the
 pulses; the clock also displays its instance name.
 
@@ -776,10 +815,10 @@ Manual actions remain in effect until `run` changes again; a held true `reset` a
 stopwatch cleared and stopped. Place a fresh Stopwatch to get these ports. Older instances keep
 their embedded source, and new placements start stopped.
 
-**Timer** keeps its red countdown wedge and adds connected controls. In **Inputs…**, choose
+**Timer** keeps its red countdown wedge and adds connected controls. In **Edit…**, choose
 **Unit** (**minutes** by default, or **seconds**) and **Starting duration** (0–60, initially 45).
 Dragging the dial hand also sets the starting duration, refills the timer, and stops it. The top
-of the dial means 0; set a full 60 through **Inputs…**. Changing either setting refills and stops.
+of the dial means 0; set a full 60 through **Edit…**. Changing either setting refills and stops.
 
 Boolean `run` and `reset` inputs default to false. A change to run=true starts/resumes; changing
 to false pauses. **Start/Pause** and **Reset** also work directly in the component controls.
@@ -827,10 +866,10 @@ Other connected signals use per-instance intervals or edge observation:
   at the start of each new hold. Changing the duration samples immediately and restarts the period.
   The integer variant requires safe integers; the Boolean variant connects directly to gates.
 
-Configure and connect them in **Inputs…**. For example, connect Random integer → Sample & hold
+Configure and connect them in **Edit…**. For example, connect Random integer → Sample & hold
 (integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
 The controls, names, indicators, and connections work in exported HTML too.
-Interval timing uses active document time: hidden/inactive documents and the open **Inputs…**
+Interval timing uses active document time: hidden/inactive documents and the open **Edit…**
 dialog pause it. Live clock resumes at current wall time; running Stopwatch and Timer instances
 retain elapsed wall time. Late wakes replay queued Delay transitions in timestamp order, so an
 earlier clock edge samples the earlier data even when a later change is also overdue. Queued
@@ -844,7 +883,7 @@ Input/output indicators are on by default for these logic entries. Green means t
 false, and blue means a numeric value is available, including zero. Amber means unavailable.
 With valid inputs, double-click the shape and use **Indicators: on/off** to change that instance.
 The indicator toggle stays out of exports, while the saved preference is retained. Compare's
-operands and operation are configured in **Inputs…**.
+operands and operation are configured in **Edit…**.
 
 Missing or invalid inputs show an unavailable state rather than a false result. The built-in
 logic entries keep their silhouette, display **—** for unavailable values, and show **Input
@@ -853,7 +892,7 @@ otherwise the app displays a status card. Their handles are inactive until the c
 
 Connections survive sketch/workspace saves, autosave, and undo/redo. Copy or duplicate both
 components to create an independently connected pair. Copying only a consumer leaves its
-external source unresolved; use **Inputs…** to reconnect it. Deleting a source also reports
+external source unresolved; use **Edit…** to reconnect it. Deleting a source also reports
 a missing connection, and undo restores it. Static PNG/SVG/print capture the computed result.
 Set `features.smartComponents` to `false` in `settings.json` to hide component templates and
 the input picker and disable component authoring. Existing connected drawings and HTML exports
@@ -945,7 +984,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `shapeLibrary` | Hides the entire library and skips its starter file and browser storage. Objects in existing drawings still render and remain editable. |
 | `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
-| `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
+| `smartComponents` | Hides component templates, source editing, and Edit; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 

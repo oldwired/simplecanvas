@@ -4,7 +4,7 @@
 ({
   apiVersion:2,
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
-  inputs:{value:{type:'number'},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
+  inputs:{value:{type:'number'},pulse:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}},
   outputs(state){
     const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'number'};
     return {...ports,value:{type:'number'},shiftedOut:{type:'number'}};

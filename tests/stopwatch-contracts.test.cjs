@@ -48,7 +48,7 @@ function runtime(initial){
 test('Stopwatch declares run/reset inputs and elapsed seconds with a stopped initial state',()=>{
   const {component}=runtime();
   assert.equal(component.apiVersion,2);
-  assert.deepEqual(plain(component.inputs),{run:{type:'boolean',default:false},reset:{type:'boolean',default:false}});
+  assert.deepEqual(plain(component.inputs),{run:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}});
   assert.deepEqual(plain(component.outputs),{elapsed:{type:'number'}});
   assert.deepEqual(plain(component.initState()),{elapsedMs:0,startedAt:null,observedRun:false});
   assert.deepEqual(plain(component.compute({run:false,reset:false},component.initState())),{elapsed:0});

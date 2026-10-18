@@ -1,8 +1,8 @@
-// Ordered arithmetic on two required numbers. Choose the operation in Inputs.
+// Ordered arithmetic on two required numbers. Choose the operation in Edit.
 // Numeric indicators show availability, including zero; unavailable values stay blank.
 ({
   apiVersion:2,
-  inputs:{a:{type:'number'},b:{type:'number'},operation:{type:'string',default:'+',options:['+','−','×','÷','min','max']}},
+  inputs:{a:{type:'number'},b:{type:'number'},operation:{role:'control',type:'string',default:'+',options:['+','−','×','÷','min','max']}},
   outputs:{value:{type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
@@ -74,7 +74,7 @@
       const error=typeof io.error==='string'?io.error:'';
       const note=/Division by zero/i.test(error)?'Calculation unavailable\nCannot divide by zero':
         /Calculation overflow|non.?finite/i.test(error)?'Calculation unavailable\nResult is outside the numeric range':
-        /Unsupported operation/i.test(error)?'Calculation unavailable\nChoose an operation in Inputs':
+        /Unsupported operation/i.test(error)?'Calculation unavailable\nChoose an operation in Edit':
         !error || /^Missing value or binding/.test(error)?'Input required':'Input unavailable';
       children.push({...text(note,w*.04,h*.77,w*.92,h*.22,10.5),color:'#92400e'});
     }

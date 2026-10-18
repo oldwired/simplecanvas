@@ -3,7 +3,7 @@
 // single-digit displays. Timing uses the host clock (transition/nextWakeAt), so connected
 // components follow every second; reloading resumes a running countdown from its saved second.
 // In edit mode, click the title to type your own (an empty title goes back to the instance name from
-// Inputs..., or "Countdown timer").
+// Edit..., or "Countdown timer").
 ({
   apiVersion:2,
   outputs:{seconds:{type:'number'},tens:{type:'number'},ones:{type:'number'}},

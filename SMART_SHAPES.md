@@ -600,25 +600,51 @@ This supports author-configured port counts without making port layout depend on
 Types are `number`, `string`, `boolean`, and `table`; scalar input descriptors may also include
 a matching `default`. Table ports carry validated dataset references, described below. A string input
 may declare `options`, an array of 1–32 distinct, nonempty strings of at most 2,000 characters each.
-Its default, if present, must be one of those options. **Inputs…** presents these values as a
+Its default, if present, must be one of those options. **Edit…** presents these values as a
 dropdown; literal and connected values must match an option. Options apply only to string inputs.
 Names start
 with an ASCII letter and contain up to 64 letters, digits, or underscores. Reserved object keys
-are rejected. Each side supports at most 32 ports. Numbers must be finite; strings are limited
+are rejected. A component supports at most 32 inputs and 32 outputs, regardless of their
+placement sides. Numbers must be finite; strings are limited
 to 2,000 characters. Each port map and ordinary computed output object is limited to 32,000
 serialized characters; the bounded derived-table output exception is described below. A sketch
 supports at most 128 connected components.
 Saved bindings and literal-input maps are each limited to 16,000 serialized characters;
 the input dialog rejects changes that would exceed the save/load contract.
 
+Input and output descriptors may also declare `role:'data'` (the default) or `role:'control'`
+for Wiring layout. Data inputs appear on the left and outputs on the right; control inputs
+appear on top and outputs below. An optional `side:'left'|'right'|'top'|'bottom'` overrides that
+placement for an individual port. For example, these declarations keep the value path horizontal,
+put reset above and its completion pulse below, and place a matrix column above without changing
+its data role:
+
+```js
+inputs: {
+  value: {type:'number', default:0},
+  reset: {type:'boolean', default:false, role:'control'},
+  col0: {type:'boolean', default:false, side:'top'}
+},
+outputs: {
+  value: {type:'number'},
+  resetDone: {type:'boolean', role:'control'}
+}
+```
+
+`role` and `side` affect presentation only. Roles are explicit, not inferred from a Boolean
+type or a port's name: Boolean logic-gate operands and results are data. A data output can
+drive a control input when their types match, and role/side changes do not alter saved binding
+identity or signal evaluation. The host distributes ports along the chosen side of the component
+box and transforms them with the instance. There is no custom-coordinate attachment API yet.
+
 An optional `settings` map declares authoring configuration stored in ordinary instance state.
 Each descriptor uses a scalar `type` and a required matching `default`; string settings may use
 `options`. Numeric settings may add finite `min`, `max`, and positive `step`, with the step grid
 anchored at `min` (or zero when omitted). A `label` of at most 100 characters supplies the visible
 field name. At most 16 settings are allowed. The host edits and validates these fields in
-**Inputs…**. Settings are not ports and cannot be bound to live sources.
+**Edit…**. Settings are not ports and cannot be bound to live sources.
 
-A setting may add `visibleWhen:{otherSetting:value|[values], …}`: **Inputs…** then shows the field
+A setting may add `visibleWhen:{otherSetting:value|[values], …}`: **Edit…** then shows the field
 only while every listed setting currently has one of the given values, and updates as they change.
 A hidden field keeps its stored value. [Spreadsheet](examples/spreadsheet.js) shows its dataset options
 only for `source:'Dataset'`:
@@ -640,14 +666,14 @@ inputs(state) {
 A string setting may instead use `format:'choices'` (without `options`) to request an editable
 Text/Key row list. Its default and state value are JSON strings encoding arrays of `{text,key?}`;
 the host validates at most 64 rows and 2,000 serialized characters, required string text, optional
-string keys, and uniqueness of nonempty keys. Add/remove/reorder operations stay in the Inputs
+string keys, and uniqueness of nonempty keys. Add/remove/reorder operations stay in the Edit
 dialog's draft until Save. Cancel preserves the original list.
 
 A string setting may use `format:'lines'` to request a multiline field, bounded to 2,000 characters.
 The component validates the line syntax. Capture row uses this for its `column:type` mappings.
 
 An optional API v2 `configure(nextState, previousState)` authoring hook handles changes to settings
-in **Inputs…**, before the host resolves the proposed state's ports. Settings edited as drafts,
+in **Edit…**, before the host resolves the proposed state's ports. Settings edited as drafts,
 such as choice lists, pass through this hook when **Save** is pressed; the author then reviews
 the new configuration and presses Save again to apply it. The hook returns `null` to keep
 `nextState` unchanged, or `{state, confirm?}` to propose a replacement state. `confirm`, when present,
@@ -655,7 +681,7 @@ is a confirmation message of at most 500 characters. The host validates the retu
 the ordinary JSON and 4,000-character state limits, then asks for confirmation before staging it.
 Declining restores the previous draft configuration. **Save** applies the accepted draft as one
 undoable change; **Cancel** preserves the original instance. This hook is not called by runtime
-transitions or HTML reader interactions and cannot mutate the live drawing while Inputs is open.
+transitions or HTML reader interactions and cannot mutate the live drawing while Edit is open.
 
 Initialize setting fields in `initState()` and keep port-defining settings unchanged in
 `transition` and interactive reader hooks. Dynamic declarations must be deterministic from state;
@@ -739,7 +765,7 @@ compute calls clear that instance's transient observation. Replacement objects, 
 and changed bindings re-prime it; changing a literal input is an ordinary input transition.
 
 Each document retains its own clock and transient memory across tab switches. Inactive/hidden
-documents pause, as does the editor's Inputs dialog; the same instances resume on return.
+documents pause, as does the editor's Edit dialog; the same instances resume on return.
 Saved JSON includes current durable counts/outputs, but reopening, duplicating, or undoing starts
 new transient observation. The built-in Counter preserves its saved count in either direction
 and seeds an already-high input without counting it. Its held reset follows the input while
@@ -796,13 +822,13 @@ consumer of Z does not run `compute()` or advance `transition()` until the sourc
 again. Its pure `publish(state)` output remains available to downstream consumers: a disconnected
 data input does not erase a register's stored bit. Components without independent publication remain
 unavailable, and a published output that is itself Z still blocks its consumers. Valid bindings to Z
-can be saved in **Inputs…**, while other
+can be saved in **Edit…**, while other
 input, type, or non-settling-loop errors still prevent saving. Combinational unavailability propagates
 through dependent components in both the editor and exported HTML. Inputs retain one source each; this does not add
 shared buses, pull-up/down resolution, or electrical simulation.
 
 The host appends `{inputs, outputs, name, runtimeId, boundInputs}` as the final `io` argument to these v2 hooks.
-`name` is the instance name from **Inputs…**, or an empty string for unnamed imports. It is
+`name` is the instance name from **Edit…**, or an empty string for unnamed imports. It is
 presentation metadata: renaming redraws the instance without changing computed port values.
 `boundInputs` is an array of input names connected to another component, used to mark input controls
 read-only; input values still come from `io.inputs`.
@@ -810,7 +836,7 @@ Built-in API v2 components use it for their captions, falling back to their cata
 when empty. Text label shows its caption only when **Show name** is enabled.
 Captions fit within the shape, with wrapping or truncation for long names, and remain
 separate from numeric readouts, state labels, and operation symbols. Spreadsheet uses its full box for the cell grid
-and does not draw a caption; its instance name still identifies it in Inputs and wiring.
+and does not draw a caption; its instance name still identifies it in Edit and wiring.
 
 Built-in ordinary numeric labels, including general Spreadsheet cells and numeric dataset/chart
 readouts, use up to eight significant digits while preserving exact safe integers. Formatting
@@ -843,12 +869,40 @@ events and effects are not part of v2. `initState()` still returns the raw state
 Unversioned scripts keep returning raw state from `dragEdit`, even when their state happens
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
 
-Select an instance and click **Inputs…** to name it, enter literal inputs, or bind inputs to
+Select an instance and click **Edit…** to name it, enter literal inputs, or bind inputs to
 compatible outputs in the same sketch. Sources with the same name receive drawing-order and
 world-position qualifiers such as `#1 (left)` and `#2 (right)` in the picker. These are display
 hints only: instance names and the saved `{uid, port}` binding remain unchanged.
 
-Source and literal edits refresh **Preview outputs:** and any graph or validation error after a
+The Edit dialog groups the instance name and configuration separately from data inputs, control
+inputs, and the proposed output preview. Input roles come from the declared `role` metadata;
+Boolean values are not automatically controls. The scrollable body keeps **Save** and **Cancel**
+available, with fields stacked on narrow screens. This presentation does not change port names,
+binding identity, or the paused draft-preview contract.
+
+The editor's **Wiring** toggle exposes those same bindings as ports and links only while enabled. It starts off;
+drag an output to an input or an input to an output. The host requires exact `boolean`, `number`,
+`string`, or `table` type compatibility, permits one output to supply several inputs, and replaces
+an input's previous binding in one undo step. Scalar self-feedback uses the existing settling
+rules. Dataset ownership settings are not wireable ports. Select a link and use **Disconnect**
+or **Delete** to remove it; **Escape** cancels an unfinished drag. Edit remains the place to
+configure literals, settings, and dataset ownership.
+
+Directed flow links display Boolean, Number, Text, or Table markers. A Dataset owner's output
+publishing its own records directly to a consumer, or a literal table reference to that owner's
+records, is shown as a dashed Dataset association. Bindings through Filter, Sort, or Aggregate
+remain table flows, as does an owner's incoming `source` connection. Table flows carry current
+snapshots, not arriving-row events. The Dataset marker expresses a shared-record association;
+it does not infer read/write permissions from the port or component name. Explicit access
+metadata is deferred. These link styles do not change runtime evaluation or mutation rules.
+
+Wiring is an editor-only overlay derived from component identities, current ports, bindings,
+and table ownership. It is not saved as drawing geometry and does not appear in PNG, SVG,
+print, or HTML reader UI. Semantic bindings and table references continue to serialize and
+execute normally. Optional descriptor roles and side overrides control placement; no script
+hook or manual port coordinates are needed for this first editor.
+
+Source and literal edits refresh **Output preview** and any graph or validation error after a
 short debounce. Pending or unavailable results replace stale output values. The latest edit wins,
 without rebuilding the fields or moving keyboard focus. Configuration changes may rebuild dynamic
 fields while retaining matching input drafts. This bounded preview
@@ -858,7 +912,7 @@ advance timed state, or change the drawing. **Save** validates and commits the p
 
 Deployments can disable component authoring with
 `features.smartComponents:false` in `settings.json`; existing components still execute and export.
-The flag hides component templates, source editing, and input controls, and blocks adding component
+The flag hides component templates, source editing, input controls, and Wiring, and blocks adding component
 library entries. Ordinary smart-shape authoring has its own `smartShapeAuthoring` switch, which
 must also be enabled to author components. A binding takes precedence over a saved literal; an
 unbound input uses its literal, then its declared default. Missing required inputs, missing
@@ -895,7 +949,7 @@ is `-inputs.value`, whereas NOT computes `!inputs.value` on a boolean.
 
 [Math](examples/math.js) declares numeric `a` and `b` inputs, a string `operation` input with
 `options:['+','−','×','÷','min','max']` and default `'+'`, and numeric `value` output. Choose the operation in
-**Inputs…**; subtraction and division use `a` as the left operand. Division by zero and nonfinite
+**Edit…**; subtraction and division use `a` as the left operand. Division by zero and nonfinite
 results fail computation, leaving outputs unavailable until corrected. Computation errors expose
 their message as bounded plain text; other failing hooks retain the generic failure message.
 
@@ -966,7 +1020,7 @@ saved document recomputes derived tables; references must be obtained from conne
 than retained as literal dataset selections.
 
 String port descriptors may declare `columnOf:'data'` to name a table input whose columns should
-appear in their **Inputs…** dropdown, and `columnType:'number'` to restrict choices to numeric
+appear in their **Edit…** dropdown, and `columnType:'number'` to restrict choices to numeric
 columns. These are ordinary string values and can still be connected to string outputs. A blank
 value retains the component's default behavior (all rows or automatic column selection).
 
@@ -1134,9 +1188,9 @@ store it with Replace/Append or Live mode. Formulas and formatting are never sto
 
 An optional API v2 `importTable(state, table, w, h)` authoring hook returns `{state}` or `{state,size}`,
 using the same validated state and size limits as `dragEdit`. It enables **Copy dataset to editable
-cells** beside table inputs in **Inputs…**. The host passes the complete selected table snapshot,
+cells** beside table inputs in **Edit…**. The host passes the complete selected table snapshot,
 including the selected row order, only after an explicit click. It stages the returned state and size;
-connected sources use the published snapshot frozen when Inputs opened, not a draft computation preview.
+connected sources use the published snapshot frozen when Edit opened, not a draft computation preview.
 **Save** applies one undoable change and removes assignments to inputs the new state no longer declares.
 **Cancel** discards the copy. The hook cannot modify the source dataset or access files; the HTML
 reader does not expose this authoring action.
@@ -1144,7 +1198,7 @@ Existing dataset selection and CSV/TSV/JSON import previews supply the source. S
 grid with a literal copy, switches to Cells mode, and rejects data exceeding its grid or state budget.
 
 The author creates an empty typed table through **New dataset…** or imports CSV/TSV/JSON through a
-table input's **Inputs…** controls. Creation names the dataset and its nullable typed columns; it
+table input's **Edit…** controls. Creation names the dataset and its nullable typed columns; it
 is staged until **Save**, just like import. CSV/TSV offers **Automatic**,
 **Comma**, **Semicolon**, and **Tab** delimiter choices. Automatic detection respects quoted cells and warns
 when the choice is ambiguous; changing the choice refreshes the typed-column and row preview.
@@ -1214,7 +1268,7 @@ re-evaluation, restore, and retries never request a download. See the host-owned
 
 All component indices and indexed ports are zero-based: valid positions run from `0` to `N−1`.
 This includes selected table/list rows, stepped channels (`in0`, `out0`), storage taps (`q0`),
-and matrix rows/columns (`row0`, `col0`, `r0`). Dropdown defaults to index 0; missing selections
+and matrix rows/columns (`row0`, `col0`, `r0`, `c0`). Dropdown defaults to index 0; missing selections
 and lookup results use `index:-1` with `valid:false` or `found:false`. Counts such as Channels,
 Stages, row counts, and line counts remain quantities, with their existing limits. Stable choice
 keys are independent of indices. There is no configurable index base or migration layer.
@@ -1225,7 +1279,7 @@ and MID character positions start at 1. It does not change the zero-based compon
 
 [Dropdown](examples/dropdown.js) and [Text lookup](examples/text-lookup.js) share two sources.
 Their `source` setting is `list` (default) or `dataset`. In list mode, `choices` is a JSON string
-containing an ordered array of `{text, key}` rows. The host's Inputs dialog presents editable rows,
+containing an ordered array of `{text, key}` rows. The host's Edit dialog presents editable rows,
 not JSON; authors can add, remove, and reorder choices. Limits are 64 rows and 2,000 serialized
 characters for the entire list. Text may repeat; nonempty keys must be unique. Empty keys mean
 that no stable key was supplied. Changing source leaves the saved list intact.
@@ -1765,7 +1819,7 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
   `submitted` output to `clear` supports clear-after-submit: consumers observe the accepted value
   with the rising submission before the next transition clears it. Number input has no Clear port.
 - [Dropdown](examples/dropdown.js): manual choice or automatic numeric selection, returning a
-  zero-based index, stable key, text, and validity. Its list is editable in Inputs or supplied by a
+  zero-based index, stable key, text, and validity. Its list is editable in Edit or supplied by a
   connected dataset; the optional arrow hides the manual control for display-only use.
 - [Text lookup](examples/text-lookup.js): reverse mapping from text to the first matching row's
   index/key, plus Found. It accepts the same list/dataset sources with case and whitespace options.
@@ -1795,16 +1849,21 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
   segments after enable is applied; disabling sets every output false. The drawing uses the
   conventional segment positions, the instance caption, dim off segments, and amber unavailable
   segments. Mode changes alter input declarations, not output names or types.
-- [LED matrix (8×8)](examples/led-matrix.js): authoring Input mode selects `boolean` (default)
-  or `rows`. Boolean mode exposes `row0`…`row7` and `col0`…`col7`, all default false;
+- [LED matrix (8×8)](examples/led-matrix.js): authoring Input mode selects `boolean` (default),
+  `rows`, or `columns`. Boolean mode exposes `row0`…`row7` and `col0`…`col7`, all default false;
   each LED is the AND of its row and column, with every active crossing shown. Row 0 is topmost
   and column 0 leftmost. Rows mode exposes numeric `r0`…`r7` (default 0), each an integer in
   0–255; `r0` is the top row, bit 7 (128) is leftmost, and bit 0 (1) rightmost. A row byte of 129 lights
-  both ends, 255 lights every LED, and 0 lights none. Both modes include
-  boolean `enable` (default true) and fixed numeric outputs `r0`…`r7` describing the visible row
-  bytes, or eight zeros when disabled. Mode-specific input names keep row/column Boolean ports
-  distinct from row-byte ports. The named display computes directly from current inputs, with
-  no scan cycle or persistent frame buffer.
+  both ends, 255 lights every LED, and 0 lights none. Columns mode exposes numeric `c0`…`c7`
+  (default 0), with the same 0–255 integer range; `c0` is leftmost, bit 7 is topmost, and bit 0
+  bottommost. All modes include boolean `enable` (default true) and fixed numeric outputs
+  `r0`…`r7` and `c0`…`c7`, reporting the visible row and column bytes simultaneously using
+  those same bit orders. Disabling publishes sixteen zeros. Mode-specific input names keep
+  Boolean ports distinct from numeric row/column bytes. The named display computes directly
+  from current inputs, with no scan cycle or persistent frame buffer. In Wiring, Boolean and
+  numeric column inputs explicitly use `side:'top'`, and column-byte outputs use `side:'bottom'`;
+  row inputs stay left and row-byte outputs right. These column ports remain data ports.
+  `enable` declares `role:'control'` and appears on top in all modes.
 - [Compare](examples/compare.js): two live numeric operands and six selectable comparison operators.
 - [Inverter (×−1)](examples/number-inverter.js): numeric negation, distinct from boolean NOT.
 - [Math](examples/math.js): two numeric inputs and selectable arithmetic, minimum, or maximum.
@@ -1887,7 +1946,7 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
 - [Timer](examples/timer.js): the existing red-wedge template and built-in entry now use API v2.
   Authoring settings select Unit (`minutes` by default, or `seconds`) and Starting duration
   (0–60, default 45). The dial hand also edits starting duration; top means 0, with 60 entered
-  through Inputs. Unit/duration edits refill and stop. Boolean `run`/`reset` inputs default false:
+  through Edit. Unit/duration edits refill and stop. Boolean `run`/`reset` inputs default false:
   run edges start/resume or pause, and held reset refills/stops and overrides manual controls.
   Manual Start/Pause and Reset remain available; the latest action persists until a run edge,
   and reset release alone never starts. Zero stops the timer and holds boolean `reached` true.

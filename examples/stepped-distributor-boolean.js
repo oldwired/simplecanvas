@@ -5,7 +5,7 @@
   apiVersion:2,
   settings:{channels:{type:'number',default:4,min:2,max:16,step:1,label:'Channels'}},
   inputs(state){
-    return {value:{type:'boolean'},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}};
+    return {value:{type:'boolean'},pulse:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}};
   },
   outputs(state){const ports={};for(let i=0;i<this._channels(state);i++)ports['out'+i]={type:'boolean'};return {...ports,position:{type:'number'}};},
   initState(){return {channels:4,configuredChannels:4,position:0,showIndicators:true};},

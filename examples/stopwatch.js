@@ -4,7 +4,7 @@
 ({
   apiVersion:2,
   wakePolicy:'latest',
-  inputs:{run:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
+  inputs:{run:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}},
   outputs:{elapsed:{type:'number'}},
   initState(){return {elapsedMs:0,startedAt:null,observedRun:false};},
   initStyle(){return {w:300,h:160,fontSize:24,strokeOn:false};},

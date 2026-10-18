@@ -16,11 +16,11 @@ test('every indexed built-in port family starts at zero with no gaps, including 
     for(const field of ['channels','stages'])if(definition.settings?.[field]){
       const {min,max}=definition.settings[field];states.push({...initial,[field]:min},{...initial,[field]:max});
     }
-    if(entry.key==='ledMatrix')states.push({...initial,mode:'rows'});
+    if(entry.key==='ledMatrix')states.push({...initial,mode:'rows'},{...initial,mode:'columns'});
     for(const state of states)for(const side of ['inputs','outputs']){
       const ports=typeof definition[side]==='function'?definition[side](state):definition[side],families=new Map();
       for(const name of Object.keys(ports||{})){
-        const match=/^(in|out|q|row|col|r)(\d+)$/.exec(name);if(!match)continue;
+        const match=/^(in|out|q|row|col|r|c)(\d+)$/.exec(name);if(!match)continue;
         if(!families.has(match[1]))families.set(match[1],[]);families.get(match[1]).push(Number(match[2]));
       }
       for(const [prefix,indices] of families){

@@ -4,8 +4,8 @@
 ({
   apiVersion:2,
   wakePolicy:'latest',
-  inputs:{timezone:{type:'string',default:'local'}},
-  outputs:{second:{type:'boolean'},minute:{type:'boolean'},hour:{type:'boolean'},halfDay:{type:'boolean'},time:{type:'string'}},
+  inputs:{timezone:{role:'control',type:'string',default:'local'}},
+  outputs:{second:{role:'control',type:'boolean'},minute:{role:'control',type:'boolean'},hour:{role:'control',type:'boolean'},halfDay:{role:'control',type:'boolean'},time:{type:'string'}},
   initState(){return {time:'00:00:00',second:false,minute:false,hour:false,halfDay:false,showIndicators:true};},
   initStyle(){return {w:220,h:300,strokeOn:false,fontSize:16};},
   _formatter(timezone){
