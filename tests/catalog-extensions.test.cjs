@@ -428,6 +428,43 @@ test('spreadsheet context menu: Insert function submenu wraps the cell formula a
  assert.equal(bad,'rejected','menus nest at most two levels deep');
 }));
 
+test('spreadsheet context menu opens on a touch long press; a short tap still edits the cell',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:{A1:'5'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ // touch pointer events as iPadOS sends them (no contextmenu event)
+ const touch=(type,x,y)=>page.evaluate(([type,x,y])=>{const c=document.getElementById('canvas'),r=c.getBoundingClientRect();
+   c.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,pointerType:'touch',isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:r.left+x,clientY:r.top+y}));},[type,x,y]);
+ const menus=page.locator('[data-smart-context-menu]'),input=page.locator('input[data-smart-number-input]');
+ const a1=[120+32,140+12];
+ await touch('pointerdown',...a1);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),1,'holding still opens the context menu');
+ await touch('pointermove',a1[0]+3,a1[1]+2);await touch('pointerup',a1[0]+3,a1[1]+2);await run('smartHitSettled');
+ assert.equal(await menus.count(),1,'lifting the finger keeps the menu open');
+ assert.equal(await input.count(),0,'the long press does not also start editing the cell');
+ await menus.first().getByRole('menuitem',{name:'Alignment'}).click();
+ await menus.nth(1).getByRole('menuitem',{name:'Center'}).click();
+ await page.waitForFunction(()=>__test.run('items[0].state.aligns?.A1')==='center');
+ assert.equal(await run('items[0].state.cells.A1'),'5');
+ // a press that moves is not a long press; a short tap edits the cell as before
+ await page.waitForTimeout(400);
+ await touch('pointerdown',...a1);await touch('pointermove',a1[0]+20,a1[1]);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),0,'a moving press opens no menu');
+ await touch('pointerup',a1[0]+20,a1[1]);
+ await input.waitFor();await page.keyboard.press('Escape');   // the released press edits A1 as usual
+ await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));await page.waitForTimeout(400);
+ const b2=[120+64+32,140+24+12];
+ await touch('pointerdown',...b2);await page.waitForTimeout(80);await touch('pointerup',...b2);
+ await input.waitFor();
+ assert.equal(await input.getAttribute('aria-label'),'Cell B2');
+ assert.equal(await menus.count(),0);
+ await page.keyboard.press('Escape');
+}));
+
 test('spreadsheet context menu: Number format and Alignment per cell, moved with inserted columns',async()=>app(async({page,run})=>{
  const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
  const cells={A1:'1234.5678',A2:'0.1235',A3:'hello',A4:'=A1*2'};

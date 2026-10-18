@@ -349,7 +349,7 @@
       C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4',A6:'=SUM(A2:A4)',C6:'=SUM(C2:C4)',
       E1:'Extra',E2:'=INPUT("energy")',F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
   },
-  initStyle(){return {w:480,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
+  initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state){
     const sheet=this._sheet(state,inputs),out={};
     for(const o of this._ports(state).outs){
