@@ -35,6 +35,9 @@
     }
     this._rc.set(state,list);return list;
   },
+  // A cell that only declares a table (INPUT(name,range,...) or OUTPUT(range,...)) stays blank; in edit
+  // mode it shows a grey INPUT/OUTPUT marker.
+  _tableCell(src){return typeof src!=='string'?'':/^=\s*INPUT\s*\([^,;]*[,;]\s*[A-Z]\d+\s*:\s*[A-Z]\d+/i.test(src)?'INPUT':/^=\s*OUTPUT\s*\(\s*[A-Z]\d+\s*:\s*[A-Z]\d+/i.test(src)?'OUTPUT':'';},
   _regionAt(state,c,r){return this._regions(state).find(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)||null;},
   _reserved(state,c,r){return !!this._regionAt(state,c,r);},
   // OUTPUT(A1:C4,"name"[,type,type,...]): the range's first row names the columns (as shown, so also a
@@ -376,7 +379,7 @@
         return value==null?null:wrap(value);
       }
       const src=cells[k];
-      if(typeof src!=='string'||src==='')return null;
+      if(typeof src!=='string'||src===''||this._tableCell(src))return null;
       let res;
       if(src[0]==="'")res={t:src.slice(1)};
       else if(src[0]!=='='){
@@ -653,9 +656,10 @@
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
     for(const g of regions)if(g.c2<dims.cols&&g.r1<dims.rows)items.push({type:'rect',x:L.xs[g.c1],y:g.r1*L.rh,w:L.xs[g.c2]+L.ws[g.c2]-L.xs[g.c1],h:L.rh,fill:true,fillColor:'#e2e8f0',strokeOn:false});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
-      const x=sheet[this._key(c,r)];
+      const k=this._key(c,r),x=sheet[k],mark=editing&&!x&&this._tableCell((state.cells||{})[k]);
+      if(mark)items.push({...label(mark,L.xs[c],r*L.rh,L.ws[c],L.rh,'left','#94a3b8'),editorOnly:true});
       if(!x)continue;
-      const k=this._key(c,r),fc=this._cellFormat(state,k);
+      const fc=this._cellFormat(state,k);
       const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmtCode(x.v,fc));
       const align=this._cellAlign(state,k)||(x.v!==undefined?'right':x.b!==undefined?'center':'left');
       items.push(label(text,L.xs[c],r*L.rh,L.ws[c],L.rh,align,x.e?'#b91c1c':textInk));

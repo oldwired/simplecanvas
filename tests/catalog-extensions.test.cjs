@@ -756,3 +756,14 @@ test('table layout problems reach the editor as their own message, not as an inv
  assert.match(await error({A2:'=INPUT("data",A1:A3)'}),/must lie outside table ranges/);
  assert.match(await error({A1:'Hall',A2:'1',A3:'x',C1:'=OUTPUT(A1:A3,"t")'},false),/column Hall mixes types/);
 }));
+
+test('a double-click on empty canvas leaves the wiring mode; on an object it stays',async()=>app(async({page,run})=>{
+ await run(`(async()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'n',x:200,y:200}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();setComponentWiringMode(true);})()`);
+ assert.equal(await run('componentWiring.enabled'),true);
+ const box=await page.locator('#canvas').boundingBox(),it=await run('items[0]');
+ await page.mouse.dblclick(box.x+it.x+it.w/2,box.y+it.y+it.h/2);await run('smartHitSettled');
+ assert.equal(await run('componentWiring.enabled'),true,'a double-click on an object keeps wiring');
+ await page.mouse.dblclick(box.x+700,box.y+600);
+ await page.waitForFunction(()=>__test.run('componentWiring.enabled')===false);
+}));
