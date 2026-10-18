@@ -45,21 +45,27 @@ for(const type of ['number','boolean']){
   for(const role of ['selector','distributor']){
     const name='stepped-'+role+'-'+type,component=source(name),isDistributor=role==='distributor';
     const value=type==='number'?-42.5:true;
-    const values={value,...Object.fromEntries(Array.from({length:16},(_,i)=>['in'+(i+1),type==='number'?i+1:i%2===0]))};
+    const values={value,...Object.fromEntries(Array.from({length:16},(_,i)=>['in'+i,type==='number'?i+1:i%2===0]))};
     test(name+' creates exactly 2–16 typed channels and publishes its selected position',()=>{
       assert.deepEqual(plain(component.settings),{channels:{type:'number',default:4,min:2,max:16,step:1,label:'Channels'}});
       for(const channels of [2,4,16]){
         const state={...component.initState(),channels,configuredChannels:channels},inputPorts=component.inputs(state),outputPorts=component.outputs(state);
         assert.equal(Object.keys(inputPorts).length,isDistributor?3:channels+2);
         assert.equal(Object.keys(outputPorts).length,isDistributor?channels+1:2);
-        for(let i=1;i<=channels;i++){
+        for(let i=0;i<channels;i++){
           const port=isDistributor?outputPorts['out'+i]:inputPorts['in'+i];
           assert.equal(port.type,type);
           if(!isDistributor)assert.equal(port.default,type==='number'?0:false);
         }
         const rt=runtime(component,state),initial=rt.step(values);
-        assert.equal(initial.position,1);
-        assert.equal(isDistributor?initial.out1:initial.value,isDistributor?value:values.in1);
+        assert.equal(initial.position,0);
+        assert.equal(isDistributor?initial.out0:initial.value,isDistributor?value:values.in0);
+        assert.equal((isDistributor?outputPorts:inputPorts)[(isDistributor?'out':'in')+channels],undefined,'no one-past-last channel');
+        rt.setState({position:channels-1});
+        const last=rt.step(values);
+        assert.equal(last.position,channels-1);
+        assert.equal(isDistributor?last['out'+(channels-1)]:last.value,isDistributor?value:values['in'+(channels-1)]);
+        assert.equal(rt.step({...values,pulse:true}).position,0,'last channel wraps to channel zero');
       }
       for(const channels of [1,17,2.5,NaN,Infinity,'4'])assert.throws(()=>component.compute(inputsFor(component,component.initState(),values),{...component.initState(),channels}),/Channels must/);
     });
@@ -73,61 +79,61 @@ for(const type of ['number','boolean']){
         outputs.push(rt.step({...values,pulse:true}).position);
         outputs.push(rt.step({...values,pulse:true}).position);
       }
-      assert.deepEqual(outputs,[1,1,1,2,2,2,3,3,3,4,4,4,1,1,1,2,2]);
+      assert.deepEqual(outputs,[0,0,0,1,1,1,2,2,2,3,3,3,0,0,0,1,1]);
       assert.equal(rt.state.channels,4,'transition leaves the configured number of channels alone');
     });
 
-    test(name+' holds reset at channel 1 and releasing reset during high does not step',()=>{
+    test(name+' holds reset at channel 0 and releasing reset during high does not step',()=>{
       const rt=runtime(component);rt.step({...values,pulse:false});
-      assert.equal(rt.step({...values,pulse:true}).position,2);
-      assert.equal(rt.step({...values,pulse:false,reset:true}).position,1);
-      assert.equal(rt.step({...values,pulse:true,reset:true}).position,1);
-      assert.equal(rt.step({...values,pulse:true,reset:false}).position,1);
+      assert.equal(rt.step({...values,pulse:true}).position,1);
+      assert.equal(rt.step({...values,pulse:false,reset:true}).position,0);
+      assert.equal(rt.step({...values,pulse:true,reset:true}).position,0);
+      assert.equal(rt.step({...values,pulse:true,reset:false}).position,0);
       rt.step({...values,pulse:false});
-      assert.equal(rt.step({...values,pulse:true}).position,2);
+      assert.equal(rt.step({...values,pulse:true}).position,1);
     });
 
     test(name+' preserves saved selection without replay on reload, copy, or undo',()=>{
-      const saved={...component.initState(),position:3};
+      const saved={...component.initState(),position:2};
       for(const pulse of [false,true]){
         const rt=runtime(component,{...saved});
-        assert.equal(rt.step({...values,pulse}).position,3);
+        assert.equal(rt.step({...values,pulse}).position,2);
         rt.clearMemory();
-        assert.equal(rt.step({...values,pulse:true}).position,3);
+        assert.equal(rt.step({...values,pulse:true}).position,2);
         rt.step({...values,pulse:false});
-        assert.equal(rt.step({...values,pulse:true}).position,4);
+        assert.equal(rt.step({...values,pulse:true}).position,3);
       }
       const first=runtime(component),second=runtime(component);
       first.step({...values,pulse:false});second.step({...values,pulse:false});
-      assert.equal(first.step({...values,pulse:true}).position,2);
-      assert.equal(second.step({...values,pulse:false}).position,1,'instances never share pulse memory or position');
+      assert.equal(first.step({...values,pulse:true}).position,1);
+      assert.equal(second.step({...values,pulse:false}).position,0,'instances never share pulse memory or position');
     });
 
     test(name+' resets and re-primes when channel count changes even if runtime memory was cleared',()=>{
-      const rt=runtime(component,{...component.initState(),position:3});
+      const rt=runtime(component,{...component.initState(),position:2});
       rt.step({...values,pulse:false});
       rt.setState({channels:6});rt.clearMemory();
       const pure=plain(component.compute(inputsFor(component,rt.state,{...values,pulse:true}),rt.state));
-      assert.equal(pure.position,1,'pure previews normalize changed settings before transition');
-      assert.equal(rt.step({...values,pulse:true}).position,1);
+      assert.equal(pure.position,0,'pure previews normalize changed settings before transition');
+      assert.equal(rt.step({...values,pulse:true}).position,0);
       assert.equal(rt.state.configuredChannels,6);
-      assert.equal(rt.step({...values,pulse:true}).position,1);
-      rt.step({...values,pulse:false});assert.equal(rt.step({...values,pulse:true}).position,2);
-      rt.setState({channels:2,position:6});
-      assert.equal(rt.step({...values,pulse:false}).position,1);
-      assert.equal(rt.step({...values,pulse:true}).position,2);
+      assert.equal(rt.step({...values,pulse:true}).position,0);
       rt.step({...values,pulse:false});assert.equal(rt.step({...values,pulse:true}).position,1);
+      rt.setState({channels:2,position:5});
+      assert.equal(rt.step({...values,pulse:false}).position,0);
+      assert.equal(rt.step({...values,pulse:true}).position,1);
+      rt.step({...values,pulse:false});assert.equal(rt.step({...values,pulse:true}).position,0);
     });
 
     test(name+' keeps the selected route live while holding position',()=>{
-      const rt=runtime(component,{...component.initState(),position:2}),first=rt.step(values);
+      const rt=runtime(component,{...component.initState(),position:1}),first=rt.step(values);
       if(isDistributor){
-        assert.deepEqual(first,{out1:type==='number'?0:false,out2:value,out3:type==='number'?0:false,out4:type==='number'?0:false,position:2});
+        assert.deepEqual(first,{out0:type==='number'?0:false,out1:value,out2:type==='number'?0:false,out3:type==='number'?0:false,position:1});
         const next=rt.step({...values,value:type==='number'?-0.125:false});
-        assert.deepEqual(next,{out1:type==='number'?0:false,out2:type==='number'?-0.125:false,out3:type==='number'?0:false,out4:type==='number'?0:false,position:2});
+        assert.deepEqual(next,{out0:type==='number'?0:false,out1:type==='number'?-0.125:false,out2:type==='number'?0:false,out3:type==='number'?0:false,position:1});
       }else{
-        assert.equal(first.value,values.in2);
-        assert.equal(rt.step({...values,in2:type==='number'?300:true}).value,type==='number'?300:true);
+        assert.equal(first.value,values.in1);
+        assert.equal(rt.step({...values,in1:type==='number'?300:true}).value,type==='number'?300:true);
         const defaults=rt.step({pulse:false});
         assert.equal(defaults.value,type==='number'?0:false,'unused channel connections are optional');
       }
@@ -135,9 +141,9 @@ for(const type of ['number','boolean']){
 
     test(name+' rejects invalid signals and malformed position without mutating state',()=>{
       const state=component.initState(),inputs=inputsFor(component,state,values),bad=type==='number'?Infinity:1;
-      for(const patch of [{pulse:1},{reset:0},{[isDistributor?'value':'in1']:bad}])assert.throws(()=>component.compute({...inputs,...patch},state));
-      for(const position of [-1,0,.5,NaN])assert.throws(()=>component.compute(inputs,{...state,position}),/position must/);
-      assert.equal(component.compute(inputs,{...state,position:12}).position,1,'out-of-range saved positions are safely normalized');
+      for(const patch of [{pulse:1},{reset:0},{[isDistributor?'value':'in0']:bad}])assert.throws(()=>component.compute({...inputs,...patch},state));
+      for(const position of [-1,.5,NaN])assert.throws(()=>component.compute(inputs,{...state,position}),/position must/);
+      assert.equal(component.compute(inputs,{...state,position:12}).position,0,'out-of-range saved positions are safely normalized');
       const before=JSON.stringify({state,inputs});
       component.compute(inputs,state);
       assert.equal(JSON.stringify({state,inputs}),before,'pure evaluation never mutates state or inputs');
@@ -165,10 +171,13 @@ test('routing sources render named switch contacts and optional indicators, incl
     assert.equal(component.hitEdit(state,handle.x,handle.y,style.w,style.h),'indicators');
     assert.equal(component.dragEdit(state,'indicators').state.showIndicators,false);
     if(name.startsWith('stepped')){
-      const large={...state,channels:16,configuredChannels:16,position:16},largeInputs=inputsFor(component,large,{value:numeric?7:true});
+      const large={...state,channels:16,configuredChannels:16,position:15},largeInputs=inputsFor(component,large,{value:numeric?7:true});
       const largeChildren=component.children(large,style,style.w,style.h,false,{name:'Sixteen channels',inputs:largeInputs,outputs:component.compute(largeInputs,large)});
-      assert.ok(largeChildren.some(child=>child.type==='text'&&child.text.startsWith('16:')));
+      assert.ok(largeChildren.some(child=>child.type==='text'&&child.text.startsWith('15:')));
+      assert.ok(largeChildren.some(child=>child.text==='Channel 15 · 16 channels'),'caption distinguishes the zero-based index from the count');
       assert.ok(largeChildren.length<200,'maximum channel layout stays within primitive budget');
+      const fallback=component.children({...state,position:state.channels},style,style.w,style.h,false,{});
+      assert.ok(fallback.some(child=>child.text==='Channel 0 · 4 channels'),'one-past-last saved position renders channel zero while inputs are unavailable');
     }
   }
 });

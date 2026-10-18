@@ -71,14 +71,17 @@ for(const kind of ['boolean','number'])test(kind+' registers sample a shared edg
   if(kind==='boolean'){a.step({value:'X',pulse:false});assert.equal(a.step({value:'X',pulse:true}).value,'X');}
 });
 
-for(const [name,cycle,offset]of [['ring-counter',4,1],['johnson-counter',8,1],['decade-counter',10,0]])test(name+' completes its cycle, pauses while disabled, and re-primes after restore',()=>{
+for(const [name,cycle]of [['ring-counter',4],['johnson-counter',8],['decade-counter',10]])test(name+' completes its cycle, pauses while disabled, and re-primes after restore',()=>{
   const c=source(name),r=rig(c);r.step();const samples=[r.outputs()];
+  const stages=name==='decade-counter'?10:4;
+  assert.deepEqual(Object.keys(c.outputs(r.state)).filter(key=>/^q\d+$/.test(key)),Array.from({length:stages},(_,index)=>'q'+index));
   for(let i=1;i<=cycle;i++){r.step({clock:false});samples.push(r.step({clock:true}));assert.equal(samples[i].position,i%cycle);}
   assert.deepEqual(samples[0],samples[cycle]);
-  if(name==='johnson-counter')assert.deepEqual(samples.map(s=>[1,2,3,4].map(i=>s['q'+i])),[
+  if(name==='johnson-counter')for(const sample of samples)assert.equal(sample.value,sample['q'+(stages-1)],'value aliases the last zero-based stage');
+  if(name==='johnson-counter')assert.deepEqual(samples.map(s=>[0,1,2,3].map(i=>s['q'+i])),[
     [false,false,false,false],[true,false,false,false],[true,true,false,false],[true,true,true,false],[true,true,true,true],
     [false,true,true,true],[false,false,true,true],[false,false,false,true],[false,false,false,false]]);
-  else for(const s of samples){const outputs=Object.entries(s).filter(([name])=>/^q\d+$/.test(name));assert.equal(outputs.filter(([,value])=>value).length,1);assert.equal(s['q'+(s.position+offset)],true);if(name==='decade-counter')assert.equal(s.carry,s.position<5);}
+  else for(const s of samples){const outputs=Object.entries(s).filter(([name])=>/^q\d+$/.test(name));assert.equal(outputs.filter(([,value])=>value).length,1);assert.equal(s['q'+s.position],true);if(name==='decade-counter')assert.equal(s.carry,s.position<5);}
   r.step({clock:false});assert.equal(r.step({clock:true,enable:false}).position,0);assert.equal(r.step({clock:true}).position,0);
   r.step({clock:false});assert.equal(r.step({clock:true}).position,1);r.restore();assert.equal(r.step({clock:true}).position,1);
   assert.equal(r.step({clock:true,reset:true}).position,0);assert.equal(r.step({clock:true}).position,0);
@@ -88,6 +91,17 @@ for(const name of ['ring-counter','johnson-counter'])test(name+' bounds dynamic 
   const c=source(name),r=rig(c);r.step();r.step({clock:true});r.edit({stages:16});
   const output=r.outputs();assert.equal(output.position,0);assert.equal(Object.keys(c.outputs(r.state)).filter(k=>/^q\d+$/.test(k)).length,16);
   assert.equal(r.step({clock:true}).position,0);r.step({clock:false});assert.equal(r.step({clock:true}).position,1);
+  for(const stages of [1,16]){
+    const edge=rig(c,{...c.initState(),stages,configuredStages:stages,position:0}),cycle=name==='johnson-counter'?2*stages:stages;
+    const keys=Array.from({length:stages},(_,index)=>'q'+index);
+    assert.deepEqual(Object.keys(c.outputs(edge.state)).filter(key=>/^q\d+$/.test(key)),keys);
+    edge.step();
+    for(let pulse=1;pulse<=cycle;pulse++){edge.step({clock:false});assert.equal(edge.step({clock:true}).position,pulse%cycle);}
+    const style=c.initStyle(),children=c.children(edge.state,style,style.w,style.h,false,{outputs:edge.outputs()});
+    assert.ok(children.some(child=>child.text==='Q0'));
+    assert.ok(children.some(child=>child.text==='Q'+(stages-1)));
+    assert.ok(!children.some(child=>child.text==='Q'+stages),'no one-past-last tap label');
+  }
   for(const stages of [0,17,1.5,NaN])assert.throws(()=>c.outputs({...r.state,stages}),/Stages/);
 });
 
@@ -110,7 +124,7 @@ test('new built-ins ship identical scripts and port metadata with finite named r
 test('Boolean shift storage can carry X and publish without current input while numeric storage remains finite',()=>{
   for(const kind of ['boolean','number']){
     const c=source('shift-register-'+kind),s=c.initState(),before=JSON.stringify(s);assert.deepEqual(plain(c.publish(s)),plain(c.compute({value:kind==='boolean'?true:7,pulse:false,reset:false},s)));assert.equal(JSON.stringify(s),before);
-    if(kind==='boolean'){s.cells[0]='X';assert.equal(c.publish(s).q1,'X');assert.equal(c.outputs(s).q1.unknown,true);assert.equal(c.inputs.value.unknown,true);}
+    if(kind==='boolean'){s.cells[0]='X';assert.equal(c.publish(s).q0,'X');assert.equal(c.outputs(s).q0.unknown,true);assert.equal(c.inputs.value.unknown,true);}
     else{s.cells[0]=Infinity;assert.throws(()=>c.publish(s),/finite numeric/);}
   }
 });

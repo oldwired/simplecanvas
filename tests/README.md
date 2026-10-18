@@ -125,7 +125,7 @@ save status; restoring library data does not execute smart scripts or bypass pre
 
 Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
 Chart, Minimal, and Blank. They verify source parity and
-availability for direct placement and pinning in the 63-entry offline catalog.
+availability for direct placement and pinning in the current offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
@@ -205,7 +205,7 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 58 API v2 catalog definitions match their editable source files and retain
+verify that all 63 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.
 
 
@@ -234,8 +234,35 @@ missing values, literal table rendering, and positive/negative chart data. The b
 atomic Save/Cancel, malformed and oversized imports, independent instances, dataset persistence/copying,
 and the offline HTML slice.
 
-`tests/example-workspace.test.cjs` validates all seventeen shipped tabs and preserves the original
-control/HTML walkthrough. `tests/feedback-workspace.test.cjs` verifies the three practical counter
+`tests/data-transform-contracts.test.cjs` covers stable typed sorting, missing values, grouped and
+whole-table aggregates, numeric limits, and bypass behavior. `tests/data-transform-switches.test.cjs`
+checks manual/connected/hidden switches, Undo and independent copies, plus offline controls and reload.
+`tests/component-input-switch-contracts.test.cjs` validates the host Boolean-input handle guard. `tests/data-transform-runtime.test.cjs` exercises the
+bounded derived-table contract, downstream propagation, and persistence through the real sandbox.
+`tests/reader-data-actions.test.cjs` checks replacement-schema rules, filename validation, and CSV/JSON
+serialization. `tests/data-workflow.test.cjs` covers explicit import/download controls in the editor
+and offline HTML, including cancellation, invalid replacements, and no automatic action replay.
+`tests/dataset-reload-host.test.cjs` checks fresh file reads, remembered delimiters, missing handles,
+schema/permission failures, stale ownership, and competing reads. Reload declaration/edge tests in
+`tests/data-transform-contracts.test.cjs` cover baseline suppression, queue bounds, and settled dispatch.
+
+`tests/choice-components.test.cjs` covers zero-based Dropdown selection, Text lookup matching,
+optional keys, invalid selections returning −1, editable-list limits, complete dataset rows, null cells, and
+read-only/hidden controls. `tests/component-choice-host.test.cjs` validates choice descriptors,
+independent input edits, source snapshots, and stale/connected-input guards.
+`tests/component-choice-runtime.test.cjs` exercises native selection, keyboard cancellation,
+Undo/copies, full dataset labels, and offline reader behavior through the real sandbox.
+`tests/choice-list-editor.test.cjs` covers row editing and validation, Save/Cancel/Undo, and switching
+between editable lists and dataset column selectors without losing the saved list.
+
+`tests/component-indexing.test.cjs` audits every indexed built-in port family for contiguous
+zero-based names at default/minimum/maximum sizes, including both matrix modes. It also verifies
+choice index 0 is valid and missing selections/lookups return −1.
+
+`tests/example-workspace.test.cjs` validates all nineteen shipped tabs and preserves the original
+control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
+dataset selection, and reverse Text lookup. All affected walkthroughs use zero-based selections,
+channels, storage taps, and matrix rows/columns, while tab numbering stays ordinal. `tests/feedback-workspace.test.cjs` verifies the three practical counter
 loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
 positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:
 

@@ -183,13 +183,14 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 
 | Default category | Examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Toggle, Constant, Trigger |
+| Controls | Number control, Text input, Number input, Dropdown, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Data | Dataset, Table filter, Table sort, Table aggregate, Data table, Data bar chart, Download table, Text lookup |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 67 entries, including 58 connected API v2 components. Every smart-shape
+The catalog includes 72 entries, including 63 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -280,7 +281,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore seventeen connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore nineteen connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -303,6 +304,8 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Delayed feedback | Watch a NOT/Delay loop alternate with a real time boundary. |
 | Text and notes | Submit text to a label and memo, replace or clear the memo, and enter a numeric value. |
 | Embedded data | Filter sailing results by boat and update a table and bar chart, entirely offline. |
+| Reader data and results | Load or reload race data, switch sorting and aggregation on/off, and download a CSV or JSON report. |
+| Choices and text lookup | Choose a named value, select dataset rows by number, and find the index/key for matching text. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -374,8 +377,66 @@ Each dataset is limited to 500,000 serialized characters; the combined active da
 to 2,000,000. Oversized or malformed imports leave existing data intact. Table views and charts show
 a bounded preview and report when more data exists; filtering still evaluates the whole dataset.
 Data travels with sketch/workspace JSON, copied components, saved library entries, and HTML exports.
-The HTML reader needs no network or source file. Reader-side file import, editing table cells,
-aggregations, and tables in feedback loops are later work.
+The HTML reader needs no network or source file. Enable **Allow data replacement** on a Dataset
+component to give readers a **Load data…** control. The same delimiter and preview controls check
+replacement data before it is accepted. Existing column keys and types must match; additional
+columns are allowed. The loaded data belongs to that reader session, survives tab switches, and
+is discarded when the HTML page reloads. Readers cannot change a Dataset whose import control is disabled.
+
+Dataset also has a Boolean **reload** input. Connect a Trigger: each false → true pulse rereads the
+last file accepted through **Load data…**, using its accepted delimiter. This works when the browser
+provides a reusable file handle, such as Chromium's file picker. Safari and ordinary file-input
+imports require choosing the updated file again through **Load data…**; the app explains this and
+keeps the accepted data. SimpleCanvas keeps file handles only in the current session and never stores or exports file
+access. An initially high signal, opening a drawing, Undo, or reconnecting a wire does not reload
+a file. **Allow data replacement** controls both loading and triggered reloading.
+
+**Table aggregate** groups rows by a selected column and calculates Count, Sum, Average, Minimum,
+or Maximum. Leave Group blank for one summary over the entire table. Count includes every row;
+numeric operations ignore missing values. The result contains a `group` column when grouping is
+selected, plus a numeric `result` column. **Table sort** orders rows by a selected column in ascending
+or descending order, keeping equal values stable and missing values last. Both use every accepted
+row, so the output can feed another filter, table, chart, or download.
+
+Both transforms have an **enabled** Boolean input and a visible on/off switch. Without a connection,
+clicking the switch changes that input directly; the editor records one undo step. With a connected
+signal, the switch reflects it and is read-only. Turn off **Show on/off switch** in **Inputs…** to
+hide it while keeping the input active. Off bypasses the transform and passes the original rows
+and columns through unchanged. In particular, disabling Aggregate restores the original schema;
+downstream column choices must work with that schema too.
+
+Connect a **Download table** component to the final table. Its **CSV** and **JSON** buttons open a
+preview of the selected result rows in their current order. Confirm **Download** to save the file; opening,
+redrawing, or restoring a document does not trigger one. These files are data results rather than
+editable workspace or HTML snapshots. Try **Reader data and results**, the eighteenth example tab,
+with the replacement [CSV](examples/sailing-results-updated.csv) or
+[TSV](examples/sailing-results-updated.tsv). It sorts race rows by boat name, totals points per boat,
+and exports `sailing-report.csv` or `.json`. Its table and automatic chart columns also work when
+either transform is bypassed. **Reload file** demonstrates the Dataset trigger.
+Editing table cells, additional chart types, and tables
+in feedback loops remain later work.
+
+**Component indices start at zero.** Lists, selected channels, storage taps, and matrix rows/columns
+use `0…N−1`. A missing choice or lookup returns `-1` plus `valid=false` or `found=false`.
+Counts remain quantities: four channels have indices 0–3. Keys stay attached to choices when
+their order changes. Tab numbers and ordinary numbered instructions remain human-readable ordinals.
+
+**Dropdown** maps a choice to its **index**, **key**, and **text** outputs, with **valid** indicating
+whether the selection exists. In **Inputs…**, choose **List** to edit rows of text and optional keys,
+or **Dataset** to connect a table and choose its text and optional key columns. Indices start at 0
+and follow the list or selected dataset row order. A connected **select** input controls the choice;
+the dropdown then becomes read-only. Without a connection, choose directly on the control.
+Turn off **Show dropdown** for a plain automatic text display. A missing or out-of-range
+selection produces index `-1`, empty key/text, and `valid=false`.
+
+**Text lookup** searches the same list or dataset in the other direction: its **text** input produces
+**index**, **key**, and **found**. Exact, case-sensitive matching is the default; optional settings
+ignore case or trim surrounding whitespace. The first matching row wins, including repeated labels.
+No match produces index `-1`, an empty key, and `found=false`. Keys are optional; nonempty keys must
+be unique and stay stable when rows are reordered. Local lists allow up to 64 rows within 2,000
+serialized characters; dataset mode uses all selected rows within the existing dataset limits.
+Switching sources preserves the editable list. The nineteenth tab, **Choices and text lookup**,
+shows a manual list plus a shared dataset driving automatic selection and reverse lookup.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
@@ -410,14 +471,14 @@ all false. Dim segments mean off; amber means an unavailable input, not the digi
 
 **LED matrix (8×8)** has two **Input mode** settings:
 
-- **Boolean** (the default): `row1`…`row8` and `col1`…`col8`, all initially false. Row 1 is at the
-  top and column 1 at the left. An LED lights when both its row and column are true. Every active
+- **Boolean** (the default): `row0`…`row7` and `col0`…`col7`, all initially false. Row 0 is at the
+  top and column 0 at the left. An LED lights when both its row and column are true. Every active
   crossing is shown: two active rows and two active columns light four LEDs.
-- **Rows**: numeric `r1`…`r8`, each initially 0 and restricted to integers 0–255. `r1` is the top
-  row; bit 128 is at the left and bit 1 at the right. A row value of 129 lights both ends, 255
+- **Rows**: numeric `r0`…`r7`, each initially 0 and restricted to integers 0–255. `r0` is the top
+  row; bit 7 (128) is at the left and bit 0 (1) at the right. A row value of 129 lights both ends, 255
   lights all eight LEDs, and 0 leaves the row dark.
 
-Both modes have `enable`, initially true. The fixed numeric outputs `r1`…`r8` report the visible
+Both modes have `enable`, initially true. The fixed numeric outputs `r0`…`r7` report the visible
 row bytes in every mode; disabling blanks the display and sets these outputs to zero. Changing
 Input mode exposes its own input ports while preserving those output names. Both displays show
 their instance name and work in offline HTML. They show current inputs directly, with no scanning
@@ -457,29 +518,29 @@ one. These are value-routing components; they do not pause or disable an upstrea
 
 **Stepped switch** and **Stepped distributor** each have number and Boolean variants. Set
 **Channels** in **Inputs…** to 2–16 (initially 4); this changes the available ports. Connect a
-Trigger or Pulse generator to `pulse`. Every false → true pulse advances from channel 1 through
-N and wraps to 1; holding true does not advance again. A true `reset` holds channel 1. The numeric
+Trigger or Pulse generator to `pulse`. Every false → true pulse advances from channel 0 through
+N−1 and wraps to 0; holding true does not advance again. A true `reset` holds channel 0. The numeric
 `position` output reports the selected channel.
 
-- A stepped selector has `in1`…`inN` and one `value` output. Unconnected channels default to 0 or
+- A stepped selector has `in0`…`in(N−1)` and one `value` output. Unconnected channels default to 0 or
   false; every declared channel must have a valid value, even when unselected.
-- A stepped distributor has one required `value` input and `out1`…`outN`. Only the selected
+- A stepped distributor has one required `value` input and `out0`…`out(N−1)`. Only the selected
   output follows the input; every inactive output is **0 for numbers** or **false for Booleans**.
 
 Selection is saved, and reload/copy/undo preserves it without advancing for an already-high pulse.
-Changing the channel count resets to channel 1 and starts fresh pulse observation. Data continues
+Changing the channel count resets to channel 0 and starts fresh pulse observation. Data continues
 to flow through the selected route between pulses. Reducing the channel count can leave connections
 to removed outputs unavailable until they are rewired.
 
 **Shift register (Boolean)** and **Shift register (number)**, in **Logic**, store a sequence of
 values. Set **Stages** in **Inputs…** to 1–16 (initially 4), connect data to `value`, and connect
-Trigger or Pulse generator to `pulse`. Each false → true pulse stores the data in `q1` and moves
-the previous contents of `q1` to `q2`, and so on, using the same snapshot of the old cells. Holding
+Trigger or Pulse generator to `pulse`. Each false → true pulse stores the data in `q0` and moves
+the previous contents of `q0` to `q1`, and so on, using the same snapshot of the old cells. Holding
 true does not shift again. Each stage has its own output and visible value; `value` also exposes
-the current last stage, `qN`. The numeric variant accepts finite numbers, including fractions.
+the current last stage, `q(N−1)`. The numeric variant accepts finite numbers, including fractions.
 
 `shiftedOut` holds the last value removed from the end of the register. To cascade registers on
-**the same pulse**, connect **value → value** (or `qN → value`) and share pulse/reset. All registers
+**the same pulse**, connect **value → value** (or `q(N−1) → value`) and share pulse/reset. All registers
 sample the pre-edge values together before any publishes its next state, so one pulse advances
 exactly one cell across a register boundary. `shiftedOut` is available for observing removed data;
 it is not the shared-clock cascade connection.
@@ -507,7 +568,7 @@ establishes their initial state. X is distinct from **Z**, which means no driven
 
 **Ring counter**, **Johnson counter**, and **Decoded decade counter (4017-style)** advance on rising
 `clock` while `enable` is true. Reset wins and returns to the initial pattern. Ring and Johnson have
-1–16 configurable stages; ring starts with only `q1` true and repeats after N clocks, while Johnson
+1–16 configurable stages; ring starts with only `q0` true and repeats after N clocks, while Johnson
 starts all false and repeats after 2N. The decade counter exposes `q0`–`q9`, a zero-based `position`,
 and `carry` high for positions 0–4. These are logical models with explicit saved state.
 

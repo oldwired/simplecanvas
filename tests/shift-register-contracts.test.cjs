@@ -33,7 +33,7 @@ for(const type of ['boolean','number']){
     assert.deepEqual(plain(component.inputs),{value:{type,...(type==='boolean'?{unknown:true}:{})},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}});
     for(const stages of [1,4,16]){
       const state=stateFor(component,stages,zero),ports=plain(component.outputs(state)),outputs=plain(component.compute({value:one,pulse:false,reset:false},state));
-      assert.deepEqual(Object.keys(ports),[...Array.from({length:stages},(_,i)=>'q'+(i+1)),'value','shiftedOut']);
+      assert.deepEqual(Object.keys(ports),[...Array.from({length:stages},(_,i)=>'q'+i),'value','shiftedOut']);
       assert.ok(Object.values(ports).every(port=>port.type===type));
       assert.deepEqual(Object.keys(outputs),Object.keys(ports));
       assert.ok(Object.values(outputs).every(value=>value===zero));
@@ -49,7 +49,7 @@ for(const type of ['boolean','number']){
       rt.step(values[i],false);
       const output=rt.step(values[i],true);
       assert.deepEqual(rt.state.cells,expected[i]);
-      for(let n=0;n<4;n++)assert.equal(output['q'+(n+1)],expected[i][n]);
+      for(let n=0;n<4;n++)assert.equal(output['q'+n],expected[i][n]);
       assert.equal(output.value,expected[i][3]);
       assert.equal(output.shiftedOut,i<4?zero:values[0]);
       assert.deepEqual(rt.step(zero,true),output,'input changes during high never shift or alter ejected data');
@@ -60,10 +60,10 @@ for(const type of ['boolean','number']){
   test(type+' one-stage register samples on a rise and reports its previous value',()=>{
     const rt=runtime(component,stateFor(component,1,zero));
     rt.step(one,false);
-    assert.deepEqual(rt.step(one,true),{q1:one,value:one,shiftedOut:zero});
+    assert.deepEqual(rt.step(one,true),{q0:one,value:one,shiftedOut:zero});
     rt.step(zero,false);
-    assert.deepEqual(rt.step(zero,true),{q1:zero,value:zero,shiftedOut:one});
-    assert.deepEqual(rt.step(one,true),{q1:zero,value:zero,shiftedOut:one});
+    assert.deepEqual(rt.step(zero,true),{q0:zero,value:zero,shiftedOut:one});
+    assert.deepEqual(rt.step(one,true),{q0:zero,value:zero,shiftedOut:one});
   });
 
   test(type+' restored or initially high pulse primes without shifting, preserving saved cells',()=>{
@@ -102,11 +102,11 @@ for(const type of ['boolean','number']){
     const rt=runtime(component,{...component.initState(),cells:[one,one,one,one],shiftedOut:one});
     rt.step(one,false);rt.edit({stages:2});rt.clearMemory();
     const before=JSON.stringify(rt.state),pure=plain(component.compute({value:one,pulse:true,reset:false},rt.state));
-    assert.deepEqual(pure,{q1:zero,q2:zero,value:zero,shiftedOut:zero});
+    assert.deepEqual(pure,{q0:zero,q1:zero,value:zero,shiftedOut:zero});
     assert.equal(JSON.stringify(rt.state),before,'pure inspection normalizes without mutating saved state');
     assert.deepEqual(rt.step(one,true),pure);
     assert.equal(rt.state.configuredStages,2);
-    rt.step(one,false);assert.equal(rt.step(one,true).q1,one);
+    rt.step(one,false);assert.equal(rt.step(one,true).q0,one);
     rt.edit({stages:16});rt.step(one,true);
     assert.equal(rt.state.cells.length,16);
     assert.ok(rt.state.cells.every(value=>value===zero));
@@ -149,7 +149,7 @@ for(const type of ['boolean','number']){
     const a=component.initState(),b=component.initState(),input={value:one,pulse:false,reset:false};
     a.cells[0]=one;assert.equal(b.cells[0],zero);
     const next=component.transition(input,a,null,{now:0}),computed=component.compute(input,next.state);
-    next.state.cells[0]=zero;assert.equal(a.cells[0],one);assert.equal(computed.q1,one);
+    next.state.cells[0]=zero;assert.equal(a.cells[0],one);assert.equal(computed.q0,one);
     const reset=component.dragEdit(a,'reset').state;reset.cells[0]=one;assert.equal(a.cells[1],zero);
     assert.equal(b.cells[0],zero);
   });
@@ -161,8 +161,8 @@ for(const type of ['boolean','number']){
       const children=component.children(state,style,style.w,style.h,false,io);
       assert.ok(children.some(child=>child.text==='Register bank'));
       assert.equal(children.filter(child=>child.type==='rect').length,stages);
-      for(let i=1;i<=stages;i++)assert.ok(children.some(child=>child.text==='Q'+i));
-      assert.ok(children.some(child=>child.text?.startsWith('Q'+stages+' / value:')));
+      for(let i=0;i<stages;i++)assert.ok(children.some(child=>child.text==='Q'+i));
+      assert.ok(children.some(child=>child.text?.startsWith('Q'+(stages-1)+' / value:')));
       assert.ok(children.some(child=>child.text?.startsWith('Shifted out:')));
       assert.ok(children.length<200,'bounded children count');
       assert.ok(children.some(child=>child.type==='line'&&child.x1<child.x2),'left-to-right stage arrows');

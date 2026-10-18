@@ -312,6 +312,104 @@ The handle itself does not emit a pulse. The built-in Text input and Number inpu
 `submitted` through their state/transition contract, so another accepted entry with the same value
 can trigger a consumer again. Do not infer submission from a change to the `value` output.
 
+### Boolean input switches
+
+An API v2 handle can edit an unconnected Boolean input directly:
+
+```js
+{ id:'enabled', kind:'boolean', input:'enabled', value:io.inputs.enabled, x:w-34, y:h-21 }
+```
+
+The host validates the declared Boolean input and current value, then toggles the instance's
+literal `inputValues` on release. The editor records one undo step; HTML changes remain local to
+the reader session. It never calls `dragEdit` or creates a separate state value for the switch.
+The host rejects manual changes to a connected input. `io.boundInputs` lists connected input names;
+scripts should show the current `io.inputs` value, explain that it is connected, and omit its handle
+and hit target when bound. Table sort and Table aggregate follow this contract. Their `showSwitch`
+setting hides the control without disabling the input.
+
+### Choice input controls
+
+API v2 `kind:'choice'` handles open a host-owned native selection list over a declared inline box:
+
+```js
+{ id:'select', kind:'choice', input:'select', value:io.inputs.select,
+  x:140, y:52, inline:{x:0,y:26,w:280,h:52,fontSize:18},
+  options:[{value:0,label:'Idle'},{value:1,label:'Running'}] }
+```
+
+The target must be an available unconnected numeric input. The host edits `inputValues` directly,
+records one editor undo step, and does not invoke `dragEdit`. It rejects stale choices if the source,
+current input, or connection changes before acceptance. Escape, clicking outside, or changing tabs
+cancels the open control. Reader changes last for the session and reset on page reload.
+
+Supply exactly one of `options` or `table`. Explicit options have unique finite numeric values and
+string labels, with at most 1,000 options, 2,000 characters per label, and 500,000 label characters
+combined. To use all rows of a connected table without embedding them in a presentation result,
+provide `table:{input:'data',labelColumn:'Text'}` instead. The named port must be a table input and
+the label column must be a string column; a blank column chooses the first string column. The host
+builds options from the full selected row order, assigning indices 0…N−1 and mapping null labels
+to empty text. `io.boundInputs` lets scripts hide the manual handle when its numeric input is bound.
+
+### Host-owned table actions
+
+API v2 handles may use `kind:'action'` with one of these bounded descriptors:
+
+```js
+{ id:'loadData', kind:'action', x:w/2, y:h-25,
+  action:{type:'importDataset', input:'data'} }
+{ id:'csv', kind:'action', x:w/4, y:h-30,
+  action:{type:'downloadTable', input:'data', format:'csv', filename:'results'} }
+```
+
+`input` must name a declared table input. Download format is `csv` or `json`; the host sanitizes
+the suggested filename. The script draws the button, declares the handle, and returns its ID from
+`hitEdit`. `dragEdit` does not perform these actions. An explicit release opens the host-owned
+preview dialog, and its Replace data or Download button performs the final operation. The host
+resolves the current connected rows and validates document/instance ownership; scripts receive no
+file, DOM, storage, or download access. Pure computation, drawing, and restoration never execute
+a click action. Dataset reload uses the separate, explicitly declared trigger contract below.
+
+Dataset enables its import handle only when `allowReaderImport` is true. Replacement imports must
+retain existing column keys and types, may add columns, and must fit the normal table budgets.
+The editor records an accepted replacement in document history. HTML keeps it only in the current
+reader session. CSV and JSON downloads contain the selected rows in their current order, using
+column keys as field names. JSON preserves scalar types and null values. CSV uses comma-separated
+fields, CRLF records, standard doubled-quote escaping, and empty cells for nulls; it cannot preserve
+every distinction between text, numbers, empty strings, and missing values on reimport. The dialog
+previews the result before the user confirms. A paused, partially propagated graph must finish stepping or
+resume before downloading, so a file cannot mix intermediate results. These controls are a narrow
+local action contract, separate from the proposed routed-event API.
+
+Dataset declares its reload trigger through API v2 metadata:
+
+```js
+inputs:{data:{type:'table'}, reload:{type:'boolean',default:false}},
+dataActions:{reload:{type:'reloadDataset', input:'data', trigger:'reload'}},
+```
+
+At most eight named declarations are allowed; each name follows port-name rules. `reloadDataset`
+is the only supported type, `input` must name a table input, and `trigger` must name a Boolean
+input. Additional descriptor fields are rejected. This is not a generic script-effects envelope.
+The host observes a false → true edge only after a healthy live baseline and only while
+`state.allowReaderImport === true`. The first complete settlement, pure inspection, historical
+replay, reopening, Undo, rewiring, unavailable-input recovery, and enabling reload while already
+high establish baselines without requesting file access. At most 64 reload requests can wait in a
+document's transient queue. They commit only with their live evaluation and are consumed once after
+full settlement; an incomplete paused Step does not dispatch them.
+
+Each Dataset allows one queued or running reload. Further pulses while it is busy do not queue
+another read; independent Datasets can read concurrently. Applying their results is serialized
+against the latest document data.
+
+Reload rereads only the file previously selected and accepted through **Load data…** for that
+instance and table input. The host retains its file handle and delimiter in memory, validates the
+new contents and schema, and atomically replaces the data. It does not reuse a stale `File` snapshot.
+Browsers with reusable file-picker handles can reread; Safari and ordinary file-input selection
+require choosing the file again. Missing or revoked access produces an actionable message and
+preserves accepted data. File handles and permissions never enter state, saved files, or HTML.
+Changed instance/source ownership and stale asynchronous reads cannot replace current data.
+
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
 Given a press position, return the `id` of the handle it landed on (within your own chosen hit
@@ -327,7 +425,7 @@ hitEdit(state, lx, ly, w, h){
 }
 ```
 
-### `dragEdit(state, handle, lx, ly, w, h, style)` (optional, needed if you have handles)
+### `dragEdit(state, handle, lx, ly, w, h, style)` (optional, needed for state-editing handles)
 
 Given the `id` `hitEdit` returned and the current (local) pointer position, return the new
 state. Called continuously while dragging a `'drag'`-kind handle, or exactly once (from the
@@ -376,8 +474,9 @@ dropdown; literal and connected values must match an option. Options apply only 
 Names start
 with an ASCII letter and contain up to 64 letters, digits, or underscores. Reserved object keys
 are rejected. Each side supports at most 32 ports. Numbers must be finite; strings are limited
-to 2,000 characters. Each port map and computed output object is limited to 32,000 serialized
-characters. A sketch supports at most 128 connected components.
+to 2,000 characters. Each port map and ordinary computed output object is limited to 32,000
+serialized characters; the bounded derived-table output exception is described below. A sketch
+supports at most 128 connected components.
 Saved bindings and literal-input maps are each limited to 16,000 serialized characters;
 the input dialog rejects changes that would exceed the save/load contract.
 
@@ -396,6 +495,12 @@ inputs(state) {
   return ports;
 },
 ```
+
+A string setting may instead use `format:'choices'` (without `options`) to request an editable
+Text/Key row list. Its default and state value are JSON strings encoding arrays of `{text,key?}`;
+the host validates at most 64 rows and 2,000 serialized characters, required string text, optional
+string keys, and uniqueness of nonempty keys. Add/remove/reorder operations stay in the Inputs
+dialog's draft until Save. Cancel preserves the original list.
 
 Initialize setting fields in `initState()` and keep port-defining settings unchanged in
 `transition` and interactive reader hooks. Dynamic declarations must be deterministic from state;
@@ -486,7 +591,7 @@ and seeds an already-high input without counting it. Its held reset follows the 
 holding the mode's baseline, so releasing reset during high does not add or subtract an edge.
 Shift registers likewise preserve their durable cells and last `shiftedOut` value while
 re-priming pulse observation. Their `shiftedOut` port captures the old final cell on an accepted
-rising edge. For shared-pulse cascades, connect current `value` (or `qN`) to the next register's
+rising edge. For shared-pulse cascades, connect current `value` (or `q(N−1)`) to the next register's
 data input: all registers sample before any new cells are published. `shiftedOut` remains a
 held observation of the last removed cell, not a correction for execution order.
 The built-in Delay retains up to 64 queued transitions and emits at most one per propagation round, preserving
@@ -541,9 +646,11 @@ input, type, or non-settling-loop errors still prevent saving. Combinational una
 through dependent components in both the editor and exported HTML. Inputs retain one source each; this does not add
 shared buses, pull-up/down resolution, or electrical simulation.
 
-The host appends `{inputs, outputs, name, runtimeId}` as the final `io` argument to these v2 hooks.
+The host appends `{inputs, outputs, name, runtimeId, boundInputs}` as the final `io` argument to these v2 hooks.
 `name` is the instance name from **Inputs…**, or an empty string for unnamed imports. It is
 presentation metadata: renaming redraws the instance without changing computed port values.
+`boundInputs` is an array of input names connected to another component, used to mark input controls
+read-only; input values still come from `io.inputs`.
 Built-in API v2 components use it for their captions, falling back to their catalog names
 when empty. Text label shows its caption only when **Show name** is enabled.
 Captions fit within the shape, with wrapping or truncation for long names, and remain
@@ -668,6 +775,25 @@ references to its incoming dataset without duplicating row contents in state or 
 Each reference is validated against the host's document pool before publication or use.
 Table-valued settings and table connections inside feedback cycles are not supported in this slice.
 
+A table output may instead return `{table:{name, columns, rows}}` to produce a new table, as
+Table aggregate does. Only declared table outputs accept this envelope. The host validates it with
+the same row/column/cell/table limits as imported data and replaces it with a compact `datasetId`
+reference before publication. These tables belong to the evaluation, never to component state or
+the persisted source pool. Each returned table version is immutable: unchanged content keeps its
+reference, while changed content receives a new runtime-only ID. Prior versions remain available
+while current outputs, previous-round input snapshots, or their producing output still reference
+them; unused versions are reclaimed during propagation and between evaluations. This preserves
+consistent round snapshots during Step and replay without adding a version field to table ports.
+
+The runtime supports at most 128 distinct table-producing outputs and 2,000,000 serialized
+characters across all live table versions, separately from the embedded source pool. A temporary
+old/new overlap counts toward that limit. An output object containing derived tables is limited to
+500,000 UTF-8 bytes across all of its outputs. Exceeding a limit produces a recoverable component
+error. Downstream snapshots, filters, sorts, charts, and downloads resolve derived references
+exactly like source references. Opening or exporting a
+saved document recomputes derived tables; references must be obtained from connections rather
+than retained as literal dataset selections.
+
 String port descriptors may declare `columnOf:'data'` to name a table input whose columns should
 appear in their **Inputs…** dropdown, and `columnType:'number'` to restrict choices to numeric
 columns. These are ordinary string values and can still be connected to string outputs. A blank
@@ -716,15 +842,80 @@ provisional until **Save**, and **Cancel** discards them. Dataset selectors are 
 selectors still allow one typed output per input. Copies and library entries carry only their
 referenced tables, remapping dataset IDs if another document already uses an ID for different data.
 Undo/redo retains immutable prior data; saved JSON and HTML omit unreferenced history tables.
-HTML contains the same datasets and filtering runtime and works offline. It does not import new
-files or save edited results in this milestone.
+HTML contains the same datasets and table runtime and works offline. An author can enable
+Dataset's reader import control; accepted replacements are session-local and reload restores the
+embedded snapshot. The Download table control explicitly exports current table results as CSV or JSON.
 
 Built-ins are [Dataset](examples/data-source.js), [Table filter](examples/table-filter.js),
-[Data table](examples/data-table.js), and [Data bar chart](examples/data-bar-chart.js).
+[Table sort](examples/table-sort.js), [Table aggregate](examples/table-aggregate.js),
+[Data table](examples/data-table.js), [Data bar chart](examples/data-bar-chart.js), and
+[Download table](examples/data-download.js).
 Table filter supports typed comparisons and empty checks; a blank column passes all rows. Data table
 shows at most 20 rows and eight columns; Data bar chart shows at most 24 bars, one per row, including
 negative values. Both report bounded views without modifying the table. The **Embedded data**
 example connects a Text input to a boat-name filter, then drives a table and chart from its output.
+The **Reader data and results** example loads or reloads race results, sorts them by boat name,
+aggregates points per boat, and downloads the alphabetical report. Its chart uses automatic columns
+so the original rows also render when aggregation is bypassed.
+
+Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
+input order. Sort is stable, nulls are last in both directions, and text is case-insensitive unless
+its `caseSensitive` setting is enabled. Table aggregate accepts `group`, numeric `value`, and
+`operation` (`count`, `sum`, `average`, `min`, or `max`). Blank `group` summarizes the entire table;
+otherwise groups retain first-appearance order, including a null group. Text group keys are
+case-sensitive. Count includes all rows.
+Numeric operations skip nulls; an all-null group sums to zero and has null average/min/max.
+The output has an optional `group` column with the selected group's label/type and a numeric
+`result` column. Aggregate tables are runtime outputs, recomputed from saved source tables and
+settings, rather than component state or new persisted source datasets.
+
+Sort and Aggregate declare `enabled:{type:'boolean',default:true}` and a `showSwitch` Boolean
+setting defaulting to true. Disabled transforms return the incoming table reference and row count
+unchanged, before applying their sort/group/value choices. Bypassing Aggregate therefore restores
+the original columns rather than returning grouped columns; downstream selectors must accommodate
+that schema. Their optional switches follow the Boolean input-handle contract above.
+
+Dataset's `allowReaderImport` setting enables explicit reader file replacement and its declared
+`reload` trigger. The new table must retain all existing column keys and types; extra columns are allowed. The file chooser,
+delimiter selection, preview, and acceptance belong to the host. Download table takes table `data`
+and string `filename` inputs. Its CSV/JSON controls act only on a reader's explicit click; runtime
+re-evaluation, restore, and retries never request a download. See the host-owned table action contract above.
+
+### Component index convention
+
+All component indices and indexed ports are zero-based: valid positions run from `0` to `N−1`.
+This includes selected table/list rows, stepped channels (`in0`, `out0`), storage taps (`q0`),
+and matrix rows/columns (`row0`, `col0`, `r0`). Dropdown defaults to index 0; missing selections
+and lookup results use `index:-1` with `valid:false` or `found:false`. Counts such as Channels,
+Stages, row counts, and line counts remain quantities, with their existing limits. Stable choice
+keys are independent of indices. There is no configurable index base or migration layer.
+
+### Choice lists and text lookup
+
+[Dropdown](examples/dropdown.js) and [Text lookup](examples/text-lookup.js) share two sources.
+Their `source` setting is `list` (default) or `dataset`. In list mode, `choices` is a JSON string
+containing an ordered array of `{text, key}` rows. The host's Inputs dialog presents editable rows,
+not JSON; authors can add, remove, and reorder choices. Limits are 64 rows and 2,000 serialized
+characters for the entire list. Text may repeat; nonempty keys must be unique. Empty keys mean
+that no stable key was supplied. Changing source leaves the saved list intact.
+
+Dataset mode adds `data:{type:'table'}`, `textColumn` and optional `keyColumn` string inputs with
+column selectors for the table. Both columns must have string type; null text/key cells become
+empty strings. Blank `keyColumn` means no keys. All selected rows are available, in selection order,
+within the existing table limits; no 24-row presentation preview is used to build the choices.
+Sorting or filtering upstream changes index positions, while keys remain attached to their rows.
+
+Dropdown has numeric `select` (default 0) and outputs `index`, `key`, `text`, and `valid`. The native
+on-canvas dropdown edits the literal Select input only when unbound; connected Select is read-only.
+Boolean `showArrow` defaults true; false produces a plain text display without a selection handle.
+A valid zero-based integer position returns that row. An invalid position returns
+`{index:-1,key:'',text:'',valid:false}` without snapping or clamping.
+
+Text lookup takes string `text` (default empty) and outputs `index`, `key`, and `found`.
+Boolean `caseSensitive` defaults true and `trim` defaults false. It normalizes the incoming value
+and labels according to those settings and returns the first match. No match returns
+`{index:-1,key:'',found:false}`. Empty text can match an empty label. The **Choices and text lookup**
+workspace tab demonstrates both sources, automatic selection, and shared forward/reverse mapping.
 
 ## The `style` object
 
@@ -1048,7 +1239,7 @@ still rescale output. Check a known division on a printed template before use.
 
 The small shape popup keeps the **Working collection** heading and shows pinned shortcuts.
 The optional expanded browser offers a **Source** filter for **Built-in** and **My shapes**,
-search, and categories initially including Controls, Logic, Displays, Tools & time, and Drawing.
+search, and categories initially including Controls, Logic, Displays, Tools & time, Data, and Drawing.
 **Collapse library** closes the browser; **Actions** in either pane opens the same **Library actions**
 surface on desktop and mobile. Entries can be placed directly or pinned in the working collection
 for later use. A filled pin means the entry is in that collection; an outline pin means it is
@@ -1175,11 +1366,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 67 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 72 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 58 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 63 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1208,6 +1399,11 @@ The built-in catalog includes 58 API v2 components, with editable sources in `ex
   during initial observation only primes the edge detector. Binding its own
   `submitted` output to `clear` supports clear-after-submit: consumers observe the accepted value
   with the rising submission before the next transition clears it. Number input has no Clear port.
+- [Dropdown](examples/dropdown.js): manual choice or automatic numeric selection, returning a
+  zero-based index, stable key, text, and validity. Its list is editable in Inputs or supplied by a
+  connected dataset; the optional arrow hides the manual control for display-only use.
+- [Text lookup](examples/text-lookup.js): reverse mapping from text to the first matching row's
+  index/key, plus Found. It accepts the same list/dataset sources with case and whitespace options.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with
@@ -1235,12 +1431,12 @@ The built-in catalog includes 58 API v2 components, with editable sources in `ex
   conventional segment positions, the instance caption, dim off segments, and amber unavailable
   segments. Mode changes alter input declarations, not output names or types.
 - [LED matrix (8×8)](examples/led-matrix.js): authoring Input mode selects `boolean` (default)
-  or `rows`. Boolean mode exposes `row1`…`row8` and `col1`…`col8`, all default false;
-  each LED is the AND of its row and column, with every active crossing shown. Row 1 is topmost
-  and column 1 leftmost. Rows mode exposes numeric `r1`…`r8` (default 0), each an integer in
-  0–255; `r1` is the top row, bit 128 is leftmost, and bit 1 rightmost. A row byte of 129 lights
+  or `rows`. Boolean mode exposes `row0`…`row7` and `col0`…`col7`, all default false;
+  each LED is the AND of its row and column, with every active crossing shown. Row 0 is topmost
+  and column 0 leftmost. Rows mode exposes numeric `r0`…`r7` (default 0), each an integer in
+  0–255; `r0` is the top row, bit 7 (128) is leftmost, and bit 0 (1) rightmost. A row byte of 129 lights
   both ends, 255 lights every LED, and 0 lights none. Both modes include
-  boolean `enable` (default true) and fixed numeric outputs `r1`…`r8` describing the visible row
+  boolean `enable` (default true) and fixed numeric outputs `r0`…`r7` describing the visible row
   bytes, or eight zeros when disabled. Mode-specific input names keep row/column Boolean ports
   distinct from row-byte ports. The named display computes directly from current inputs, with
   no scan cycle or persistent frame buffer.
@@ -1257,23 +1453,23 @@ The built-in catalog includes 58 API v2 components, with editable sources in `ex
   must be available. The graph eagerly resolves every declared input; selection never suspends
   the unselected source.
 - [Stepped switch (number)](examples/stepped-selector-number.js) and
-  [Stepped switch (Boolean)](examples/stepped-selector-boolean.js): `in1`…`inN` route to `value`.
+  [Stepped switch (Boolean)](examples/stepped-selector-boolean.js): `in0`…`in(N−1)` route to `value`.
   Unbound channels default to 0/false; all declared channels still require valid values.
 - [Stepped distributor (number)](examples/stepped-distributor-number.js) and
   [Stepped distributor (Boolean)](examples/stepped-distributor-boolean.js): required `value` routes
-  to one of `out1`…`outN`; inactive outputs are 0/false.
+  to one of `out0`…`out(N−1)`; inactive outputs are 0/false.
   Both stepped families have a Channels setting (2–16, initially 4), boolean `pulse` and `reset`
-  inputs, and numeric `position` output. Every rising pulse advances 1…N and wraps; held reset
-  selects 1 and tracks the pulse. Saved position survives restoration without a phantom step.
-  Changing Channels resets position to 1 and re-primes, using durable `configuredChannels` to
+  inputs, and numeric `position` output. Every rising pulse advances 0…N−1 and wraps; held reset
+  selects 0 and tracks the pulse. Saved position survives restoration without a phantom step.
+  Changing Channels resets position to 0 and re-primes, using durable `configuredChannels` to
   detect the change even if transient memory was cleared.
 - [Shift register (Boolean)](examples/shift-register-boolean.js) and
   [Shift register (number)](examples/shift-register-number.js): a Stages setting (1–16, initially
   4), required typed `value`, and boolean `pulse`/`reset` inputs (both default false). Each rising
-  pulse shifts one snapshot of the old cells: data enters `q1`, old `q1` enters `q2`, and so on.
-  Dynamic outputs `q1`…`qN` expose every cell; `value` aliases current `qN`. `shiftedOut` captures
-  old `qN` on that edge and holds it between edges. For a shared-pulse cascade, wire `value`
-  (or `qN`) to the next register's `value` and share pulse/reset. Every register samples the same
+  pulse shifts one snapshot of the old cells: data enters `q0`, old `q0` enters `q1`, and so on.
+  Dynamic outputs `q0`…`q(N−1)` expose every cell; `value` aliases current `q(N−1)`. `shiftedOut` captures
+  old `q(N−1)` on that edge and holds it between edges. For a shared-pulse cascade, wire `value`
+  (or `q(N−1)`) to the next register's `value` and share pulse/reset. Every register samples the same
   pre-edge snapshot. Numbers must be finite; they need not be integers.
   Reset clears cells and `shiftedOut` to false/0. Held reset tracks pulse so release-high does
   not shift; manual Reset works in editor and reader. Changing Stages clears storage and
@@ -1291,9 +1487,9 @@ The built-in catalog includes 58 API v2 components, with editable sources in `ex
   [Register (number)](examples/register-number.js): typed `value`, `pulse`, `enable`, and `reset`;
   rising pulse captures when enabled and reset clears. Boolean starts X, number starts zero.
 - [Ring counter](examples/ring-counter.js): 1–16 Stages, rising `clock`, `enable`, and `reset`;
-  outputs `q1`…`qN` and zero-based `position`. Reset selects q1; one bit circulates every N clocks.
+  outputs `q0`…`q(N−1)` and zero-based `position`. Reset selects q0; one bit circulates every N clocks.
 - [Johnson counter](examples/johnson-counter.js): same settings/controls, starts all false;
-  advances an inverted-tail sequence over 2N positions. Outputs `q1`…`qN`, `value` (qN), and `position`.
+  advances an inverted-tail sequence over 2N positions. Outputs `q0`…`q(N−1)`, `value` (q(N−1)), and `position`.
 - [Decoded decade counter](examples/decade-counter.js): 4017-style logical model with `clock`,
   `enable`, `reset`, ten outputs `q0`…`q9`, `position`, and `carry` high for positions 0–4.
   Reset selects q0. All clocked storage samples together before any state is published.

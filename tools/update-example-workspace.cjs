@@ -100,7 +100,29 @@ const sources={
   "demo-17-filter": "table-filter.js",
   "demo-17-boat": "text-input.js",
   "demo-17-table": "data-table.js",
-  "demo-17-chart": "data-bar-chart.js"
+  "demo-17-chart": "data-bar-chart.js",
+  "demo-18-source": "data-source.js",
+  "demo-18-reload": "trigger.js",
+  "demo-18-aggregate": "table-aggregate.js",
+  "demo-18-sort": "table-sort.js",
+  "demo-18-table": "data-table.js",
+  "demo-18-chart": "data-bar-chart.js",
+  "demo-18-download": "data-download.js",
+  "demo-19-manual": "dropdown.js",
+  "demo-19-manual-index": "value-label.js",
+  "demo-19-manual-key": "text-label.js",
+  "demo-19-manual-text": "text-label.js",
+  "demo-19-source": "data-source.js",
+  "demo-19-table": "data-table.js",
+  "demo-19-position": "number-control.js",
+  "demo-19-automatic": "dropdown.js",
+  "demo-19-automatic-text": "text-label.js",
+  "demo-19-valid": "status-indicator.js",
+  "demo-19-query": "text-input.js",
+  "demo-19-lookup": "text-lookup.js",
+  "demo-19-lookup-index": "value-label.js",
+  "demo-19-lookup-key": "text-label.js",
+  "demo-19-found": "status-indicator.js"
 };
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){

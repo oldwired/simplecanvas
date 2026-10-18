@@ -4,13 +4,16 @@ Status: stages 1 and 2 are complete on `feature/smart-components`, based on `mai
 validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, timed signals,
 an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
-Stage 3's first embedded-data milestone is implemented on the branch; stages 4–6 remain proposals.
+Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
+aggregation, optional transform switches, editable/dataset-driven choices and text lookup, and narrow host-owned reload/download actions. General routed events and stages 5–6 remain proposals.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
 fifteen-tab workspace. A subsequent text-passing milestone adds Text input, Number input, Text label,
 Memo, and a sixteenth example tab before stage 3. Embedded data adds a seventeenth tab with
-CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. Shared buses and multiple drivers are deferred;
+CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. An eighteenth
+tab adds reader-selected data, aggregation, sorting, and explicit CSV/JSON downloads. A nineteenth
+tab adds manual choices, automatic selection, and reverse text lookup using shared data. Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
@@ -20,7 +23,7 @@ For the maintainer and contributors deciding how far SimpleCanvas should grow.
 SimpleCanvas already creates portable interactive documents. An HTML export contains its
 visuals, smart-shape scripts, saved state, and an isolated runtime; readers can use it offline.
 On the feature branch, connected shapes exchange scalar values and table references, and a categorized browser makes
-components easy to find, place, and combine. Embedded datasets support offline data tools; explicit actions follow.
+components easy to find, place, and combine. Embedded datasets support offline data tools and explicit result downloads.
 
 The proposed direction is a visual authoring tool for small, self-contained interactive
 HTML documents. Preserve the ordinary drawing workflow and make component authoring optional.
@@ -119,6 +122,19 @@ These boundaries describe the feature branch, including the feedback, text-passi
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
   document-wide Run/Preview mode inside the editor would be an additional feature.
 
+## Component index convention
+
+All component indices are zero-based (`0…N−1`), consistently in signals, port names, controls,
+and examples. Dropdown selects index 0 by default. A missing selection or lookup returns index −1
+with false Valid/Found; it never aliases the first choice. Stepped switches reset to channel 0,
+use `in0`/`out0` onwards, and wrap N−1 → 0. Shift, ring, and Johnson taps start at `q0`;
+`value` aliases `q(N−1)` where a final-stage output exists. The LED matrix starts at `row0`,
+`col0`, and `r0`; row 0 is topmost and column 0 leftmost, with bit 7 (128) still at the left.
+Counts, stage/channel quantities, durations, and ordinary tab/instruction numbering keep their
+existing meanings. Stable keys survive reordered indices. There is one convention, with no
+per-component base setting. The unmerged branch and bundled examples are rewritten directly;
+compatibility aliases and migrations are unnecessary.
+
 ## Stage 1 acceptance — implemented on the feature branch
 
 The numeric control and separate Gauge exercise the actual runtime through a numeric binding.
@@ -140,7 +156,8 @@ Keep these checks as the regression baseline for subsequent stages.
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stage 3 has its first complete embedded-data slice; stages 4–6 remain proposals. Shared buses are
+Stage 3 includes the complete agreed data workflow. Stage 4 has a narrow host-owned download
+action plus explicitly declared dataset reloads; general events and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -153,8 +170,8 @@ Share runtime helpers between editor and export throughout.
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data — first milestone implemented on branch | Bounded dataset schema and storage, CSV/TSV/JSON import, typed table inputs, filtering, and table/chart built-ins | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
-| 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
+| 3. Embedded data — agreed workflow implemented on branch | Bounded datasets, author and reader CSV/TSV/JSON import, typed table inputs, filtering, sorting, aggregation, and table/chart built-ins | Embedded or reader-selected data drives a filtered or grouped and sorted table/chart offline; invalid, mismatched, or oversized imports preserve accepted data. |
+| 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads and declared session-file reload triggers; general event routing remains proposed | A reader downloads the current result or pulses Reload for an accepted session file. Page refresh, restoration, retries, and Undo do not replay either action. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -162,7 +179,7 @@ Stage 6 is deliberately split into reviewable deliveries:
 
 | Step | Prerequisites and deliverable | Evidence that it works |
 | --- | --- | --- |
-| 6.1 Shared integration foundation | Stage 1 value graph and stage 4's validated intent dispatch; add transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
+| 6.1 Shared integration foundation | Stage 1 value graph and stage 4's proposed general intent dispatch; add transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
 | 6.2 Manual HTTP GET | 6.1; a configured bounded JSON GET mapped to scalar ports, initiated by Refresh | The newest accepted result drives a display; errors are visible; repeated instances stay independent. Downloaded HTML works with the test endpoint and remains readable offline. |
 | 6.3 MQTT Config and Subscribe | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
 | 6.4 Automated reads | 6.2; bounded HTTP timer, value-change, and edge triggers | One permitted trigger causes one request; initial/restored values do not replay edges, rapid changes settle correctly, and hidden documents pause polling. |
@@ -195,7 +212,7 @@ The [editable workspace](../examples/smart-components-workspace.json) covers **B
 logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Shift memory**, and
 **LED patterns**, plus seven feedback/sequential tabs: **Self-reset**, **Stop at zero**,
 **Reset and stop**, **Latch laboratory**, **Shared-edge storage**, **Sequences**, and
-**Delayed feedback**, followed by **Text and notes** and **Embedded data**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
+**Delayed feedback**, followed by **Text and notes**, **Embedded data**, and **Reader data and results**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
 the current workspace first if it should be retained. The matching
 [self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
 
@@ -237,10 +254,11 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 
 | Default category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Toggle, numeric Constant, Trigger |
+| Controls | Number control, Text input, Number input, Dropdown, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Data | Dataset, Table filter, Table sort, Table aggregate, Data table, Data bar chart, Download table, Text lookup |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -254,7 +272,9 @@ Arc, Timer, Chart, Minimal, and Blank brought the stage 2 catalog to 51 entries.
 milestone adds eight storage/sequencing entries, bringing that catalog to 59 entries,
 including 50 API v2 components. Text input, Number input, Text label, and Memo bring the current
 catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Dataset, Table filter,
-Data table, and Data bar chart, bringing the current catalog to **67 entries / 58 API v2 components**.
+Data table, and Data bar chart, initially bringing the catalog to 67 entries / 58 API v2 components.
+Table sort, Table aggregate, and Download table bring the catalog to 70 entries / 61 API v2 components.
+Dropdown and Text lookup bring the current catalog to **72 entries / 63 API v2 components**.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
 empty. Authors can place or pin them offline, and the template authoring dialog remains available.
@@ -411,15 +431,15 @@ while retaining the output contract. The drawing shows the conventional segment 
 instance name, with dim off segments and amber unavailable values rather than a fabricated zero.
 
 LED matrix (8×8) has an authoring **Input mode** setting: `boolean` (default) or `rows`.
-Boolean mode exposes `row1`…`row8` and `col1`…`col8`, each default false. Row 1 is at
-the top and column 1 at the left. An LED lights only when its row and column are both true;
+Boolean mode exposes `row0`…`row7` and `col0`…`col7`, each default false. Row 0 is at
+the top and column 0 at the left. An LED lights only when its row and column are both true;
 all active crossings are shown together, without simulated scanning or retained illumination.
 
-Rows mode instead takes numeric `r1`…`r8`, each default 0 and restricted to integers 0–255.
-`r1` is the top row, with bits ordered left to right from 128 to 1: 129 lights both ends, 255
+Rows mode instead takes numeric `r0`…`r7`, each default 0 and restricted to integers 0–255.
+`r0` is the top row, with bit positions 7–0 ordered left to right (values 128–1): 129 lights both ends, 255
 lights the full row, and 0 lights none.
 
-Both modes have boolean `enable` (default true) and fixed numeric outputs `r1`…`r8` reflecting
+Both modes have boolean `enable` (default true) and fixed numeric outputs `r0`…`r7` reflecting
 the visible row bytes; disabling publishes eight zero rows. Mode changes expose distinct input
 names and must not reinterpret old Boolean row/column assignments as numeric row bytes. Outputs
 keep their names and types across modes, and the instance name remains visible.
@@ -437,15 +457,15 @@ not suspend upstream work.
 
 Stepped switch and Stepped distributor each have number and Boolean entries. Authors choose
 2–16 Channels (initially 4) in **Inputs…**. Channel count is saved authoring configuration that
-changes declared ports, rather than a live data input. The selector routes `in1`…`inN` to `value`,
+changes declared ports, rather than a live data input. The selector routes `in0`…`in(N−1)` to `value`,
 with unbound channels defaulting to 0/false. The distributor routes required `value` to one of
-`out1`…`outN`; inactive outputs are numeric 0 or Boolean false. These are separate outputs, not
+`out0`…`out(N−1)`; inactive outputs are numeric 0 or Boolean false. These are separate outputs, not
 shared bus drivers or high-impedance outputs.
 
-Every false → true `pulse` advances the selected channel, wraps N → 1, and publishes a numeric
-`position`. Holding high does not repeat. Held `reset` selects 1 while tracking the pulse, so
+Every false → true `pulse` advances the selected channel, wraps N−1 → 0, and publishes a numeric
+`position`. Holding high does not repeat. Held `reset` selects 0 while tracking the pulse, so
 releasing reset during high does not step. Saved position survives reload, copy, and undo, while
-fresh pulse memory prevents phantom steps. Changing Channels resets to 1 and re-primes, including
+fresh pulse memory prevents phantom steps. Changing Channels resets to 0 and re-primes, including
 when runtime observations were cleared. Selected data remains live between pulses.
 
 Switch visuals show the selected contact, channel values, instance name, and optional LEDs.
@@ -457,15 +477,15 @@ to a different channel. All declared inputs still follow the ordinary typed avai
 
 Shift register has separate Boolean and number entries in Logic. Authors set 1–16 Stages
 (initially 4) in **Inputs…**. Stages is durable authoring configuration that defines outputs
-`q1`…`qN`; it is not a live input. The required `value` input supplies typed data; boolean `pulse`
+`q0`…`q(N−1)`; it is not a live input. The required `value` input supplies typed data; boolean `pulse`
 and `reset` default to false. Number cells accept finite numbers, including fractions.
 
-Each false → true pulse shifts one snapshot of the previous cells: input data enters `q1`, old
-`q1` moves to `q2`, and so on. No value advances through multiple cells during a single shift.
-The `value` output aliases current `qN`. A separate `shiftedOut` output captures old `qN`, the
+Each false → true pulse shifts one snapshot of the previous cells: input data enters `q0`, old
+`q0` moves to `q1`, and so on. No value advances through multiple cells during a single shift.
+The `value` output aliases current `q(N−1)`. A separate `shiftedOut` output captures old `q(N−1)`, the
 value removed by the accepted edge, and holds that value between edges.
 
-For cascades sharing one pulse, connect current `value` (or `qN`) to the next register's `value`
+For cascades sharing one pulse, connect current `value` (or `q(N−1)`) to the next register's `value`
 and share pulse/reset. All registers sample the pre-edge snapshot before any publishes its next
 state, so one edge moves data exactly one cell across the boundary. `shiftedOut` remains an
 observation of the last removed cell; it is not used to compensate for producer-first evaluation.
@@ -765,7 +785,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current seventeen-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current nineteen-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -956,7 +976,7 @@ functions. Optional `settings` metadata describes authoring fields stored in sta
 required default, optional label, numeric min/max/positive step, and string options. Inputs edits
 these fields and rebuilds port choices. Port-defining settings are not live ports; transitions
 and reader interactions must not change the declared port layout. This supports a bounded channel
-count while retaining stable names (`in1`, `out1`, etc.) for connection identity.
+count while retaining stable names (`in0`, `out0`, etc.) for connection identity.
 
 A `kind:'number'` handle declares a finite value and optional min/max/step. A `kind:'text'` handle
 declares a string and optional maxLength/required/placeholder. The host owns the entry dialog,
@@ -993,9 +1013,10 @@ Format 4 preserves unsupported versions and bounded source/state/metadata for re
 runtime reports incompatibility rather than silently downgrading the script. Older app versions
 cannot be assumed to preserve the new fields.
 
-Tables, event/effect envelopes, transient host sources, sensitive values, and connection references
-need explicit supported schema/API extensions before implementation. Do not add them implicitly
-to v2's scalar values or `{state}` envelope; retain compatibility with existing scripts.
+Stage 3 explicitly extends port types with compact table references and bounded runtime tables.
+The narrow local-action slice adds declared host action handles. General event/effect envelopes,
+transient host sources, sensitive values, and connection references still need supported schema/API
+extensions before implementation; do not infer them from v2 scalar values or the `{state}` envelope.
 
 ### Change-driven evaluation
 
@@ -1078,9 +1099,9 @@ This does not add the future document-wide Run/Preview mode.
 An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
 and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.
 
-### Embedded data and persistence — stage 3 first milestone
+### Embedded data and persistence — stage 3 implemented workflow
 
-The first slice is implemented: **Dataset → Table filter → Data table + Data bar chart**, controlled
+The initial slice is **Dataset → Table filter → Data table + Data bar chart**, controlled
 by a Text input and shipped as the **Embedded data** workspace tab. Import the matching
 [sailing-results CSV](../examples/sailing-results.csv) or [JSON](../examples/sailing-results.json) through
 **Inputs…** on a table port. The same drawing and its data work in the offline HTML export.
@@ -1102,7 +1123,7 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
 - Computation receives full resolved inputs through `context.tables`. Rendering receives at most
   24 rows per input/output and 160 characters per text cell through `io.tables`; full row counts
   remain available. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
-  are rejected in this first slice.
+  remain unsupported.
 - **Inputs…** previews imported column types and initial rows before Save. Cancel discards pending
   data; tab/session changes cancel stale imports. Existing datasets can be selected directly.
 - Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
@@ -1114,10 +1135,85 @@ empty/nonempty checks. Data table and Data bar chart show bounded views and disc
 filtering evaluates all accepted rows. The chart draws one bar per row with a shared zero baseline.
 The earlier manually editable **Chart** template remains separate.
 
-Reader-selected files, table-cell editing, aggregation/sorting, computed datasets with new columns,
-and additional chart types are later extensions. Reader persistence also remains separate: a later
-explicit **Save results** action can export JSON or CSV. A new HTML snapshot or full HTML-to-editor
-round trip requires a complete editable document model in the export and a defined import path.
+The **Reader data and results** tab extends this with **Dataset → Table sort → Table aggregate →
+Data table + Data bar chart + Download table**. It orders source rows by Boat A–Z, then totals Points
+per Boat into an alphabetical report. Readers can replace the results with the matching
+[CSV](../examples/sailing-results-updated.csv) or [TSV](../examples/sailing-results-updated.tsv), then
+download the calculated `sailing-report`. Both transform switches can be bypassed: the table
+adapts to the available columns and the chart selects its columns automatically. A **Reload file**
+Trigger connects to Dataset's reload input.
+
+- **Reader imports** are enabled per Dataset through **Allow data replacement**. A reader deliberately
+  chooses a local file, inspects delimiter/type/row previews, and accepts it. Replacement data must
+  contain the previous column keys with the same types; extra columns are permitted. Failure,
+  cancellation, or a stale dialog leaves accepted data unchanged. Replacements stay within that
+  document's reader session, survive tab switches, and are discarded when the HTML page reloads.
+- **Dataset reload** uses a declared Boolean input, default false. A fresh false → true pulse can
+  reread the last accepted Load data file using its remembered delimiter, with the same schema and
+  size validation. It requires Allow data replacement and a reusable browser file handle. Safari or
+  ordinary file-input imports require reselection; missing/revoked access keeps existing data and
+  explains how to choose the updated file. Handles and permissions are never persisted or exported.
+  First-high, opening, Undo, rewiring, unavailable recovery, historical replay, and pure evaluation
+  never replay a read. A transient queue holds at most 64 requests and dispatches only after a live
+  evaluation fully settles; canceled work and unfinished Step rounds do not dispatch.
+- **Table sort** uses one selected column, ascending or descending. Ties retain their input order;
+  nulls sort last in both directions. Blank Column preserves the incoming order. String comparison
+  is case-insensitive by default, with an optional Case sensitive setting.
+- **Table aggregate** optionally groups by one column and computes Count, Sum, Average, Minimum,
+  or Maximum. Count includes null rows; numeric operations ignore null values. Sum of an all-null
+  group is zero, while the other numeric operations return null. Blank Group produces one summary
+  row, including an empty input. Groups retain first-appearance order, with case-sensitive text keys.
+  Output columns are `group` (when grouped, retaining the selected column's type and label) and
+  numeric `result`.
+- **Transform switches** edit the same `enabled` Boolean input used by connections; it defaults true.
+  The optional Show on/off switch setting defaults on. With no binding, clicking changes the literal
+  input and creates one editor undo step. With a binding, it reflects the signal and is read-only.
+  Hiding it affects only presentation. Off passes through the exact incoming table, including its
+  original columns; downstream configuration must handle the schema change when Aggregate is bypassed.
+- Aggregate output is a bounded runtime table, carried outside component state. It participates in
+  downstream filtering/sorting/rendering and downloads without becoming a saved source dataset.
+  Opening or exporting a document recomputes it from the saved sources and settings. Changed
+  content receives a new immutable runtime reference; prior versions remain only while current
+  outputs, previous-round input snapshots, or their producing output still reference them. This
+  preserves consistent snapshots through Step and replay. The runtime allows 128 distinct
+  table-producing outputs and 2,000,000 serialized characters across all live versions, including
+  temporary old/new overlap. Per-table limits and the 500,000-byte UTF-8 output-transfer limit also
+  apply. Source and derived pools have separate budgets; budget failures remain recoverable.
+- **Download table** offers explicit CSV and JSON buttons for its connected table. The host snapshots
+  the current selected rows and order, validates ownership, and prepares the file. A paused graph
+  must finish any incomplete propagation step before downloading. No computation,
+  repaint, restore, retry, Undo, or automatic trigger requests a download. This is the narrow stage 4
+  local-action slice; it does not introduce generic events or unrestricted file/network access.
+
+**Dropdown and Text lookup** extend the data workflow with a shared choice-list model:
+
+- Both offer authoring **Choices from: list / dataset**. List rows have editable text and an optional key;
+  the Inputs dialog supports adding, removing, and reordering rows. The list is stored in instance
+  state as a JSON string, bounded to 64 rows and 2,000 serialized characters, with no JSON authoring
+  required. Switching to Dataset keeps the list available for switching back.
+- Dataset mode declares table `data`, string `textColumn`, and optional string `keyColumn` inputs.
+  It reads the whole selected table in its current order; null text becomes an empty string. Text
+  and key columns must be strings. Blank Key column produces empty keys. Nonempty keys must be
+  unique in either source; repeated labels are allowed. Keys identify a choice independently of
+  row position.
+- Dropdown declares numeric `select` (default 0), outputs numeric `index`, string `key`/`text`, and
+  Boolean `valid`. A manual native dropdown edits the same unbound Select input; when connected,
+  it displays the selected value read-only. **Show dropdown** can hide the interactive affordance
+  to make an automatic text display. Indices start at 0; noninteger, negative, or out-of-range selections
+  produce index −1, empty text/key, and false Valid, without clamping to another choice.
+- Text lookup takes string `text` and outputs numeric `index`, string `key`, and Boolean `found`.
+  Case sensitive defaults true and Ignore surrounding whitespace defaults false. Normalization applies
+  to both the incoming value and labels, then the first matching row wins. No match returns index −1,
+  empty key, and false Found. Empty text can match an empty label.
+- The **Choices and text lookup** example combines an editable manual list, visible result readouts,
+  and a shared state-name dataset. A Number control drives automatic selection and a Text input
+  drives reverse lookup; Valid and Found indicators demonstrate missing selections/matches.
+  JSON and HTML retain the lists and referenced dataset, and all three workflows work offline.
+
+Table-cell editing, arbitrary computed columns, and additional chart types are later extensions.
+Result downloads contain data, not the full editable workspace. A new HTML snapshot or full
+HTML-to-editor round trip still requires a complete editable document model in the export and a
+defined import path.
 
 ### Definition identity and updates
 
@@ -1130,9 +1226,11 @@ versions, and source fingerprints. Each exported document must retain the exact 
 it uses. Library changes should become explicit upgrades with compatible state migrations;
 they must not silently change existing drawings. Source fingerprints identify content, not trust.
 
-## Events and local actions — proposed stage 4
+## Events and local actions — narrow stage 4 data actions implemented
 
-Add events after value propagation works. An event needs a declared name/payload and a receiving
+The implemented Download table control provides a narrow local action from an explicit click.
+Dataset additionally declares a bounded reload trigger for a file chosen in the current session.
+Neither introduces general script effects; routed events and other actions remain proposed. An event needs a declared name/payload and a receiving
 contract, such as `onEvent(name, payload, state, io)`. The receiver returns a validated state
 transition and optional further events or action requests. Bound propagation depth and work per
 interaction so event cycles cannot run indefinitely.
@@ -1140,13 +1238,13 @@ interaction so event cycles cannot run indefinitely.
 In this stage, user interactions originate events and action intents. Dispatch each accepted
 intent at most once; Worker retries, redraws, recomputation, undo/redo, opening a document,
 and restoring an HTML snapshot must not replay it. Stage 6 adds separately enabled host triggers
-for reads and connection lifecycle. Track their cause and revision so an input change can
+for network reads and connection lifecycle. Track their cause and revision so an input change can
 produce one authorized request without treating every derived recomputation as a new action.
 Pending actions need document/instance ownership checks just like pending state changes.
 
-Start with a narrow host-owned action such as downloading prepared JSON; CSV can use stage 3's
-table representation when available. The script returns a validated intent; the runtime checks
-the action type, payload, and originating interaction and performs it. Browser user-activation
+The implemented host-owned action downloads a connected table as JSON or CSV. The runtime checks
+the declared action, current table, instance ownership, and originating click before preparing it.
+General script-returned intents require the separate event/action contract described above. Browser user-activation
 rules may require a host download control after asynchronous
 preparation. Downloads and navigation should not receive unrestricted permission simply because
 they are local operations.
@@ -1168,8 +1266,8 @@ to connect a document.
 
 Decide how preview state is retained or discarded on return to authoring before implementing
 the mode, and make that choice visible. Distinguish this editor behavior from reader persistence:
-HTML currently keeps changes only for its open session. If Save results is offered, build it on
-stage 4's validated local actions and define the exported result format. Do not imply that a
+HTML currently keeps changes only for its open session. The implemented result controls export table rows as
+CSV or JSON through stage 4's host-owned actions. Do not imply that a
 result download is an editable HTML round trip. Acceptance covers entering preview, operating
 the example, returning to authoring, and verifying the chosen state/result-saving policy.
 
@@ -1185,7 +1283,8 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
   reading. Availability and freshness must be enforced by the runtime, not depend on authors
   wiring an optional status output correctly. A labelled last-known display may remain visible;
   an unavailable or stale reading cannot silently become an input to an external write.
-- **Intents and triggers.** Reuse stage 4's validated intent dispatch. Record whether a change
+- **Intents and triggers.** Extend stage 4 beyond its implemented download/reload controls with the
+  proposed general intent dispatch before reusing it here. Record whether a change
   came from a user, an enabled timer/input trigger, a live response, or restoration. Initialization,
   undo, reconnection, and retained readings establish baselines rather than replay actions.
   Define the supported API/schema extensions before exposing host sources or new trigger types.
@@ -1447,11 +1546,13 @@ handling are tested separately from broker delivery.
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
    built-in organization overrides, Keywords, stable library-entry identity, catalog definitions,
    and ordered working membership; flat and legacy single-category imports remain supported.
-2. **Stage 3 — established first slice:** Compact references, typed nullable columns, immutable
+2. **Stage 3 — established workflow:** Compact references, typed nullable columns, immutable
    document datasets, storage/transfer budgets, and atomic imports are defined above. Extensions
    must preserve these limits and recoverable failures.
-3. **Stage 4:** Define a supported revision for event/action envelopes, receiving hooks, dispatch
-   identity, and propagation limits before adding handlers or download controls.
+3. **Stage 4 — narrow data actions established:** Explicit host controls download current table
+   results, and declared reload triggers reread a session-selected file under the rules above. Define a
+   supported revision for general event/action envelopes, receiving hooks, dispatch
+   identity, and propagation limits before adding routed events or further action types.
 4. **Stage 5:** Use the library example to choose binding/control improvements and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,

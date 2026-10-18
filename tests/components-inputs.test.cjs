@@ -174,26 +174,26 @@ test('late preview replies cannot replace newer edits or a reopened dialog',asyn
 }));
 
 test('live feedback respects dynamic ports and inspects a stepped selector without advancing its state',async()=>app(async({page,run})=>{
-  await builtins(run,[{key:'steppedSelectorNumber',state:{position:2},
-    inputValues:{in1:10,in2:20,in3:30,in4:40,pulse:false,reset:false}}]);
-  await openInputs(page,run);await feedback(page,['value = 20','position = 2']);const before=await snapshot(run);
-  await page.getByLabel('pulse value',{exact:true}).selectOption('true');await feedback(page,['value = 20','position = 2']);
-  await page.getByLabel('reset value',{exact:true}).selectOption('true');await feedback(page,['value = 20','position = 2']);
+  await builtins(run,[{key:'steppedSelectorNumber',state:{position:1},
+    inputValues:{in0:10,in1:20,in2:30,in3:40,pulse:false,reset:false}}]);
+  await openInputs(page,run);await feedback(page,['value = 20','position = 1']);const before=await snapshot(run);
+  await page.getByLabel('pulse value',{exact:true}).selectOption('true');await feedback(page,['value = 20','position = 1']);
+  await page.getByLabel('reset value',{exact:true}).selectOption('true');await feedback(page,['value = 20','position = 1']);
   assert.deepEqual(await snapshot(run),before,'previewed pulses and resets do not invoke transition');
   const channels=page.getByLabel('Channels',{exact:true});
   await channels.fill('3');await channels.dispatchEvent('change');
-  await page.getByLabel('in3 value',{exact:true}).waitFor({state:'visible'});
-  await feedback(page,['value = 10','position = 1']);
-  assert.equal(await page.getByLabel('in4 value',{exact:true}).count(),0,'port fields match the draft configuration');
-  await page.getByLabel('in1 value',{exact:true}).fill('77');await feedback(page,['value = 77']);
+  await page.getByLabel('in2 value',{exact:true}).waitFor({state:'visible'});
+  await feedback(page,['value = 10','position = 0']);
+  assert.equal(await page.getByLabel('in3 value',{exact:true}).count(),0,'port fields match the draft configuration');
+  await page.getByLabel('in0 value',{exact:true}).fill('77');await feedback(page,['value = 77']);
   await channels.fill('1');await channels.dispatchEvent('change');await error(page,/channels.*range/i);
   await channels.fill('5');await channels.dispatchEvent('change');
-  await page.getByLabel('in5 value',{exact:true}).waitFor({state:'visible'});await feedback(page,['value = 77','position = 1']);
-  assert.equal(await page.getByLabel('in5 value',{exact:true}).inputValue(),'0');
+  await page.getByLabel('in4 value',{exact:true}).waitFor({state:'visible'});await feedback(page,['value = 77','position = 0']);
+  assert.equal(await page.getByLabel('in4 value',{exact:true}).inputValue(),'0');
   assert.equal(await page.locator('#componentBindingsError').textContent(),'');
   assert.deepEqual(await snapshot(run),before,'dynamic port previews do not alter the saved configuration');
   await page.locator('#componentBindingsCancel').click();await openInputs(page,run);
-  assert.equal(await channels.inputValue(),'4');assert.equal(await page.getByLabel('in4 value',{exact:true}).inputValue(),'40');
-  await feedback(page,['value = 20','position = 2']);
+  assert.equal(await channels.inputValue(),'4');assert.equal(await page.getByLabel('in3 value',{exact:true}).inputValue(),'40');
+  await feedback(page,['value = 20','position = 1']);
   await page.locator('#componentBindingsCancel').click();
 }));

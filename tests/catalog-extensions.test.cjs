@@ -86,45 +86,45 @@ test('channel settings resize real ports and preserve assignments, undo, and lib
  await seed(run,[{key:'steppedSelectorNumber'}]);
  await inputDialog(page,run,0);
  await page.getByLabel('Channels',{exact:true}).fill('8');await page.getByLabel('Channels',{exact:true}).press('Tab');
- await page.getByLabel('in8 value',{exact:true}).fill('88');
- await page.getByLabel('in1 value',{exact:true}).fill('11');await saveInputs(page);
+ await page.getByLabel('in7 value',{exact:true}).fill('88');
+ await page.getByLabel('in0 value',{exact:true}).fill('11');await saveInputs(page);
  assert.equal(await run('items[0].state.channels'),8);
- assert.deepEqual(await outputs(run,0),{value:11,position:1});
- assert.equal(await run('(async()=>(await requestSmartCaps(items[0])).inputs.in8.type)()'),'number');
+ assert.deepEqual(await outputs(run,0),{value:11,position:0});
+ assert.equal(await run('(async()=>(await requestSmartCaps(items[0])).inputs.in7.type)()'),'number');
  const placed=await run(`(async()=>{const copy=clone(items[0]);copy.uid='placement-check';await initializeSmartItem(copy);const owner=createSmartExecution(copy);try{return {state:copy.state,inputs:(await requestSmartCaps(copy,owner)).inputs,result:(await evaluateComponentGraph([copy],(it,fn,args)=>fn==='caps'?requestSmartCaps(it,null,args[0]):requestSmartCall(it,fn,args))).get(copy).io.outputs};}finally{disposeSmartExecution(owner);}})()`);
- assert.equal(placed.state.channels,8);assert.equal(placed.inputs.in8.type,'number');assert.deepEqual(placed.result,{value:11,position:1});
+ assert.equal(placed.state.channels,8);assert.equal(placed.inputs.in7.type,'number');assert.deepEqual(placed.result,{value:11,position:0});
  await inputDialog(page,run,0);
  await page.getByLabel('Channels',{exact:true}).fill('3');await page.getByLabel('Channels',{exact:true}).press('Tab');
- await page.waitForFunction(()=>!document.querySelector('[aria-label="in4 value"]') && !document.querySelector('#componentBindingsSave').disabled);
- await saveInputs(page);assert.equal(await run('items[0].inputValues.in8'),undefined);
- await run('undo()');assert.equal(await run('items[0].state.channels'),8);assert.equal(await run('items[0].inputValues.in8'),88);
+ await page.waitForFunction(()=>!document.querySelector('[aria-label="in3 value"]') && !document.querySelector('#componentBindingsSave').disabled);
+ await saveInputs(page);assert.equal(await run('items[0].inputValues.in7'),undefined);
+ await run('undo()');assert.equal(await run('items[0].state.channels'),8);assert.equal(await run('items[0].inputValues.in7'),88);
  await run('redo()');assert.equal(await run('items[0].state.channels'),3);
  const restored=await run('normalizeScene(JSON.parse(JSON.stringify(items)),{},4).items[0]');
- assert.equal(restored.state.channels,3);assert.equal(restored.inputValues.in1,11);
+ assert.equal(restored.state.channels,3);assert.equal(restored.inputValues.in0,11);
 }));
 
 test('stepped selector and distributor share pulses, wrap, reset, and work in offline HTML',async()=>app(async({page,run,context})=>{
  await seed(run,[{key:'trigger'},
- {key:'steppedSelectorNumber',state:{channels:3,configuredChannels:3},inputValues:{in1:10,in2:20,in3:30},bindings:{pulse:{uid:'ext-0',port:'value'}}},
+ {key:'steppedSelectorNumber',state:{channels:3,configuredChannels:3},inputValues:{in0:10,in1:20,in2:30},bindings:{pulse:{uid:'ext-0',port:'value'}}},
  {key:'steppedDistributorNumber',state:{channels:3,configuredChannels:3},inputValues:{value:99},bindings:{pulse:{uid:'ext-0',port:'value'}}}]);
- for(const expected of [2,3,1]){
+ for(const expected of [1,2,0]){
    await editorHandle(page,run,0,'trigger');
    await page.waitForFunction(expected=>__test.run('items[1].state.position')===expected,expected);
-   assert.deepEqual(await outputs(run,1),{value:expected*10,position:expected});
+   assert.deepEqual(await outputs(run,1),{value:(expected+1)*10,position:expected});
    const routed=await outputs(run,2);assert.equal(routed.position,expected);
-   for(let n=1;n<=3;n++)assert.equal(routed['out'+n],n===expected?99:0);
+   for(let n=0;n<3;n++)assert.equal(routed['out'+n],n===expected?99:0);
    await page.waitForFunction(()=>__test.run('items[0].state.value')===false);
  }
  const {preview,errors,requests}=await openExport(page,run,context);
- await readerText(preview,1,'Channel 1 / 3');
+ await readerText(preview,1,'Channel 0 · 3 channels');
  const point=await run(`(async()=>(await requestSmartCall(items[0],'handles',[items[0].state,items[0].w,items[0].h,smartResolvedStyle(items[0])])).find(h=>h.id==='trigger'))()`);
- await readerClick(preview,0,point);await readerText(preview,1,'Channel 2 / 3');await readerText(preview,2,'Channel 2 / 3');
+ await readerClick(preview,0,point);await readerText(preview,1,'Channel 1 · 3 channels');await readerText(preview,2,'Channel 1 · 3 channels');
  assert.match(await preview.locator('[data-smart-index="1"]').textContent(),/Out: 20/);
- assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/2: 99/);
- await preview.reload();await readerText(preview,1,'Channel 1 / 3');
+ assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/1: 99/);
+ await preview.reload();await readerText(preview,1,'Channel 0 · 3 channels');
  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
  await inputDialog(page,run,1);await page.getByLabel('reset value',{exact:true}).selectOption('true');await saveInputs(page);
- assert.deepEqual(await outputs(run,1),{value:10,position:1});
+ assert.deepEqual(await outputs(run,1),{value:10,position:0});
 }));
 
 test('typed numeric entry snaps and accepts a maximum off the grid in editor and offline reader',async()=>app(async({page,run,context})=>{
@@ -173,13 +173,13 @@ test('dynamic port and settings metadata are bounded and invalid counts stay una
 
 test('shrinking a distributor keeps removed-output connections visible as unavailable',async()=>app(async({page,run})=>{
  await seed(run,[{key:'steppedDistributorBoolean',inputValues:{value:true}},
- {key:'statusIndicator',bindings:{value:{uid:'ext-0',port:'out4'}}}]);
+ {key:'statusIndicator',bindings:{value:{uid:'ext-0',port:'out3'}}}]);
  assert.deepEqual(await outputs(run,1),{value:false});
  await inputDialog(page,run,0);await page.getByLabel('Channels',{exact:true}).fill('2');await page.getByLabel('Channels',{exact:true}).press('Tab');
- await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && !document.querySelector('#componentOutputs').textContent.includes('out3'));
+ await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && !document.querySelector('#componentOutputs').textContent.includes('out2'));
  await saveInputs(page);
- assert.match((await outputs(run,1)).error,/Missing output out4/);
- assert.equal(await run('items[1].bindings.value.port'),'out4','removed output does not silently bind a different channel');
+ assert.match((await outputs(run,1)).error,/Missing output out3/);
+ assert.equal(await run('items[1].bindings.value.port'),'out3','removed output does not silently bind a different channel');
  await run('undo()');assert.deepEqual(await outputs(run,1),{value:false});
 }));
 

@@ -245,9 +245,25 @@ for(const authoringFeature of ['smartComponents','smartShapeAuthoring'])test(aut
   assert.equal(await page.locator('#libraryPlaceBtn').isEnabled(),true);
   assert.equal(await page.locator('#libraryKeepBtn').isDisabled(),true,'authoring restrictions also apply to catalog membership changes');
   await page.locator('#libraryPlaceBtn').click();await page.keyboard.press('Escape');
+  assert.deepEqual(await run('({tool:ui.tool,pending:ui.pendingShape})'),{tool:'select',pending:null},'Escape disarms the shape before the next canvas click');
   const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+1000,box.y+450);
+  await run('shapePlacementQueue');
   assert.equal(await run('items.length'),1,'Escape cancels catalog placement');
 },{features:{[authoringFeature]:false}}));
+
+test('Escape handled by the library picker also disarms placement without clearing an ordinary selection',async()=>app(async({page,run})=>{
+  const gauge=await place(page,run,'Gauge',600,250);await drawing(page,gauge.uid,'0%');
+  const selected=await run('selection');
+  await browse(page);await details(page,'Gauge');
+  await page.locator('#shapePicker').dispatchEvent('keydown',{key:'Escape',bubbles:true});
+  assert.deepEqual(await run('selection'),selected,'closing the picker keeps the existing selection');
+  await browse(page);await details(page,'Gauge');await page.locator('#libraryPlaceBtn').click();
+  // A picker-originating key must cancel too, even when the placement click has hidden it.
+  await page.locator('#shapePicker').dispatchEvent('keydown',{key:'Escape',bubbles:true});
+  assert.deepEqual(await run('({tool:ui.tool,pending:ui.pendingShape})'),{tool:'select',pending:null});
+  const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+1000,box.y+450);
+  await run('shapePlacementQueue');assert.equal(await run('items.length'),1);
+}));
 
 test('keeping entries roundtrips identity, category, tags, and working membership without replacing built-ins',async()=>app(async({page,run})=>{
   const imported={app:'SimpleCanvasShapeLibrary',version:2,workingCollection:[],shapes:[{

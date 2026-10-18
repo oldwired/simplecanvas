@@ -1,4 +1,4 @@
-// Shift all stages simultaneously on each observed rising pulse. Q1 receives the input.
+// Shift all stages simultaneously on each observed rising pulse. Q0 receives the input.
 // value aliases the last stage; shiftedOut holds the OLD final stage from the latest shift.
 // Cascade through value with a shared pulse: every register samples the old outputs together.
 ({
@@ -6,7 +6,7 @@
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
   inputs:{value:{type:'boolean',unknown:true},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}},
   outputs(state){
-    const ports={};for(let i=1;i<=this._stages(state);i++)ports['q'+i]={type:'boolean',unknown:true};
+    const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'boolean',unknown:true};
     return {...ports,value:{type:'boolean',unknown:true},shiftedOut:{type:'boolean',unknown:true}};
   },
   initState(){return {stages:4,configuredStages:4,cells:Array(4).fill(false),shiftedOut:false,showIndicators:true};},
@@ -41,7 +41,7 @@
   compute(inputs,state){this._validate(inputs,state);return this.publish(state);},
   publish(state){
     const {cells,shiftedOut}=this._snapshot(state),outputs={};
-    for(let i=0;i<cells.length;i++)outputs['q'+(i+1)]=cells[i];
+    for(let i=0;i<cells.length;i++)outputs['q'+i]=cells[i];
     return {...outputs,value:cells[cells.length-1],shiftedOut};
   },
   _caption(name,fallback,w,h,style){
@@ -65,7 +65,7 @@
     const stages=Number.isInteger(state.stages)&&state.stages>=1&&state.stages<=16?state.stages:4;
     const rawInputs=io.inputs||{},rawOutputs=io.outputs||{},scale=Math.min(w/440,h/240);
     const available=!io.error&&this._valid(rawInputs.value)&&typeof rawInputs.pulse==='boolean'&&typeof rawInputs.reset==='boolean'&&
-      this._valid(rawOutputs.value)&&this._valid(rawOutputs.shiftedOut)&&Array.from({length:stages},(_,i)=>rawOutputs['q'+(i+1)]).every(value=>this._valid(value));
+      this._valid(rawOutputs.value)&&this._valid(rawOutputs.shiftedOut)&&Array.from({length:stages},(_,i)=>rawOutputs['q'+i]).every(value=>this._valid(value));
     const inputs=available?rawInputs:{},outputs=available?rawOutputs:{};
     const label=value=>!this._valid(value)?'—':value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):String(value).length<=8?String(value):Number(value.toPrecision(3)).toString();
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
@@ -74,7 +74,7 @@
     const children=[
       {...text('',w*.04,0,w*.92,h*.15,16,'left'),...this._caption(io.name,'Shift register',w*.92,h*.15,{...style,fontSize:16*scale})},
       {...text('',w*.01,h*.15,w*.29,h*.07,10),...this._caption('In: '+label(inputs.value),'In: —',w*.29,h*.07,{...style,fontSize:10*scale})},
-      {...text('',w*.31,h*.15,w*.34,h*.07,10),...this._caption('Q'+stages+' / value: '+label(outputs.value),'Q'+stages+' / value: —',w*.34,h*.07,{...style,fontSize:10*scale})},
+      {...text('',w*.31,h*.15,w*.34,h*.07,10),...this._caption('Q'+(stages-1)+' / value: '+label(outputs.value),'Q'+(stages-1)+' / value: —',w*.34,h*.07,{...style,fontSize:10*scale})},
       {...text('',w*.66,h*.15,w*.33,h*.07,10),...this._caption('Shifted out: '+label(outputs.shiftedOut),'Shifted out: —',w*.33,h*.07,{...style,fontSize:10*scale})}
     ];
     const rows=stages>8?2:1,columns=Math.min(stages,8),spacing=w*.76/columns,cellW=Math.min(62*scale,spacing*.78),cellH=h*(rows===1?.20:.135);
@@ -87,11 +87,11 @@
     const first=center(0),last=center(stages-1);
     children.push(...arrow(w*.02,first.y,first.x-cellW/2),...arrow(last.x+cellW/2,last.y,w*.98));
     for(let i=0;i<stages;i++){
-      const {x,y}=center(i),value=outputs['q'+(i+1)],left=x-cellW/2,top=y-cellH/2;
+      const {x,y}=center(i),value=outputs['q'+i],left=x-cellW/2,top=y-cellH/2;
       if(i>0 && i%columns!==0){const previous=center(i-1);children.push(...arrow(previous.x+cellW/2,y,left));}
       children.push(
         {type:'rect',x:left,y:top,w:cellW,h:cellH,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
-        text('Q'+(i+1),left,y-cellH/2-h*.08,cellW,h*.07,10),
+        text('Q'+i,left,y-cellH/2-h*.08,cellW,h*.07,10),
         {...text('',left,top,cellW,cellH*(state.showIndicators===false?1:.67),15),...this._caption(label(value),'—',cellW+8,cellH*(state.showIndicators===false?1:.67),{...style,fontSize:15*scale})}
       );
       if(state.showIndicators!==false)led(x,y+cellH*.30,value,Math.min(3*scale,cellW*.09));

@@ -111,8 +111,8 @@ test('typed shift registers cascade on the same pulse without skipping the old t
     const values=sequences[index],empty=empties[index];
     for(const [step,sample] of result.samples.entries()){
       const at=offset=>step-offset>=0?values[step-offset]:empty;
-      assert.deepEqual(sample.first,{q1:at(0),q2:at(1),value:at(1),shiftedOut:at(2)},result.key+' first register pulse '+step);
-      assert.deepEqual(sample.second,{q1:at(2),q2:at(3),value:at(3),shiftedOut:at(4)},result.key+' cascaded pulse '+step);
+      assert.deepEqual(sample.first,{q0:at(0),q1:at(1),value:at(1),shiftedOut:at(2)},result.key+' first register pulse '+step);
+      assert.deepEqual(sample.second,{q0:at(2),q1:at(3),value:at(3),shiftedOut:at(4)},result.key+' cascaded pulse '+step);
       assert.ok(sample.error.every(error=>error===''));
     }
     assert.deepEqual(result.pure,{unchanged:true,transitions:0});
@@ -140,9 +140,9 @@ test('Inputs configures stages and parallel outputs; Trigger samples data and sa
   await page.locator('#componentNameInput').fill('Shift history');await page.locator('#componentBindingsSave').click();
   await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);await editorCells(page,[false,false,false]);
   const ports=await run('requestSmartCaps(items[2])');
-  assert.deepEqual(Object.keys(ports.outputs),['q1','q2','q3','value','shiftedOut']);
+  assert.deepEqual(Object.keys(ports.outputs),['q0','q1','q2','value','shiftedOut']);
   await run('selection=[3];render()');await page.locator('#componentBindingsBtn').click();
-  await page.locator('#componentInputFields .component-input select').first().selectOption(JSON.stringify({uid:'shift-ui-2',port:'q2'}));
+  await page.locator('#componentInputFields .component-input select').first().selectOption(JSON.stringify({uid:'shift-ui-2',port:'q1'}));
   await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
   const toggle=await editorHandle(page,run,0,'toggle');await editorCells(page,[false,false,false]);
   const pulse=await editorHandle(page,run,1,'trigger');await editorCells(page,[true,false,false]);
@@ -163,8 +163,8 @@ test('Inputs configures stages and parallel outputs; Trigger samples data and sa
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===4);
   assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/Shift history/);
-  // The bound q2 indicator exposes the register's parallel output through real SVG paint.
-  const readerQ2=async on=>preview.waitForFunction(on=>{
+  // The bound q1 indicator exposes the register's parallel output through real SVG paint.
+  const readerQ1=async on=>preview.waitForFunction(on=>{
     const host=document.querySelector('[data-smart-index="3"]');
     return [...(host?.querySelectorAll('ellipse')||[])].some(ellipse=>ellipse.getAttribute('fill')===(on?'#15803d':'#64748b'));
   },on);
@@ -172,14 +172,14 @@ test('Inputs configures stages and parallel outputs; Trigger samples data and sa
     const register=document.querySelector('[data-smart-index="2"]'),pulse=document.querySelector('[data-smart-index="1"]');
     const text=[...(register?.querySelectorAll('text')||[])].map(element=>element.textContent);
     return register?.dataset.smartReady==='true' && /Output:\s*false/.test(pulse?.textContent||'') &&
-      expected.every((value,index)=>text[text.indexOf('Q'+(index+1))+1]===(value?'1':'0'));
+      expected.every((value,index)=>text[text.indexOf('Q'+index)+1]===(value?'1':'0'));
   },expected);
-  await readerCells([true,true,false]);await readerQ2(true);
-  await readerClick(preview,2,reset);await readerCells([false,false,false]);await readerQ2(false);
-  await readerClick(preview,1,pulse);await readerCells([true,false,false]);await readerQ2(false);
-  await readerClick(preview,1,pulse);await readerCells([true,true,false]);await readerQ2(true);
+  await readerCells([true,true,false]);await readerQ1(true);
+  await readerClick(preview,2,reset);await readerCells([false,false,false]);await readerQ1(false);
+  await readerClick(preview,1,pulse);await readerCells([true,false,false]);await readerQ1(false);
+  await readerClick(preview,1,pulse);await readerCells([true,true,false]);await readerQ1(true);
   await readerClick(preview,1,pulse);await readerCells([true,true,true]);
   await readerClick(preview,0,toggle);await readerClick(preview,1,pulse);await readerCells([false,true,true]);
-  await preview.reload();await readerCells([true,true,false]);await readerQ2(true);
+  await preview.reload();await readerCells([true,true,false]);await readerQ1(true);
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));

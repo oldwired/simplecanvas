@@ -1,9 +1,11 @@
 // Select an embedded dataset for Data in Inputs. Rows remain in the document's dataset store.
 ({
   apiVersion:2,
-  inputs:{data:{type:'table'}},
+  settings:{allowReaderImport:{type:'boolean',default:false,label:'Allow data replacement'}},
+  inputs:{data:{type:'table'},reload:{type:'boolean',default:false}},
+  dataActions:{reload:{type:'reloadDataset',input:'data',trigger:'reload'}},
   outputs:{data:{type:'table'},rowCount:{type:'number'}},
-  initState(){return {};},
+  initState(){return {allowReaderImport:false};},
   initStyle(){return {w:300,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
   compute(inputs,state,context={}){
     const table=context.tables?.data;
@@ -31,8 +33,13 @@
     const count=io.outputs.rowCount,columnCount=table.columns.length;
     children.push(text(table.name||'Embedded data',pad,43*scale,w-pad*2,20*scale,13));
     children.push(text(count+' '+(count===1?'row':'rows')+' · '+columnCount+' '+(columnCount===1?'column':'columns'),pad,72*scale,w-pad*2,25*scale,18,undefined,600));
-    children.push(text(table.columns.map(column=>column.name).join(' · '),pad,h-30*scale,w-pad*2,18*scale,11,'#64748b'));
+    if(state.allowReaderImport===true){
+      children.push({type:'rect',x:pad,y:h-40*scale,w:w-pad*2,h:28*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1});
+      children.push(text('Load data…',pad+10*scale,h-35*scale,w-pad*2-20*scale,20*scale,13,'#3730a3',600));
+    }else children.push(text(table.columns.map(column=>column.name).join(' · '),pad,h-30*scale,w-pad*2,18*scale,11,'#64748b'));
     return children;
   },
+  handles(state,w,h){return state.allowReaderImport===true?[{id:'loadData',kind:'action',x:w/2,y:h-26*Math.min(w/300,h/150),action:{type:'importDataset',input:'data'}}]:[];},
+  hitEdit(state,x,y,w,h){const scale=Math.min(w/300,h/150);return state.allowReaderImport===true && x>=12*scale && x<=w-12*scale && y>=h-40*scale && y<=h-12*scale?'loadData':null;},
   unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}
 })

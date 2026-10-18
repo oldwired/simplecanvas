@@ -4,7 +4,7 @@
   apiVersion:2,
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
   inputs:{clock:{type:'boolean',default:false},enable:{type:'boolean',default:true},reset:{type:'boolean',default:false}},
-  outputs(state){const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+(i+1)]={type:'boolean'};return {...ports,position:{type:'number'}};},
+  outputs(state){const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'boolean'};return {...ports,position:{type:'number'}};},
   initState(){return {stages:4,configuredStages:4,position:0,showIndicators:true};},
   initStyle(){return {w:400,h:230,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _stages(state){if(!Number.isInteger(state.stages)||state.stages<1||state.stages>16)throw new Error('Stages must be an integer from 1 to 16');return state.stages;},
@@ -13,7 +13,7 @@
     if(!Number.isInteger(state.configuredStages)||state.configuredStages<1||state.configuredStages>16||!Number.isInteger(state.position)||state.position<0||state.position>=state.configuredStages)throw new Error('Invalid stored counter position');
     return {stages,position:state.configuredStages===stages?state.position:0};
   },
-  publish(state){const {stages,position}=this._snapshot(state),outputs={};for(let i=0;i<stages;i++)outputs['q'+(i+1)]=i===position;return {...outputs,position};},
+  publish(state){const {stages,position}=this._snapshot(state),outputs={};for(let i=0;i<stages;i++)outputs['q'+i]=i===position;return {...outputs,position};},
   _validate(inputs){if(typeof inputs.clock!=='boolean'||typeof inputs.enable!=='boolean'||typeof inputs.reset!=='boolean')throw new Error('Clock, enable and reset must be Boolean');},
   compute(inputs,state){this._validate(inputs);return this.publish(state);},
   transition(inputs,state,memory){
@@ -49,7 +49,7 @@
       text('One-hot ring'+(Number.isInteger(outputs.position)?' · '+outputs.position:''),w*.10,h*.21,w*.80,h*.11,13)];
     const rows=count>8?2:1,columns=Math.min(count,8),spacing=w*.82/columns;
     for(let i=0;i<count;i++){
-      const key='q'+(i+1),value=outputs[key],x=w*.09+spacing*((i%columns)+.5),y=h*(rows===1?.48:Math.floor(i/columns)===0?.42:.62),radius=Math.min(spacing*.17,10*scale);
+      const key='q'+i,value=outputs[key],x=w*.09+spacing*((i%columns)+.5),y=h*(rows===1?.48:Math.floor(i/columns)===0?.42:.62),radius=Math.min(spacing*.17,10*scale);
       children.push(text(key.toUpperCase(),x-spacing*.43,y-h*.095,spacing*.86,h*.085,10));
       if(state.showIndicators!==false)children.push({type:'ellipse',x:x-radius,y:y-radius*.1,w:radius*2,h:radius*2,fill:true,fillColor:typeof value==='boolean'?(value?'#15803d':'#e2e8f0'):'#fbbf24',strokeOn:true,color:typeof value==='boolean'?'#64748b':'#b45309',size:Math.max(.5,scale)});
       else children.push(text(typeof value==='boolean'?(value?'1':'0'):'—',x-spacing*.43,y,spacing*.86,h*.085,12));

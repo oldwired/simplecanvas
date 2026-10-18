@@ -81,12 +81,28 @@ async function svgRenderings(page,run){
     paths:[...host.querySelectorAll('path')].map(path=>path.getAttribute('d'))
   })),svg);
 }
+async function drawingDiagnostics(page){
+  return page.evaluate(()=>__test.run(`({
+    missing:items.filter(item=>!smartChildrenCache.has(item.uid)).map(item=>({uid:item.uid,name:item.componentName,
+      componentError:editorComponentEvaluation?.records?.get(item)?.error,drawingError:smartDrawingErrors.get(item.uid),
+      inFlight:smartInFlight.has(item.uid),backoff:smartBackoffUntil.get(item.uid)})),
+    current:selection.map(index=>{const item=items[index];return {uid:item?.uid,name:item?.componentName,
+      cachedText:smartChildrenCache.get(item?.uid)?.kids.filter(child=>child.type==='text').map(child=>child.text),
+      componentError:editorComponentEvaluation?.records?.get(item)?.error,drawingError:smartDrawingErrors.get(item?.uid),
+      inFlight:smartInFlight.has(item?.uid),backoff:smartBackoffUntil.get(item?.uid)};}),
+    graphReady:!!editorComponentEvaluation?.records,graphLive:editorComponentEvaluation?.live,
+    timeline:{active:editorTimeline?.active,paused:editorTimeline?.pausedByUser,deadline:editorTimeline?.deadline,now:editorTimeline&&componentTimelineNow(editorTimeline)},
+    requests:[...smartSandboxPending.values()].map(request=>({fn:request.message?.fn,owner:request.owner?.subject?.componentName})),
+    runtime:smartRuntimeStats
+  })`)).catch(()=>null);
+}
 async function settledDrawings(page){
-  await page.waitForFunction(()=>__test.run('items.every(item=>smartChildrenCache.has(item.uid))'));
+  try{await page.waitForFunction(()=>__test.run('items.every(item=>smartChildrenCache.has(item.uid))'));}
+  catch(error){throw new Error(error.message+'\nDrawing diagnostics: '+JSON.stringify(await drawingDiagnostics(page)));}
 }
 
-const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
-  dataSource:'data-source.js',tableFilter:'table-filter.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
+const sourceFiles={dropdown:'dropdown.js',textLookup:'text-lookup.js',numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
+  dataSource:'data-source.js',tableFilter:'table-filter.js',tableSort:'table-sort.js',tableAggregate:'table-aggregate.js',dataDownload:'data-download.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
   delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
@@ -441,8 +457,8 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
       numberFunction:{value:-7.5,operation:'abs'},pulseGenerator:{seconds:60,width:.1,enable:false},edgePulse:{value:false,edge:'rising',seconds:.1},
       selectorNumber:{a:12,b:24,select:false},selectorBoolean:{a:false,b:true,select:false},
-      steppedSelectorNumber:{in1:10,in2:20,in3:30,in4:40,pulse:false,reset:false},
-      steppedSelectorBoolean:{in1:false,in2:true,in3:false,in4:true,pulse:false,reset:false},
+      steppedSelectorNumber:{in0:10,in1:20,in2:30,in3:40,pulse:false,reset:false},
+      steppedSelectorBoolean:{in0:false,in1:true,in2:false,in3:true,pulse:false,reset:false},
       steppedDistributorNumber:{value:12,pulse:false,reset:false},steppedDistributorBoolean:{value:true,pulse:false,reset:false}
     };
     items=definitions.map((definition,index)=>({
@@ -453,6 +469,11 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
       ])),...validInputs[definition.key]}
     }));setTool('select');selection=[];render();save();return definitions.map(definition=>definition.key);
   })()`);
+  // This checks captions across the whole catalog, not wall-clock behavior. Keep the
+  // clock/random/sample-hold sources from invalidating queued drawing replies while
+  // the test renames every component. Timed behavior has its own focused regressions.
+  await page.locator('#componentPauseBtn').click();
+  await page.waitForFunction(()=>__test.run('editorTimeline?.pausedByUser===true'));
   await settledDrawings(page);
   const names=definitions.map((key,index)=>'Label '+String(index+1).padStart(2,'0'));
   for(const [index,name] of names.entries()){
@@ -460,7 +481,7 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
     await page.locator('#componentNameInput').fill(name);await page.locator('#componentBindingsSave').click();
     await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
     await page.waitForFunction(({index,name})=>__test.run(`smartChildrenCache.get(items[${index}].uid)?.kids.some(child=>child.text===${JSON.stringify(name)})`),{index,name},{timeout:10000})
-      .catch(()=>{throw new Error(definitions[index]+' did not repaint its custom instance name');});
+      .catch(async()=>{throw new Error(definitions[index]+' did not repaint its custom instance name\nDrawing diagnostics: '+JSON.stringify(await drawingDiagnostics(page)));});
   }
   const painted=await page.evaluate(()=>{
     const captions=[],original=CanvasRenderingContext2D.prototype.fillText;
@@ -472,6 +493,8 @@ test('every API2 catalog component can show its instance name in canvas, SVG, an
   assert.equal(svg.length,names.length);
   for(const [index,name] of names.entries())assert.ok(svg[index].text.includes(name),definitions[index]+' exports its custom name to SVG');
   const {preview,errors,requests}=await openExport(page,run,context);
+  await preview.locator('#feedbackPause').click();
+  await preview.waitForFunction(()=>document.querySelector('#feedbackPause')?.getAttribute('aria-pressed')==='true');
   await preview.waitForFunction(count=>document.querySelectorAll('[data-smart-ready="true"]').length===count,names.length);
   const readerText=await preview.locator('[data-smart-index]').allTextContents();
   assert.equal(readerText.length,names.length);

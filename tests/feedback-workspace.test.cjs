@@ -79,7 +79,7 @@ test('shipped shared-edge storage and feedback sequences sample the previous sna
   `);
   assert.deepEqual(sampled,[[false,false,0],[true,false,27],[true,true,27],[false,false,0]]);
   const sequences=await fixture(run,14,`
-    const snapshots=[];for(let n=0;n<10;n++){await press('clock');snapshots.push({ring:[output('ring').q1,output('ring').q2,output('ring').q3,output('ring').q4],johnson:item('johnson').state.cells,position:output('decade').position});}return snapshots;
+    const snapshots=[];for(let n=0;n<10;n++){await press('clock');snapshots.push({ring:[output('ring').q0,output('ring').q1,output('ring').q2,output('ring').q3],johnson:item('johnson').state.cells,position:output('decade').position});}return snapshots;
   `);
   assert.deepEqual(sequences[0],{ring:[false,true,false,false],johnson:[true,false,false,false],position:1});
   assert.deepEqual(sequences[3],{ring:[true,false,false,false],johnson:[true,true,true,true],position:4});

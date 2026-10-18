@@ -130,12 +130,12 @@ test('matrix row inputs render the correct 64 positions and enable works offline
   }));items[0].state.value=129;items[1].state.value=true;setTool('select');selection=[];render();save();`);
   await openInputs(page,run,2);
   await page.getByLabel('Input mode',{exact:true}).selectOption('rows');
-  await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && document.querySelector('[aria-label="r1 value"]'));
-  await page.getByLabel('r1 (number)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-0',port:'value'}));
-  await page.getByLabel('r8 value',{exact:true}).fill('1');
+  await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && document.querySelector('[aria-label="r0 value"]'));
+  await page.getByLabel('r0 (number)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-0',port:'value'}));
+  await page.getByLabel('r7 value',{exact:true}).fill('1');
   await page.getByLabel('enable (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-1',port:'value'}));
   await saveInputs(page);
-  assert.deepEqual(await output(run,2),{r1:129,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0,r8:1});
+  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:1});
   const handle=await editorHandle(page,run,1,'toggle');assert.ok(Object.values(await output(run,2)).every(value=>value===0));
   await editorHandle(page,run,1,'toggle');
   const {preview,errors,requests}=await openExport(page,run,context);await readerLit(preview,2,3);
@@ -145,13 +145,13 @@ test('matrix row inputs render the correct 64 positions and enable works offline
   assert.equal(dots.length,64);
   const xs=[...new Set(dots.map(dot=>dot.x))].sort((a,b)=>a-b),ys=[...new Set(dots.map(dot=>dot.y))].sort((a,b)=>a-b);
   assert.equal(xs.length,8);assert.equal(ys.length,8);
-  assert.deepEqual(dots.filter(dot=>dot.on).map(dot=>[ys.indexOf(dot.y)+1,xs.indexOf(dot.x)+1]).sort(),[[1,1],[1,8],[8,8]],'MSB is the left LED and r1 is the top row');
+  assert.deepEqual(dots.filter(dot=>dot.on).map(dot=>[ys.indexOf(dot.y),xs.indexOf(dot.x)]).sort(),[[0,0],[0,7],[7,7]],'MSB is the left LED and r0 is the top row');
   assert.match(await preview.locator('[data-smart-index="2"]').textContent(),/My matrix/);
   await readerClick(preview,1,handle);await readerLit(preview,2,0);
   await readerClick(preview,1,handle);await readerLit(preview,2,3);
   await preview.reload();await readerLit(preview,2,3);
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
-  await page.reload();await run('appStarted');assert.equal((await output(run,2)).r1,129);
+  await page.reload();await run('appStarted');assert.equal((await output(run,2)).r0,129);
 }));
 
 test('matrix Boolean mode shows all crossings and switches cleanly to row values',async()=>app(async({page,run,context})=>{
@@ -162,13 +162,13 @@ test('matrix Boolean mode shows all crossings and switches cleanly to row values
   assert.equal(await run('items[2].state.mode'),'boolean');
   await openInputs(page,run,2);
   assert.deepEqual(await page.getByLabel('Input mode',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value)),['boolean','rows']);
-  await page.getByLabel('row1 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-0',port:'value'}));
-  await page.getByLabel('col8 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-1',port:'value'}));
-  await page.getByLabel('row8 value',{exact:true}).selectOption('true');
-  await page.getByLabel('col1 value',{exact:true}).selectOption('true');await saveInputs(page);
-  assert.deepEqual(await output(run,2),{r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0,r8:129});
+  await page.getByLabel('row0 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-0',port:'value'}));
+  await page.getByLabel('col7 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-1',port:'value'}));
+  await page.getByLabel('row7 value',{exact:true}).selectOption('true');
+  await page.getByLabel('col0 value',{exact:true}).selectOption('true');await saveInputs(page);
+  assert.deepEqual(await output(run,2),{r0:0,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129});
   const rowHandle=await editorHandle(page,run,0,'toggle');
-  assert.deepEqual(await output(run,2),{r1:129,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0,r8:129});
+  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129});
   const colHandle=await run(`(async()=>{
     const it=items[1];return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it)])).find(handle=>handle.id==='toggle');
   })()`);
@@ -178,17 +178,17 @@ test('matrix Boolean mode shows all crossings and switches cleanly to row values
   assert.deepEqual(scanned.errors,[]);assert.deepEqual(scanned.requests,[]);
 
   await openInputs(page,run,2);await page.getByLabel('Input mode',{exact:true}).selectOption('rows');
-  await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && document.querySelector('[aria-label="r1 value"]'));
-  await page.getByLabel('r1 value',{exact:true}).fill('255');await saveInputs(page);
+  await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && document.querySelector('[aria-label="r0 value"]'));
+  await page.getByLabel('r0 value',{exact:true}).fill('255');await saveInputs(page);
   assert.deepEqual(await run('Object.keys(items[2].bindings)'),[],'changing modes removes obsolete Boolean assignments');
-  assert.deepEqual(await output(run,2),{r1:255,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0,r8:0});
+  assert.deepEqual(await output(run,2),{r0:255,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0});
   const rows=await openExport(page,run,context);await readerLit(rows.preview,2,8);
   assert.deepEqual(rows.errors,[]);assert.deepEqual(rows.requests,[]);
 }));
 
 test('invalid display inputs stay visibly unavailable and do not affect a healthy display',async()=>app(async({run})=>{
   const result=await run(`(async()=>{
-    const fixtures=[['sevenSegmentDisplay',{value:10}],['ledMatrix',{r1:256},{mode:'rows'}],['sevenSegmentDisplay',{value:0}]];
+    const fixtures=[['sevenSegmentDisplay',{value:10}],['ledMatrix',{r0:256},{mode:'rows'}],['sevenSegmentDisplay',{value:0}]];
     const list=fixtures.map(([key,inputValues,state],i)=>{const item=clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===key).items[0]);return {...item,uid:'invalid-display-'+i,inputValues,state:state||item.state};});
     const graph=await inspectComponentGraph(list,()=>true),records=[];
     // These fixtures are detached from the active scene; render their script with the

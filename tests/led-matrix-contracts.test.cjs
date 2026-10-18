@@ -6,11 +6,11 @@ const vm=require('node:vm');
 
 const matrix=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','examples','led-matrix.js'),'utf8'));
 const plain=value=>JSON.parse(JSON.stringify(value));
-const rowInputs=(rows=Array(8).fill(0),enable=true)=>Object.fromEntries(rows.map((value,index)=>['r'+(index+1),value]).concat([['enable',enable]]));
+const rowInputs=(rows=Array(8).fill(0),enable=true)=>Object.fromEntries(rows.map((value,index)=>['r'+index,value]).concat([['enable',enable]]));
 const booleanInputs=(rows=Array(8).fill(false),columns=Array(8).fill(false),enable=true)=>Object.fromEntries([
-  ...rows.map((value,index)=>['row'+(index+1),value]),...columns.map((value,index)=>['col'+(index+1),value]),['enable',enable]
+  ...rows.map((value,index)=>['row'+index,value]),...columns.map((value,index)=>['col'+index,value]),['enable',enable]
 ]);
-const expected=rows=>Object.fromEntries(rows.map((value,index)=>['r'+(index+1),value]));
+const expected=rows=>Object.fromEntries(rows.map((value,index)=>['r'+index,value]));
 const compute=(values,mode='rows')=>matrix.compute(values,{mode});
 const draw=(values,mode='rows',extra={})=>{
   const style=matrix.initStyle(),state={mode};
@@ -23,13 +23,13 @@ test('LED matrix defaults to Boolean rows/columns with two separate typed input 
   assert.deepEqual(plain(matrix.initState()),{mode:'boolean'});
   assert.deepEqual(plain(matrix.settings),{mode:{type:'string',default:'boolean',options:['boolean','rows'],label:'Input mode'}});
   assert.deepEqual(plain(matrix.inputs({mode:'boolean'})),{
-    ...Object.fromEntries(['row','col'].flatMap(prefix=>Array.from({length:8},(_,index)=>[prefix+(index+1),{type:'boolean',default:false}]))),
+    ...Object.fromEntries(['row','col'].flatMap(prefix=>Array.from({length:8},(_,index)=>[prefix+index,{type:'boolean',default:false}]))),
     enable:{type:'boolean',default:true}
   });
   assert.deepEqual(plain(matrix.inputs({mode:'rows'})),{
-    ...Object.fromEntries(Array.from({length:8},(_,index)=>['r'+(index+1),{type:'number',default:0}])),enable:{type:'boolean',default:true}
+    ...Object.fromEntries(Array.from({length:8},(_,index)=>['r'+index,{type:'number',default:0}])),enable:{type:'boolean',default:true}
   });
-  assert.deepEqual(plain(matrix.outputs),Object.fromEntries(Array.from({length:8},(_,index)=>['r'+(index+1),{type:'number'}])));
+  assert.deepEqual(plain(matrix.outputs),Object.fromEntries(Array.from({length:8},(_,index)=>['r'+index,{type:'number'}])));
   for(const mode of ['boolean','rows'])assert.ok(Object.keys(matrix.inputs({mode})).length<=32);
   assert.equal(matrix.transition,undefined);assert.equal(matrix.refreshMs,undefined,'a static matrix needs no polling');
 });
@@ -67,22 +67,22 @@ test('all Boolean and row-byte pixels map left to right and top to bottom',()=>{
 });
 
 test('all input modes reject malformed values even when disabled',()=>{
-  for(const row of ['r1','r4','r8'])for(const value of [-1,256,1.5,NaN,Infinity,-Infinity,'1',true,null,undefined]){
+  for(const row of ['r0','r3','r7'])for(const value of [-1,256,1.5,NaN,Infinity,-Infinity,'1',true,null,undefined]){
     for(const enable of [true,false])assert.throws(()=>compute({...rowInputs(),[row]:value,enable}),/whole number from 0 to 255/);
   }
-  for(const key of ['row1','row8','col1','col8'])for(const value of [0,1,'true',null,undefined]){
+  for(const key of ['row0','row7','col0','col7'])for(const value of [0,1,'true',null,undefined]){
     for(const enable of [true,false])assert.throws(()=>compute({...booleanInputs(),[key]:value,enable},'boolean'),/must be Boolean/);
   }
   for(const [values,mode] of [[rowInputs(),'rows'],[booleanInputs(),'boolean']]){
     for(const enable of [0,1,'true',null,undefined])assert.throws(()=>compute({...values,enable},mode),/enable must be Boolean/);
   }
-  const missing=rowInputs();delete missing.r5;assert.throws(()=>compute(missing),/row r5/);
+  const missing=rowInputs();delete missing.r4;assert.throws(()=>compute(missing),/row r4/);
 });
 
 test('switching modes cannot reinterpret incompatible old inputs or mutate stored state',()=>{
   for(const mode of ['',undefined,'scan',0])assert.throws(()=>matrix.inputs({mode}),/input mode/);
-  assert.throws(()=>compute(rowInputs(),'boolean'),/row1 must be Boolean/);
-  assert.throws(()=>compute(booleanInputs(),'rows'),/row r1/);
+  assert.throws(()=>compute(rowInputs(),'boolean'),/row0 must be Boolean/);
+  assert.throws(()=>compute(booleanInputs(),'rows'),/row r0/);
   for(const [values,mode] of [[rowInputs([129,66,36,24,24,36,66,129]),'rows'],[booleanInputs(Array(8).fill(true),Array(8).fill(true)),'boolean']]){
     const state={mode,sentinel:7},before=JSON.stringify({values,state});
     const first=plain(matrix.compute(values,state));matrix.compute({...values,enable:false},state);
@@ -94,10 +94,10 @@ test('switching modes cannot reinterpret incompatible old inputs or mutate store
 test('captions and addressing labels adapt to each mode, while disabled data stays off',()=>{
   const rows=[129,66,36,24,24,36,66,129],children=draw(rowInputs(rows));
   assert.ok(children.some(child=>child.text==='Panel A'));assert.equal(active(children).length,16);
-  for(const label of ['128','64','32','16','8','4','2','1','R1','R8'])assert.ok(children.some(child=>child.text===label));
+  for(const label of ['128','64','32','16','8','4','2','1','R0','R7'])assert.ok(children.some(child=>child.text===label));
   for(const [values,mode] of [[booleanInputs(),'boolean']]){
     const view=draw(values,mode);
-    for(const label of ['C1','C8','R1','R8'])assert.ok(view.some(child=>child.text===label));
+    for(const label of ['C0','C7','R0','R7'])assert.ok(view.some(child=>child.text===label));
     assert.ok(view.some(child=>child.text==='On = row AND column'));
   }
   const disabled=draw(rowInputs(Array(8).fill(255),false));

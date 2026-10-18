@@ -405,8 +405,12 @@ test('importing a seventeenth dataset leaves existing sources, history and stora
   await seed(run,Array.from({length:17},(_,index)=>({...circuit[0],inputValues:{data:{datasetId:'set'+(index%16)}}})),pool);
   const before=await dataSnapshot(run);await openInputs(page,run,16);await importDataFile(page,'extra.csv','Boat,Points\nExtra,99');
   await page.waitForFunction(()=>/16 datasets/.test(document.querySelector('#componentBindingsError').textContent));
-  assert.deepEqual(await dataSnapshot(run),before);await page.locator('#componentBindingsCancel').click();await waitCount(page,0,3);
-  await waitCount(page,15,3);assert.equal(await run('editorComponentEvaluation.records.get(items[15]).io.outputs.rowCount'),3);
+  assert.deepEqual(await dataSnapshot(run),before);await page.locator('#componentBindingsCancel').click();
+  // dialog.close() queues its close event. The old graph can still look settled until
+  // that event clears the inspection session and starts the resumed evaluation.
+  const resumed=await page.waitForFunction(()=>__test.run(`!componentDialogSession && !componentBindingsDialog.open &&
+    editorComponentEvaluation?.records?.get(items[15])?.io.outputs`));
+  assert.equal((await resumed.jsonValue()).rowCount,3,'the resumed graph still exposes the original dataset');
 }));
 
 test('multiple datasets and multiple filters of one dataset remain independent, with schema-based Inputs choices',async()=>app(async({page,run})=>{
