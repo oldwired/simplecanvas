@@ -729,3 +729,20 @@ test('settings visibleWhen: the spreadsheet shows its dataset options only for G
    try{return await requestSmartCaps(it)?'accepted':'rejected';}catch(e){return 'rejected';}})()`);
  assert.equal(bad,'rejected','visibleWhen must refer to another declared setting');
 }));
+
+test('an edit-mode cell field grows to the right with long text and shrinks back to its cell',async()=>app(async({page,run})=>{
+ await run(`(async()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'sheet',x:80,y:120}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox(),cellW=await run('items[0].w/6');
+ await page.mouse.click(box.x+80+cellW*1.5,box.y+120+14);
+ const form=page.locator('[data-smart-inline-input]');await form.waitFor();
+ const width=()=>form.evaluate(f=>f.getBoundingClientRect().width);
+ const start=await width();assert.ok(Math.abs(start-cellW)<4,'starts at the cell width: '+start+' vs '+cellW);
+ await page.keyboard.type('=SUM(A1:A6)+AVERAGE(B1:B6)*ROUND(C2,2)');
+ await page.waitForFunction(w=>{const f=document.querySelector('[data-smart-inline-input]'),i=f.querySelector('input');return f.getBoundingClientRect().width>w*2&&i.scrollWidth<=i.clientWidth+1;},cellW);
+ const grown=await form.evaluate(f=>{const r=f.getBoundingClientRect(),i=f.querySelector('input');return {right:r.right,fits:i.scrollWidth<=i.clientWidth+1};});
+ assert.ok(grown.fits,'the whole formula is visible');assert.ok(grown.right<=await page.evaluate(()=>innerWidth),'never past the window edge');
+ await page.keyboard.press('Control+A');await page.keyboard.type('7');
+ await page.waitForFunction(w=>Math.abs(document.querySelector('[data-smart-inline-input]').getBoundingClientRect().width-w)<4,cellW);
+ await page.keyboard.press('Escape');
+}));

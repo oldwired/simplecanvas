@@ -1,13 +1,8 @@
-// Editable formula grid; optional live dataset area and typed dataset formula ports.
+// Editable formula grid; dataset ranges (INPUT with a range) and typed dataset formula ports.
 ({
   apiVersion:2,
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
-  settings:{source:{type:'string',default:'Cells',options:['Cells','Dataset'],label:'Grid source'},
-    dataRows:{type:'number',default:5,min:1,max:99,step:1,label:'Dataset rows shown',visibleWhen:{source:'Dataset'}},
-    dataColumns:{type:'number',default:3,min:1,max:26,step:1,label:'Dataset columns shown',visibleWhen:{source:'Dataset'}},
-    editDataset:{type:'boolean',default:false,label:'Edit dataset cells',visibleWhen:{source:'Dataset'}},
-    allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits',visibleWhen:{source:'Dataset',editDataset:true}}},
   _COLS:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   _key(c,r){return this._COLS[c]+(r+1);},
   _dims(state){
@@ -17,18 +12,31 @@
     return {cols,rows,weights};
   },
   _fits(cols,rows){return cols<=26&&rows<=99&&cols*rows+1+cols<=128;},
-  _region(state,dims=this._dims(state)){
-    const n=(v,f,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:f;
-    return state.source==='Dataset'?{cols:Math.min(dims.cols,n(state.dataColumns,3,26)),rows:Math.min(dims.rows,n(state.dataRows,5,99)+1)}:{cols:0,rows:0};
+  // =INPUT("name",A1:C6[,start][,"edit"|"edit,reader"]) in a cell outside the range declares a table
+  // input and shows it there: the first row holds the column names, the rows below the records from start
+  // (0-based). "edit" writes cells back to a Dataset-owned table, "reader" also in HTML. Sheets saved with
+  // the former Grid source: Dataset settings keep that area at A1 (input data, startRow).
+  _rc:new WeakMap(),
+  _regions(state){
+    if(this._rc.has(state))return this._rc.get(state);
+    const dims=this._dims(state),list=[];
+    if(state.source==='Dataset'){
+      const n=(v,f,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:f;
+      list.push({cell:null,port:'data',c1:0,r1:0,c2:Math.min(dims.cols,n(state.dataColumns,3,26))-1,r2:Math.min(dims.rows,n(state.dataRows,5,99)+1)-1,
+        start:{k:'fn',name:'INPUT',args:[{k:'str',v:'startRow'}]},edit:state.editDataset===true,reader:state.allowReaderEdit===true});
+    }
+    for(const [k,src] of Object.entries(state.cells||{})){
+      if(typeof src!=='string'||!/^=\s*INPUT\s*\(/i.test(src))continue;
+      let n;try{n=this._parse(src.slice(1),dims);}catch{continue;}
+      const a=n.k==='fn'&&n.name==='INPUT'?n.args:[],port=a[0]?.k==='str'?a[0].v:null;
+      if(!port||a[1]?.k!=='range'||a.length>4)continue;
+      const opt=a.length===3&&a[2].k==='str'?a[2]:a[3],o=opt?.k==='str'?opt.v.toLowerCase():'';
+      list.push({cell:k,port:this._port(port),c1:a[1].c1,r1:a[1].r1,c2:a[1].c2,r2:a[1].r2,start:opt===a[2]?null:a[2]||null,edit:/edit/.test(o),reader:/reader/.test(o)});
+    }
+    this._rc.set(state,list);return list;
   },
-  _reserved(state,c,r){const q=this._region(state);return c>=0&&r>=0&&c<q.cols&&r<q.rows;},
-  configure(state,previous){
-    if(state.source!=='Dataset'||['source','dataRows','dataColumns'].every(k=>state[k]===previous[k]))return null;
-    let conflict=Object.entries(state.cells||{}).some(([k,v])=>v!==''&&/^[A-Z][1-9]\d?$/.test(k)&&this._reserved(state,this._COLS.indexOf(k[0]),+k.slice(1)-1));
-    const cleared={...state,cells:{},formats:{},aligns:{}};
-    try{this.inputs(state);this.outputs(state);}catch{try{this.inputs(cleared);this.outputs(cleared);conflict=true;}catch{}}
-    return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Edit keeps the original sheet.'}:null;
-  },
+  _regionAt(state,c,r){return this._regions(state).find(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)||null;},
+  _reserved(state,c,r){return !!this._regionAt(state,c,r);},
   // OUTPUT(A1:C4,"name"[,"string,number,..."]): the range's first row names the columns, the rows below
   // are the records; column types follow the cells or the third argument. With "col:type,..." there the
   // whole range is records (e.g. a dataset area, whose header is not cell text).
@@ -84,7 +92,8 @@
     if(this._fits(cols+1,rows+1)){cols++;rows++;}
     else if(this._fits(cols,rows+1))rows++;
     else if(this._fits(cols+1,rows))cols++;
-    const next={...state,source:'Cells',cols,rows,cells};
+    const next={...state,cols,rows,cells};
+    for(const key of ['source','dataRows','dataColumns','editDataset','allowReaderEdit'])delete next[key];
     for(const key of ['formats','aligns','weights'])delete next[key];
     if(JSON.stringify(next).length>3900)throw new Error('Dataset text exceeds the editable grid storage limit (4,000 characters). Filter it or use a live dataset instead.');
     const old=this._dims(state),L=this._layout(w,h,old);
@@ -189,9 +198,9 @@
     return ['number','string','boolean'].includes(type)?type:null;
   },
   _analysis(state){
-    const dims=this._dims(state),region=this._region(state,dims),cells={...(state.cells||{})};
-    for(let r=0;r<region.rows;r++)for(let c=0;c<region.cols;c++)delete cells[this._key(c,r)];
-    return {state,cells,dims,region,trees:new Map(),types:new Map(),typeBusy:new Set(),nodeTypes:new WeakMap(),inputCells:new Map(),inputBusy:new Set(),inputNodes:new WeakMap()};
+    const dims=this._dims(state),cells={...(state.cells||{})};
+    for(const g of this._regions(state))for(let r=g.r1;r<=g.r2;r++)for(let c=g.c1;c<=g.c2;c++)delete cells[this._key(c,r)];
+    return {state,cells,dims,trees:new Map(),types:new Map(),typeBusy:new Set(),nodeTypes:new WeakMap(),inputCells:new Map(),inputBusy:new Set(),inputNodes:new WeakMap()};
   },
   _tree(k,ctx){
     if(ctx.trees.has(k))return ctx.trees.get(k);
@@ -254,7 +263,7 @@
             for(let r=t.r1;r<=t.r2;r++)for(let c=c1;c<=c2;c++)types.push(this._cellType(this._key(c,r),ctx));
             return this._joinTypes(types);
           }
-          if(f==='INPUT')return this._inputType(node)||'error';
+          if(f==='INPUT')return a[1]?.k==='range'?'string':this._inputType(node)||'error';
           if(f==='DATA')return this._dataCall(node)?.type||'error';
           if(f==='COLUMN')return 'mixed';
           if(f==='OUTPUT')return a[0]?.k==='range'?'string':this._outputType(node,ctx)||'error';
@@ -277,7 +286,7 @@
   _cellType(k,ctx){
     if(ctx.types.has(k))return ctx.types.get(k);
     const src=ctx.cells[k];let type;
-    if(this._reserved(ctx.state,this._COLS.indexOf(k[0]),+k.slice(1)-1))return +k.slice(1)===1?'string':'mixed';
+    const g=this._regionAt(ctx.state,this._COLS.indexOf(k[0]),+k.slice(1)-1);if(g)return +k.slice(1)-1===g.r1?'string':'mixed';
     if(typeof src!=='string'||src==='')type='number';
     else if(src[0]==="'")type='string';
     else if(src[0]!=='=')type=this._bool(src)!==null?'boolean':Number.isFinite(Number(src.trim()))&&src.trim()!==''?'number':'string';
@@ -294,7 +303,15 @@
       if(prior&&prior.type!==type)throw new Error('Input '+port+' has conflicting '+prior.type+' and '+type+' types');
       if(!prior)ins.push({port,type,cell});
     };
-    if(state.source==='Dataset'){add('data','table','grid');add('startRow','number','grid');}
+    const regions=this._regions(state);
+    for(const g of regions){
+      const at='Table INPUT in '+(g.cell||'A1')+': ';
+      if(!g.cell){add('data','table','grid');add('startRow','number','grid');}else add(g.port,'table',g.cell);
+      if(g.c2>=dims.cols||g.r2>=dims.rows||g.r2<=g.r1)throw new Error(at+'the range needs a header row and record rows inside the grid');
+      if(g.cell&&this._regionAt(state,this._COLS.indexOf(g.cell[0]),+g.cell.slice(1)-1))throw new Error(at+'the formula must lie outside table ranges');
+      if(regions.some(o=>o!==g&&o.c1<=g.c2&&g.c1<=o.c2&&o.r1<=g.r2&&g.r1<=o.r2))throw new Error(at+'table ranges overlap');
+      for(let r=g.r1;r<=g.r2;r++)for(let c=g.c1;c<=g.c2;c++){const k=this._key(c,r);if(g.cell&&(state.cells||{})[k])throw new Error(at+k+' lies in the table range; clear it');}
+    }
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const cell=this._key(c,r),src=cells[cell];
       if(typeof src!=='string'||src[0]!=='=')continue;
@@ -334,11 +351,14 @@
       const k=this._key(c,r);
       if(memo[k])return memo[k];
       if(busy[k])return {e:'#CYCLE!'};
-      if(c<ctx.region.cols&&r<ctx.region.rows){
-        const table=tables.data,start=inputs?.startRow??0;
+      const g=this._regionAt(state,c,r);
+      if(g){
+        const table=tables[g.port];
         if(!table)return {e:'#N/A'};
+        let start=0;
+        if(g.start){busy[k]=true;try{start=val(g.start);}catch(err){start=NaN;}busy[k]=false;}
         if(!Number.isInteger(start)||start<0)return {e:'#VALUE!'};
-        const value=r===0?table.columns[c]?.name:table.rows[start+r-1]?.[c];
+        const value=r===g.r1?table.columns[c-g.c1]?.name:table.rows[start+r-g.r1-1]?.[c-g.c1];
         return value==null?null:wrap(value);
       }
       const src=cells[k];
@@ -470,6 +490,7 @@
             if(a.length<2||a.length>3)throw {e:'#VALUE!'};
             return toBool(val(a[0]))?val(a[1]):a.length===3?val(a[2]):false;
           }
+          if(f==='INPUT'&&a[1]?.k==='range'){const t=a[0]?.k==='str'&&tables[this._port(a[0].v)];if(!t)throw {e:'#N/A'};return t.name||this._port(a[0].v);}
           if(f==='INPUT'){
             const type=this._inputType(n);if(!type)throw {e:'#VALUE!'};
             const v=inputs?inputs[this._port(a[0].v)]:undefined;
@@ -492,7 +513,7 @@
   },
 
   initState(){
-    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,cols:6,rows:6,cells:{}};
+    return {cols:6,rows:6,cells:{}};
   },
   initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state,context={}){
@@ -534,7 +555,7 @@
     ['Text',{CONCAT:['text1','text2'],LEN:['text'],UPPER:['text'],LOWER:['text'],LEFT:['text','count'],RIGHT:['text','count'],
       MID:['text','start','count']}],
     ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
-    ['Datasets',{DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
+    ['Datasets',{INTABLE:['"data"','A1:C6','0','"edit"'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
   ],
   _cellFormat(state,k){const f=(state.formats||{})[k];return this._FORMATS.some(([c])=>c&&c===f)?f:'';},
   _cellAlign(state,k){const a=(state.aligns||{})[k];return ['left','center','right'].includes(a)?a:'';},
@@ -547,7 +568,7 @@
     else if(raw)first=this._bool(raw)!==null||Number.isFinite(Number(raw))?raw:'"'+raw.replace(/"/g,'""')+'"';
     const filled=first!==null&&args.length?1:0;
     if(filled)args[0]=first;
-    const head='='+name+'(',text=head+args.join(',')+')';
+    const head='='+(name==='INTABLE'?'INPUT':name)+'(',text=head+args.join(',')+')';
     if(filled<args.length){
       let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+1;
       const ph=args[filled],q=ph[0]==='"';
@@ -558,26 +579,26 @@
   contextMenu(state,x,y,w,h){
     const dims=this._dims(state),t=this._target(x,y,w,h,dims);
     if(!t)return [];
-    const region=this._region(state,dims),items=[],addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
+    const items=[],addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
     if(t.col!==undefined){
-      items.push({id:'cins'+t.col,label:'Insert 1 column left',disabled:!addCol||t.col<region.cols},
-        {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol||t.col+1<region.cols},
-        {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1||t.col<region.cols});
+      items.push({id:'cins'+t.col,label:'Insert 1 column left',disabled:!addCol},
+        {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol},
+        {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1});
     }
     if(t.col!==undefined&&t.row===undefined)
       items.push({separator:true},{id:'colw'+t.col,label:'Column width\u2026',edit:{handle:'cw'+t.col}},
         {id:'cwreset'+t.col,label:'Reset column width',disabled:dims.weights[t.col]===1});
     if(t.col!==undefined&&t.row!==undefined)items.push({separator:true});
     if(t.row!==undefined){
-      items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow||t.row<region.rows},
-        {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow||t.row+1<region.rows},
-        {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1||t.row<region.rows});
+      items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow},
+        {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow},
+        {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1});
     }
     if(t.col!==undefined&&t.row!==undefined){
       const cell=this._key(t.col,t.row),src=(state.cells||{})[cell]||'';
       items.push({separator:true},{label:'Insert function',disabled:this._reserved(state,t.col,t.row),items:this._FN_GROUPS.map(([group,fns])=>({label:group,
         items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
-          return {id:'fn:'+name+':'+cell,label:name+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
+          return {id:'fn:'+name+':'+cell,label:(name==='INTABLE'?'INPUT':name)+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
       const fc=this._cellFormat(state,cell),al=this._cellAlign(state,cell),tick=on=>on?'  \u2713':'';
       items.push({label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
         label:name+(code?'  '+this._fmtCode(code.endsWith('%')?.1235:1234.5678,code):'')+tick(code===fc)}))},
@@ -606,7 +627,7 @@
   },
   _fmt(v){return this._number(v);},
   _draw(state,style,w,h,editing,inputs,errorNote,tables={}){
-    const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),region=this._region(state,dims);
+    const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),regions=this._regions(state);
     let ports={ins:[],outs:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}
     const ink=style.color||'#64748b',textInk=style.textColor||'#1f2937',grid='#cbd5e1';
     const family=['sans','serif','mono','cursive'].includes(style.fontFamily)?style.fontFamily:'sans';
@@ -614,7 +635,7 @@
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
       fontFamily:family,fontSize:size?cap(size):this._cellPx(style,L),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
-    if(region.cols&&region.rows)items.push({type:'rect',x:0,y:0,w:L.xs[region.cols-1]+L.ws[region.cols-1],h:L.rh,fill:true,fillColor:'#e2e8f0',strokeOn:false});
+    for(const g of regions)if(g.c2<dims.cols&&g.r1<dims.rows)items.push({type:'rect',x:L.xs[g.c1],y:g.r1*L.rh,w:L.xs[g.c2]+L.ws[g.c2]-L.xs[g.c1],h:L.rh,fill:true,fillColor:'#e2e8f0',strokeOn:false});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const x=sheet[this._key(c,r)];
       if(!x)continue;
@@ -638,7 +659,7 @@
       for(let r=0;r<dims.rows;r++)head(r+1,-L.hgap-L.headW,r*L.rh,L.headW,L.rh);
       const tag=x=>x.port+' ('+x.cell+(x.type==='number'?'':', '+(x.type==='boolean'?'bool':x.type))+')';
       const groups=errorNote?[{words:errorNote.split(/\s+/),comma:false}]:[ports.ins.length?['In:',...ports.ins.map(tag)]:null,ports.outs.length?['Out:',...ports.outs.map(tag)]:null].filter(Boolean).map(words=>({words,comma:true}));
-      if(state.source==='Dataset'&&tables.data)groups.unshift({words:('Dataset: '+(tables.data.name||'data')+' · '+(state.editDataset===true&&tables.data.editable===true?'edit shared records':state.editDataset===true&&!tables.data.owner?'read-only · no Dataset owner':'read-only')).split(/\s+/),comma:false});
+      for(const g of regions.slice().reverse()){const t=tables[g.port];if(t)groups.unshift({words:('Table '+(t.name||g.port)+' ('+(g.cell||'A1')+'): '+(g.edit&&t.editable===true?'edit shared records':g.edit&&!t.owner?'read-only · no Dataset owner':'read-only')).split(/\s+/),comma:false});}
       const npx=Math.min(12,L.px),lineH=Math.ceil(npx*1.35),perLine=Math.max(8,Math.floor((w-12)/(npx*.62)));   // conservative glyph width
       const lines=[];
       for(const {words,comma} of groups){
@@ -662,19 +683,20 @@
   },
   handles(state,w,h,style={},io={}){
     const dims=this._dims(state),L=this._layout(w,h,dims),hs=[],sheet=this._sheet(state,io.inputs||{},io.tables?.inputs||{});
-    const fontSize=this._cellPx(style,L),table=io.tables?.inputs?.data,start=io.inputs?.startRow??0;
+    const fontSize=this._cellPx(style,L),run=this._evaluator(state,io.inputs||{},undefined,io.tables?.inputs||{});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
-      const k=this._key(c,r),reserved=this._reserved(state,c,r),x=sheet[k],index=start+r-1;
-      const column=table?.columns?.[c],rowId=table?.rowIds?.[index];
-      const bound=reserved&&r>0&&state.editDataset===true&&table?.editable===true&&typeof table.datasetId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(table.datasetId)&&!['__proto__','prototype','constructor'].includes(table.datasetId)&&
+      const k=this._key(c,r),g=this._regionAt(state,c,r),reserved=!!g,x=sheet[k],table=g&&io.tables?.inputs?.[g.port];
+      let start=0;if(g?.start)try{start=run.value(g.start);}catch{start=NaN;}
+      const index=g?start+r-g.r1-1:-1,column=table?.columns?.[c-(g?g.c1:0)],rowId=table?.rowIds?.[index];
+      const bound=reserved&&r>g.r1&&g.edit&&table?.editable===true&&typeof table.datasetId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(table.datasetId)&&!['__proto__','prototype','constructor'].includes(table.datasetId)&&
         Number.isInteger(start)&&start>=0&&Array.isArray(table.rows?.[index])&&typeof rowId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(rowId)&&
         typeof column?.key==='string'&&['number','string','boolean'].includes(column.type)&&Number.isSafeInteger(table.revision)&&table.revision>=0;
       const value=reserved?(x?x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):String(x.v)):''):(state.cells||{})[k]||'';
       hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value,
         label:bound?('Dataset '+(table.name||'data')+' · row '+index+' · '+(column.name||column.key)).slice(0,100):'Cell '+k,
-        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:'data',datasetId:table.datasetId,rowId,column:column.key,revision:table.revision}}:{}),
+        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:g.port,datasetId:table.datasetId,rowId,column:column.key,revision:table.revision}}:{}),
         inline:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh,fontSize,mode:'edit',navigation:'horizontal',references:!bound,
-          ...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{})},ref:k,editorOnly:!bound||state.allowReaderEdit!==true});
+          ...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{})},ref:k,editorOnly:!bound||!g.reader});
     }
     for(let c=0;c<dims.cols;c++)hs.push({id:'cw'+c,x:L.xs[c]+L.ws[c]/2,y:-L.hgap-L.headH/2,kind:'number',
       value:Math.round(L.ws[c]),min:8,max:2000,step:1,editorOnly:true});
@@ -688,8 +710,7 @@
     return t?'headers':null;
   },
   _restructure(state,axis,at,delta){
-    const dims=this._dims(state),region=this._region(state,dims),cells={};
-    if(at<(axis==='c'?region.cols:region.rows))return state;
+    const dims=this._dims(state),cells={};
     const move=i=>delta>0?(i>=at?i+1:i):(i===at?null:i>at?i-1:i);
     const parse=k=>{const m=/^([A-Z])(\d+)$/.exec(k);return m?{c:this._COLS.indexOf(m[1]),r:+m[2]-1}:null;};
     const shiftRef=(col,row)=>{
@@ -741,8 +762,7 @@
     const dims=this._dims(state),op=/^([cr])(ins|del)(\d+)$/.exec(handle);
     if(op){
       const axis=op[1],add=op[2]==='ins',i=+op[3],count=axis==='c'?dims.cols:dims.rows;
-      const region=this._region(state,dims);
-      if(i<(axis==='c'?region.cols:region.rows)||i>(add?count:count-1) || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
+      if(i>(add?count:count-1) || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
       const next=this._restructure(state,axis,i,add?1:-1);
       if(JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
       const L=this._layout(w,h,dims),colPx=add?L.ws[Math.max(0,i-1)]:L.ws[i];
