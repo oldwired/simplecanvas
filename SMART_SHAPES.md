@@ -312,6 +312,26 @@ The handle itself does not emit a pulse. The built-in Text input and Number inpu
 `submitted` through their state/transition contract, so another accepted entry with the same value
 can trigger a consumer again. Do not infer submission from a change to the `value` output.
 
+A `kind:'text'` handle may instead supply a local `rect` (`{x, y, w, h}`, same frame as `children()`) to edit **in place** without a Submit button: the
+host lays a single-line field exactly over that rectangle, rotated with the shape. Enter or a click
+elsewhere applies and stops; Tab applies and continues in the text handle to the right, Shift+Tab to
+the left (neighbours are found from the handles' rects); Escape discards the field being typed. Every applied field calls `dragEdit` once and is its own undo step.
+An optional `fontSize` (in the shape's units) sets the field's text size, so it matches the drawn
+text; without it the size follows the rect's height. A text handle may also carry a `ref` (up to 64 characters, e.g.
+the cell name `'B3'`): while another field of the same shape holds a formula (text starting with `=`)
+and its caret follows `=`, `(`, `,`, `;`, an operator or a comparison, clicking such a handle inserts its
+`ref` at the caret instead of ending the edit, dragging across several inserts `first:last`, and
+clicking again right away replaces the reference just inserted. The pointed cells are outlined. An optional `align` (`'left'` default, `'center'`, `'right'`) aligns the typed text.
+[Spreadsheet](examples/spreadsheet.js) uses one in-place text handle per cell for its formulas.
+
+```js
+{ id:'B6', x:cellX+cellW/2, y:cellY+cellH/2, kind:'text', value:state.cells.B6 || '',
+  label:'Cell B6', rect:{x:cellX, y:cellY, w:cellW, h:cellH} }
+```
+
+An optional `label` (at most 100 characters) names the field for assistive technology and the
+dialog form.
+
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
 Given a press position, return the `id` of the handle it landed on (within your own chosen hit
@@ -340,6 +360,20 @@ and the drawing hooks to keep its radius within the current box.
 Every completed click or drag creates one undo step only if its final validated state differs
 from the state at the start of the gesture (compared via `JSON.stringify`). A drag that returns
 to its starting value does not create a no-op undo entry.
+
+### `contextMenu(state, lx, ly, w, h, style)` (optional)
+
+In editor edit mode, a right-click (Control+click on a Mac) on the shape asks this hook for a
+context menu at the clicked point (**local** coordinates, also outside the box, e.g. on editor-only
+labels). Return `[{id, label, disabled?}, ...]` (at most 24 entries; `{separator:true}` draws a
+divider; ids up to 64 and labels up to 80 characters), or an empty array for no menu. An entry
+with `items:[...]` instead of an `id` is a submenu (two levels deep, 128 entries in all). An entry
+may add `edit:{handle, select?}`: after its `dragEdit` the host opens that `kind:'text'` handle in
+place, with `select:[start, end]` preselected (e.g. a placeholder of a freshly inserted function), or
+the number dialog of a `kind:'number'` handle (e.g. a column width). Choosing an
+entry calls `dragEdit(state, id, lx, ly, w, h, style)` once with the clicked point, applied as one
+undo step, including a v2 `size` result. Menu ids need not be handles. Offline HTML shows no
+context menu. [Spreadsheet](examples/spreadsheet.js) uses it to insert and delete columns and rows.
 
 ## Connected components (API v2)
 
@@ -564,7 +598,10 @@ not a port or saved component identity. The typed input built-ins stamp accepted
 this identifier so their first transition can distinguish submissions made while paused from old
 queued actions restored from a document. Scripts must not treat it as a secret or an authorization token.
 
-V2 `dragEdit` must return **`{state: newState}`**. Only that envelope field is supported;
+V2 `dragEdit` must return **`{state: newState}`**, optionally with **`size: {w, h}`** (either
+field may be omitted; each 20–2000) to resize the container in the same step, for example a
+spreadsheet growing by one column. The editor applies the size with the top-left corner fixed, as one
+undo step together with the state; offline HTML ignores it. No other envelope fields are supported;
 events and effects are not part of v2. `initState()` still returns the raw state object.
 Unversioned scripts keep returning raw state from `dragEdit`, even when their state happens
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
@@ -1169,17 +1206,18 @@ Two additional examples have standalone sources and entries in the importable
 
 - [Drill template](examples/drill-template.js): hole diameter and position controls in physical units.
 - [Race start timer](examples/race-start-timer.js): a manually set sailing-start dial with signal flags and click controls.
+- [Countdown timer](examples/countdown-timer.js): an API v2 seconds countdown with `seconds`, `tens`, and `ones` outputs for single-digit displays, timed through `transition`/`nextWakeAt`.
 
 The demo's thirteen pinned entries comprise eight demo-specific definitions and five canonical
 built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapshots reuse the built-in
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 67 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 68 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 58 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 59 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1188,6 +1226,7 @@ The built-in catalog includes 58 API v2 components, with editable sources in `ex
 - [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
   step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
   at `min`; the upper bound is reachable even if not on that grid.
+- [Spreadsheet](examples/spreadsheet.js): an API v2 sheet (6×6 to start; a right-click context menu inserts and deletes columns and rows, resize the shape via `dragEdit` `size`, and rewrite references as Excel does) with arithmetic, comparisons, TRUE/FALSE, IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, ROUND/ROUNDUP/ROUNDDOWN, INT, ABS, SIGN, MOD, SQRT, POWER, PI, PRODUCT, COUNT, COUNTA (counts every non-empty cell, including `""` results and errors), IFERROR, ISBLANK/ISNUMBER/ISTEXT/ISERROR and CONCAT/LEN/UPPER/LOWER/LEFT/RIGHT/MID; arguments may be separated by `,` or `;`. `INPUT("name")` / `INPUT("name","boolean")` cells become number or Boolean input ports; `OUTPUT(value,"Name")` cells become output ports whose type (number, Boolean or string) is inferred from the formula. The cell menu also sets a per-cell Number format (Automatic, integer, 1-3 decimals, thousands separators, percent, scientific; display only) and Alignment (Left, Center, Right, Default). Cells are edited in place through `kind:'text'` handles. It is in the catalog's Controls category.
 - [Text input](examples/text-input.js) and [Number input](examples/number-input.js): host-owned
   inline single-line entry and typed `value` plus Boolean `submitted` outputs. Enter/Submit validates and
   normally queues one 100 ms pulse per accepted value, separated by at least 10 ms low, including

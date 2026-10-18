@@ -96,7 +96,7 @@ const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',n
   shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
   srLatch:'sr-latch.js',dLatch:'d-latch.js',dFlipFlop:'d-flip-flop.js',registerBoolean:'register-boolean.js',registerNumber:'register-number.js',
   ringCounter:'ring-counter.js',johnsonCounter:'johnson-counter.js',decadeCounter:'decade-counter.js',
-  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js'};
+  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js',spreadsheet:'spreadsheet.js'};
 
 test('bundled component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
@@ -435,7 +435,8 @@ test('Math operations are configured per instance in Inputs and persist through 
 test('every API2 catalog component can show its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
-    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2);
+    // the spreadsheet deliberately draws no caption: its cells fill the whole shape
+    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && definition.key!=='spreadsheet');
     datasets={catalog:{name:'Catalog sample',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['Sample',2]]}};
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
