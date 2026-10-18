@@ -4,7 +4,7 @@
   apiVersion:2,
   wakePolicy:'latest',
   inputs:{},
-  outputs:{value:{type:'boolean'}},
+  outputs:{value:{role:'control',type:'boolean'}},
   initState(){return {value:false,press:0,showIndicators:true};},
   initStyle(){return {w:280,h:190,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _validate(state){

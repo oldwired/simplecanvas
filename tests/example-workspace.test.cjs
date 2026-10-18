@@ -129,11 +129,12 @@ test('imported controls, routing, text and data examples respond while inactive 
   assert.deepEqual(await run('items.find(item=>item.uid==="demo-7-first").state.cells'),[false,false,false,false]);
 
   await activate(run,8);const crossingOutputs=await outputs(run,8,'crossings');
-  assert.deepEqual(Object.keys(crossingOutputs),Array.from({length:8},(_,index)=>'r'+index));
-  assert.deepEqual(Object.values(crossingOutputs),[170,0,170,0,170,0,170,0]);
+  assert.deepEqual(Object.keys(crossingOutputs),['r','c'].flatMap(prefix=>Array.from({length:8},(_,index)=>prefix+index)));
+  assert.deepEqual(Object.values(crossingOutputs),[170,0,170,0,170,0,170,0,170,0,170,0,170,0,170,0]);
   await editorHandle(page,run,8,'even-rows','toggle');await editorHandle(page,run,8,'even-cols','toggle');
-  assert.deepEqual(Object.values(await outputs(run,8,'crossings')),Array(8).fill(255));
+  assert.deepEqual(Object.values(await outputs(run,8,'crossings')),Array(16).fill(255));
   await editorHandle(page,run,8,'row-byte','plus');assert.equal((await outputs(run,8,'smiley')).r0,61);
+  assert.deepEqual(await outputs(run,8,'columns'),await outputs(run,8,'smiley'),'column-byte inputs reproduce the connected row-byte picture');
 
   await activate(run,16);assert.deepEqual(await outputs(run,16,'memo'),{text:'',lineCount:0});
   await editorHandle(page,run,16,'entry','entry');await page.locator('#smartTextValue').fill('Workspace note');

@@ -11,7 +11,7 @@ const incoming={...owned,name:'Incoming readings',rows:[[25],[40]],rowCount:2};
 
 test('Dataset declares one owner and separate optional source/apply inputs with explicit reader permission',()=>{
   const def=source();assert.equal(def.datasetOwner,'data');
-  assert.deepEqual(plain(def.inputs),{data:{type:'table'},source:{type:'table',optional:true},replace:{type:'boolean',default:false},append:{type:'boolean',default:false},reload:{type:'boolean',default:false}});
+  assert.deepEqual(plain(def.inputs),{data:{type:'table'},source:{type:'table',optional:true},replace:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},reload:{role:'control',type:'boolean',default:false}});
   assert.deepEqual(plain(def.dataActions(def.initState())),{
     reload:{type:'reloadDataset',input:'data',trigger:'reload'},
     replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},

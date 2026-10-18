@@ -3,8 +3,8 @@
 ({
   apiVersion:2,
   wakePolicy:'latest',
-  inputs:{value:{type:'boolean'},edge:{type:'string',default:'rising',options:['rising','falling','either']},seconds:{type:'number',default:0.1}},
-  outputs:{value:{type:'boolean'}},
+  inputs:{value:{type:'boolean'},edge:{role:'control',type:'string',default:'rising',options:['rising','falling','either']},seconds:{role:'control',type:'number',default:0.1}},
+  outputs:{value:{role:'control',type:'boolean'}},
   initState(){return {value:false,showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _validate(inputs,state){

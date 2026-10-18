@@ -27,7 +27,7 @@ function firstPulse(run,file,now=0){
 test('input entry handles declare bounded typed metadata and literal named captions',()=>{
   for(const [file] of controls){
     const def=load(file),state=def.initState(),style=def.initStyle(),handle=def.handles(state,style.w,style.h)[0];
-    assert.equal(def.apiVersion,2);assert.equal(def.wakePolicy,'latest');assert.deepEqual(def.inputs,file==='text-input'?{clear:{type:'boolean',default:false}}:{});
+    assert.equal(def.apiVersion,2);assert.equal(def.wakePolicy,'latest');assert.deepEqual(def.inputs,file==='text-input'?{clear:{role:'control',type:'boolean',default:false}}:{});
     assert.equal(def.outputs.value.type,file==='text-input'?'string':'number');assert.equal(def.outputs.submitted.type,'boolean');
     assert.equal(handle.id,'entry');assert.equal(handle.kind,file==='text-input'?'text':'number');assert(!handle.editorOnly);
     assert.equal(def.hitEdit(state,handle.x,handle.y,style.w,style.h),'entry');

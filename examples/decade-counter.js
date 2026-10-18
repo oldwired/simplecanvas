@@ -2,8 +2,8 @@
 // Stored outputs publish before all shared-edge updates are committed together.
 ({
   apiVersion:2,
-  inputs:{clock:{type:'boolean',default:false},enable:{type:'boolean',default:true},reset:{type:'boolean',default:false}},
-  outputs(state){const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'boolean'};return {...ports,carry:{type:'boolean'},position:{type:'number'}};},
+  inputs:{clock:{role:'control',type:'boolean',default:false},enable:{role:'control',type:'boolean',default:true},reset:{role:'control',type:'boolean',default:false}},
+  outputs(state){const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'boolean'};return {...ports,carry:{role:'control',type:'boolean'},position:{type:'number'}};},
   initState(){return {configuredStages:10,position:0,showIndicators:true};},
   initStyle(){return {w:400,h:230,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _stages(state){return 10;},

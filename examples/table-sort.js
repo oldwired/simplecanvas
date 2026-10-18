@@ -2,7 +2,7 @@
 ({
   apiVersion:2,
   settings:{caseSensitive:{type:'boolean',default:false,label:'Case-sensitive text'},showSwitch:{type:'boolean',default:true,label:'Show on/off switch'}},
-  inputs:{data:{type:'table'},enabled:{type:'boolean',default:true},column:{type:'string',default:'',columnOf:'data'},direction:{type:'string',default:'ascending',options:['ascending','descending']}},
+  inputs:{data:{type:'table'},enabled:{role:'control',type:'boolean',default:true},column:{role:'control',type:'string',default:'',columnOf:'data'},direction:{role:'control',type:'string',default:'ascending',options:['ascending','descending']}},
   outputs:{data:{type:'table'},rowCount:{type:'number'}},
   initState(){return {caseSensitive:false,showSwitch:true};},
   initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
@@ -38,7 +38,7 @@
     const scale=Math.min(w/320,h/150),pad=12*scale,table=io.tables?.inputs?.data,inputs=io.inputs||{};
     const available=!io.error && table && Number.isInteger(io.outputs?.rowCount),text=(v,x,y,ww,hh,size,color,weight)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight);
     const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},text(io.name?.trim()||'Table sort',pad,pad,w-pad*2,22*scale,16,undefined,600)];
-    if(!available){children.push(text(io.error||'Connect a table in Inputs',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}
+    if(!available){children.push(text(io.error||'Connect a table in Edit',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}
     const column=table.columns.find(column=>column.key===inputs.column),summary=column?column.name+' · '+inputs.direction:'Original row order';
     children.push(text(inputs.enabled===false?'Bypassed · original rows':summary,pad,47*scale,w-pad*2,24*scale,14));
     children.push(text(io.outputs.rowCount+' rows',pad,78*scale,w-pad*2,26*scale,20,undefined,600));

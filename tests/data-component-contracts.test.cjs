@@ -41,9 +41,9 @@ test('data components declare compact table references and initialize bounded au
     const state=component.initState();assert.ok(JSON.stringify(state).length<200);
     for(const [key,setting] of Object.entries(component.settings||{}))assert.deepEqual(plain(state[key]),plain(setting.default));
   }
-  assert.deepEqual(plain(source('table-filter').inputs.column),{type:'string',default:'',columnOf:'data'});
-  assert.deepEqual(plain(source('data-bar-chart').inputs.category),{type:'string',default:'',columnOf:'data'});
-  assert.deepEqual(plain(source('data-bar-chart').inputs.value),{type:'string',default:'',columnOf:'data',columnType:'number'});
+  assert.deepEqual(plain(source('table-filter').inputs.column),{role:'control',type:'string',default:'',columnOf:'data'});
+  assert.deepEqual(plain(source('data-bar-chart').inputs.category),{role:'control',type:'string',default:'',columnOf:'data'});
+  assert.deepEqual(plain(source('data-bar-chart').inputs.value),{role:'control',type:'string',default:'',columnOf:'data',columnType:'number'});
 });
 
 test('Dataset publishes its whole owned reference and rejects a selected view as owned storage',()=>{

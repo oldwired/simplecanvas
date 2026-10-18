@@ -39,7 +39,7 @@ test('Text Label and Memo declare string ports, explicit trigger inputs, and bou
   assert.deepEqual(plain(label.initState()),{showName:false,showHints:false});
   assert.deepEqual(plain(r.component.inputs),{
     content:{type:'string',default:''},line:{type:'string',default:''},
-    set:{type:'boolean',default:false},append:{type:'boolean',default:false},clear:{type:'boolean',default:false}
+    set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false}
   });
   assert.deepEqual(plain(r.component.outputs),{text:{type:'string'},lineCount:{type:'number'}});
   assert.deepEqual(r.state,{text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false});

@@ -13,7 +13,7 @@ function lit(outputs){return [...'abcdefg'].filter(name=>outputs[name]).join('')
 test('seven-segment display exposes only the selected input mode and fixed typed outputs',()=>{
   assert.deepEqual(plain(component.initState()),{mode:'number'});
   assert.deepEqual(plain(component.settings),{mode:{type:'string',default:'number',options:['number','segments'],label:'Input mode'}});
-  assert.deepEqual(plain(component.inputs({mode:'number'})),{value:{type:'number'},decimalPoint:{type:'boolean',default:false},enable:{type:'boolean',default:true}});
+  assert.deepEqual(plain(component.inputs({mode:'number'})),{value:{type:'number'},decimalPoint:{type:'boolean',default:false},enable:{role:'control',type:'boolean',default:true}});
   const segmentPorts=plain(component.inputs({mode:'segments'}));
   assert.deepEqual(Object.keys(segmentPorts),[...'abcdefg','decimalPoint','enable']);
   for(const name of 'abcdefg')assert.deepEqual(segmentPorts[name],{type:'boolean',default:false});

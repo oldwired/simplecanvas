@@ -48,9 +48,9 @@ function runtime(initial){
 test('Live clock exposes one timezone input, four Boolean pulses, and a time string',()=>{
   const {component}=runtime();
   assert.equal(component.apiVersion,2);
-  assert.deepEqual(plain(component.inputs),{timezone:{type:'string',default:'local'}});
+  assert.deepEqual(plain(component.inputs),{timezone:{role:'control',type:'string',default:'local'}});
   assert.deepEqual(plain(component.outputs),{
-    second:{type:'boolean'},minute:{type:'boolean'},hour:{type:'boolean'},halfDay:{type:'boolean'},time:{type:'string'}
+    second:{role:'control',type:'boolean'},minute:{role:'control',type:'boolean'},hour:{role:'control',type:'boolean'},halfDay:{role:'control',type:'boolean'},time:{type:'string'}
   });
   assert.equal(typeof component.transition,'function');
   assert.equal(typeof component.compute,'function');

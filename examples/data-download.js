@@ -1,13 +1,13 @@
 // Explicit host-owned buttons download the connected rows; computation never performs actions.
 ({
   apiVersion:2,
-  inputs:{data:{type:'table'},filename:{type:'string',default:'results'}},
+  inputs:{data:{type:'table'},filename:{role:'control',type:'string',default:'results'}},
   outputs:{rowCount:{type:'number'}},
   initState(){return {};},
   initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
   compute(inputs,state,context={}){
     const table=context.tables?.data;
-    if(!table || !Number.isInteger(table.rowCount))throw new Error('Connect a table in Inputs');
+    if(!table || !Number.isInteger(table.rowCount))throw new Error('Connect a table in Edit');
     return {rowCount:table.rowCount};
   },
   _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){
@@ -27,7 +27,7 @@
       {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},
       text(io.name?.trim()||'Download table',pad,pad,w-pad*2,22*scale,16,undefined,600)
     ];
-    if(io.error || !io.tables?.inputs?.data){children.push(text(io.error||'Connect a table in Inputs',pad,55*scale,w-pad*2,22*scale,12,'#92400e'));return children;}
+    if(io.error || !io.tables?.inputs?.data){children.push(text(io.error||'Connect a table in Edit',pad,55*scale,w-pad*2,22*scale,12,'#92400e'));return children;}
     children.push(text(io.outputs.rowCount+' rows ready to download',pad,49*scale,w-pad*2,24*scale,14));
     for(const [index,label] of ['↓ CSV','↓ JSON'].entries()){
       const x=pad+index*w/2,width=w/2-pad*1.5;

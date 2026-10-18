@@ -4,7 +4,7 @@
   apiVersion:2,
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   settings:{maxBars:{type:'number',default:12,min:1,max:24,step:1,label:'Visible bars'},showValues:{type:'boolean',default:true,label:'Show values'}},
-  inputs:{data:{type:'table'},category:{type:'string',default:'',columnOf:'data'},value:{type:'string',default:'',columnOf:'data',columnType:'number'}},
+  inputs:{data:{type:'table'},category:{role:'control',type:'string',default:'',columnOf:'data'},value:{role:'control',type:'string',default:'',columnOf:'data',columnType:'number'}},
   outputs:{rowCount:{type:'number'}},
   initState(){return {maxBars:12,showValues:true};},
   initStyle(){return {w:600,h:360,fontSize:13,fill:true,fillColor:'#2563eb',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
@@ -17,7 +17,7 @@
   },
   compute(inputs,state,context={}){
     const table=context.tables?.data;
-    if(!table || !Array.isArray(table.columns) || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Inputs');
+    if(!table || !Array.isArray(table.columns) || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Edit');
     this._columns(inputs,table);
     return {rowCount:table.rowCount};
   },
@@ -40,7 +40,7 @@
     ];
     let selected,error=io.error;
     if(!error && table){try{selected=this._columns(io.inputs||{},table);}catch(caught){error=caught.message;}}
-    if(error || !table || !selected){children.push(text(error||'Connect a table in Inputs',pad,50*scale,w-pad*2,24*scale,13,'#92400e'));return children;}
+    if(error || !table || !selected){children.push(text(error||'Connect a table in Edit',pad,50*scale,w-pad*2,24*scale,13,'#92400e'));return children;}
     const {category,value}=selected,maxBars=Math.max(1,Math.min(24,Number.isInteger(state.maxBars)?state.maxBars:12));
     const bodyY=62*scale,bodyHeight=h-bodyY-40*scale,limit=Math.max(1,Math.floor(bodyHeight/(12*scale)));
     const rows=table.rows.slice(0,Math.min(maxBars,limit)),rowHeight=bodyHeight/Math.max(1,rows.length);

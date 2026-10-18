@@ -4,13 +4,13 @@
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
   settings:{maxRows:{type:'number',default:12,min:1,max:12,step:1,label:'Visible rows'},maxColumns:{type:'number',default:8,min:1,max:8,step:1,label:'Visible columns'},showCounts:{type:'boolean',default:true,label:'Show row count'},editDataset:{type:'boolean',default:false,label:'Edit dataset records'},allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'}},
-  inputs:{data:{type:'table'},startRow:{type:'number',default:0},startColumn:{type:'number',default:0}},
+  inputs:{data:{type:'table'},startRow:{role:'control',type:'number',default:0},startColumn:{role:'control',type:'number',default:0}},
   outputs:{rowCount:{type:'number'}},
   initState(){return {maxRows:12,maxColumns:8,showCounts:true,editDataset:false,allowReaderEdit:false};},
   initStyle(){return {w:720,h:440,fontSize:13,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},
   compute(inputs,state,context={}){
     const table=context.tables?.data;
-    if(!table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Inputs');
+    if(!table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Edit');
     for(const key of ['startRow','startColumn'])if(inputs[key]!==undefined && (!Number.isSafeInteger(inputs[key]) || inputs[key]<0))throw new Error('First row and first column must be nonnegative integers');
     return {rowCount:table.rowCount};
   },
@@ -47,7 +47,7 @@
     const g=this._view(state,w,h,io),{scale,pad,table,bodyY,header,rowHeight,width}=g;
     const text=(v,x,y,ww,hh,size,color,weight,align)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight,align);
     const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},text(io.name?.trim()||'Dataset editor',pad,pad,w-pad*2,25*scale,16,undefined,600)];
-    if(io.error || !table){children.push(text(io.error||'Connect a table in Inputs',pad,bodyY,width,24*scale,13,'#92400e'));return children;}
+    if(io.error || !table){children.push(text(io.error||'Connect a table in Edit',pad,bodyY,width,24*scale,13,'#92400e'));return children;}
     children.push({type:'rect',x:pad,y:bodyY,w:width,h:header,fill:true,fillColor:'#e2e8f0',strokeOn:false});
     children.push(text('#',pad+4*scale,bodyY+8*scale,g.numberWidth-8*scale,18*scale,11,'#64748b'));
     g.columns.forEach((column,index)=>{

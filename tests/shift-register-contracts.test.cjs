@@ -30,7 +30,7 @@ for(const type of ['boolean','number']){
   const component=source(type),zero=type==='boolean'?false:0,one=type==='boolean'?true:1.5;
   test(type+' shift register declares 1–16 taps, final-value alias, and shifted-out data',()=>{
     assert.deepEqual(plain(component.settings),{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}});
-    assert.deepEqual(plain(component.inputs),{value:{type,...(type==='boolean'?{unknown:true}:{})},pulse:{type:'boolean',default:false},reset:{type:'boolean',default:false}});
+    assert.deepEqual(plain(component.inputs),{value:{type,...(type==='boolean'?{unknown:true}:{})},pulse:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}});
     for(const stages of [1,4,16]){
       const state=stateFor(component,stages,zero),ports=plain(component.outputs(state)),outputs=plain(component.compute({value:one,pulse:false,reset:false},state));
       assert.deepEqual(Object.keys(ports),[...Array.from({length:stages},(_,i)=>'q'+i),'value','shiftedOut']);

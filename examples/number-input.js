@@ -5,7 +5,7 @@
   wakePolicy:'latest',
   settings:{min:{type:'number',default:0,label:'Minimum'},max:{type:'number',default:100,label:'Maximum'},step:{type:'number',default:1,label:'Step'},showSubmitted:{type:'boolean',default:false,label:'Show submission state'},showHints:{type:'boolean',default:false,label:'Show hints'}},
   inputs:{},
-  outputs:{value:{type:'number'},submitted:{type:'boolean'}},
+  outputs:{value:{type:'number'},submitted:{role:'control',type:'boolean'}},
   initState(){return {values:[0],current:0,pending:[],submitted:false,press:0,entryRuntime:'',showSubmitted:false,showHints:false,min:0,max:100,step:1};},
   initStyle(){return {w:280,h:72,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   _value(value){if(typeof value!=='number' || !Number.isFinite(value))throw new Error('Enter a finite number'); return value;},

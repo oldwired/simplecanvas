@@ -19,12 +19,12 @@ function run(name,inputs={},patch={},table){
   assert.equal(dropdown.apiVersion,2);assert.equal(lookup.apiVersion,2);
   assert.equal(dropdown.initState().choices,lookup.initState().choices);
   assert.equal(dropdown.settings.choices.format,'choices');assert.equal(lookup.settings.choices.format,'choices');
-  assert.deepEqual(plain(dropdown.inputs(dropdown.initState())),{select:{type:'number',default:0}});
+  assert.deepEqual(plain(dropdown.inputs(dropdown.initState())),{select:{role:'control',type:'number',default:0}});
   assert.deepEqual(plain(lookup.inputs(lookup.initState())),{text:{type:'string',default:''}});
   for(const def of [dropdown,lookup]){
     const ports=def.inputs({...def.initState(),source:'dataset'});
     assert.equal(ports.data.type,'table');
-    for(const name of ['textColumn','keyColumn'])assert.deepEqual(plain(ports[name]),{type:'string',default:'',columnOf:'data',columnType:'string'});
+    for(const name of ['textColumn','keyColumn'])assert.deepEqual(plain(ports[name]),{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'});
     assert.throws(()=>def.inputs({...def.initState(),source:'wrong'}),/list or dataset/);
   }
 });

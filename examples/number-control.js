@@ -2,7 +2,7 @@
 // The slider, buttons, and direct entry use the same step grid, anchored at the minimum.
 ({
   apiVersion:2,
-  inputs:{min:{type:'number',default:0},max:{type:'number',default:100},step:{type:'number',default:1}},
+  inputs:{min:{role:'control',type:'number',default:0},max:{role:'control',type:'number',default:100},step:{role:'control',type:'number',default:1}},
   outputs:{value:{type:'number'}},
   initState(){return {value:50};},
   initStyle(){return {w:240,h:130,fontSize:20,strokeOn:false};},
@@ -65,7 +65,7 @@
         }
       }
     }else{
-      children.push({type:'text',x:0,y:h*.72,w,h:h*.25,text:'Check bounds and step in Inputs',align:'center',font:font(10),color:'#92400e',strokeOn:false,fill:false});
+      children.push({type:'text',x:0,y:h*.72,w,h:h*.25,text:'Check bounds and step in Edit',align:'center',font:font(10),color:'#92400e',strokeOn:false,fill:false});
     }
     return children;
   },

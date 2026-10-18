@@ -31,7 +31,7 @@
     let conflict=Object.entries(state.cells||{}).some(([k,v])=>v!==''&&/^[A-Z][1-9]\d?$/.test(k)&&this._reserved(state,this._COLS.indexOf(k[0]),+k.slice(1)-1));
     const cleared={...state,cells:{},formats:{},aligns:{}};
     try{this.inputs(state);this.outputs(state);}catch{try{this.inputs(cleared);this.outputs(cleared);conflict=true;}catch{}}
-    return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Inputs keeps the original sheet.'}:null;
+    return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Edit keeps the original sheet.'}:null;
   },
   _tableSpec(state,dims=this._dims(state)){
     if(state.tableOutput!==true)return null;

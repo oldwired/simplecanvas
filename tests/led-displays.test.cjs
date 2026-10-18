@@ -135,7 +135,7 @@ test('matrix row inputs render the correct 64 positions and enable works offline
   await page.getByLabel('r7 value',{exact:true}).fill('1');
   await page.getByLabel('enable (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-1',port:'value'}));
   await saveInputs(page);
-  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:1});
+  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:1,c0:128,c1:0,c2:0,c3:0,c4:0,c5:0,c6:0,c7:129});
   const handle=await editorHandle(page,run,1,'toggle');assert.ok(Object.values(await output(run,2)).every(value=>value===0));
   await editorHandle(page,run,1,'toggle');
   const {preview,errors,requests}=await openExport(page,run,context);await readerLit(preview,2,3);
@@ -161,14 +161,14 @@ test('matrix Boolean mode shows all crossings and switches cleanly to row values
   }));items[1].state.value=true;setTool('select');selection=[];render();save();`);
   assert.equal(await run('items[2].state.mode'),'boolean');
   await openInputs(page,run,2);
-  assert.deepEqual(await page.getByLabel('Input mode',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value)),['boolean','rows']);
+  assert.deepEqual(await page.getByLabel('Input mode',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value)),['boolean','rows','columns']);
   await page.getByLabel('row0 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-0',port:'value'}));
   await page.getByLabel('col7 (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'matrix-modes-1',port:'value'}));
   await page.getByLabel('row7 value',{exact:true}).selectOption('true');
   await page.getByLabel('col0 value',{exact:true}).selectOption('true');await saveInputs(page);
-  assert.deepEqual(await output(run,2),{r0:0,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129});
+  assert.deepEqual(await output(run,2),{r0:0,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129,c0:1,c1:0,c2:0,c3:0,c4:0,c5:0,c6:0,c7:1});
   const rowHandle=await editorHandle(page,run,0,'toggle');
-  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129});
+  assert.deepEqual(await output(run,2),{r0:129,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:129,c0:129,c1:0,c2:0,c3:0,c4:0,c5:0,c6:0,c7:129});
   const colHandle=await run(`(async()=>{
     const it=items[1];return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it)])).find(handle=>handle.id==='toggle');
   })()`);
@@ -181,7 +181,7 @@ test('matrix Boolean mode shows all crossings and switches cleanly to row values
   await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled && document.querySelector('[aria-label="r0 value"]'));
   await page.getByLabel('r0 value',{exact:true}).fill('255');await saveInputs(page);
   assert.deepEqual(await run('Object.keys(items[2].bindings)'),[],'changing modes removes obsolete Boolean assignments');
-  assert.deepEqual(await output(run,2),{r0:255,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0});
+  assert.deepEqual(await output(run,2),{r0:255,r1:0,r2:0,r3:0,r4:0,r5:0,r6:0,r7:0,c0:128,c1:128,c2:128,c3:128,c4:128,c5:128,c6:128,c7:128});
   const rows=await openExport(page,run,context);await readerLit(rows.preview,2,8);
   assert.deepEqual(rows.errors,[]);assert.deepEqual(rows.requests,[]);
 }));

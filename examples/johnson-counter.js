@@ -3,7 +3,7 @@
 ({
   apiVersion:2,
   settings:{stages:{type:'number',default:4,min:1,max:16,step:1,label:'Stages'}},
-  inputs:{clock:{type:'boolean',default:false},enable:{type:'boolean',default:true},reset:{type:'boolean',default:false}},
+  inputs:{clock:{role:'control',type:'boolean',default:false},enable:{role:'control',type:'boolean',default:true},reset:{role:'control',type:'boolean',default:false}},
   outputs(state){const ports={};for(let i=0;i<this._stages(state);i++)ports['q'+i]={type:'boolean'};return {...ports,value:{type:'boolean'},position:{type:'number'}};},
   initState(){return {stages:4,configuredStages:4,position:0,showIndicators:true};},
   initStyle(){return {w:400,h:230,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

@@ -3,7 +3,7 @@
 ({
   apiVersion:2,
   wakePolicy:'latest',
-  inputs:{value:{type:'number'},seconds:{type:'number',default:1}},
+  inputs:{value:{type:'number'},seconds:{role:'control',type:'number',default:1}},
   outputs:{value:{type:'number'}},
   initState(){return {value:0,showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},

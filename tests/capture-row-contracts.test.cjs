@@ -33,7 +33,7 @@ function caller(api,custom={}){return async(item,hook,args)=>{
 test('Capture row maps a bounded editable field list into stable scalar inputs and an append declaration',()=>{
   const def=source(),state=def.initState(),ports=plain(def.inputs(state));
   assert.equal(def.settings.fields.format,'lines');assert.equal(state.allowReaderCapture,false);
-  assert.deepEqual(ports,{data:{type:'table'},capture:{type:'boolean',default:false},field0:{type:'string',default:''},field1:{type:'number',default:0},field2:{type:'boolean',default:false}});
+  assert.deepEqual(ports,{data:{type:'table'},capture:{role:'control',type:'boolean',default:false},field0:{type:'string',default:''},field1:{type:'number',default:0},field2:{type:'boolean',default:false}});
   assert.deepEqual(plain(def.dataActions(state)),{capture:{type:'appendRow',input:'data',trigger:'capture',fields:{label:'field0',value:'field1',active:'field2'}}});
   assert.equal(Object.keys(def.inputs({...state,fields:Array.from({length:24},(_,i)=>'column'+i+':number').join('\n')})).length,26);
   for(const fields of ['', 'same:number\nsame:string','value:date','constructor:string','no type',Array.from({length:25},(_,i)=>'x'+i+':number').join('\n')])assert.throws(()=>def.inputs({...state,fields}));

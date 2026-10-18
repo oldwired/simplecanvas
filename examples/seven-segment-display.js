@@ -7,7 +7,7 @@
   inputs(state){
     const data=this._mode(state)==='number'?{value:{type:'number'}}:
       Object.fromEntries(Array.from('abcdefg',name=>[name,{type:'boolean',default:false}]));
-    return {...data,decimalPoint:{type:'boolean',default:false},enable:{type:'boolean',default:true}};
+    return {...data,decimalPoint:{type:'boolean',default:false},enable:{role:'control',type:'boolean',default:true}};
   },
   outputs:{a:{type:'boolean'},b:{type:'boolean'},c:{type:'boolean'},d:{type:'boolean'},e:{type:'boolean'},f:{type:'boolean'},g:{type:'boolean'},decimalPoint:{type:'boolean'}},
   initState(){return {mode:'number'};},

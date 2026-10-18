@@ -3,10 +3,10 @@
   apiVersion:2,
   settings:{source:{type:'string',default:'list',options:['list','dataset'],label:'Choices from'},choices:{type:'string',default:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',format:'choices',label:'Editable list'},showArrow:{type:'boolean',default:true,label:'Show dropdown'}},
   inputs(state){
-    const ports={select:{type:'number',default:0}};
-    return this._source(state)==='dataset'?{...ports,data:{type:'table'},textColumn:{type:'string',default:'',columnOf:'data',columnType:'string'},keyColumn:{type:'string',default:'',columnOf:'data',columnType:'string'}}:ports;
+    const ports={select:{role:'control',type:'number',default:0}};
+    return this._source(state)==='dataset'?{...ports,data:{type:'table'},textColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'},keyColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'}}:ports;
   },
-  outputs:{index:{type:'number'},key:{type:'string'},text:{type:'string'},valid:{type:'boolean'}},
+  outputs:{index:{type:'number'},key:{type:'string'},text:{type:'string'},valid:{role:'control',type:'boolean'}},
   initState(){return {source:'list',choices:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',showArrow:true};},
   initStyle(){return {w:280,h:78,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state,context={}){
