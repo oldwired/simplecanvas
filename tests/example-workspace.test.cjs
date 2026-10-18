@@ -39,7 +39,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===19 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===20 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -63,7 +63,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all nineteen tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all twenty tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -78,7 +78,7 @@ test('shipped workspace imports all nineteen tabs with valid local bindings and 
     }
     return result;
   })()`);
-  assert.equal(checked.length,19);
+  assert.equal(checked.length,20);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -180,14 +180,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has nineteen working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has twenty working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),19);
-    for(let tab=1;tab<=19;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),20);
+    for(let tab=1;tab<=20;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -308,6 +308,43 @@ test('shipped choice example works offline, preserves reader choices across tabs
     await readerTab(page,18);await readerTab(page,19);await readerText(page,19,'manual-text','Stopped');
     await page.reload();await readerTab(page,19);await readerText(page,19,'manual-text','Idle');
     await readerText(page,19,'automatic-text','Running');await readerText(page,19,'lookup-key','running');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+
+test('shipped spreadsheet example consumes typed inputs and publishes editable formula results',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,20);
+  assert.deepEqual(await outputs(run,20,'sheet'),{total:20,active:true,status:'Enabled'});
+  await editorHandle(page,run,20,'amount','plus');
+  assert.equal((await outputs(run,20,'total')).value,22);
+  await editorHandle(page,run,20,'enabled','toggle');
+  assert.deepEqual(await outputs(run,20,'sheet'),{total:0,active:false,status:'Paused'});
+  assert.equal((await outputs(run,20,'active')).value,false);
+  assert.equal((await outputs(run,20,'status')).value,'Paused');
+  await editorHandle(page,run,20,'enabled','toggle');
+  await editorHandle(page,run,20,'sheet','B3');
+  await page.locator('#smartTextValue').fill('3');await page.locator('#smartTextValue').press('Enter');
+  await page.waitForFunction(()=>__test.run('items.find(item=>item.uid==="demo-20-sheet").state.cells.B3==="3"'));
+  await run('smartHitSettled');
+  assert.equal((await outputs(run,20,'total')).value,33);
+  assert.equal(await page.locator('[data-smart-inline-input]').count(),0,'edit mode finishes after Enter');
+}));
+
+test('shipped spreadsheet remains read-only in HTML while connected controls update all result types',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,20);
+    await readerText(page,20,'total','20');await readerText(page,20,'active','ON');await readerText(page,20,'status','Enabled');
+    await readerHost(page,20,'sheet').click();
+    assert.equal(await page.locator('[data-smart-inline-input]').count(),0,'reader cells do not offer authoring handles');
+    await readerHandle(page,20,'amount','plus');await readerText(page,20,'total','22');
+    await readerHandle(page,20,'enabled','toggle');
+    await readerText(page,20,'total','0');await readerText(page,20,'active','OFF');await readerText(page,20,'status','Paused');
+    await readerTab(page,19);await readerTab(page,20);await readerText(page,20,'status','Paused');
+    await page.reload();await readerTab(page,20);await readerText(page,20,'total','20');await readerText(page,20,'status','Enabled');
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

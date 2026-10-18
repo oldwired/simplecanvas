@@ -5,7 +5,9 @@ validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, tim
 an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
 Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
-aggregation, optional transform switches, editable/dataset-driven choices and text lookup, and narrow host-owned reload/download actions. General routed events and stages 5–6 remain proposals.
+aggregation, optional transform switches, editable/dataset-driven choices and text lookup, a connected
+spreadsheet, and narrow host-owned reload/download actions. General routed events and stages 5–6 remain proposals.
+Stage 3 remains active; the spreadsheet integration does not close it.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
@@ -13,7 +15,8 @@ fifteen-tab workspace. A subsequent text-passing milestone adds Text input, Numb
 Memo, and a sixteenth example tab before stage 3. Embedded data adds a seventeenth tab with
 CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. An eighteenth
 tab adds reader-selected data, aggregation, sorting, and explicit CSV/JSON downloads. A nineteenth
-tab adds manual choices, automatic selection, and reverse text lookup using shared data. Shared buses and multiple drivers are deferred;
+tab adds manual choices, automatic selection, and reverse text lookup using shared data. A twentieth
+tab demonstrates spreadsheet formulas consuming and publishing signals. Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
@@ -134,6 +137,8 @@ Counts, stage/channel quantities, durations, and ordinary tab/instruction number
 existing meanings. Stable keys survive reordered indices. There is one convention, with no
 per-component base setting. The unmerged branch and bundled examples are rewritten directly;
 compatibility aliases and migrations are unnecessary.
+Spreadsheet notation is an explicit exception: A1 row references, VLOOKUP column numbers, and
+MID character positions retain their familiar one-based meanings. This does not change signal indices.
 
 ## Stage 1 acceptance — implemented on the feature branch
 
@@ -156,7 +161,8 @@ Keep these checks as the regression baseline for subsequent stages.
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stage 3 includes the complete agreed data workflow. Stage 4 has a narrow host-owned download
+Stage 3 implements the agreed data workflow and now includes a connected formula sheet, while
+remaining open for testing and follow-up. Stage 4 has a narrow host-owned download
 action plus explicitly declared dataset reloads; general events and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
@@ -170,7 +176,7 @@ Share runtime helpers between editor and export throughout.
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data — agreed workflow implemented on branch | Bounded datasets, author and reader CSV/TSV/JSON import, typed table inputs, filtering, sorting, aggregation, and table/chart built-ins | Embedded or reader-selected data drives a filtered or grouped and sorted table/chart offline; invalid, mismatched, or oversized imports preserve accepted data. |
+| 3. Embedded data — active; agreed workflow implemented | Bounded datasets, author and reader CSV/TSV/JSON import, typed table inputs, filtering, sorting, aggregation, table/chart built-ins, choice mappings, and connected spreadsheet formulas | Embedded or reader-selected data drives a filtered or grouped and sorted table/chart offline; invalid, mismatched, or oversized imports preserve accepted data. Spreadsheet cells consume/publish typed signals in editor and read-only HTML. |
 | 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads and declared session-file reload triggers; general event routing remains proposed | A reader downloads the current result or pulses Reload for an accepted session file. Page refresh, restoration, retries, and Undo do not replay either action. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
@@ -254,7 +260,7 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 
 | Default category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Toggle, numeric Constant, Trigger |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
@@ -270,11 +276,13 @@ control, Math, and Counter without adding another delivery stage.
 All smart-shape templates are also available as built-in library entries. Adding Clock, Arrow,
 Arc, Timer, Chart, Minimal, and Blank brought the stage 2 catalog to 51 entries. The feedback
 milestone adds eight storage/sequencing entries, bringing that catalog to 59 entries,
-including 50 API v2 components. Text input, Number input, Text label, and Memo bring the current
+including 50 API v2 components. Text input, Number input, Text label, and Memo bring that
 catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Dataset, Table filter,
 Data table, and Data bar chart, initially bringing the catalog to 67 entries / 58 API v2 components.
 Table sort, Table aggregate, and Download table bring the catalog to 70 entries / 61 API v2 components.
-Dropdown and Text lookup bring the current catalog to **72 entries / 63 API v2 components**.
+Dropdown and Text lookup bring it to 72 entries / 63 API v2 components. Spreadsheet brings the
+current catalog to **73 entries / 64 API v2 components**. The additional Countdown timer source
+remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
 empty. Authors can place or pin them offline, and the template authoring dialog remains available.
@@ -385,9 +393,11 @@ Use declared types throughout: invalid or missing required inputs produce connec
 and an unavailable upstream value must not silently become `false`.
 
 Use traditional curved gate silhouettes, including inversion bubbles, with readable names and
-current input/output values. All built-in API v2 components display their instance name as the caption,
+current input/output values. Built-in API v2 controls display their instance name as the caption,
 including Number control, Constant, Gauge, and the gates. Captions fit within the shape; operation
-symbols, readouts, and state labels remain separate. Optional per-instance LEDs default on: green means true, grey false,
+symbols, readouts, and state labels remain separate. Spreadsheet deliberately fills its box with
+cells and omits a caption; its instance name remains available in Inputs and wiring. Optional
+per-instance LEDs default on: green means true, grey false,
 blue an available numeric value, and amber unavailable. The editor-only Indicators control toggles
 the LEDs without changing computation, port stubs, or inversion bubbles; its setting survives saves
 and exports. Unconnected logic components retain their silhouettes and show “—” plus an input-status
@@ -785,7 +795,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current nineteen-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current twenty-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -889,8 +899,9 @@ pulse connected through the existing graph.
   positive step anchored at min. Invalid, non-finite, off-grid, and out-of-range entries are rejected.
   It uses the same inline entry interaction. The existing Number control retains its slider,
   step buttons, and dialog-based direct entry.
-- **Inline editing** keeps focus after submission for repeated entries. Escape or clicking outside
-  discards an unsubmitted draft and exits; blur never submits. The simulation continues while typing,
+- **Submit-mode inline editing** keeps focus after Enter/Submit for repeated entries. Tab submits
+  and follows normal focus movement. Escape or clicking outside discards an unsubmitted draft and
+  exits. The simulation continues while typing,
   with an existing user pause respected. Tab changes and stale gestures close the field. Optional
   Show submission state and Show hints settings start off on both input controls; validation errors
   remain visible.
@@ -1210,7 +1221,33 @@ Trigger connects to Dataset's reload input.
   drives reverse lookup; Valid and Found indicators demonstrate missing selections/matches.
   JSON and HTML retain the lists and referenced dataset, and all three workflows work offline.
 
-Table-cell editing, arbitrary computed columns, and additional chart types are later extensions.
+**Connected spreadsheet** adds a small authored formula grid with typed signal ports:
+
+- `INPUT("name")` declares a numeric input; `INPUT("name","boolean")` declares a Boolean input.
+  `OUTPUT(value,"name")` publishes that argument as a numeric, Boolean, or string signal. Multiple
+  OUTPUT calls in one cell publish independently, even when the cell combines their results.
+- Arithmetic, comparisons, Boolean, aggregate, lookup, and text functions are evaluated by the
+  bounded formula interpreter. Reference errors remain evaluable error values, so IFERROR can
+  recover after a referenced row/column is deleted. Type inference caches dependency results to
+  keep small shared lookup graphs within the Worker budget; unsupported/ambiguous output types
+  produce clear errors. Formula declarations also populate the library's port metadata.
+- Editor cell controls use the shared `inline` API in `edit` mode. Enter saves and finishes;
+  clicking away saves; Escape cancels. Horizontal navigation enables Tab/Shift+Tab between cells,
+  and optional reference picking inserts a clicked cell or dragged range. Context menus edit
+  structure, functions, number formatting, alignment, and widths. Touch long-press interception
+  applies only to components with a context menu, preserving ordinary click controls.
+- Text and Number input retain `submit` mode: Enter submits and keeps focus for repeated entries,
+  Tab submits and follows normal focus, and clicking away discards unsubmitted text. Both modes
+  share host placement, validation, stale-edit cancellation, and editor/HTML behavior. A successful
+  submission can emit a pulse even for an unchanged value; saving an unchanged cell is a no-op.
+- Spreadsheet cells are editor-only authoring controls. HTML displays the sheet read-only while
+  connected controls continue to recalculate it offline. The **Connected spreadsheet** workspace
+  tab drives a sheet from Number control and Toggle, with numeric, Boolean, and text readouts.
+  Authors can change its multiplier in B3 to see a saved cell edit feed the same live graph.
+
+The Spreadsheet stores a bounded formula grid in component state; it does not mutate or expose
+an imported dataset as editable cells. Dataset table-cell editing, arbitrary dataset computed
+columns, and additional chart types remain later extensions.
 Result downloads contain data, not the full editable workspace. A new HTML snapshot or full
 HTML-to-editor round trip still requires a complete editable document model in the export and a
 defined import path.

@@ -183,14 +183,14 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 
 | Default category | Examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Toggle, Constant, Trigger |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
 | Data | Dataset, Table filter, Table sort, Table aggregate, Data table, Data bar chart, Download table, Text lookup |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 72 entries, including 63 connected API v2 components. Every smart-shape
+The catalog includes 73 entries, including 64 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -281,7 +281,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore nineteen connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore twenty connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -306,6 +306,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Embedded data | Filter sailing results by boat and update a table and bar chart, entirely offline. |
 | Reader data and results | Load or reload race data, switch sorting and aggregation on/off, and download a CSV or JSON report. |
 | Choices and text lookup | Choose a named value, select dataset rows by number, and find the index/key for matching text. |
+| Connected spreadsheet | Feed number and Boolean signals into formulas, then publish numeric, Boolean, and text results. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -316,7 +317,8 @@ the HTML restores the exported snapshot.
 
 **Text input** and **Number input** provide typed entry with a **Submitted** Boolean pulse.
 Click their entry field, type directly on the canvas, and press **Enter** or **Submit**. The field
-stays focused for the next entry. Accepting the same value again produces another pulse. **Escape**
+stays focused for the next entry. **Tab** submits and moves focus normally. Accepting the same value
+again produces another pulse. **Escape**
 or clicking outside discards an unsubmitted draft; invalid entries stay open with an error.
 Editing leaves the simulation running unless you have paused it. Text input has maximum-length,
 required-value, and placeholder settings. Number input has minimum, maximum, and step settings;
@@ -438,6 +440,26 @@ serialized characters; dataset mode uses all selected rows within the existing d
 Switching sources preserves the editable list. The nineteenth tab, **Choices and text lookup**,
 shows a manual list plus a shared dataset driving automatic selection and reverse lookup.
 
+**Spreadsheet** is a small formula sheet in the library's **Controls** category. Double-click it
+in the editor, then click a cell to edit a value or formula. Enter saves and finishes; Tab/Shift+Tab
+saves and moves right/left; clicking away saves; Escape discards the draft. While entering a formula,
+click or drag over cells to insert references. Right-click a cell or header for insertion/deletion,
+functions, formatting, alignment, and column widths. A cell can retain an invalid formula and display
+its error for correction.
+
+`=INPUT("amount")` declares a numeric input; `=INPUT("enabled","boolean")` declares a Boolean input.
+`=OUTPUT(B2*B3,"total")` publishes a formula argument as a typed output. Connect these ports through
+**Inputs…**, just like other components. Functions include IF, IFERROR, SUM, AVERAGE, VLOOKUP,
+Boolean operations, rounding, and text operations; commas or semicolons separate arguments.
+Spreadsheet A1 row references, VLOOKUP column numbers, and MID character positions conventionally
+start at 1. Component selection indices and indexed ports remain zero-based. Output types are
+fixed by the saved formulas: all possible branches or lookup results must have one scalar type.
+Use IFERROR to recover from calculation errors, including deleted cell references.
+
+The twentieth tab, **Connected spreadsheet**, connects a Number control and Toggle to a sheet and
+shows its three result types. Try changing B3 from 2 to 3 in the editor. In exported HTML, cells are
+read-only, but controls still drive the formulas and connected output displays entirely offline.
+
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
 
@@ -452,9 +474,10 @@ rename instances or change their connections. You can still give instances disti
 After changing a source or literal, the dialog previews the proposed outputs and reports errors.
 **Save** applies the changes; **Cancel** leaves the drawing unchanged. This is a paused preview:
 it does not advance timers, consume pulse edges, or change component state.
-Every built-in API v2 component displays that instance name as its caption, separately from its
+Built-in API v2 components display that instance name as their caption, separately from their
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
-Long names fit within the caption area, and names persist in saved sketches and exports.
+Long names fit within the caption area, and names persist in saved sketches and exports. Spreadsheet deliberately uses its whole box for cells and omits a caption;
+its instance name remains available in Inputs and connection choices.
 
 **Number control** has `min`, `max`, and `step` inputs, initially 0, 100, and 1. Set literals or
 connect these values through **Inputs…**. Negative bounds and fractional steps work. The slider,

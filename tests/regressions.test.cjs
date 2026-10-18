@@ -3168,6 +3168,27 @@ test('released smart clicks survive nudges and color changes with independent un
   }
 }));
 
+test('size-changing smart clicks keep nudges and held nudges independently undoable',async()=>app(async({page,run})=>{
+  const script=`({apiVersion:2,inputs:{},outputs:{},compute(){return {};},children(){return [];},
+    handles(){return [{id:'grow',x:50,y:50,kind:'click'}];},hitEdit(){return 'grow';},contextMenu(){return [{id:'grow',label:'Grow'}];},
+    dragEdit(s,id,x,y,w,h){const end=performance.now()+180;while(performance.now()<end){}return {state:{n:(s.n||0)+1},size:{w:w+40}};}})`;
+  for(const [held,menu] of [[false,false],[true,false],[true,true]]){
+    await run(`cancelGesture();items=[{...${JSON.stringify(smartFixture(script))},componentApi:2,bindings:{},inputValues:{}}];setTool('select');selection=[0];editingSmartIdx=0;undoStack=[];redoStack=[];render();`);
+    const original=await run('items[0].w'),b=await page.locator('#canvas').boundingBox();
+    if(menu){await page.mouse.click(b.x+150,b.y+150,{button:'right'});await page.locator('[data-smart-context-menu]').getByRole('menuitem',{name:'Grow',exact:true}).click();}
+    else await page.mouse.click(b.x+150,b.y+150);
+    await page.waitForFunction(()=>__test.run('smartSandboxPending.get(smartSandboxActive)?.message.fn')==='dragEdit');
+    if(held)await page.keyboard.down('ArrowRight');else await page.keyboard.press('ArrowRight');
+    await run('smartHitSettled');if(held)await page.keyboard.up('ArrowRight');
+    assert.deepEqual(await run('[items[0].state.n,items[0].x,items[0].w,undoStack.length]'),[1,101,original+40,2]);
+    await run('undo()');
+    if(held)assert.deepEqual(await run('[items[0].state.n,items[0].x,items[0].w]'),[1,100,original+40]);
+    else assert.deepEqual(await run('[items[0].state,items[0].x,items[0].w]'),[{},101,original]);
+    await run('undo()');assert.deepEqual(await run('[items[0].state,items[0].x,items[0].w]'),[{},100,original]);
+    await run('redo();redo()');assert.deepEqual(await run('[items[0].state.n,items[0].x,items[0].w]'),[1,101,original+40]);
+  }
+}));
+
 test('a released smart drag does not leak its provisional state into a following nudge undo',async()=>app(async({page,run})=>{
   const script=`({children(){return [];},handles(){return [{id:'move',x:50,y:50}];},hitEdit(){return 'move';},
     dragEdit(s,id,x){const end=performance.now()+120;while(performance.now()<end){}return {x};}})`;

@@ -122,7 +122,13 @@ const sources={
   "demo-19-lookup": "text-lookup.js",
   "demo-19-lookup-index": "value-label.js",
   "demo-19-lookup-key": "text-label.js",
-  "demo-19-found": "status-indicator.js"
+  "demo-19-found": "status-indicator.js",
+  "demo-20-amount": "number-control.js",
+  "demo-20-enabled": "toggle.js",
+  "demo-20-sheet": "spreadsheet.js",
+  "demo-20-total": "value-label.js",
+  "demo-20-active": "status-indicator.js",
+  "demo-20-status": "text-label.js"
 };
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){

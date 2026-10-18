@@ -142,7 +142,7 @@ errors remain visible when those details are hidden.
 `tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
 unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
 late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
-A catalog-wide naming check renames every built-in API v2 component through Inputs and verifies its
+A catalog-wide naming check renames captioned built-in API v2 components through Inputs and verifies each
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
 connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
@@ -205,8 +205,9 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 63 API v2 catalog definitions match their editable source files and retain
-their instance names in canvas, SVG, and offline HTML.
+verify that all 64 API v2 catalog definitions match their editable source files. Captioned components
+retain their instance names in canvas, SVG, and offline HTML; Spreadsheet deliberately uses its
+whole box for the cell grid and is excluded from the caption check.
 
 
 `tests/feedback-runtime.test.cjs` exercises bounded settling, simultaneous stored-state publication,
@@ -259,9 +260,18 @@ between editable lists and dataset column selectors without losing the saved lis
 zero-based names at default/minimum/maximum sizes, including both matrix modes. It also verifies
 choice index 0 is valid and missing selections/lookups return −1.
 
-`tests/example-workspace.test.cjs` validates all nineteen shipped tabs and preserves the original
+`tests/spreadsheet-contracts.test.cjs` checks independent/nested OUTPUT arguments, deleted and
+out-of-bounds references handled by lazy IF/IFERROR, blank-cell counting, computed VLOOKUP column
+types, explicit mixed-type rejection, bounded shared dependency analysis, cycles, and the unified
+inline edit descriptors used by Spreadsheet and the standalone Countdown timer.
+`tests/spreadsheet-worker.test.cjs` runs a shared lookup chain through the real Worker deadline,
+repairs an ambiguous output type through cell editing, and follows independent OUTPUT values
+through connected consumers in the editor and offline HTML.
+
+`tests/example-workspace.test.cjs` validates all twenty shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
-dataset selection, and reverse Text lookup. All affected walkthroughs use zero-based selections,
+dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
+and read-only live reader results. All affected walkthroughs use zero-based selections,
 channels, storage taps, and matrix rows/columns, while tab numbering stays ordinal. `tests/feedback-workspace.test.cjs` verifies the three practical counter
 loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
 positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:

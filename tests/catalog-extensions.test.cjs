@@ -188,15 +188,520 @@ test('numeric dialogs cancel on visibility changes without leaving the offline g
  const point=await editorPoint(page,run,0,'entry');await page.mouse.click(point.x,point.y);
  await page.getByLabel('Value',{exact:true}).fill('9');
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
- assert.equal(await page.locator('dialog[data-smart-number-input]').count(),0);
+ assert.equal(await page.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));});
  await run('smartHitSettled');assert.deepEqual(await outputs(run,0),{value:4});
  const {preview}=await openExport(page,run,context);await readerClick(preview,0,point.handle);
  await preview.getByLabel('Value',{exact:true}).fill('7');
  await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
- assert.equal(await preview.locator('dialog[data-smart-number-input]').count(),0);
+ assert.equal(await preview.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0);
  await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));});
  await readerClick(preview,0,point.handle);await preview.getByLabel('Value',{exact:true}).fill('6');
  await preview.getByRole('button',{name:'Apply',exact:true}).click();
  await preview.waitForFunction(()=>[...document.querySelectorAll('[data-smart-index="0"] text')].some(e=>e.textContent==='6'));
+}));
+
+test('kind:text handles use inline edit mode, or a dialog without inline metadata; the spreadsheet example wires ports',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   const nc={...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'nc',x:820,y:100,state:{value:5},bindings:{},inputValues:{}};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:80,y:120,w:640,h:240,color:'#64748b',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:16,font:fontStr('sans',16),script,state:{cells:{A1:'2',A2:'3',A3:'=SUM(A1:A2)*INPUT("energy")',B1:'=OUTPUT(A3,"Total Energy")'}},
+     componentApi:2,componentName:'Spreadsheet',bindings:{energy:{uid:'nc',port:'value'}},inputValues:{}},nc];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual(await outputs(run,0),{Total_Energy:25},'(2+3) x connected 5, published under a valid port name');
+ assert.deepEqual(Object.keys((await run('requestSmartCaps(items[0])')).inputs),['energy'],'INPUT("energy") declares an input port');
+ const headers=editing=>run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);
+   const kids=await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,${editing},io]);
+   return {outside:kids.filter(k=>k.editorOnly).length,cellsMoved:kids.filter(k=>!k.editorOnly && (k.x<0 || k.y<0)).length};})()`);
+ assert.deepEqual(await headers(false),{outside:0,cellsMoved:0},'no headers outside edit mode');
+ const edit=await headers(true);
+ assert.ok(edit.outside>=40 && edit.cellsMoved===0,'edit mode adds editor-only headers outside the box without moving cells');
+ const undoBefore=await run('undoStack.length');
+ const pt=await editorPoint(page,run,0,'C1');await page.mouse.click(pt.x,pt.y);
+ const input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+ const box=await input.boundingBox(),canvas=await page.locator('#canvas').boundingBox();
+ assert.deepEqual([box.x-canvas.x,box.y-canvas.y,box.width,box.height].map(Math.round),[80+128,120,64,24],'the field covers cell C1 exactly');
+ assert.equal(await page.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0,'no dialog for a handle with inline metadata');
+ await input.fill('=OUTPUT(A1*100,"Cents")');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.C1')==='=OUTPUT(A1*100,"Cents")');
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));   // Enter only applies: no next field
+ {const pt=await editorPoint(page,run,0,'C2');await page.mouse.click(pt.x,pt.y);}
+ await page.locator('[data-smart-inline-input] #smartTextValue').waitFor();
+ await page.keyboard.type('7');await page.keyboard.press('Tab');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.C2')==='7');
+ await page.locator('[data-smart-inline-input] #smartTextValue').waitFor();   // Tab continued in D2
+ await page.keyboard.type('99');await page.keyboard.press('Escape');await run('smartHitSettled');
+ assert.equal(await page.locator('[data-smart-inline-input] #smartTextValue').count(),0);
+ assert.equal(await run('items[0].state.cells.D2'),undefined,'Escape discards the cell being typed');
+ assert.deepEqual(await outputs(run,0),{Total_Energy:25,Cents:200},'a typed OUTPUT formula adds an output port');
+ assert.equal(await run('undoStack.length'),undoBefore+2,'one undo entry per applied cell');
+ await run('undo()');assert.equal(await run('items[0].state.cells.C2'),undefined);
+ // Without inline metadata the same handle kind uses the dialog
+ await run(`(async()=>{items.push({...clone(items[1]),uid:'dlg',x:300,y:450,w:200,h:80,componentApi:undefined,componentName:'Note',bindings:undefined,inputValues:undefined,
+   script:'({initState(){return {t:"hi"};},children(s,st,w,h){return [{type:"text",x:0,y:0,w,h,text:s.t,strokeOn:false,fill:false}];},handles(s,w,h){return [{id:"t",x:w/2,y:h/2,kind:"text",value:s.t,label:"Note"}];},hitEdit(){return "t";},dragEdit(s,id,v){return {...s,t:v||"-"};}})',
+   state:{t:'hi'}});render();})()`);
+ const dpt=await editorPoint(page,run,2,'t');await page.mouse.click(dpt.x,dpt.y);
+ await page.waitForSelector('dialog[data-smart-text-input]');
+ assert.equal(await page.locator('dialog[data-smart-text-input] label').textContent(),'Note');
+ await page.locator('#smartTextValue').fill('typed');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
+ assert.equal(await run('items[2].state.t'),'typed');
+ const bad=await run(`(async()=>{const it={...items[0],uid:'bad',script:'({apiVersion:2,initState(){return {};},children(){return [];},handles(){return [{id:"t",x:1,y:1,kind:"text",value:5}];}})'};
+   try{const r=await requestSmartCall(it,'handles',[{},10,10,{}]);return r==null?'rejected':'accepted '+JSON.stringify(r);}catch(e){return 'rejected';}})()`);
+ assert.equal(bad,'rejected','a non-string text value is rejected');
+}));
+
+test('spreadsheet Booleans: typed INPUT/OUTPUT ports, comparisons, IF/AND, wired to a toggle and a status indicator',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={B1:'=INPUT("temp")',B2:'=INPUT("door","boolean")',B3:'=B1>25',B4:'=OUTPUT(AND(B3,B2),"Alarm")',
+   B5:'=IF(B4,"ALARM","ok")',B6:'=OUTPUT(IF(B2,B1*2,0),"Heat")',B7:'=OUTPUT(B5,"State")'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   const cat=(k,uid,x,y,extra)=>({...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===k).items[0]),uid,x,y,bindings:{},inputValues:{},...extra});
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{temp:{uid:'nc',port:'value'},door:{uid:'tg',port:'value'}},inputValues:{}},
+     cat('numberControl','nc',800,100,{state:{value:30}}),cat('toggle','tg',800,300,{state:{value:true}}),
+     cat('statusIndicator','si',800,480,{bindings:{value:{uid:'sh',port:'Alarm'}}})];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ const caps=await run('requestSmartCaps(items[0])');
+ assert.deepEqual(caps.inputs,{temp:{type:'number',default:0},door:{type:'boolean',default:false}},'INPUT types: number by default, "boolean" on request');
+ assert.deepEqual(caps.outputs,{Alarm:{type:'boolean'},Heat:{type:'number'},State:{type:'string'}},'OUTPUT types follow the formulas');
+ assert.deepEqual(await outputs(run,0),{Alarm:true,Heat:60,State:'ALARM'});
+ assert.deepEqual(await outputs(run,3),{value:true},'the Boolean output drives a status indicator');
+ await run(`items[2].state={...items[2].state,value:false};ensureEditorComponentGraph()`);
+ assert.deepEqual(await outputs(run,0),{Alarm:false,Heat:0,State:'ok'},'IF follows the Boolean input');
+ assert.deepEqual(await outputs(run,3),{value:false});
+}));
+
+test('spreadsheet VLOOKUP: approximate and exact matches, comma or semicolon separators, typed outputs',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={D1:'0',E1:'none',F1:'0',D2:'10',E2:'small',F2:'2.5',D3:'50',E3:'medium',F3:'2',D4:'100',E4:'large',F4:'1.5',
+   H1:'Apfel',I1:'1.2',H2:'Birne',I2:'0.9',
+   A1:'=INPUT("qty")',B1:'=OUTPUT(VLOOKUP(A1,D1:F4,3)*A1,"Cost")',B2:'=OUTPUT(VLOOKUP(A1;D1:F4;2;TRUE),"Size")',
+   B3:'=OUTPUT(VLOOKUP(„birne“;H1:I2;2;FALSE),‘Pear’)'};   // typographic quotes work like straight ones
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{qty:60}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual((await run('requestSmartCaps(items[0])')).outputs,{Cost:{type:'number'},Size:{type:'string'},Pear:{type:'number'}});
+ assert.deepEqual(await outputs(run,0),{Cost:120,Size:'medium',Pear:0.9},'60 falls in the 50 band: rate 2, size medium; exact text match ignores case');
+ await run(`items[0].inputValues={qty:5};ensureEditorComponentGraph()`);
+ assert.deepEqual(await outputs(run,0),{Cost:0,Size:'none',Pear:0.9},'5 falls in the 0 band');
+ await run(`items[0].state={cells:{...items[0].state.cells,B1:'=OUTPUT(VLOOKUP(11,D1:F4,3,FALSE),"Cost")'}};ensureEditorComponentGraph()`);
+ assert.match((await outputs(run,0)).error,/#N\/A/,'an exact lookup without a match reports #N/A');
+}));
+
+test('a component in error keeps its editor-only handles so a spreadsheet can be repaired in place; ordinary handles stay blocked',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const place=cells=>run(`(async()=>{const script=${JSON.stringify(script)};
+   const nc={...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'nc',x:820,y:100,state:{value:5},bindings:{},inputValues:{}};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:80,y:120,w:640,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cells:${'${JSON.stringify(cells)}'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{energy:{uid:'nc',port:'value'}},inputValues:{}},nc];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`.replace("${JSON.stringify(cells)}",JSON.stringify(cells)));
+ // 1. a binding whose INPUT formula was removed: "Unknown input energy"
+ await place({B1:'=OUTPUT(A1*2,"Out")'});
+ assert.match((await outputs(run,0)).error,/Unknown input energy/);
+ {const pt=await editorPoint(page,run,0,'A1');await page.mouse.click(pt.x,pt.y);}
+ let input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+ await input.fill('=INPUT("energy")');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A1')==='=INPUT("energy")');
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));await run('smartHitSettled');
+ assert.deepEqual(await outputs(run,0),{Out:10},'retyping the INPUT formula reconnects the kept binding');
+ // 2. an OUTPUT formula error
+ await place({A1:'=INPUT("energy")',A2:'0',B1:'=OUTPUT(A1/A2,"Out")'});
+ assert.match((await outputs(run,0)).error,/#DIV\/0!/);
+ {const pt=await editorPoint(page,run,0,'A2');await page.mouse.click(pt.x,pt.y);}
+ input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+ await input.fill('2');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A2')==='2');
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));await run('smartHitSettled');
+ assert.deepEqual(await outputs(run,0),{Out:2.5},'fixing the divisor clears the error');
+ // 3. ordinary (non editor-only) handles of a component in error stay blocked
+ const blocked=await run(`(async()=>{
+   const it={...clone(items[0]),uid:'bad',bindings:{nope:{uid:'nc',port:'value'}},
+     script:'({apiVersion:2,initState(){return {n:0};},children(){return [];},handles(){return [{id:"go",x:1,y:1,kind:"click"},{id:"fix",x:2,y:2,kind:"click",editorOnly:true}];},hitEdit(){return "go";},dragEdit(s){return {state:{n:s.n+1}};}})',state:{n:0}};
+   items.push(it);await ensureEditorComponentGraph();
+   return (await requestSmartCall(it,'handles',[it.state,10,10,{}])).map(h=>h.id);})()`);
+ assert.deepEqual(blocked,['fix'],'only editor-only handles remain while the component is in error');
+}));
+
+test('spreadsheet context menu inserts and deletes columns/rows, resizes the shape, rewrites references, and undoes',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1',B1:'2',C1:'3',D1:'=SUM(A1:C1)',E1:'=OUTPUT(D1+B1,"Total")',A2:'="B1 stays"'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ // right-click at a point in the sheet's local coordinates (edit mode) and pick a menu entry
+ const pick=async(lx,ly,label)=>{
+   await run('selection=[0];editingSmartIdx=0;render()');
+   const it=await run('({x:items[0].x,y:items[0].y})'),box=await page.locator('#canvas').boundingBox();
+   await page.mouse.click(box.x+it.x+lx,box.y+it.y+ly,{button:'right'});
+   const menu=page.locator('[data-smart-context-menu]');await menu.waitFor();
+   await menu.getByRole('menuitem',{name:label,exact:true}).click();
+   await page.waitForFunction(()=>!document.querySelector('[data-smart-context-menu]'));await run('smartHitSettled');
+   await page.waitForTimeout(150);
+ };
+ const sheet=()=>run('({w:items[0].w,h:items[0].h,cols:items[0].state.cols,rows:items[0].state.rows,cells:items[0].state.cells})');
+ assert.deepEqual(await outputs(run,0),{Total:8});
+ await pick(32,-16,'Insert 1 column right');   // on the column header
+ let s=await sheet();
+ assert.deepEqual([s.w,s.h,s.cols,s.rows],[448,144,7,6],'one column wider, cells keep their size');
+ assert.equal(s.cells.E1,'=SUM(A1:D1)','a range spanning the insertion grows');
+ assert.equal(s.cells.F1,'=OUTPUT(E1+C1,"Total")','references follow their moved cells');
+ assert.equal(s.cells.A2,'="B1 stays"','quoted text is never rewritten');
+ assert.deepEqual(await outputs(run,0),{Total:8});
+ await pick(150,30,'Delete column');   // on a cell in C (the former B)
+ s=await sheet();
+ assert.deepEqual([s.w,s.cols],[384,6]);
+ assert.equal(s.cells.D1,'=SUM(A1:C1)','a range shrinks when a column inside it is deleted');
+ assert.equal(s.cells.E1,'=OUTPUT(D1+#REF!,"Total")','a reference to the deleted column becomes #REF!');
+ await pick(-22,12,'Insert 1 row below');   // on the row header
+ s=await sheet();
+ assert.deepEqual([s.h,s.rows],[168,7]);
+ assert.equal(s.cells.A3,'="B1 stays"','row 2 moved to row 3');
+ await run('undo()');await run('undo()');await run('undo()');
+ s=await sheet();
+ assert.deepEqual([s.w,s.h,s.cols,s.rows],[384,144,6,6],'undo restores size and dimensions');
+ assert.deepEqual(s.cells,cells,'and the original formulas');
+ const legacy=await run(`(async()=>{const it={...clone(items[0]),uid:'old',state:{cells:{J10:'7'}}};items.push(it);
+   return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,{}])).filter(h=>h.kind==='text').length;})()`);
+ assert.equal(legacy,100,'a sheet saved without rows/cols keeps 10 x 10');
+}));
+
+test('spreadsheet math, counting, error and text functions behave like Excel',async()=>app(async({run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'2.5',A2:'-7.25',A3:'hello',A4:'=""',A5:'=1/0',A6:'TRUE',
+   B1:'=OUTPUT(ROUND(2.345;2)+ROUND(-2.5)+ROUND(1.005;2),"rounds")',B2:'=OUTPUT(-2^2+MOD(-7;3)+INT(A2)+SQRT(16),"math")',
+   B3:'=OUTPUT(COUNTA(A1:A6)*10+COUNT(A1:A6),"counts")',B4:'=OUTPUT(IFERROR(A5;0)+IFERROR(A1*2;0),"iferror")',
+   B5:'=OUTPUT("Total: "&A1&" "&LEFT(A3;2)&UPPER(MID(A3;3;3)),"text")',B6:'=OUTPUT(AND(ISBLANK(C1),NOT(ISBLANK(A4)),ISERROR(A5),ISTEXT(A3)),"tests")'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:60,y:100,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();})()`);
+ assert.deepEqual((await run('requestSmartCaps(items[0])')).outputs.text,{type:'string'});
+ const o=await outputs(run,0);
+ assert.equal(o.rounds,2.35-3+1.01);
+ assert.equal(o.math,4+2-8+4,'-2^2 is 4, MOD takes the divisor sign, INT floors');
+ assert.equal(o.counts,62,'COUNTA counts all 6 non-empty cells including "" and an error; COUNT counts 2 numbers');
+ assert.equal(o.iferror,5);
+ assert.equal(o.text,'Total: 2.5 heLLO');
+ assert.equal(o.tests,true);
+}));
+
+test('spreadsheet context menu: Insert function submenu wraps the cell formula and opens it with the placeholder selected',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'10',A2:'4',A3:'=A1/A2'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ await page.mouse.click(box.x+120+32,box.y+140+60,{button:'right'});   // A3
+ const menus=page.locator('[data-smart-context-menu]');
+ await menus.first().getByRole('menuitem',{name:/Insert function/}).hover();
+ await menus.nth(1).getByRole('menuitem',{name:/Math/}).hover();
+ await menus.nth(2).getByRole('menuitem',{name:'ROUND(value, digits)'}).click();
+ const input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+ assert.deepEqual(await input.evaluate(e=>[e.value,e.value.slice(e.selectionStart,e.selectionEnd)]),['=ROUND(A1/A2,digits)','digits'],
+   'the formula is wrapped and the first open placeholder is selected');
+ assert.equal(await menus.count(),0,'menus close after the choice');
+ await page.keyboard.type('0');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.A3')==='=ROUND(A1/A2,0)');
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));await run('smartHitSettled');
+ const shown=await run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>k.text);})()`);
+ assert.ok(shown.includes('3'),'ROUND(10/4, 0) shows 3');
+ const bad=await run(`(async()=>{const it={...clone(items[0]),uid:'bad',componentApi:undefined,script:'({initState(){return {};},children(){return [];},contextMenu(){return [{label:"a",items:[{label:"b",items:[{label:"c",items:[{id:"x",label:"x"}]}]}]}];}})'};
+   const r=await requestSmartCall(it,'contextMenu',[{},0,0,10,10,{}]);return r==null?'rejected':'accepted';})()`);
+ assert.equal(bad,'rejected','menus nest at most two levels deep');
+}));
+
+test('spreadsheet context menu opens on a touch long press; a short tap still edits the cell',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:{A1:'5'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ // touch pointer events as iPadOS sends them (no contextmenu event)
+ const touch=(type,x,y)=>page.evaluate(([type,x,y])=>{const c=document.getElementById('canvas'),r=c.getBoundingClientRect();
+   c.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,pointerType:'touch',isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:r.left+x,clientY:r.top+y}));},[type,x,y]);
+ const menus=page.locator('[data-smart-context-menu]'),input=page.locator('[data-smart-inline-input] #smartTextValue');
+ const a1=[120+32,140+12];
+ await touch('pointerdown',...a1);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),1,'holding still opens the context menu');
+ await touch('pointermove',a1[0]+3,a1[1]+2);await touch('pointerup',a1[0]+3,a1[1]+2);await run('smartHitSettled');
+ assert.equal(await menus.count(),1,'lifting the finger keeps the menu open');
+ assert.equal(await input.count(),0,'the long press does not also start editing the cell');
+ await menus.first().getByRole('menuitem',{name:'Alignment'}).click();
+ await menus.nth(1).getByRole('menuitem',{name:'Center'}).click();
+ await page.waitForFunction(()=>__test.run('items[0].state.aligns?.A1')==='center');
+ assert.equal(await run('items[0].state.cells.A1'),'5');
+ // a press that moves is not a long press; a short tap edits the cell as before
+ await page.waitForTimeout(400);
+ await touch('pointerdown',...a1);await touch('pointermove',a1[0]+20,a1[1]);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),0,'a moving press opens no menu');
+ await touch('pointerup',a1[0]+20,a1[1]);
+ await input.waitFor();await page.keyboard.press('Escape');   // the released press edits A1 as usual
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));await page.waitForTimeout(400);
+ const b2=[120+64+32,140+24+12];
+ await touch('pointerdown',...b2);await page.waitForTimeout(80);await touch('pointerup',...b2);
+ await input.waitFor();
+ assert.equal(await input.getAttribute('aria-label'),'Cell B2');
+ assert.equal(await menus.count(),0);
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue'));await page.waitForTimeout(400);
+ // the headers lie outside the shape's box: a long press there opens the header menu too
+ const headB=[120+64+32,140-8-10];
+ await touch('pointerdown',...headB);await page.waitForTimeout(700);
+ assert.equal(await menus.count(),1,'a long press on a column header opens its menu');
+ await touch('pointerup',...headB);await run('smartHitSettled');
+ assert.ok((await menus.first().textContent()).includes('Column width'),'the column header menu');
+ assert.equal(await run('editingSmartIdx'),0,'still in edit mode');
+}));
+
+test('spreadsheet context menu: Number format and Alignment per cell, moved with inserted columns',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1234.5678',A2:'0.1235',A3:'hello',A4:'=A1*2'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ const menus=page.locator('[data-smart-context-menu]');
+ const choose=async(row,sub,name,expect)=>{   // expect: state check once the choice is applied
+   await page.mouse.click(box.x+120+32,box.y+140+row*24+12,{button:'right'});
+   await menus.first().getByRole('menuitem',{name:sub}).hover();
+   await menus.nth(1).getByRole('menuitem',{name}).click();
+   await page.waitForFunction(expect=>__test.run(expect),expect);
+ };
+ await choose(0,'Number format',/^Thousands, 2 decimals/,"items[0].state.formats?.A1==='#,##0.00'");
+ await choose(1,'Number format',/^Percent\s+12%/,"items[0].state.formats?.A2==='0%'");
+ await choose(2,'Alignment',/^Right/,"items[0].state.aligns?.A3==='right'");
+ await page.waitForFunction(()=>__test.run('JSON.stringify([items[0].state.formats,items[0].state.aligns])')===JSON.stringify([{A1:'#,##0.00',A2:'0%'},{A3:'right'}]));
+ const drawn=()=>run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(k=>k.type==='text').map(k=>[k.text,k.align]);})()`);
+ let shown=await drawn();
+ assert.deepEqual(shown.filter(([t])=>['1,234.57','12%','hello','2469.1356'].includes(t)),[['1,234.57','right'],['12%','right'],['hello','right'],['2469.1356','right']],
+   'formats change only the shown number; a formula referring to A1 still computes with the full value');
+ // the current choice is ticked
+ await page.mouse.click(box.x+120+32,box.y+140+2*24+12,{button:'right'});
+ await menus.first().getByRole('menuitem',{name:'Alignment'}).hover();
+ assert.deepEqual(await menus.nth(1).getByRole('menuitem').allTextContents(),['Left','Center','Right  ✓','Default']);
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('[data-smart-context-menu]'));
+ // inserting a column left of A moves the settings with their cells; Default/Automatic remove them
+ await run(`(async()=>{const it=items[0],r=await requestSmartCall(it,'dragEdit',[it.state,'cins0',0,0,it.w,it.h]);applySmartDragResult(it,r);})()`);
+ assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[{B1:'#,##0.00',B2:'0%'},{B3:'right'}]);
+ await run(`(async()=>{const it=items[0];for(const id of ['nf0:B1','nf0:B2','al:default:B3'])applySmartDragResult(it,await requestSmartCall(it,'dragEdit',[it.state,id,0,0,it.w,it.h]));})()`);
+ assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[undefined,undefined]);
+ assert.ok(await run(`BUILTIN_LIBRARY_DEFINITIONS.some(d=>d.key==='spreadsheet'&&d.category==='Controls')`),'built into the Controls catalog');
+}));
+
+test('spreadsheet column width from the header menu: number dialog, the shape grows by the difference, reset restores',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:{B1:'x'}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const pick=async label=>{const box=await page.locator('#canvas').boundingBox();
+   await page.mouse.click(box.x+120+96,box.y+140-16,{button:'right'});   // column header B
+   await page.locator('[data-smart-context-menu]').getByRole('menuitem',{name:label,exact:true}).click();};
+ await pick('Column width…');
+ await page.locator('dialog[data-smart-number-input]').waitFor();
+ assert.equal(await page.locator('#smartNumberValue').inputValue(),'64','the dialog shows the current width');
+ await page.locator('#smartNumberValue').fill('120');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
+ await page.waitForFunction(()=>__test.run('items[0].w')===440);
+ assert.deepEqual(await run('items[0].state.weights'),[1,1.875,1,1,1,1]);
+ const rect=await run(`(async()=>{const it=items[0];return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,{}])).find(h=>h.id==='B1').inline;})()`);
+ assert.deepEqual([rect.x,rect.w],[64,120],'cell B1 is 120 px wide and starts after A');
+ await run('selection=[0];editingSmartIdx=0;render()');
+ await pick('Reset column width');
+ await page.waitForFunction(()=>__test.run('items[0].w')===384);
+ assert.equal(await run('items[0].state.weights'),undefined,'a reset sheet stores no widths');
+}));
+
+test('spreadsheet cell pointing: while typing a formula, clicking or dragging over cells inserts references',async()=>app(async({page,run})=>{
+ const script=fs.readFileSync(path.join(__dirname,'..','examples','spreadsheet.js'),'utf8');
+ const cells={A1:'1',A2:'2',A3:'3',B1:'10'};
+ await run(`(async()=>{const script=${JSON.stringify(script)};
+   cancelGesture();
+   items=[{type:'smart',uid:'sh',x:120,y:140,w:384,h:144,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,
+     fontFamily:'sans',fontSize:12,font:fontStr('sans',12),script,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},componentApi:2,componentName:'Spreadsheet',
+     bindings:{},inputValues:{}}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox();
+ const at=(c,r)=>({x:box.x+120+c*64+32,y:box.y+140+r*24+12});
+ const input=page.locator('[data-smart-inline-input] #smartTextValue');
+ // drag over A1..A3 after "=SUM("
+ let q=at(3,0);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('=SUM(');
+ const a1=at(0,0),a3=at(0,2);
+ await page.mouse.move(a1.x,a1.y);await page.mouse.down();await page.mouse.move(a3.x,a3.y,{steps:5});await page.mouse.up();
+ assert.equal(await input.inputValue(),'=SUM(A1:A3','dragging inserts a range');
+ assert.equal(await input.count(),1,'the field stays open');
+ const frame=await page.evaluate(()=>{const el=[...document.querySelectorAll('div')].find(d=>d.style.borderStyle==='dashed');const r=el.getBoundingClientRect();return [r.x,r.y,r.width,r.height];});
+ const cellsBox=[box.x+120,box.y+140,64,72];   // A1:A3
+ frame.forEach((v,i)=>assert.ok(Math.abs(v-(cellsBox[i]+(i<2?-1:2)))<=.5,'the dashed frame reaches 1 px past every side of A1:A3: '+frame));
+ await page.keyboard.type(')');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D1')==='=SUM(A1:A3)');
+ await input.waitFor({state:'detached'});
+ // a second click right after replaces the reference; after an operator pointing works again
+ q=at(3,1);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('=');
+ let c=at(1,0);await page.mouse.click(c.x,c.y);c=at(0,1);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=A2','pointing again replaces the reference just inserted');
+ await page.keyboard.type('*');c=at(1,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=A2*B1','after an operator a click inserts again');
+ await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D2')==='=A2*B1');
+ await input.waitFor({state:'detached'});
+ // argument by argument: after pointing the first, selecting the next placeholder points into that one
+ q=at(3,3);await page.mouse.click(q.x,q.y);await input.waitFor();
+ const pick=word=>input.evaluate((el,w)=>{const i=el.value.indexOf(w);el.setSelectionRange(i,i+w.length);},word);
+ await page.keyboard.type('=ROUND(value,digits)');await pick('value');
+ c=at(0,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A1,digits)');
+ await input.evaluate(el=>el.setSelectionRange(el.value.indexOf('digits'),el.value.indexOf('digits')+6));
+ c=at(1,0);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A1,B1)','the selected placeholder is replaced, not the first argument');
+ await input.evaluate(el=>{const i=el.value.indexOf('A1');el.setSelectionRange(i,i+2);});
+ c=at(0,2);await page.mouse.click(c.x,c.y);
+ assert.equal(await input.inputValue(),'=ROUND(A3,B1)','selecting an earlier argument and pointing replaces it');
+ await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D4')==='=ROUND(A3,B1)');
+ await input.waitFor({state:'detached'});
+ // plain text: a click on another cell ends editing as before
+ q=at(3,2);await page.mouse.click(q.x,q.y);await input.waitFor();
+ await page.keyboard.type('label');c=at(4,0);await page.mouse.click(c.x,c.y);
+ await page.waitForFunction(()=>__test.run('items[0].state.cells.D3')==='label');
+ await page.waitForFunction(()=>document.querySelector('[data-smart-inline-input] #smartTextValue')?.getAttribute('aria-label')==='Cell E1');
+ assert.equal(await page.locator('[data-smart-inline-input] #smartTextValue').getAttribute('aria-label'),'Cell E1','the click went on to edit the clicked cell');
+ await page.keyboard.press('Escape');
+}));
+
+test('holding existing controls without a context menu still activates them on touch and pen release',async()=>app(async({page,run})=>{
+ for(const pointerType of ['touch','pen']){
+   await seed(run,[{key:'toggle'}]);
+   const point=await editorPoint(page,run,0,'toggle');
+   const dispatch=type=>page.evaluate(({type,point,pointerType})=>document.getElementById('canvas').dispatchEvent(new PointerEvent(type,{
+     bubbles:true,cancelable:true,pointerId:19,pointerType,isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:point.x,clientY:point.y
+   })),{type,point,pointerType});
+   await dispatch('pointerdown');await page.waitForTimeout(700);
+   assert.equal(await page.locator('[data-smart-context-menu]').count(),0);
+   await dispatch('pointerup');await run('smartHitSettled');
+   await page.waitForFunction(()=>__test.run('items[0].state.value')===true);
+   assert.equal((await outputs(run,0)).value,true,pointerType+' release is not swallowed');
+ }
+}));
+
+test('inline cell edits avoid no-op history, isolate native paste, and discard stale drafts on undo',async()=>app(async({page,run})=>{
+ await seed(run,[{key:'spreadsheet',state:{cols:4,rows:4,cells:{A1:'5'}}}]);
+ const open=async id=>{const point=await editorPoint(page,run,0,id);await page.mouse.click(point.x,point.y);await page.locator('[data-smart-inline-input] #smartTextValue').waitFor();};
+ const field=page.locator('[data-smart-inline-input]'),input=field.locator('input');
+ const before=await run('undoStack.length');
+ await open('A1');assert.equal(await field.getAttribute('data-mode'),'edit');
+ await input.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
+ assert.equal(await run('undoStack.length'),before,'unchanged cell does not add history');
+ await open('A1');await run('clipboard=[clone(items[0])];clipboardAssets={};clipboardDatasets={};');
+ const paste=await input.evaluate(element=>{
+   const data=new DataTransfer();data.setData('text/plain','=1+2');
+   const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
+   element.dispatchEvent(event);return event.defaultPrevented;
+ });
+ assert.equal(paste,false,'native field paste is not prevented by the canvas paste handler');
+ assert.equal(await run('items.length'),1,'internal canvas clipboard does not paste a component into the drawing');
+ await input.fill('6');await input.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
+ assert.equal(await run('items[0].state.cells.A1'),'6');
+ await open('A1');await input.fill('stale');await run('undo()');await field.waitFor({state:'detached'});
+ assert.equal(await run('items[0].state.cells.A1'),'5','undo cancels the draft and restores the committed cell');
+}));
+
+test('right-clicking another cell commits an inline draft and opens its context menu in one gesture',async()=>app(async({page,run})=>{
+ await seed(run,[{key:'spreadsheet',state:{cols:4,rows:4,cells:{A1:'10'}}}]);
+ const a=await editorPoint(page,run,0,'A1'),b=await editorPoint(page,run,0,'B1');
+ await page.mouse.click(a.x,a.y);const field=page.locator('[data-smart-inline-input]');await field.waitFor();
+ await field.locator('input').fill('20');await page.mouse.click(b.x,b.y,{button:'right'});
+ const menus=page.locator('[data-smart-context-menu]');await menus.first().waitFor();
+ await field.waitFor({state:'detached'});assert.equal(await run('items[0].state.cells.A1'),'20');
+ await menus.first().getByRole('menuitem',{name:'Alignment',exact:true}).hover();
+ await menus.nth(1).getByRole('menuitem',{name:'Center',exact:true}).click();
+ await page.waitForFunction(()=>__test.run('items[0].state.aligns?.B1')==='center');
+ assert.equal(await run('items[0].state.aligns?.A1'),undefined,'the menu belongs to the clicked cell');
+}));
+
+test('numeric inline edit mode validates, saves on Enter or outside click, and cancels in editor and offline HTML',async()=>app(async({page,run,context})=>{
+ const script=`({apiVersion:2,initState(){return {value:2};},inputs(){return {};},outputs(){return {value:{type:'number'}};},compute(inputs,s){return {value:s.value};},
+ children(s,st,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#fff',strokeOn:true},{type:'text',x:0,y:0,w,h,text:String(s.value),fontSize:20,fill:false,strokeOn:false}];},
+ handles(s,w,h){return [{id:'value',kind:'number',x:w/2,y:h/2,value:s.value,min:0,max:10,step:1,label:'Edit value',inline:{x:0,y:0,w,h,fontSize:20,mode:'edit'}}];},
+ hitEdit(s,x,y,w,h){return x>=0&&y>=0&&x<=w&&y<=h?'value':null;},dragEdit(s,id,value){return {state:{...s,value}};}})`;
+ await seed(run,[{key:'numberInput',script,state:{value:2},w:180,h:50}]);
+ const point=await editorPoint(page,run,0,'value');
+ const {preview,errors,requests}=await openExport(page,run,context);
+ for(const target of [page,preview]){
+   target.setDefaultTimeout(10000);
+   const open=async()=>{if(target===page){await run('smartHitSettled');const at=await editorPoint(page,run,0,'value');await page.mouse.click(at.x,at.y);}else await readerClick(preview,0,point.handle);await target.locator('[data-smart-inline-input]').waitFor();};
+   const field=target.locator('[data-smart-inline-input]'),input=field.locator('input');
+   await open();assert.equal(await input.getAttribute('aria-label'),'Edit value');await input.fill('11');await input.press('Enter');
+   assert.equal(await field.isVisible(),true,'invalid value remains editable');
+   await input.fill('3');await input.press('Enter');await field.waitFor({state:'detached'});
+   await open();assert.equal(await input.inputValue(),'3');await input.fill('4');
+   await target.mouse.click(20,900);await field.waitFor({state:'detached'});
+   await open();assert.equal(await input.inputValue(),'4','outside click commits');
+   await input.fill('9');await input.press('Escape');await field.waitFor({state:'detached'});
+   await open();assert.equal(await input.inputValue(),'4','Escape discards');await input.press('Escape');
+ }
+ assert.deepEqual(await outputs(run,0),{value:4});assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
+
+test('smart drag results persist and undo a size-only click and a continuous resize',async()=>app(async({page,run})=>{
+ const script=`({apiVersion:2,initState(){return {};},inputs(){return {};},outputs(){return {};},compute(){return {};},
+ children(s,st,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#fff',strokeOn:true}];},
+ handles(s,w,h){return [{id:'grow',kind:'click',x:20,y:20},{id:'resize',kind:'drag',x:w-15,y:h/2}];},
+ hitEdit(s,x,y,w,h){return x<40?'grow':'resize';},dragEdit(s,id,x,y,w,h){return {state:s,size:{w:id==='grow'?w+40:Math.max(60,x+15),h}};}})`;
+ await seed(run,[{key:'numberInput',script,state:{},w:180,h:80}]);
+ const before=await run('undoStack.length');await editorHandle(page,run,0,'grow');
+ await page.waitForFunction(()=>__test.run('items[0].w')===220);
+ assert.equal(await run('undoStack.length'),before+1,'size-only click is recorded');
+ await run('undo()');assert.equal(await run('items[0].w'),180);await run('redo()');assert.equal(await run('items[0].w'),220);
+ const point=await editorPoint(page,run,0,'resize');await page.mouse.move(point.x,point.y);await page.mouse.down();
+ await page.mouse.move(point.x+70,point.y,{steps:5});
+ await page.waitForFunction(()=>__test.run('items[0].w')>250);
+ await page.mouse.up();await run('smartHitSettled');
+ assert.equal(await run('Math.round(items[0].w)'),290,'continuous drag applies the size before release');
+ await run('undo()');assert.equal(await run('items[0].w'),220,'one undo restores the complete pre-drag geometry');
+}));
+
+test('script-driven resizing in offline HTML preserves the origin of rotated components',async()=>app(async({page,run,context})=>{
+ const script=`({apiVersion:2,inputs:{},outputs:{},compute(){return {};},
+ children(s,st,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#ffffff',strokeOn:true}];},
+ handles(){return [{id:'grow',kind:'click',x:20,y:20}];},hitEdit(s,x,y){return Math.hypot(x-20,y-20)<16?'grow':null;},
+ dragEdit(s,id,x,y,w,h){return {state:s,size:{w:w+40,h}};}})`;
+ await seed(run,[{key:'numberInput',script,state:{},w:180,h:80,rotation:Math.PI/4},
+   {key:'numberInput',script,state:{},w:180,h:80,rotation:-Math.PI/2}]);
+ const {preview,errors,requests}=await openExport(page,run,context);
+ for(const index of [0,1]){
+   const host=preview.locator('[data-smart-index="'+index+'"]');
+   await preview.waitForFunction(index=>document.querySelector('[data-smart-index="'+index+'"]')?.dataset.smartReady==='true',index);
+   const corner=()=>host.evaluate(el=>{const p=new DOMPoint(0,0).matrixTransform(el.firstElementChild.getScreenCTM());return [p.x,p.y];});
+   const before=await corner();await readerClick(preview,index,{x:20,y:20});
+   await preview.waitForFunction(index=>Number(document.querySelector('[data-smart-index="'+index+'"] rect')?.getAttribute('width'))===220,index);
+   const after=await corner();for(let axis=0;axis<2;axis++)assert.ok(Math.abs(after[axis]-before[axis])<.01,'the exported rotation preserves the component origin');
+ }
+ assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
