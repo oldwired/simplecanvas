@@ -6,8 +6,13 @@ an editable eight-tab example workspace, offline HTML reader, and the final auth
 These additions are not yet part of the main-branch baseline below.
 Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
 aggregation, optional transform switches, editable/dataset-driven choices and text lookup, a connected
-spreadsheet, and narrow host-owned reload/download actions. General routed events and stages 5–6 remain proposals.
-Stage 3 remains active; the spreadsheet integration does not close it.
+spreadsheet with live dataset cells and editable imports, and a shared dataset model with bound-cell
+editing, pulse-triggered row capture, and explicit Dataset ownership with source Replace/Append.
+Dataset editor provides record editing and paging; Spreadsheet publishes evaluated table ranges.
+Datasets can follow source publications in Live mode, overwriting local records on refresh.
+Reload, source updates, capture, and downloads use narrow host-owned actions.
+General routed events and stages 5–6 remain proposals.
+Stage 3 remains active; the shared dataset milestone does not close it.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
@@ -16,7 +21,12 @@ Memo, and a sixteenth example tab before stage 3. Embedded data adds a seventeen
 CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. An eighteenth
 tab adds reader-selected data, aggregation, sorting, and explicit CSV/JSON downloads. A nineteenth
 tab adds manual choices, automatic selection, and reverse text lookup using shared data. A twentieth
-tab demonstrates spreadsheet formulas consuming and publishing signals. Shared buses and multiple drivers are deferred;
+tab demonstrates spreadsheet formulas consuming and publishing signals. A twenty-first tab connects datasets
+to the formula grid and demonstrates the editable-copy workflow. A twenty-second tab demonstrates
+capture, editing, and several views of one shared dataset. A twenty-third tab separates incoming sources
+from owned data with explicit Replace/Append pulses. The twenty-fourth tab demonstrates Live dataset
+editing; the twenty-fifth separates an authored formula grid from its stored result table.
+Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
@@ -96,13 +106,15 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including the feedback, text-passing, and first embedded-data milestones.
+These boundaries describe the feature branch, including feedback, text passing, and shared datasets.
 
 - **Connections stay within one sketch.** Number, string, boolean, and table-reference ports are
   supported. Tables resolve through a bounded per-document pool. Cross-tab connections and routed
-  events remain future work; tables cannot participate in feedback cycles in this slice.
-- **A handle action changes local state.** There is no component API for downloading results,
-  navigating the document, or calling a service. Scripts cannot fetch data directly.
+  events remain future work. Combinational table cycles are rejected; a Dataset owner can explicitly
+  apply a transformed view of its own records through a Replace or Append pulse.
+- **Actions are explicit and bounded.** Validated host actions support file import/reload, table
+  downloads, row capture, and source-table updates. General routed events, document navigation,
+  and service calls remain future work. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
@@ -161,9 +173,10 @@ Keep these checks as the regression baseline for subsequent stages.
 Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stage 3 implements the agreed data workflow and now includes a connected formula sheet, while
+Stage 3 implements the agreed data workflow and now includes a connected formula sheet and shared
+dataset editing/capture, while
 remaining open for testing and follow-up. Stage 4 has a narrow host-owned download
-action plus explicitly declared dataset reloads; general events and stages 5–6 remain proposals. Shared buses are
+action plus explicitly declared dataset reloads and row capture; general events and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -176,8 +189,8 @@ Share runtime helpers between editor and export throughout.
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data — active; agreed workflow implemented | Bounded datasets, author and reader CSV/TSV/JSON import, typed table inputs, filtering, sorting, aggregation, table/chart built-ins, choice mappings, and connected spreadsheet formulas | Embedded or reader-selected data drives a filtered or grouped and sorted table/chart offline; invalid, mismatched, or oversized imports preserve accepted data. Spreadsheet cells consume/publish typed signals in editor and read-only HTML. |
-| 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads and declared session-file reload triggers; general event routing remains proposed | A reader downloads the current result or pulses Reload for an accepted session file. Page refresh, restoration, retries, and Undo do not replay either action. |
+| 3. Embedded data — active; agreed workflow and shared model implemented | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas, and optional bound-cell editing | One accepted capture or cell edit updates all views of the shared data in editor and opted-in HTML. Filtered/sorted edits reach the intended source row; invalid or oversized changes preserve accepted data. |
+| 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, and declared row-capture pulses; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, or captures one sampled row. Page refresh, restoration, retries, and Undo do not replay actions. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -264,7 +277,7 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Table filter, Table sort, Table aggregate, Data table, Data bar chart, Download table, Text lookup |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -280,8 +293,8 @@ including 50 API v2 components. Text input, Number input, Text label, and Memo b
 catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Dataset, Table filter,
 Data table, and Data bar chart, initially bringing the catalog to 67 entries / 58 API v2 components.
 Table sort, Table aggregate, and Download table bring the catalog to 70 entries / 61 API v2 components.
-Dropdown and Text lookup bring it to 72 entries / 63 API v2 components. Spreadsheet brings the
-current catalog to **73 entries / 64 API v2 components**. The additional Countdown timer source
+Dropdown and Text lookup bring it to 72 entries / 63 API v2 components. Spreadsheet brings it to
+73 entries / 64 API v2 components; Capture row brings the current catalog to **74 entries / 65 API v2 components**. The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
@@ -795,7 +808,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current twenty-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current twenty-five-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -1089,9 +1102,12 @@ Bindings are semantic records on each receiving item, for example:
 ```
 
 IDs and bindings are scoped to one sketch. Cross-tab connections remain future work.
-A future visible wire is an authoring view of a binding; ordinary drawing
-arrows keep their existing meaning. Existing snapping provides useful geometry, but it does
-not yet store component identity or port attachment.
+A future signal wire is an authoring view of a binding; ordinary drawing arrows keep their existing
+meaning. Shared-state associations must have a distinct visual treatment when wiring is introduced:
+use line style or symbols as well as color, with clear read, write, and read/write markers. A value
+flow, a command trigger, and access to one shared dataset must remain distinguishable. Existing
+snapping provides useful geometry, but it does not yet store component identity or port attachment.
+This milestone does not add visible signal or state wiring.
 
 Stage 1 provides the **Inputs…** source picker. Internal bindings follow duplicated or copied
 selections with remapped IDs; references outside a copied selection remain explicitly unresolved.
@@ -1112,14 +1128,15 @@ and authoring controls stay hidden there. Existing smart editing remains usable 
 
 ### Embedded data and persistence — stage 3 implemented workflow
 
-The initial slice is **Dataset → Table filter → Data table + Data bar chart**, controlled
+The initial slice is **Dataset → Table filter → Dataset editor + Data bar chart**, controlled
 by a Text input and shipped as the **Embedded data** workspace tab. Import the matching
 [sailing-results CSV](../examples/sailing-results.csv) or [JSON](../examples/sailing-results.json) through
 **Inputs…** on a table port. The same drawing and its data work in the offline HTML export.
 
-- Each sketch stores immutable tables once in `datasets`, separate from 4,000-character component
+- Each sketch stores one current immutable revision per table in `datasets`, separate from 4,000-character component
   state. A table has a name, ordered typed columns (`key`, `name`, `type`), and scalar/null cells.
-  Ports carry `{datasetId, rows?}`; row selections retain original indices rather than copying data.
+  Ports carry `{datasetId, rows?}`; row selections retain source indices rather than copying data.
+  Stored row IDs and revisions allow accepted edits to update all consumers without confusing row identity with position.
 - CSV and TSV use a unique header row and column-wide type inference; quotes, escaped quotes, and embedded
   line breaks are supported. The import delimiter is configurable as Automatic (default), Comma,
   Semicolon, or Tab. Detection respects quoted cells and warns on ambiguity; changing the choice refreshes
@@ -1131,37 +1148,40 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
   500,000 serialized characters per dataset, 2,000,000 per active pool, and 1,000,000 input-file
   characters. Worker table transfers are bounded to 2,000,000 characters per call and 16,000,000
   per evaluation. Limit errors preserve the surrounding drawing and accepted data.
-- Computation receives full resolved inputs through `context.tables`. Rendering receives at most
+- Computation receives full resolved inputs through `context.tables`. Rendering receives by default at most
   24 rows per input/output and 160 characters per text cell through `io.tables`; full row counts
-  remain available. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
+  remain available. `tablePresentation:'full'` opts into complete input snapshots under the same transfer
+  budget. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
   remain unsupported.
-- **Inputs…** previews imported column types and initial rows before Save. Cancel discards pending
-  data; tab/session changes cancel stale imports. Existing datasets can be selected directly.
+- **Inputs…** previews imported column types and initial rows before Save. **New dataset…** creates
+  an empty table with named, nullable typed columns. Cancel discards pending data; tab/session changes
+  cancel stale imports. Existing datasets can be selected directly.
 - Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
   paste, and library transfer carry referenced datasets with collision-safe IDs. Undo/redo keeps
   immutable prior data; exported files omit data reachable only from history.
 
 Table filter supports text contains/equality, typed equality/inequality, numeric ordering, and
-empty/nonempty checks. Data table and Data bar chart show bounded views and disclose omissions;
+empty/nonempty checks. Dataset editor and Data bar chart show bounded views and disclose omissions;
 filtering evaluates all accepted rows. The chart draws one bar per row with a shared zero baseline.
 The earlier manually editable **Chart** template remains separate.
 
 The **Reader data and results** tab extends this with **Dataset → Table sort → Table aggregate →
-Data table + Data bar chart + Download table**. It orders source rows by Boat A–Z, then totals Points
+Dataset editor + Data bar chart + Download table**. It orders source rows by Boat A–Z, then totals Points
 per Boat into an alphabetical report. Readers can replace the results with the matching
 [CSV](../examples/sailing-results-updated.csv) or [TSV](../examples/sailing-results-updated.tsv), then
 download the calculated `sailing-report`. Both transform switches can be bypassed: the table
 adapts to the available columns and the chart selects its columns automatically. A **Reload file**
 Trigger connects to Dataset's reload input.
 
-- **Reader imports** are enabled per Dataset through **Allow data replacement**. A reader deliberately
+- **Reader imports** are enabled per Dataset through **Allow file import and reload**. A reader deliberately
   chooses a local file, inspects delimiter/type/row previews, and accepts it. Replacement data must
-  contain the previous column keys with the same types; extra columns are permitted. Failure,
+  contain the previous column keys with the same types; extra columns are permitted. It keeps the
+  dataset ID and updates all consumers of that dataset in the sketch. Failure,
   cancellation, or a stale dialog leaves accepted data unchanged. Replacements stay within that
   document's reader session, survive tab switches, and are discarded when the HTML page reloads.
 - **Dataset reload** uses a declared Boolean input, default false. A fresh false → true pulse can
   reread the last accepted Load data file using its remembered delimiter, with the same schema and
-  size validation. It requires Allow data replacement and a reusable browser file handle. Safari or
+  size validation. It requires Allow file import and reload and a reusable browser file handle. Safari or
   ordinary file-input imports require reselection; missing/revoked access keeps existing data and
   explains how to choose the updated file. Handles and permissions are never persisted or exported.
   First-high, opening, Undo, rewiring, unavailable recovery, historical replay, and pure evaluation
@@ -1223,7 +1243,7 @@ Trigger connects to Dataset's reload input.
 
 **Connected spreadsheet** adds a small authored formula grid with typed signal ports:
 
-- `INPUT("name")` declares a numeric input; `INPUT("name","boolean")` declares a Boolean input.
+- `INPUT("name")` declares a numeric input; `INPUT("name","boolean"|"string")` declares Boolean or text inputs.
   `OUTPUT(value,"name")` publishes that argument as a numeric, Boolean, or string signal. Multiple
   OUTPUT calls in one cell publish independently, even when the cell combines their results.
 - Arithmetic, comparisons, Boolean, aggregate, lookup, and text functions are evaluated by the
@@ -1240,14 +1260,147 @@ Trigger connects to Dataset's reload input.
   Tab submits and follows normal focus, and clicking away discards unsubmitted text. Both modes
   share host placement, validation, stale-edit cancellation, and editor/HTML behavior. A successful
   submission can emit a pulse even for an unchanged value; saving an unchanged cell is a no-op.
-- Spreadsheet cells are editor-only authoring controls. HTML displays the sheet read-only while
+- Ordinary spreadsheet cells are editor-only authoring controls. HTML displays those cells read-only while
   connected controls continue to recalculate it offline. The **Connected spreadsheet** workspace
   tab drives a sheet from Number control and Toggle, with numeric, Boolean, and text readouts.
   Authors can change its multiplier in B3 to see a saved cell edit feed the same live graph.
 
-The Spreadsheet stores a bounded formula grid in component state; it does not mutate or expose
-an imported dataset as editable cells. Dataset table-cell editing, arbitrary dataset computed
-columns, and additional chart types remain later extensions.
+**Dataset spreadsheets** support two distinct authoring workflows:
+
+- **Grid source: Dataset** adds table `data` and zero-based numeric `startRow` inputs. A configured
+  top-left rectangle displays dataset headers and rows read-only by default; the remaining cells hold editable
+  values and formulas. References to dataset cells use their actual scalar values. Row/column edits
+  cannot move or delete the reserved data area. Formatting, column widths, copying cell text, and
+  formula reference picking still work there. Source changes flow through in the editor and HTML.
+- `DATA("port",row,"column",type?)`, `COLUMN("port","column")`, and `ROWS("port")` declare named
+  table inputs and read the complete selected table, including rows outside the visible area.
+  Dataset row positions start at zero and follow the current filtered/sorted order. DATA defaults
+  to numeric values, with explicit string/Boolean types available. COLUMN supplies a range to
+  aggregate functions. These functions also work in Cells mode and can read multiple datasets.
+  `OUTPUT(value,"name",type)` gives runtime-dependent dataset cell references a stable scalar port
+  type, checked against the actual result. Schema reloads do not silently change output types.
+- **Copy dataset to editable cells** in Inputs copies the selected or connected table, or a file
+  imported through the existing CSV/TSV/JSON preview. Connected tables capture their published live
+  snapshot when Inputs opens, including stored and derived results. This is a one-time copy, not
+  continuous recording. It replaces the sheet grid, disconnects inputs
+  removed by the new state, and switches to Cells mode. Save applies the staged copy as one undoable
+  change; Cancel discards it. Copied text remains literal even when it starts with `=` or resembles
+  a number or Boolean. Authors can then change values and add formulas. The source remains unchanged.
+- Editable copies must fit the existing bounded grid and 4,000-character state budget. Oversized
+  copies fail clearly without truncation. Live tables retain the full dataset limits; their data is
+  not stored in component state. Spreadsheet opts into full input snapshots for presentation so
+  displayed formulas and published outputs agree beyond the usual 24-row/160-character preview.
+- The **Dataset spreadsheet** example shows live rows, a zero-based page control, whole-column
+  calculations, and connected readouts. Its instructions also cover making an editable copy.
+
+**Shared dataset model — implemented milestone**
+
+The **Dataset** component explicitly owns one stored table. Records live once in the document's
+dataset pool; Spreadsheet, table, chart, and choice components consume the owner's output. A provider
+supplies incoming data and is separate from its destination owner. Services for validation, editing,
+capture, replacement, and graph invalidation are shared by the editor and offline HTML; views do not
+keep separate copies.
+Shared state is separate from signal flow: sibling views update through their common dataset without
+a direct wire between them. Compute remains read-only, and explicit host commands commit writes.
+When visible wiring is added, state associations must be visually distinct from signal bindings,
+including read/write direction markers and a difference beyond color alone.
+
+- Stored datasets have stable IDs and stable row IDs. Each accepted append/update/delete/replace
+  operation increments the revision and creates a validated immutable table. Update
+  and delete address row IDs; replacement retains the dataset ID but allocates new row IDs.
+  Current values, undo snapshots, and historical signal replay retain the correct revision separately.
+  A stale edit cannot overwrite a later accepted change, and Undo preserves the tab's simulation time
+  and Pause state. The Dataset editor uses the same commands for typed cell editing and adding/deleting records.
+- Dataset's **Owned dataset** is configuration, not a wireable input. One live Dataset owns each stored
+  table; multiple consumers share its output. Duplicating or pasting an owner creates independent stored data; a consumer-only copy within the same
+  document keeps its shared reference. Cross-document and library placement carry the required tables.
+  The optional **source** connection supplies incoming data. **Replace** copies selected incoming rows; **Append** adds them,
+  only on explicit false → true pulses. Sources may be filtered, sorted, or derived tables. In the default **Manual** update mode, changing
+  a source alone does not write to the destination. **Live** mode is specified below. Editing the destination never writes upstream.
+  Missing source/action inputs do not hide already stored output. An owner → transform → source path
+  samples a snapshot after that pulse's simulation instant settles, including when advancing with Step.
+  Later source edits cannot change an accepted snapshot. Simultaneous Replace and Append pulses are
+  rejected together. This explicit update path does not form a combinational table feedback loop.
+- Source updates validate ownership, schema, revisions, and budgets atomically. Replacement preserves
+  the dataset ID and assigns fresh row IDs; append preserves existing identities and allocates new ones.
+  **Allow source updates in HTML export** (`allowReaderUpdates`, default false) is independent of file
+  import/reload, capture, and bound-cell permissions. File import remains an owner convenience; dedicated
+  providers can follow the future HTTP work.
+- **Edit dataset cells** (`editDataset`, default false) makes existing source rows editable in the
+  Spreadsheet's dataset area. **Allow reader edits** (`allowReaderEdit`, default false) separately
+  enables those edits in HTML. A live, unique Dataset owner is required. Headers, absent rows,
+  ownerless tables, and aggregate/derived results stay read-only.
+  Filters and sorts preserve source row identity, so editing a reordered view updates the intended
+  record. Typed validation applies at commit. Strings remain literal, including a leading `=`;
+  formulas and formatting belong to the sheet's ordinary cells.
+- **Capture row** takes a whole stored dataset with a live owner, a Boolean `capture` input, and up to 24 typed scalar
+  fields. Authors enter one `column:type` mapping per line; the corresponding inputs are `field0`
+  through `field23`. Every mapped key/type must match the destination; omitted columns receive null.
+  Each accepted false → true pulse queues one sampled row for a host commit after propagation settles.
+  Holding the trigger high, reopening, rewiring, Undo, and historical replay do not append again.
+  Capturing through a row selection or into an aggregate result is rejected. The destination keeps
+  its normal table limits and rejected appends preserve accepted rows.
+- **Allow capture in HTML export** (`allowReaderCapture`, default false) controls reader capture.
+  Editor changes autosave and are undoable. Reader edits, captures, and replacements remain local to
+  that reader session, survive its tab switches, and reset on page reload. **Download table** saves
+  current rows as CSV or JSON. File access, queued commands, and reader permissions are not inferred
+  from a computation; scripts cannot write directly to the data pool.
+- Tab 22, **Shared dataset**, demonstrates capture, a bound editable sheet, and connected views.
+  Tab 21 continues to demonstrate the default read-only grid and independent editable-copy workflow.
+  Tab 23, **Source to dataset**, separates an editable incoming table/filter from a destination Dataset;
+  Replace/Append controls explicitly copy rows, then independent bound edits update its chart and totals.
+
+**Dataset editor and Spreadsheet — implemented milestone**
+
+The existing **Data table** becomes **Dataset editor**. Its grid follows the connected table's
+schema and records, with bounded row/column pages. Read-only display remains the default; enabling
+**Edit dataset records** allows typed record edits, adding a blank record, and deleting a displayed
+record. A unique healthy Dataset owner is required. Filtered/sorted views preserve source row IDs:
+editing or deleting acts on that source record, while adding requires the whole stored table.
+Derived results remain read-only until copied into a Dataset. **Allow reader edits** separately
+permits record changes in the HTML export. Each view owns its paging inputs; no shared global cursor
+moves unrelated views. Counts and navigation disclose records/columns outside the current page.
+
+**Spreadsheet** remains an authored cell layout. Its rows, columns, formulas, formatting, and
+optional bounded dataset rectangle belong to the sheet instance. Incoming records do not resize or
+rearrange the layout. Formulas may read the full dataset with DATA/COLUMN/ROWS, or address visible
+linked cells. An A1 reference is positional: a sort, page change, or source replacement can change
+which record occupies A2. Formula cells next to that area do not become record-attached calculated
+fields. Dataset editor cells contain typed literal data, never spreadsheet formulas.
+
+**Spreadsheet table output** publishes a configured cell rectangle as a `table` output. Authors
+explicitly define the result columns and their scalar types; the rectangle contains body rows, with
+column names supplied by this schema. Only evaluated values are published. Blank cells become null;
+formula errors, incompatible types, or invalid ranges reject the result rather than publishing
+partial/error-text data. Existing scalar OUTPUT ports remain available, with `table` reserved only
+when this feature is enabled. A Dataset can materialize that result via Replace/Append or Live mode,
+and charts, downloads, and other consumers can read it directly. Formulas and formatting remain on
+the Spreadsheet, including when its result is stored elsewhere.
+
+**Live source updates** are a Dataset policy: **Source update mode: Manual / Live**, default Manual.
+Live accepts a settled publication from the connected Source and replaces the destination records,
+so source refresh overwrites local edits. Destination edits themselves are not a source refresh;
+ordinary redraws, unrelated component edits, and opening/Undo/history replay must not erase them.
+A successful same-data file reload counts as a new publication, including through filters, sorts,
+and Spreadsheet result tables. Deliberately enabling Live or changing Source accepts its current
+settled result once. Source failures, invalid schema, stale authority, and budget failures preserve
+the last accepted destination data. Failed publications are not retried indefinitely. Self-feedback
+and cycles among Live datasets are rejected; explicit manual snapshot workflows remain supported.
+Live writes use the same atomic host commands and **Allow source updates in HTML export** gate as
+manual source actions. Editor writes are undoable; HTML changes stay local to that reader session.
+
+Tab 24, **Live dataset editor**, demonstrates independent source and working records, typed editing,
+and refresh overwriting edits. Tab 25, **Spreadsheet result tables**, keeps formulas beside a linked
+rectangle and publishes their values into a separate editable Dataset with downloads. Both work in
+the editor and offline HTML.
+
+These components share validation, stable row identity, ownership, and mutation services. They do
+not share cell formulas or duplicate record stores. Spreadsheet imports remain independent cell
+copies; shared bound-cell editing changes the Dataset, while copying does not. Later work may add
+per-view selection/current-record controls, record-wise calculated fields, and further chart types.
+HTTP GET/POST providers stay in the external-integration plan; this milestone adds no network access
+or general routed events.
+
 Result downloads contain data, not the full editable workspace. A new HTML snapshot or full
 HTML-to-editor round trip still requires a complete editable document model in the export and a
 defined import path.
@@ -1266,8 +1419,11 @@ they must not silently change existing drawings. Source fingerprints identify co
 ## Events and local actions — narrow stage 4 data actions implemented
 
 The implemented Download table control provides a narrow local action from an explicit click.
-Dataset additionally declares a bounded reload trigger for a file chosen in the current session.
-Neither introduces general script effects; routed events and other actions remain proposed. An event needs a declared name/payload and a receiving
+Dataset additionally declares a bounded reload trigger for a file chosen in the current session,
+explicit Replace/Append actions for an incoming table, and Capture row declares an append action
+for sampled scalar fields driven by a Boolean edge. Bound dataset cell edits use
+the same host command service. These do not introduce general script effects; routed events and
+other actions remain proposed. An event needs a declared name/payload and a receiving
 contract, such as `onEvent(name, payload, state, io)`. The receiver returns a validated state
 transition and optional further events or action requests. Bound propagation depth and work per
 interaction so event cycles cannot run indefinitely.
@@ -1300,6 +1456,13 @@ Use the library-and-logic example to improve binding discovery and reusable prop
 Add a document-wide Run/Preview mode that reuses exported reader interaction, with layout and
 authoring controls hidden. Visible wires are optional; the source picker remains sufficient
 to connect a document.
+
+If this stage introduces visible wiring, acceptance must show both ordinary signal flow and shared
+state access in the same example without confusing them. Give state associations a distinct line
+style or symbol, plus read, write, or read/write markers; color is an additional cue. A table and
+chart attached to one dataset must visibly communicate that shared association without implying a
+direct value-flow connection between the two views. This is a future authoring requirement, not
+implemented wiring UI.
 
 Decide how preview state is retained or discarded on return to authoring before implementing
 the mode, and make that choice visible. Distinguish this editor behavior from reader persistence:
@@ -1583,12 +1746,16 @@ handling are tested separately from broker delivery.
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
    built-in organization overrides, Keywords, stable library-entry identity, catalog definitions,
    and ordered working membership; flat and legacy single-category imports remain supported.
-2. **Stage 3 — established workflow:** Compact references, typed nullable columns, immutable
-   document datasets, storage/transfer budgets, and atomic imports are defined above. Extensions
-   must preserve these limits and recoverable failures.
+2. **Stage 3 — established workflow:** Compact references, typed nullable columns, stable dataset/row
+   identities, immutable revisions, storage/transfer budgets, atomic imports, bound-cell edits, and
+   captured rows are defined above. Dataset owns records, Dataset editor follows records/schema, and
+   Spreadsheet owns its layout/formulas and publishes evaluated results. Manual and Live source
+   policies are explicit. Coordinated current-record controls and record-wise calculated columns
+   remain follow-ups.
 3. **Stage 4 — narrow data actions established:** Explicit host controls download current table
-   results, and declared reload triggers reread a session-selected file under the rules above. Define a
-   supported revision for general event/action envelopes, receiving hooks, dispatch
+   results, reload triggers reread a session-selected file, and capture triggers append sampled rows
+   under the rules above. Record controls and Live source synchronization share the same bounded
+   mutation service. Define a supported revision for general event/action envelopes, receiving hooks, dispatch
    identity, and propagation limits before adding routed events or further action types.
 4. **Stage 5:** Use the library example to choose binding/control improvements and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.

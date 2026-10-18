@@ -13,13 +13,18 @@ function declaration(name){
 }
 const context=vm.createContext({crypto});
 vm.runInContext('const isNum=v=>typeof v==="number"&&Number.isFinite(v);\n'+dataset+'\n'+helpers+'\n'+
-  ['componentPortName','smartNumber','componentTableSnapshot','validateSmartReply'].map(declaration).join('\n')+
+  ['componentPortName','smartNumber','datasetOwnersOf','componentTableSnapshot','validateSmartReply'].map(declaration).join('\n')+
   '\nthis.actions={normalizeComponentDataAction,validateSmartReply,validateDatasetReplacementSchema,prepareDatasetReplacement,retainDatasetTimelinePool,safeDataFilename,serializeComponentTable,componentTableSnapshot,parseDatasetText};',context);
 const dialogStart=html.indexOf('  async function openComponentDataAction('),dialogEnd=html.indexOf('  // This function is shipped into HTML exports.',dialogStart);
 vm.runInContext(html.slice(dialogStart,dialogEnd)+'\nthis.actions.openComponentDataAction=openComponentDataAction;',context);
 const c=context.actions,plain=value=>JSON.parse(JSON.stringify(value));
 const table={name:'Results',columns:[{key:'Name',name:'Display name',type:'string'},{key:'Points',name:'Points',type:'number'},{key:'Active',name:'Active',type:'boolean'}],rows:[['Möwe, "red"',2.5,true],['line\nnext',null,false],['<script>alert(1)</script>',-3,null]]};
 const item={uid:'source',type:'smart',componentApi:2,inputValues:{data:{datasetId:'original'}}};
+function owned(snapshot){
+  const {item,pool}=snapshot;
+  Object.defineProperty(pool,Symbol.for('simplecanvas.datasetOwners'),{value:new Map([[item.inputValues.data.datasetId,{uid:item.uid,input:'data',name:'Dataset'}]]),configurable:true});
+  return {...snapshot,record:{caps:{datasetOwner:'data'}}};
+}
 const action=(kind='importDataset')=>kind==='importDataset'?{type:kind,input:'data'}:{type:kind,input:'data',format:'csv',filename:'results'};
 
 test('data action descriptors are a strict allowlist with named inputs and bounded filenames',()=>{
@@ -49,42 +54,45 @@ test('replacement schema permits reordered and extra columns but rejects missing
   assert.throws(()=>c.validateDatasetReplacementSchema(table,{...table,columns:table.columns.map(column=>column.key==='Points'?{...column,type:'string'}:column)}),/must remain number/);
 });
 
-test('replacement uses a fresh ID, retains other shared sources, and leaves prior scene/pool untouched',()=>{
+test('replacement updates one shared dataset identity and leaves its prior scene and revision untouched',()=>{
   const second={...item,uid:'second'},items=[item,second],pool={original:table},before=JSON.stringify({items,pool});
-  const next=c.prepareDatasetReplacement({item,items,pool},'data',{...table,rows:[['New',7,false]]});
-  assert.notEqual(next.reference.datasetId,'original');assert.equal(next.items[1],second);
-  assert.equal(next.items[0].inputValues.data.datasetId,next.reference.datasetId);
-  assert.deepEqual(plain(next.pool.original),table);assert.deepEqual(plain(next.pool[next.reference.datasetId].rows),[['New',7,false]]);
+  const next=c.prepareDatasetReplacement(owned({item,items,pool}),'data',{...table,rows:[['New',7,false]]});
+  assert.equal(next.reference.datasetId,'original');assert.deepEqual(plain(next.items[1]),second);
+  assert.equal(next.items[0].inputValues.data.datasetId,'original');assert.equal(next.items[1].inputValues.data.datasetId,'original');
+  assert.deepEqual(plain(next.pool.original.rows),[['New',7,false]]);assert.equal(next.pool.original.revision,1);assert.deepEqual(plain(next.pool.original.rowIds),['r3']);
   assert.equal(JSON.stringify({items,pool}),before);
-  const unshared=c.prepareDatasetReplacement({item,items:[item],pool},'data',table);
-  assert.deepEqual(Object.keys(unshared.pool),[unshared.reference.datasetId],'unreferenced replaced baseline is pruned');
+  const unshared=c.prepareDatasetReplacement(owned({item,items:[item],pool}),'data',table);
+  assert.deepEqual(Object.keys(unshared.pool),['original'],'replacement never consumes a second dataset identity');
   assert.throws(()=>c.prepareDatasetReplacement({item:{...item,bindings:{data:{uid:'other',output:'data'}}},items:[item],pool},'data',table),/unconnected/);
 });
 
 test('replacement enforces the reachable 16-dataset bound atomically',()=>{
   const pool=Object.fromEntries(Array.from({length:16},(_,i)=>['table'+i,table]));
   const items=Object.keys(pool).map((id,i)=>({uid:'source'+i,inputValues:{data:{datasetId:id}}}));
-  const next=c.prepareDatasetReplacement({item:items[0],items,pool},'data',table);
+  const next=c.prepareDatasetReplacement(owned({item:items[0],items,pool}),'data',table);
   assert.equal(Object.keys(next.pool).length,16,'replacing an unshared source does not consume an extra slot');
   const shared=[...items,{uid:'shared',inputValues:{data:{datasetId:'table0'}}}],before=JSON.stringify({pool,shared});
-  assert.throws(()=>c.prepareDatasetReplacement({item:items[0],items:shared,pool},'data',table),/16 datasets/);
+  const replaced=c.prepareDatasetReplacement(owned({item:items[0],items:shared,pool}),'data',table);
+  assert.equal(Object.keys(replaced.pool).length,16,'shared consumers follow the same replacement within the pool limit');
+  assert.equal(replaced.items.at(-1).inputValues.data.datasetId,'table0');
   assert.equal(JSON.stringify({pool,shared}),before);
 });
 
-test('reader data retention keeps only current and committed inputs across repeated paused replacements',()=>{
+test('reader data retention keeps committed revisions separate from the current identity mapping',()=>{
   let current={...item,inputValues:{data:{datasetId:'original'}}},pool={original:table};
-  const timeline={committedScene:[{item:current,snapshot:JSON.parse(JSON.stringify(current))}]};
+  const timeline={committedScene:[{item:current,snapshot:JSON.parse(JSON.stringify(current))}],committedDatasets:pool};
   for(let step=0;step<25;step++){
-    const next=c.prepareDatasetReplacement({item:current,items:[current],pool},'data',{...table,rows:[['New '+step,step,true]]});
+    const next=c.prepareDatasetReplacement(owned({item:current,items:[current],pool}),'data',{...table,rows:[['New '+step,step,true]]});
     current=next.items[0];pool=c.retainDatasetTimelinePool([current],{...pool,...next.pool},timeline);
-    assert.equal(Object.keys(pool).length,2,'intermediate replacement datasets are not retained');
-    assert.deepEqual(plain(pool.original),table,'queued replay still has its original immutable data');
+    assert.equal(Object.keys(pool).length,1,'intermediate revisions never accumulate in the current pool');
+    assert.deepEqual(plain(pool.original.rows),[['New '+step,step,true]]);
+    assert.deepEqual(plain(timeline.committedDatasets.original),table,'queued replay still owns its original immutable revision');
   }
-  timeline.committedScene=[{item:current,snapshot:JSON.parse(JSON.stringify(current))}];
+  timeline.committedScene=[{item:current,snapshot:JSON.parse(JSON.stringify(current))}];timeline.committedDatasets=pool;
   pool=c.retainDatasetTimelinePool([current],pool,timeline);
-  assert.deepEqual(Object.keys(pool),[current.inputValues.data.datasetId],'successful settlement releases the old baseline');
+  assert.deepEqual(Object.keys(pool),[current.inputValues.data.datasetId]);assert.equal(timeline.committedDatasets,pool);
   const many=Array.from({length:33},(_,i)=>({inputValues:{data:{datasetId:'data'+i}}}));
-  assert.throws(()=>c.retainDatasetTimelinePool(many,Object.fromEntries(many.map((row,i)=>['data'+i,table])),null),/two sketch data pools/);
+  assert.throws(()=>c.retainDatasetTimelinePool(many,Object.fromEntries(many.map((row,i)=>['data'+i,table])),null),/16 datasets/);
 });
 
 test('CSV download writes keys, literal Unicode, escaped quotes and line breaks, with null empty cells',()=>{
@@ -117,4 +125,13 @@ test('downloads refuse an unfinished stepped graph before opening a dialog or re
     valid:()=>true,
     read:async()=>({caps:{apiVersion:2,inputs:{data:{type:'table'}}},settled:false})
   }),/Finish stepping or resume signals before downloading results/);
+});
+
+
+test('replacement requires validated ownership rather than an imported ownership hint',()=>{
+  const impostor={...item,datasetOwner:'data'},pool={original:table};
+  assert.throws(()=>c.prepareDatasetReplacement({item:impostor,items:[impostor],pool},'data',table),/owning Dataset/);
+  const snapshot=owned({item,items:[item,impostor],pool});
+  snapshot.pool[Symbol.for('simplecanvas.datasetOwners')].set('original',{uid:'another-owner',input:'data'});
+  assert.throws(()=>c.prepareDatasetReplacement(snapshot,'data',table),/owning Dataset/);
 });

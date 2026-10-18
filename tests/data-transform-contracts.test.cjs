@@ -21,7 +21,7 @@ function runtime(){
 function node(uid,name,bindings={},inputValues={}){return {uid,type:'smart',componentApi:2,script:name,state:source(name).initState(),bindings,inputValues};}
 function caller(api,custom={}){return async(item,hook,args)=>{
   const def=custom[item.script]||source(item.script);
-  if(hook==='caps')return {apiVersion:2,compute:typeof def.compute==='function',publish:typeof def.publish==='function',transition:typeof def.transition==='function',inputs:api.normalizeComponentPorts(def.inputs,'input'),outputs:api.normalizeComponentPorts(def.outputs,'output'),dataActions:def.dataActions};
+  if(hook==='caps')return {apiVersion:2,compute:typeof def.compute==='function',publish:typeof def.publish==='function',transition:typeof def.transition==='function',datasetOwner:def.datasetOwner,inputs:api.normalizeComponentPorts(def.inputs,'input'),outputs:api.normalizeComponentPorts(def.outputs,'output'),dataActions:typeof def.dataActions==='function'?def.dataActions(args[0]):def.dataActions};
   return def[hook](...args);
 };}
 

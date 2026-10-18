@@ -187,10 +187,10 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Table filter, Table sort, Table aggregate, Data table, Data bar chart, Download table, Text lookup |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 73 entries, including 64 connected API v2 components. Every smart-shape
+The catalog includes 74 entries, including 65 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -281,7 +281,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore twenty connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore twenty-five connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -307,6 +307,9 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Reader data and results | Load or reload race data, switch sorting and aggregation on/off, and download a CSV or JSON report. |
 | Choices and text lookup | Choose a named value, select dataset rows by number, and find the index/key for matching text. |
 | Connected spreadsheet | Feed number and Boolean signals into formulas, then publish numeric, Boolean, and text results. |
+| Dataset spreadsheet | Connect live rows, calculate over full columns, or copy data into editable cells. |
+| Shared dataset | Capture live values into one table, edit its rows in a spreadsheet, and update connected views. |
+| Source to dataset | Explicitly replace or append a filtered source into independent stored data. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -350,13 +353,16 @@ color, thickness, and line style. In **Inputs…**, enable **Show submission sta
 controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
 label. These optional details start hidden; errors and rejected-update notices remain visible.
 
-**Embedded data** adds Dataset, Table filter, Data table, and Data bar chart to the built-in
-library. Place Dataset, select it, and open **Inputs…**. For its **data** input, choose an existing
-embedded dataset or **Import CSV/TSV/JSON…**. Inspect the first rows and column types, then **Save**.
+**Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
+library. Place Dataset, select it, and open **Inputs…**. Its **Owned dataset** section selects or creates
+the table this component owns; it is not a signal connection. Choose **Import CSV/TSV/JSON…** to
+load a file. Inspect the first rows and column types, then **Save**.
+**New dataset…** creates an empty table: name it, add columns with string, number, or Boolean types,
+then choose **Use new dataset** and **Save**. All columns accept null values.
 For CSV/TSV, **Delimiter** defaults to **Automatic**; choose **Comma**, **Semicolon**, or **Tab** to override it.
 The preview refreshes when you change the delimiter, and ambiguous detection shows a notice.
 Cancel leaves the drawing and its datasets unchanged. Connect Dataset's **data** output to Table
-filter, then connect the filter's **data** output to Data table and Data bar chart.
+filter, then connect the filter's **data** output to Dataset editor and Data bar chart.
 
 CSV and TSV use the first row as unique column headers and support quoted delimiters, escaped quotes,
 and multiline cells. Automatic detection compares comma, semicolon, and tab parsing while respecting quoted
@@ -379,11 +385,13 @@ Each dataset is limited to 500,000 serialized characters; the combined active da
 to 2,000,000. Oversized or malformed imports leave existing data intact. Table views and charts show
 a bounded preview and report when more data exists; filtering still evaluates the whole dataset.
 Data travels with sketch/workspace JSON, copied components, saved library entries, and HTML exports.
-The HTML reader needs no network or source file. Enable **Allow data replacement** on a Dataset
+The HTML reader needs no network or source file. Enable **Allow file import and reload** on a Dataset
 component to give readers a **Load data…** control. The same delimiter and preview controls check
 replacement data before it is accepted. Existing column keys and types must match; additional
-columns are allowed. The loaded data belongs to that reader session, survives tab switches, and
-is discarded when the HTML page reloads. Readers cannot change a Dataset whose import control is disabled.
+columns are allowed. Replacement keeps the dataset's identity, so every component using that dataset
+in the sketch sees the accepted rows. The loaded data belongs to that reader session, survives tab switches,
+and is discarded when the HTML page reloads. **Allow file import and reload** controls the file-import action;
+bound-cell edits and row capture have their own reader permissions.
 
 Dataset also has a Boolean **reload** input. Connect a Trigger: each false → true pulse rereads the
 last file accepted through **Load data…**, using its accepted delimiter. This works when the browser
@@ -391,7 +399,7 @@ provides a reusable file handle, such as Chromium's file picker. Safari and ordi
 imports require choosing the updated file again through **Load data…**; the app explains this and
 keeps the accepted data. SimpleCanvas keeps file handles only in the current session and never stores or exports file
 access. An initially high signal, opening a drawing, Undo, or reconnecting a wire does not reload
-a file. **Allow data replacement** controls both loading and triggered reloading.
+a file. **Allow file import and reload** controls both loading and triggered reloading.
 
 **Table aggregate** groups rows by a selected column and calculates Count, Sum, Average, Minimum,
 or Maximum. Leave Group blank for one summary over the entire table. Count includes every row;
@@ -415,8 +423,8 @@ with the replacement [CSV](examples/sailing-results-updated.csv) or
 [TSV](examples/sailing-results-updated.tsv). It sorts race rows by boat name, totals points per boat,
 and exports `sailing-report.csv` or `.json`. Its table and automatic chart columns also work when
 either transform is bypassed. **Reload file** demonstrates the Dataset trigger.
-Editing table cells, additional chart types, and tables
-in feedback loops remain later work.
+Additional chart types and unrestricted table feedback remain later work. A Dataset can explicitly
+apply a transformed view of its own records with a Replace or Append pulse.
 
 **Component indices start at zero.** Lists, selected channels, storage taps, and matrix rows/columns
 use `0…N−1`. A missing choice or lookup returns `-1` plus `valid=false` or `found=false`.
@@ -448,6 +456,7 @@ functions, formatting, alignment, and column widths. A cell can retain an invali
 its error for correction.
 
 `=INPUT("amount")` declares a numeric input; `=INPUT("enabled","boolean")` declares a Boolean input.
+Use `=INPUT("message","string")` for text.
 `=OUTPUT(B2*B3,"total")` publishes a formula argument as a typed output. Connect these ports through
 **Inputs…**, just like other components. Functions include IF, IFERROR, SUM, AVERAGE, VLOOKUP,
 Boolean operations, rounding, and text operations; commas or semicolons separate arguments.
@@ -459,6 +468,80 @@ Use IFERROR to recover from calculation errors, including deleted cell reference
 The twentieth tab, **Connected spreadsheet**, connects a Number control and Toggle to a sheet and
 shows its three result types. Try changing B3 from 2 to 3 in the editor. In exported HTML, cells are
 read-only, but controls still drive the formulas and connected output displays entirely offline.
+
+To use a dataset, open the sheet's **Inputs…**, set **Grid source** to **Dataset**, and choose a dataset,
+connect a table output, or import CSV/TSV/JSON. **Dataset rows shown** and **Dataset columns shown** reserve a data
+area at the top left, read-only by default; other cells remain editable. The `startRow` input pages through data from index 0.
+`=SUM(COLUMN("data","Points"))` calculates across the complete selected column, even beyond the visible
+rows. `=DATA("data",0,"Boat","string")` reads the first selected boat; `=ROWS("data")` counts all selected
+rows. Other port names declare additional dataset inputs. To publish a dataset cell directly, specify
+its type, for example `=OUTPUT(A2,"boat","string")`.
+
+For independent editing, choose **Copy dataset to editable cells** beside the table input, then
+**Save**. This replaces the grid with an editable copy and disconnects its former inputs; the original
+dataset stays unchanged. You can change values and add formulas. Imported strings stay literal,
+including strings starting with `=`. Copies must fit the small sheet's grid and 4,000-character state
+limits; larger data can remain connected and be used in formulas. The twenty-first tab,
+**Dataset spreadsheet**, demonstrates the live grid, paging, calculations, and copy workflow.
+
+To edit the shared data itself, connect the Dataset owner's output to **Dataset editor** and enable
+**Edit dataset records** in **Inputs…**. **Edit dataset cells** remains available in a Spreadsheet's bounded dataset area. A table without a live, unique owner remains read-only.
+Edits change the original typed cells, so other sheets, tables, charts, and choices using that dataset
+update together. Sorting and filtering preserve row identity: an edit targets the displayed source
+record even when its position has changed. Aggregate results remain read-only. Dataset text is literal,
+including a leading `=`; spreadsheet formulas stay in the sheet's ordinary cells. **Allow reader edits**
+separately enables these bound-cell edits in HTML. Both options default off.
+
+**Capture row** records connected live values into a whole dataset. In **Fields (column:type)**,
+enter one mapping per line, such as `label:string`, `value:number`, and `active:boolean`.
+The first line declares `field0`, the next `field1`, and so on, up to 24 fields. Connect those scalar
+inputs, connect the destination Dataset owner through **data**, and connect a Trigger or submission pulse to
+**capture**. Each false → true pulse appends one sampled row; unmapped columns receive null.
+Keep capture connected to the complete source dataset, rather than a filtered or aggregate result.
+Opening, Undo, and reconnecting do not replay a capture. Enable **Allow capture in HTML export**
+explicitly when readers should record rows; it defaults off.
+
+Datasets live once in the document, outside the small spreadsheet state. Accepted changes use the same
+validation and revision rules in the editor and HTML. The editor autosaves them and supports Undo/Redo.
+HTML edits and captures stay in that reader session; use **Download table** to retain the results as
+CSV or JSON before reloading. The twenty-second tab, **Shared dataset**, demonstrates the complete flow.
+**Dataset owns stored records; sources supply possible replacements.** Connect any table output to
+its optional **source** input. A **replace** pulse copies the selected source rows into the owned table;
+an **append** pulse adds them. Editing the source or changing a filter does not change the stored rows
+until you apply one of those actions in the default **Manual** update mode. Editing stored rows never writes upstream. Each stored table has
+one Dataset owner, while any number of sheets, charts, and other components can consume its output.
+Duplicating or pasting an owner creates an independent dataset; copying only a view within the same
+document keeps it linked to the existing owner. Library entries and copies across documents carry their data.
+
+Enable **Allow source updates in HTML export** on the Dataset when readers should use these pulses;
+it defaults off and is separate from file loading, cell editing, and capture permissions. Updates keep
+the destination dataset ID, validate its schema and limits, and assign new row IDs to copied rows.
+The twenty-third tab, **Source to dataset**, demonstrates source editing, filtering, Replace/Append,
+and independent destination editing. File import and reload remain conveniences on the owner.
+
+**Dataset editor** follows its connected table's schema and records. Its row and column controls page
+through large tables. With editing enabled, click a cell to edit its typed value; **+ Record** appends
+a blank record and each row's delete control removes that record. Adding requires the whole stored
+dataset; filtered or sorted views can still edit/delete the displayed source records. Derived tables
+are read-only until materialized into a Dataset. Spreadsheet keeps its authored layout and formulas,
+so record growth does not rearrange its cells.
+
+On Dataset, select **Source update mode: Live** to replace working records whenever the connected Source
+publishes refreshed data. Local edits remain until that refresh, then are overwritten. A successful
+reload of identical source data also counts. Source failures preserve accepted records, and reopening
+or Undo does not replay a refresh. Enable **Allow source updates in HTML export** for this behavior
+in the reader. Tab 24, **Live dataset editor**, makes the source/working-copy distinction visible.
+
+Spreadsheet can publish a range as a table: enable **Publish table output**, enter **Result cells**
+(for example `D2:E4`), and define **Result columns (name:type)** with one column per line, such as
+`label:string` and `value:number`. The range contains body rows; the column definitions provide names.
+Only calculated values leave the sheet; formulas and formatting stay with it. Blank cells become null,
+and formula/type errors reject the table result. Connect its **table** output directly to a chart or
+download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
+tables**, demonstrates this in the editor and offline HTML. A formula referring to a linked cell is
+positional: paging or sorting can change which record that cell displays.
+
+Dedicated remote providers, coordinated current-record controls, and calculated dataset columns remain future work.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
@@ -730,9 +813,9 @@ Set `features.smartComponents` to `false` in `settings.json` to hide component t
 the input picker and disable component authoring. Existing connected drawings and HTML exports
 keep working. Component authoring also requires `smartShapeAuthoring` to be enabled.
 
-This first version supports number, string, and boolean values within one sketch. See the
+Components support number, string, Boolean, and table values within one sketch. See the
 [component scripting contract](SMART_SHAPES.md#connected-components-api-v2) for custom ports
-and computations. Datasets, events, and external actions remain future work.
+and computations. General routed events and external integrations remain future work.
 
 ### Demo library
 

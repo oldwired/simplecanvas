@@ -184,14 +184,15 @@ test('a slow reload cannot block manual Load data and its late result cannot ove
   assert.deepEqual(await editorRows(run),[['Current file',10]]);
 }));
 
-async function preparePair(run){
+async function preparePair(run,shared=false){
   await seed(run,[
-    {key:'dataSource',script:datasetScript,componentName:'Dataset A',x:50,y:60,state:{allowReaderImport:true},inputValues:{data:{datasetId:'base'}},bindings:{reload:{uid:'data-4',port:'value'}}},
-    {key:'dataSource',script:datasetScript,componentName:'Dataset B',x:430,y:60,state:{allowReaderImport:true},inputValues:{data:{datasetId:'base'}},bindings:{reload:{uid:'data-4',port:'value'}}},
+    {key:'dataSource',script:datasetScript,componentName:'Dataset A',x:50,y:60,state:{allowReaderImport:true},inputValues:{data:{datasetId:'baseA'}},bindings:{reload:{uid:'data-4',port:'value'}}},
+    shared?{key:'dataTable',componentName:'Shared view',x:430,y:60,inputValues:{data:{datasetId:'baseA'}}}:
+      {key:'dataSource',script:datasetScript,componentName:'Dataset B',x:430,y:60,state:{allowReaderImport:true},inputValues:{data:{datasetId:'baseB'}},bindings:{reload:{uid:'data-4',port:'value'}}},
     {key:'dataTable',componentName:'Results A',x:50,y:280,bindings:{data:{uid:'data-0',port:'data'}}},
-    {key:'dataTable',componentName:'Results B',x:530,y:280,bindings:{data:{uid:'data-1',port:'data'}}},
+    {key:'dataTable',componentName:'Results B',x:530,y:280,bindings:{data:{uid:shared?'data-0':'data-1',port:'data'}}},
     {key:'toggle',componentName:'Reload both',x:930,y:60,state:{value:false}}
-  ],{base:baseline});
+  ],shared?{baseA:baseline}:{baseA:baseline,baseB:{...baseline,name:'Initial B'}});
 }
 async function installPairPicker(page){
   await page.evaluate(()=>{
@@ -232,4 +233,23 @@ test('simultaneous offline Dataset reloads preserve independent fresh pools and 
   await readerClick(reader,4,110,69);await releasePair(reader);
   await reader.waitForFunction(()=>[0,1].every(index=>document.querySelector('[data-smart-index="'+(index+2)+'"]')?.textContent.includes('Updated '+index)));
   assert.equal(await reader.locator('[data-data-action-error]').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
+
+test('one Dataset owner updates all shared views after replacement and subsequent Reload',async()=>app(async({page,run,context})=>{
+  await preparePair(run,true);await fakeFilePicker(page);
+  await editorClick(page,run,0,'loadData');await acceptFile(page);await run('smartHitSettled');
+  assert.deepEqual(await run('[0,1].map(index=>items[index].inputValues.data.datasetId)'),['baseA','baseA']);
+  assert.deepEqual((await output(run,0)).data,{datasetId:'baseA'});assert.equal((await output(run,1)).rowCount,1);
+  await page.evaluate(()=>{fileText='Name;Value\nShared fresh;8';});
+  await editorClick(page,run,4,'toggle');await editorShows(page,'Shared fresh');
+  assert.deepEqual(await run('[0,1].map(index=>datasets[items[index].inputValues.data.datasetId].rows)'),[[['Shared fresh',8]],[['Shared fresh',8]]]);
+  const {reader,errors,requests}=await openReader(page,run,context);
+  await reader.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===5);await fakeFilePicker(reader);
+  await readerClick(reader,0,150,124);await acceptFile(reader);
+  await reader.waitForFunction(()=>[2,3].every(index=>document.querySelector('[data-smart-index="'+index+'"]')?.textContent.includes('Chosen')));
+  // Export captured a high Reload control. Lower it first, then send the next deliberate edge.
+  await readerClick(reader,4,110,69);await reader.waitForFunction(()=>!!document.querySelector('[data-smart-index="4"] rect[fill="#64748b"]'));
+  await reader.evaluate(()=>{fileText='Name;Value\nShared reader;9';});await readerClick(reader,4,110,69);
+  await reader.waitForFunction(()=>[2,3].every(index=>document.querySelector('[data-smart-index="'+index+'"]')?.textContent.includes('Shared reader')));
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));

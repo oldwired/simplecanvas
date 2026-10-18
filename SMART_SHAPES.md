@@ -330,13 +330,17 @@ entry. The older Number control uses that numeric dialog. The former top-level `
 and `align` editing metadata are rejected; place field geometry and styling inside `inline`.
 
 `navigation:'horizontal'` opts into left/right neighbouring inline text or number fields for Tab/Shift+Tab.
+An inline text or number handle can set top-level `readOnly:true`. Its native field remains selectable
+and copyable, defaults to edit mode, and never calls `dragEdit` or submits a value. In edit mode,
+Enter closes it and Tab can navigate normally. It can still be a formula-reference target. Spreadsheet uses this for
+connected dataset cells by default; its optional bound-cell editor is described below.
 `references:true` enables formula reference picking: when text begins with `=` and the caret
 follows `=`, `(`, `,`, `;`, an operator, or a comparison, clicking another text handle in the same
 component inserts its top-level `ref` (at most 64 characters, such as `B3`). Dragging across cells
 inserts `first:last`; clicking again immediately replaces the inserted reference. Pointed cells
 are outlined. These capabilities are optional; an editable title needs neither.
 
-Every accepted edit passes the string or number as `lx` to `dragEdit`, with `ly` zero. The host
+An ordinary accepted edit passes the string or number as `lx` to `dragEdit`, with `ly` zero. The host
 validates numbers and text constraints before acceptance; rejected input stays open for correction.
 Spreadsheet formula errors are valid saved cell text and are shown in the sheet. Changed state
 creates one undo step; saving the same state again does not create another step. Switching tabs,
@@ -410,7 +414,9 @@ a click action. Dataset reload uses the separate, explicitly declared trigger co
 Dataset enables its import handle only when `allowReaderImport` is true. Replacement imports must
 retain existing column keys and types, may add columns, and must fit the normal table budgets.
 The editor records an accepted replacement in document history. HTML keeps it only in the current
-reader session. CSV and JSON downloads contain the selected rows in their current order, using
+reader session. Replacement keeps the dataset ID, updates all consumers of that dataset in the sketch,
+and allocates fresh row identities. A stale read cannot overwrite a newer accepted revision.
+CSV and JSON downloads contain the selected rows in their current order, using
 column keys as field names. JSON preserves scalar types and null values. CSV uses comma-separated
 fields, CRLF records, standard doubled-quote escaping, and empty cells for nulls; it cannot preserve
 every distinction between text, numbers, empty strings, and missing values on reimport. The dialog
@@ -421,17 +427,25 @@ local action contract, separate from the proposed routed-event API.
 Dataset declares its reload trigger through API v2 metadata:
 
 ```js
-inputs:{data:{type:'table'}, reload:{type:'boolean',default:false}},
-dataActions:{reload:{type:'reloadDataset', input:'data', trigger:'reload'}},
+datasetOwner:'data',
+inputs:{data:{type:'table'}, source:{type:'table',optional:true},
+  reload:{type:'boolean',default:false}, replace:{type:'boolean',default:false},
+  append:{type:'boolean',default:false}},
+dataActions(state){return {reload:{type:'reloadDataset', input:'data', trigger:'reload'},
+  replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},
+  append:{type:'appendTable',input:'data',source:'source',trigger:'append'},
+  live:{type:'syncTable',input:'data',source:'source',enabled:state.updateMode==='Live'}};},
 ```
 
-At most eight named declarations are allowed; each name follows port-name rules. `reloadDataset`
-is the only supported type, `input` must name a table input, and `trigger` must name a Boolean
-input. Additional descriptor fields are rejected. This is not a generic script-effects envelope.
-The host observes a false → true edge only after a healthy live baseline and only while
+At most eight named declarations are allowed; each name follows port-name rules. The supported types
+are `reloadDataset`, `replaceTable`, `appendTable`, `syncTable`, and `appendRow`; `input` must name a table input.
+Pulse actions name a Boolean `trigger`; `syncTable` instead declares a Boolean `enabled`. Reload has no additional fields; table-copy actions additionally
+name their `source` table input; row capture declares the mapping below. Other fields are rejected.
+This is not a generic script-effects envelope.
+For `reloadDataset`, the host observes a false → true edge only after a healthy live baseline and only while
 `state.allowReaderImport === true`. The first complete settlement, pure inspection, historical
 replay, reopening, Undo, rewiring, unavailable-input recovery, and enabling reload while already
-high establish baselines without requesting file access. At most 64 reload requests can wait in a
+high establish baselines without requesting file access. At most 64 host data requests can wait in a
 document's transient queue. They commit only with their live evaluation and are consumed once after
 full settlement; an incomplete paused Step does not dispatch them.
 
@@ -446,6 +460,72 @@ Browsers with reusable file-picker handles can reread; Safari and ordinary file-
 require choosing the file again. Missing or revoked access produces an actionable message and
 preserves accepted data. File handles and permissions never enter state, saved files, or HTML.
 Changed instance/source ownership and stale asynchronous reads cannot replace current data.
+
+`datasetOwner` names the component's owned table input. The host exposes it as **Owned dataset**
+configuration, not a wireable input, and requires one owner per stored table. Its optional incoming
+`source` is a normal table connection. Owners must define `compute` and must not define `publish` or
+`transition`. The host passes only the owned table to their `compute` inputs and resolved table context;
+source and trigger values are sampled separately for declared actions. This keeps stored publication
+independent of incoming source and action-trigger availability. Source/trigger dependencies participate
+only in explicit action sampling, so a missing source or an owner → transform → owner.source path does
+not block stored output. Changing an upstream source or trigger definition re-primes action observation.
+
+`replaceTable` and `appendTable` accept a false → true pulse, then snapshot the complete selected source
+after its graph settles for that simulation instant. A source calculation and pulse changing together
+therefore use the newly calculated table. An incomplete paused Step cannot dispatch the update. If a
+later edit arrives before that instant finishes, the host completes the pending source snapshot against
+the committed scene before merging the edit. Once queued, the snapshot stays exact: dispatch never
+rereads newer source rows. If Replace and Append rise in the same instant, both updates are rejected.
+
+The host validates destination ownership, revision, schema, and table budgets before committing an
+atomic change. Replace keeps the dataset ID and allocates fresh row IDs; it must preserve every existing
+column key and type, but may add columns. Append requires exactly the destination's column keys and
+types; source columns may be reordered, and values are mapped to destination order. It retains existing
+rows and gives new identities to copied rows. The source is never mutated. Source changes without a
+pulse have no effect on stored rows in Manual mode. Reopening, Undo, rewiring, and historical replay establish baselines
+without copying. The command queue holds at most 64 requests, with one separate bounded error notice
+for overflow; queued table snapshots share a 2,000,000-character limit. Failed updates leave stored
+output available and show an error through the host.
+
+HTML additionally requires `state.allowReaderUpdates === true`, separately from file-import permission.
+The editor uses normal history; reader updates remain local to the session.
+
+`syncTable` is the explicit Live policy: it snapshots the settled Source after a new source
+publication, then replaces the destination with the same ownership, schema, revision, queue, and
+reader-permission checks. It declares exactly `{type:'syncTable',input,source,enabled}`. Dataset exposes
+**Source update mode: Manual / Live**, default Manual. Deliberately enabling Live or changing Source
+accepts the current source once; opening, Undo, and historical replay establish a baseline.
+
+Source publication tracking follows output dependencies and stored revisions, not redraws or
+component geometry. A successful identical-data source reload propagates through unchanged filters,
+sorts, and Spreadsheet results. Editing the destination alone does not refresh its source. The next
+source publication overwrites destination edits; a failure preserves the last accepted records and
+is consumed once rather than retried forever. A Live source path cannot depend on its destination,
+including through other Live datasets. Manual snapshot feedback remains allowed. Queued updates
+from conflicting source actions on one owner in the same instant are rejected together.
+
+To capture live scalar values into a stored dataset, declare an `appendRow` action:
+
+```js
+inputs:{data:{type:'table'}, capture:{type:'boolean',default:false},
+  field0:{type:'string',default:''}, field1:{type:'number',default:0}},
+dataActions:{capture:{type:'appendRow',input:'data',trigger:'capture',
+  fields:{label:'field0',value:'field1'}}},
+```
+
+`dataActions` may also be a function of saved state, as in Capture row. `fields` maps 1–24 dataset
+column keys to declared number, string, or Boolean inputs. Keys and types must match the destination
+schema; unmapped columns receive null. The target must be a whole stored dataset with a live, unique
+Dataset owner, without a `rows` selection; derived tables cannot accept captured rows. A false → true edge samples the scalar values
+once. The host queues the request until propagation settles, validates ownership and the current
+schema, and commits an atomic append. Several accepted pulses retain their individual sampled rows.
+Holding Capture high, pure computation, redraw, restoration, Undo, rewiring, and historical replay
+do not append again. An incomplete paused Step cannot dispatch the request.
+
+Capture works in the editor; HTML additionally requires `state.allowReaderCapture === true`, which
+defaults off in the built-in. Invalid values, stale ownership, and table limits leave accepted data
+unchanged. Requests remain outside component state, and neither `compute` nor `transition` can write
+the dataset directly. This uses the same host dataset service as bound-cell editing and replacement.
 
 ### `hitEdit(state, lx, ly, w, h, style)` (optional, needed if you have handles)
 
@@ -542,7 +622,7 @@ field name. At most 16 settings are allowed. The host edits and validates these 
 settings: { channels: { type:'number', default:4, min:2, max:16, step:1, label:'Channels' } },
 inputs(state) {
   const ports = {};
-  for (let i=1; i<=state.channels; i++) ports['in'+i] = {type:'number', default:0};
+  for (let i=0; i<state.channels; i++) ports['in'+i] = {type:'number', default:0};
   return ports;
 },
 ```
@@ -552,6 +632,9 @@ Text/Key row list. Its default and state value are JSON strings encoding arrays 
 the host validates at most 64 rows and 2,000 serialized characters, required string text, optional
 string keys, and uniqueness of nonempty keys. Add/remove/reorder operations stay in the Inputs
 dialog's draft until Save. Cancel preserves the original list.
+
+A string setting may use `format:'lines'` to request a multiline field, bounded to 2,000 characters.
+The component validates the line syntax. Capture row uses this for its `column:type` mappings.
 
 Initialize setting fields in `initState()` and keep port-defining settings unchanged in
 `transition` and interactive reader hooks. Dynamic declarations must be deterministic from state;
@@ -828,7 +911,11 @@ Omitting `rows` selects every row; `rows:[]` is an empty result. Selected indice
 original dataset, are unique integers, and retain their given order. A filter therefore returns
 references to its incoming dataset without duplicating row contents in state or saved output.
 Each reference is validated against the host's document pool before publication or use.
-Table-valued settings and table connections inside feedback cycles are not supported in this slice.
+Stored row identities remain stable across value edits and sorting. The host remaps explicit saved
+row selections after deletion or replacement; removed rows disappear from the selection.
+Table-valued settings and combinational table feedback cycles are not supported. An explicit
+Dataset owner → transform → owner.source path is allowed in Manual mode: only a Replace or Append pulse writes
+the settled source snapshot back to stored records.
 
 A table output may instead return `{table:{name, columns, rows}}` to produce a new table, as
 Table aggregate does. Only declared table outputs accept this envelope. The host validates it with
@@ -864,7 +951,10 @@ A sketch's `datasets` object maps stable IDs to normalized tables:
       {"key":"Boat", "name":"Boat", "type":"string"},
       {"key":"Points", "name":"Points", "type":"number"}
     ],
-    "rows": [["Aurora", 3], ["Borealis", null]]
+    "rows": [["Aurora", 3], ["Borealis", null]],
+    "rowIds": ["r0", "r1"],
+    "revision": 0,
+    "nextRowId": 2
   }
 }
 ```
@@ -876,42 +966,154 @@ integers; text cells contain at most 2,000 UTF-16 code units. Limits are 32 colu
 per sketch. CSV/TSV/JSON source files are limited to 1,000,000 characters. Unsupported imports fail
 before replacing a document or a previously accepted dataset.
 
+The document owns one current revision per dataset ID. Optional stored metadata is `rowIds`, a
+unique identity for every row; `revision`, a nonnegative safe integer; and `nextRowId`, the next
+monotonic row identity number. A plain imported table implicitly starts at revision 0 with rows
+`r0`, `r1`, and so on; its first mutation materializes the metadata. Deleted identities are not reused,
+and whole-table replacement allocates new identities. Append, update, delete, and replace commands
+validate the complete proposed revision before committing. Update/delete address row IDs, and an
+expected revision rejects stale edits. These are host operations, not script-callable write APIs.
+
+Accepted revisions are immutable. Undo snapshots share the prior table objects alongside their scene
+snapshots, and the signal timeline retains its committed dataset pool for historical replay. Editing
+a dataset invalidates dependent graph results even when component state and bindings are unchanged.
+The current pool, history, and replay therefore cannot accidentally resolve one ID to the wrong revision.
+
 `compute(inputs, state, context)` receives resolved input snapshots in `context.tables`, keyed by
 input port name. `transition` receives the same map in its existing context. Each snapshot has
-`{name, columns, rows, rowIndices, rowCount}`: `rows` contains the selected full cell values, and
-`rowIndices` maps them to original dataset indices. Table payloads are limited to 2,000,000
+`{name, columns, rows, rowIndices, rowCount, datasetId, revision, rowIds, editable}`: `rows` contains
+the selected full cell values, `rowIndices` maps them to original dataset indices, and `rowIds`
+contains the matching stable identities. Stored data has `editable:true` only with a live, unique
+Dataset owner; ownerless and derived snapshots have `editable:false`. Derived snapshots have null row identities. Table payloads are limited to 2,000,000
 serialized characters per computation call and 16,000,000 across one evaluation; exceeding either
-budget produces a recoverable component error. Hooks must not copy row data into state or memory.
+budget produces a recoverable component error. Computation and presentation hooks must not copy
+row data into state or memory; the explicit authoring import hook below is a bounded exception.
+
+Owned snapshots also include `owner:{uid,input,name}` so a view can identify the component responsible
+for the stored table. This metadata describes current graph ownership; it is not a writable record.
 
 Presentation hooks receive bounded snapshots under `io.tables.inputs` and `io.tables.outputs`,
 keyed by port. They contain the first 24 selected rows, with string cells longer than 160 characters
 truncated for display; `rowCount` still reports the full selection. Computation always receives the
-complete selection. `inputs` and `outputs` themselves remain compact references. The host caches
-these views with the settled graph, so redraws do not repeatedly send complete datasets to Workers.
+complete selection. API v2 components can opt into `tablePresentation:'full'` to receive complete
+input snapshots in presentation hooks as well. Output snapshots remain previews, and the combined
+presentation payload still has a 2,000,000-character budget. Spreadsheet opts in so displayed formulas,
+cell editing, and published outputs use identical values. `inputs` and `outputs` themselves remain
+compact references. The host caches these views with the settled graph.
 
-The author imports CSV/TSV/JSON through a table input's **Inputs…** controls. CSV/TSV offers **Automatic**,
+### Bound dataset cell editors
+
+An API v2 inline text handle can declare a host-owned cell edit instead of calling `dragEdit`:
+
+```js
+{id:'B2',kind:'text',value:'3',x:150,y:45,
+ inline:{x:100,y:30,w:100,h:30,fontSize:14,mode:'edit'},
+ datasetCell:{input:'data',datasetId:'results',rowId:'r0',column:'Points',revision:0}}
+```
+
+`datasetCell` contains exactly `input`, `datasetId`, `rowId`, `column`, and `revision`. Its input must
+still resolve to the same stored dataset and include the row; the revision must match the snapshot
+from which the editor opened. The handle must use `kind:'text'`, `inline.mode:'edit'`, and cannot be
+read-only. The host validates the live Dataset owner and column type, then commits one update. It uses the stable row identity,
+so editing a filtered or sorted view updates the correct source record. Aggregate results remain
+read-only. A stale edit is rejected rather than silently applied to a different revision.
+
+Text is literal, including leading `=`. Numeric entry accepts a finite supported number, Boolean
+entry accepts `true` or `false`, and an empty numeric/Boolean entry means null; empty text stays an
+empty string. This path never evaluates a spreadsheet formula or invokes `dragEdit`. In HTML the
+handle must also be reader-visible and `state.allowReaderEdit` must be true. Spreadsheet exposes
+**Edit dataset cells** (`editDataset`) and **Allow reader edits** (`allowReaderEdit`), both false by
+default. Its headers and absent/derived cells stay read-only, and ordinary formulas remain local.
+
+### Dataset record controls and view layout
+
+[Dataset editor](examples/data-table.js) evolves the existing Data table into a records view. Its
+schema and row count follow the input; its zero-based `startRow` and `startColumn` inputs page through
+all accepted data. Unbound page controls edit those actual inputs; bound controls display the linked
+position. It requests full table presentation and draws at most 12 rows × 8 columns, keeping cell,
+row, and navigation handles below the 128-handle limit. **Edit dataset records** (`editDataset`) and
+**Allow reader edits** (`allowReaderEdit`) both default false.
+
+Record actions use `kind:'action'` handles with these descriptors:
+
+```js
+{type:'appendDatasetRow',input:'data',datasetId:'results',revision:0}
+{type:'deleteDatasetRow',input:'data',datasetId:'results',revision:0,rowId:'r0'}
+```
+
+An explicit click commits directly through the host. It validates the current owner, table input,
+record-edit setting, dataset ID, and revision; HTML also checks reader permission. Append requires a
+whole stored table and creates one all-null record. Delete validates that the row identity still
+belongs to the displayed selection. Filtered/sorted views can edit/delete source records but cannot
+append. Derived or ownerless tables stay read-only. Editor actions create one Undo entry; reader
+actions are session-local. Stale controls cannot retarget another record. Cell text is always literal.
+
+Spreadsheet remains an authored cell grid. Dataset rows do not change its dimensions, formulas, or
+formatting. Its optional linked rectangle and DATA/COLUMN/ROWS functions consume records; formulas
+and other cell metadata stay on the sheet instance. A1 references to a linked area follow visible
+positions, not stable record identities. Use Dataset editor for dynamic record editing.
+
+Spreadsheet optionally publishes a calculated range through the fixed **table** output:
+`tableOutput:true`, `tableRange:'A2:C4'`, `tableColumns:'energy:number\nprice:number\ncost:number'`,
+`tableName:'Spreadsheet results'`. The range is body cells, within the authored grid, with one unique
+`name:type` line per column (string, number, or boolean). The normal derived-table wrapper contains
+evaluated scalar/null values only. Blank cells become null, literal empty strings stay strings, and
+formula/type/range errors reject the entire result. The scalar OUTPUT port name `table` is reserved
+only when table output is enabled. A linked rectangle contributes the current visible page; whole
+column calculations can still use COLUMN. Consumers can read the result directly, or a Dataset can
+store it with Replace/Append or Live mode. Formulas and formatting are never stored in the result.
+
+### Authoring imports and copies
+
+An optional API v2 `importTable(state, table, w, h)` authoring hook returns `{state}` or `{state,size}`,
+using the same validated state and size limits as `dragEdit`. It enables **Copy dataset to editable
+cells** beside table inputs in **Inputs…**. The host passes the complete selected table snapshot,
+including the selected row order, only after an explicit click. It stages the returned state and size;
+connected sources use the published snapshot frozen when Inputs opened, not a draft computation preview.
+**Save** applies one undoable change and removes assignments to inputs the new state no longer declares.
+**Cancel** discards the copy. The hook cannot modify the source dataset or access files; the HTML
+reader does not expose this authoring action.
+Existing dataset selection and CSV/TSV/JSON import previews supply the source. Spreadsheet replaces its
+grid with a literal copy, switches to Cells mode, and rejects data exceeding its grid or state budget.
+
+The author creates an empty typed table through **New dataset…** or imports CSV/TSV/JSON through a
+table input's **Inputs…** controls. Creation names the dataset and its nullable typed columns; it
+is staged until **Save**, just like import. CSV/TSV offers **Automatic**,
 **Comma**, **Semicolon**, and **Tab** delimiter choices. Automatic detection respects quoted cells and warns
 when the choice is ambiguous; changing the choice refreshes the typed-column and row preview.
 Type inference is independent of the delimiter: decimal-comma values remain strings. Imports stay
 provisional until **Save**, and **Cancel** discards them. Dataset selectors are document-local; connection
 selectors still allow one typed output per input. Copies and library entries carry only their
 referenced tables, remapping dataset IDs if another document already uses an ID for different data.
-Undo/redo retains immutable prior data; saved JSON and HTML omit unreferenced history tables.
-HTML contains the same datasets and table runtime and works offline. An author can enable
-Dataset's reader import control; accepted replacements are session-local and reload restores the
-embedded snapshot. The Download table control explicitly exports current table results as CSV or JSON.
+Duplicating or pasting a Dataset owner always allocates an independent stored table. Copying only a
+consumer within the same document retains its current shared reference; cross-document copies and
+library placement carry the required data. The persisted `datasetOwner` hint is derived from validated
+script capabilities, so copying can retain these semantics without executing a script in the copy path.
+Undo/redo retains immutable prior revisions; saved JSON and HTML omit history-only tables.
+HTML contains the same dataset services and table runtime and works offline. Imports, bound edits,
+and capture each have their own opt-in reader control. Accepted reader changes are session-local;
+reload restores the embedded snapshot. The editor autosaves accepted changes. Download table exports
+current rows as CSV or JSON; it does not save reader changes back into the HTML or an editable workspace.
 
-Built-ins are [Dataset](examples/data-source.js), [Table filter](examples/table-filter.js),
+Built-ins are [Dataset](examples/data-source.js), [Capture row](examples/capture-row.js), [Table filter](examples/table-filter.js),
 [Table sort](examples/table-sort.js), [Table aggregate](examples/table-aggregate.js),
-[Data table](examples/data-table.js), [Data bar chart](examples/data-bar-chart.js), and
+[Dataset editor](examples/data-table.js), [Data bar chart](examples/data-bar-chart.js), and
 [Download table](examples/data-download.js).
-Table filter supports typed comparisons and empty checks; a blank column passes all rows. Data table
-shows at most 20 rows and eight columns; Data bar chart shows at most 24 bars, one per row, including
+Table filter supports typed comparisons and empty checks; a blank column passes all rows. Dataset editor
+pages over at most 12 rows and eight columns; Data bar chart shows at most 24 bars, one per row, including
 negative values. Both report bounded views without modifying the table. The **Embedded data**
 example connects a Text input to a boat-name filter, then drives a table and chart from its output.
 The **Reader data and results** example loads or reloads race results, sorts them by boat name,
 aggregates points per boat, and downloads the alphabetical report. Its chart uses automatic columns
 so the original rows also render when aggregation is bypassed.
+The **Shared dataset** example connects captured scalar readings, a bound editable Spreadsheet,
+and additional views to one stored dataset. The **Dataset** component owns that table; rows are stored
+once in the document. **Source to dataset** demonstrates a separate incoming table/filter, explicit
+Replace/Append pulses, and independently editable destination rows. A provider supplies candidate data;
+it does not own the destination. File import remains an owner convenience. **Live dataset editor** demonstrates refresh overwriting
+a working copy; **Spreadsheet result tables** materializes calculated values into another editable
+Dataset. Coordinated current-record controls, calculated dataset columns, and dedicated HTTP GET/POST
+providers remain future extensions.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
 input order. Sort is stable, nulls are last in both directions, and text is case-insensitive unless
@@ -1427,11 +1629,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 73 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 74 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 64 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 65 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1446,12 +1648,30 @@ The built-in catalog includes 64 API v2 components, with editable sources in `ex
   IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, rounding, INT/ABS/SIGN/MOD/SQRT/POWER/PI,
   PRODUCT/COUNT/COUNTA, IFERROR, type/error checks, and text operations (CONCAT, LEN, case conversion,
   LEFT/RIGHT/MID). COUNTA counts every non-empty cell, including `""` results and errors; commas or
-  semicolons separate arguments. `INPUT("name")` / `INPUT("name","boolean")` declare numeric or
-  Boolean inputs. `OUTPUT(value,"Name")` publishes its argument with an inferred number, Boolean,
+  semicolons separate arguments. `INPUT("name")` / `INPUT("name","boolean"|"string")` declare numeric,
+  Boolean, or text inputs. `OUTPUT(value,"Name")` publishes its argument with an inferred number, Boolean,
   or string type, independently of other OUTPUT calls or the containing cell's final result.
   Types follow saved formulas; possible branches/lookup results must have one scalar type.
   Deleted references remain errors that IFERROR can catch. Cells use `inline.mode:'edit'` handles
-  with navigation/reference picking; HTML keeps cells read-only while recomputing connected signals.
+  with navigation/reference picking; HTML keeps ordinary formula cells read-only while recomputing connected signals.
+  **Grid source: Dataset** reserves a header/body area at the top left, read-only by default, with editable formulas
+  alongside it; numeric `startRow` selects the first visible data row, starting at zero. The configured
+  data rows/columns are clipped to the sheet size. `DATA("port",row,"column",type?)`,
+  `COLUMN("port","column")`, and `ROWS("port")` declare table inputs and read the complete selection,
+  independent of the visible window. DATA defaults to numeric values; use `"string"` or `"boolean"`
+  for other types. COLUMN is a range for aggregate functions. Direct dataset cell outputs need a
+  stable explicit type, e.g. `OUTPUT(A2,"boat","string")`. Importing an editable copy replaces the
+  grid, preserves literal strings (including leading `=`), and leaves the source untouched. A leading
+  apostrophe also forces manually entered cell content to be text. Copies must fit the 128-handle
+  grid budget (cells + column controls + one header handle), 26 columns, and 4,000-character state.
+  **Edit dataset cells** enables host-owned writes to existing source rows; **Allow reader edits**
+  separately exposes those edits in HTML. Both default off. Data is edited by stable row identity,
+  including through filtered/sorted views, and aggregate results remain read-only.
+- [Capture row](examples/capture-row.js): whole-table `data` input, Boolean `capture`, and 1–24
+  scalar inputs declared by **Fields (column:type)**. Lines map in order to `field0` through
+  `field23`; supported types are number, string, and Boolean. Each false → true pulse samples one
+  row for an atomic host append. Unmapped columns become null. It publishes the table reference
+  and row count. **Allow capture in HTML export** (`allowReaderCapture`) defaults off.
 - [Text input](examples/text-input.js) and [Number input](examples/number-input.js): host-owned
   inline single-line entry and typed `value` plus Boolean `submitted` outputs. Enter/Submit validates and
   normally queues one 100 ms pulse per accepted value, separated by at least 10 ms low, including

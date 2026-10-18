@@ -1,6 +1,7 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const vm=require('node:vm');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {chromium,webkit}=require('playwright');
@@ -39,7 +40,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===20 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===25 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -56,14 +57,14 @@ async function editorHandle(page,run,tab,id,handleId){
   assert.ok(handle,target+' has interactive '+handleId);
   const box=await page.locator('#canvas').boundingBox();
   await page.mouse.click(box.x+item.x+handle.x,box.y+item.y+handle.y);
-  if(!['text','number'].includes(handle.kind))await run('smartHitSettled');
+  if(!['text','number','action'].includes(handle.kind))await run('smartHitSettled');
 }
 const outputs=(run,tab,id)=>run(`(async()=> (await resolveSmartComponentIo(items.find(item=>item.uid===${JSON.stringify(uid(tab,id))}))).outputs)()`);
 async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all twenty tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all twenty-five tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -78,7 +79,7 @@ test('shipped workspace imports all twenty tabs with valid local bindings and cu
     }
     return result;
   })()`);
-  assert.equal(checked.length,20);
+  assert.equal(checked.length,25);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -180,14 +181,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has twenty working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has twenty-five working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),20);
-    for(let tab=1;tab<=20;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),25);
+    for(let tab=1;tab<=25;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -345,6 +346,170 @@ test('shipped spreadsheet remains read-only in HTML while connected controls upd
     await readerText(page,20,'total','0');await readerText(page,20,'active','OFF');await readerText(page,20,'status','Paused');
     await readerTab(page,19);await readerTab(page,20);await readerText(page,20,'status','Paused');
     await page.reload();await readerTab(page,20);await readerText(page,20,'total','20');await readerText(page,20,'status','Enabled');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+test('shipped dataset sheet pages its live grid while whole-table formulas stay complete',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,21);
+  assert.deepEqual(await outputs(run,21,'sheet'),{points:30,rows:12,scaled:60});
+  await editorHandle(page,run,21,'offset','plus');
+  const io=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-21-sheet'))`);
+  assert.equal(io.inputs.startRow,1);assert.equal(io.tables.inputs.data.rows.length,12);
+  assert.deepEqual(io.outputs,{points:30,rows:12,scaled:60});
+  await editorHandle(page,run,21,'sheet','F6');
+  const field=page.locator('[data-smart-inline-input="text"] #smartTextValue');await field.fill('3');await field.press('Enter');
+  await page.waitForFunction(()=>__test.run('items.find(item=>item.uid==="demo-21-sheet").state.cells.F6==="3"'));
+  await run('smartHitSettled');assert.equal((await outputs(run,21,'scaled')).value,90);
+}));
+
+test('shipped dataset spreadsheet calculates and pages in the offline reader',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:960}});
+  try{
+    const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,21);
+    await readerText(page,21,'points','30');await readerText(page,21,'rows','12');await readerText(page,21,'scaled','60');
+    await readerHandle(page,21,'offset','plus');await readerText(page,21,'offset','1');
+    await readerText(page,21,'points','30');await readerText(page,21,'scaled','60');
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+async function readerCell(page,tab,id,address){
+  const item=itemFor(tab,id),column=address.charCodeAt(0)-65,row=Number(address.slice(1))-1,weights=item.state.weights||Array(item.state.cols).fill(1),unit=item.w/weights.reduce((a,b)=>a+b,0);
+  const point={x:(weights.slice(0,column).reduce((a,b)=>a+b,0)+weights[column]/2)*unit,y:(row+.5)*item.h/item.state.rows};
+  const position=await readerHost(page,tab,id).evaluate((host,point)=>{const p=new DOMPoint(point.x,point.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};},point);
+  await page.mouse.click(position.x,position.y);
+}
+async function confirmedJsonDownload(page){
+  const dialog=page.locator('dialog[data-component-data-action="downloadTable"]');await dialog.waitFor({state:'visible'});
+  const event=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download',exact:true}).click();const download=await event;
+  assert.equal(download.suggestedFilename(),'shared-readings.json');return JSON.parse(fs.readFileSync(await download.path(),'utf8').replace(/^\uFEFF/,''));
+}
+
+test('shared dataset demo captures control values, edits a record, and downloads the same updated rows',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,22);
+  assert.equal((await outputs(run,22,'label')).value,'Gamma','the text entry starts with its intended live value');
+  assert.deepEqual(await outputs(run,22,'sheet'),{total:35,rows:2});
+  await editorHandle(page,run,22,'pulse','trigger');
+  await page.waitForFunction(()=>__test.run('datasets.readings.rows.length===3'));await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.deepEqual(await run('datasets.readings.rows[2]'),['Gamma',40]);
+  await editorHandle(page,run,22,'sheet','B4');const field=page.locator('#smartTextValue');await field.waitFor();assert.equal(await field.inputValue(),'40');
+  await field.fill('45');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,22,'sheet'),{total:80,rows:3});assert.equal((await outputs(run,22,'chart')).rowCount,3);
+  const chart=await run(`(async()=>{const it=items.find(item=>item.uid==='demo-22-chart');return requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false]);})()`);
+  assert.ok(chart.some(child=>child.type==='text'&&child.text==='45'),'chart immediately displays the edited record');
+  assert.deepEqual(await run('datasetRowIds(datasets.readings)'),['r0','r1','r2']);
+  await editorHandle(page,run,22,'download','json');assert.deepEqual(await confirmedJsonDownload(page),[{label:'Alpha',value:10},{label:'Beta',value:25},{label:'Gamma',value:45}]);
+  await run('undo();ensureEditorComponentGraph()');assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.equal(await run('datasets.readings.rows[2][1]'),40);
+  await editorHandle(page,run,22,'offset','plus');assert.equal((await outputs(run,22,'offset')).value,1);
+  const paged=await run("resolveSmartComponentIo(items.find(item=>item.uid==='demo-22-sheet'))");
+  assert.equal(paged.inputs.startRow,1);assert.deepEqual(paged.outputs,{total:75,rows:3},'paging leaves whole-table formulas unchanged');
+}));
+
+test('shared dataset demo supports capture, direct editing, chart refresh and downloads in shipped HTML',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,22);
+    await readerText(page,22,'label','Gamma');await readerText(page,22,'sheet','35');await readerText(page,22,'chart','2 rows');
+    await readerHandle(page,22,'pulse','trigger');await readerText(page,22,'capture','3 rows');await readerText(page,22,'sheet','75');await readerText(page,22,'chart','3 rows');
+    await readerCell(page,22,'sheet','B4');const field=page.locator('#smartTextValue');await field.waitFor();assert.equal(await field.inputValue(),'40');
+    await field.fill('45');await field.press('Enter');await field.waitFor({state:'detached'});await readerText(page,22,'sheet','80');await readerText(page,22,'chart','45');
+    await readerCell(page,22,'sheet','E2');assert.equal(await page.locator('#smartTextValue').count(),0,'local formulas remain authored content in the reader');
+    await readerHandle(page,22,'offset','plus');await readerText(page,22,'offset','1');await readerText(page,22,'sheet','80');
+    await page.waitForFunction(host=>!host.textContent.includes('Alpha'),await readerHost(page,22,'sheet').elementHandle());
+    await readerHandle(page,22,'download','json');assert.deepEqual(await confirmedJsonDownload(page),[{label:'Alpha',value:10},{label:'Beta',value:25},{label:'Gamma',value:45}]);
+    await readerTab(page,21);await readerTab(page,22);await readerText(page,22,'sheet','80');
+    await page.reload();await readerTab(page,22);await readerText(page,22,'chart','2 rows');await readerText(page,22,'sheet','35');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+test('source-to-dataset demo applies explicit copies and keeps incoming and owned edits independent',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,23);
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:7,rows:1});assert.equal((await outputs(run,23,'filter')).rowCount,2);
+  await editorHandle(page,run,23,'replace','trigger');
+  await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===2'));await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:65,rows:2});
+  const ids=await run('datasets.saved.rowIds');assert.deepEqual(ids,['r1','r2']);
+  await editorHandle(page,run,23,'incoming','B4');let field=page.locator('#smartTextValue');await field.waitFor();await field.fill('50');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
+  assert.equal(await run('datasets.incoming.rows[2][1]'),50);assert.deepEqual(await outputs(run,23,'sheet'),{total:65,rows:2},'source edits wait for an explicit apply pulse');
+  await editorHandle(page,run,23,'sheet','B2');field=page.locator('#smartTextValue');await field.waitFor();await field.fill('30');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
+  assert.equal(await run('datasets.incoming.rows[1][1]'),25,'destination edits never write upstream');assert.deepEqual(await outputs(run,23,'sheet'),{total:70,rows:2});
+  await editorHandle(page,run,23,'append','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===4'));await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:145,rows:4});assert.deepEqual(await run('datasets.saved.rowIds.slice(0,2)'),ids);
+  await editorHandle(page,run,23,'threshold','plus');assert.equal((await outputs(run,23,'filter')).rowCount,1);assert.deepEqual(await outputs(run,23,'sheet'),{total:145,rows:4});
+  await editorHandle(page,run,23,'replace','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===1'));await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:50,rows:1});assert.deepEqual(await run('datasets.saved.rows'),[['Gamma',50]]);
+  const chart=await run(`(async()=>{const it=items.find(item=>item.uid==='demo-23-chart');return requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false]);})()`);
+  assert.ok(chart.some(child=>child.type==='text'&&child.text==='50'));
+}));
+
+test('source-to-dataset demo accepts explicit source updates and independent edits in shipped HTML',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,23);await readerText(page,23,'sheet','7');
+    await readerHandle(page,23,'replace','trigger');await readerText(page,23,'sheet','65');await readerText(page,23,'chart','2 rows');
+    await readerCell(page,23,'incoming','B4');let field=page.locator('#smartTextValue');await field.waitFor();await field.fill('50');await field.press('Enter');await field.waitFor({state:'detached'});
+    await readerText(page,23,'incoming','50');await readerText(page,23,'sheet','65');
+    await readerCell(page,23,'sheet','B2');field=page.locator('#smartTextValue');await field.waitFor();await field.fill('30');await field.press('Enter');await field.waitFor({state:'detached'});
+    await readerText(page,23,'sheet','70');await readerText(page,23,'incoming','25');
+    await readerHandle(page,23,'append','trigger');await readerText(page,23,'sheet','145');await readerText(page,23,'chart','4 rows');
+    await readerHandle(page,23,'threshold','plus');await readerText(page,23,'filter','1 of 3 rows');await readerText(page,23,'sheet','145');
+    await readerHandle(page,23,'replace','trigger');await readerText(page,23,'sheet','50');await readerText(page,23,'chart','1 row');
+    await readerTab(page,22);await readerTab(page,23);await readerText(page,23,'sheet','50');
+    await page.reload();await readerTab(page,23);await readerText(page,23,'sheet','7');await readerText(page,23,'incoming','40');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+async function saveInlineText(page,value){
+  const field=page.locator('#smartTextValue');await field.waitFor({state:'visible'});await field.fill(value);await field.press('Enter');await field.waitFor({state:'detached'});
+}
+
+test('live editor and spreadsheet result examples keep local edits until their source refreshes',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,24);
+  await editorHandle(page,run,24,'working-editor','cell-0-1');await saveInlineText(page,'99');await run('smartHitSettled');
+  assert.equal(await run('datasets.working.rows[0][1]'),99);assert.equal(await run('datasets.incoming.rows[0][1]'),10);
+  await editorHandle(page,run,24,'source-editor','cell-0-1');await saveInlineText(page,'12');
+  await page.waitForFunction(()=>__test.run('datasets.working.rows[0][1]===12'));
+  await activate(run,25);
+  await editorHandle(page,run,25,'result-editor','cell-0-1');await saveInlineText(page,'99');await run('smartHitSettled');
+  assert.equal(await run('datasets.results.rows[0][1]'),99);
+  await editorHandle(page,run,25,'source-editor','cell-0-1');await saveInlineText(page,'12');
+  await page.waitForFunction(()=>__test.run('datasets.results.rows[0][1]===24'));
+  await editorHandle(page,run,25,'sheet','E2');await saveInlineText(page,'=B2*3');
+  await page.waitForFunction(()=>__test.run('datasets.results.rows[0][1]===36'));
+  assert.deepEqual(await run('datasets.results.rows'),[['Alpha',36],['Beta',50],['Gamma',80]]);
+  assert.equal(await run('items.find(item=>item.uid==="demo-25-sheet").state.cells.E2'),'=B2*3','formula stays on the authored sheet');
+}));
+
+test('shipped live and calculated-result examples allow reader edits and refresh offline',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  const edit=async(tab,id,before,after)=>{
+    await readerText(page,tab,id,before);
+    const item=itemFor(tab,id),owner=workspace.tabs[tab-1].items.find(other=>other.uid===item.bindings.data.uid),reference=owner.inputValues.data,table=workspace.tabs[tab-1].datasets[reference.datasetId];
+    const io={inputs:{data:reference,startRow:0,startColumn:0},tables:{inputs:{data:{...table,datasetId:reference.datasetId,rowCount:table.rows.length,editable:true}}}};
+    // WebKit reports glyph bounds at the SVG group origin here. Click the real cell center,
+    // transformed exactly like other reader controls, rather than treating text as a DOM input.
+    const handle=vm.runInNewContext(item.script).handles(item.state,item.w,item.h,item,io).find(handle=>handle.id==='cell-0-1');assert.ok(handle);
+    const point=await readerHost(page,tab,id).evaluate((host,handle)=>{const p=new DOMPoint(handle.x,handle.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};},handle);
+    await page.mouse.click(point.x,point.y);await saveInlineText(page,after);await readerText(page,tab,id,after);
+  };
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,24);
+    await edit(24,'working-editor','10','99');await readerText(page,24,'source-editor','10');
+    await readerTab(page,23);await readerTab(page,24);await readerText(page,24,'working-editor','99');
+    await edit(24,'source-editor','10','12');await readerText(page,24,'working-editor','12');
+    await readerTab(page,25);await edit(25,'result-editor','20','99');
+    await edit(25,'source-editor','10','12');await readerText(page,25,'result-editor','24');
+    await readerHandle(page,25,'download','json');const dialog=page.locator('dialog[data-component-data-action="downloadTable"]');await dialog.waitFor({state:'visible'});
+    const event=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download',exact:true}).click();const download=await event;
+    assert.equal(download.suggestedFilename(),'calculated-readings.json');assert.deepEqual(JSON.parse(fs.readFileSync(await download.path(),'utf8').replace(/^\uFEFF/,'')),[{label:'Alpha',value:24},{label:'Beta',value:50},{label:'Gamma',value:80}]);
+    await page.reload();await readerTab(page,25);await readerText(page,25,'result-editor','20');
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

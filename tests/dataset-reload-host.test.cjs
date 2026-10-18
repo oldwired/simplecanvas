@@ -6,7 +6,7 @@ const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const dataset=html.slice(html.indexOf('// ---------- embedded datasets ----------'),html.indexOf('// End of embedded dataset contract.'));
 const helpers=html.slice(html.indexOf('  function validateDatasetReplacementSchema('),html.indexOf('  function safeDataFilename('));
-const snapshot=html.slice(html.indexOf('  function componentTableSnapshot('),html.indexOf('  function componentTables('));
+const snapshot=html.slice(html.indexOf('  function datasetOwnersOf('),html.indexOf('  function componentTables('));
 function fixture(handle){
   const scope=vm.createContext({});
   vm.runInContext(dataset+'\n'+snapshot+'\n'+helpers+'\nthis.api={rememberComponentDatasetSource,reloadComponentDataset,queueComponentDatasetReload,cancelComponentDatasetReload};',scope);

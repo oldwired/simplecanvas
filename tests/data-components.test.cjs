@@ -156,16 +156,18 @@ test('a downloaded HTML dashboard filters offline and keeps same-named datasets 
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[],'exported data and runtime have no network dependency');
 }));
 
-test('large tables are resolved for filtering but only bounded previews reach rendering hooks',async()=>app(async({run})=>{
+test('large tables retain bounded default previews while Dataset editor receives complete paging data',async()=>app(async({run})=>{
   const large={...results,rows:Array.from({length:600},(_,index)=>['Boat '+index,index%2?'South':'North',index,index%3===0])};
   await seed(run,circuit,{results:large});
   assert.equal((await output(run,0)).rowCount,600);assert.equal((await output(run,2)).rowCount,300);
   const checked=await run(`(async()=>{const graph=await ensureEditorComponentGraph();return [0,2,3,4].map(index=>{
-    const io=graph.get(items[index]).io;return {index,tables:io.tables,outputSize:JSON.stringify(io.outputs).length};
+    const record=graph.get(items[index]),io=record.io;return {index,full:record.caps.tablePresentation==='full',tables:io.tables,outputSize:JSON.stringify(io.outputs).length};
   });})()`);
   for(const entry of checked){
-    for(const group of Object.values(entry.tables))for(const table of Object.values(group)){
-      assert.ok(table.rows.length<=24,'presentations get at most 24 rows');assert.ok(table.rowCount>=300);
+    for(const [side,group] of Object.entries(entry.tables))for(const table of Object.values(group)){
+      if(entry.full && side==='inputs')assert.equal(table.rows.length,table.rowCount,'explicit full input snapshots support every editor page');
+      else assert.ok(table.rows.length<=24,'default and output snapshots remain bounded to24 rows');
+      assert.ok(table.rowCount>=300);
     }
     assert.ok(entry.outputSize<4000,'outputs are references and row indexes, not duplicated cells');
   }

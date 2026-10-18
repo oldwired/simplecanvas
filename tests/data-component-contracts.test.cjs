@@ -46,13 +46,13 @@ test('data components declare compact table references and initialize bounded au
   assert.deepEqual(plain(source('data-bar-chart').inputs.value),{type:'string',default:'',columnOf:'data',columnType:'number'});
 });
 
-test('Dataset passes the same compact reference and publishes the complete row count',()=>{
+test('Dataset publishes its whole owned reference and rejects a selected view as owned storage',()=>{
   const c=source('data-source');
   assert.deepEqual(compute(c,{data:ref}),{data:ref,rowCount:5});
   const selection={datasetId:'regatta',rows:[4,1]},subset={...table,rows:[table.rows[4],table.rows[1]],rowIndices:[4,1],rowCount:2};
-  assert.deepEqual(compute(c,{data:selection},{},subset),{data:selection,rowCount:2});
-  assert.throws(()=>c.compute({data:ref},{},{}),/Choose an embedded dataset/);
-  assert.throws(()=>c.compute({data:null},{},{tables:{data:table}}),/Choose an embedded dataset/);
+  assert.throws(()=>compute(c,{data:selection},{},subset),/Choose an owned dataset/);
+  assert.throws(()=>c.compute({data:ref},{},{}),/Choose an owned dataset/);
+  assert.throws(()=>c.compute({data:null},{},{tables:{data:table}}),/Choose an owned dataset/);
 });
 
 test('a blank filter column passes its input through without copying or reordering rows',()=>{
@@ -128,6 +128,43 @@ test('Data table bounds its visible rows and columns, and discloses truncation e
   assert.ok(children.length<70);
   const empty={...table,rows:[],rowIndices:[],rowCount:0};
   assert.ok(draw(c,empty).some(child=>child.text==='No matching rows'));
+});
+
+test('Dataset editor pages every supported row and column with bounded handles and literal stable-row edits',()=>{
+  const c=source('data-table'),style=c.initStyle(),state={...c.initState(),editDataset:true,maxRows:1000,maxColumns:32};
+  const data={name:'Large',datasetId:'large',revision:9,editable:true,columns:Array.from({length:32},(_,i)=>({key:'c'+i,name:'Column '+i,type:'string'})),rows:Array.from({length:1000},(_,r)=>Array.from({length:32},(_,i)=>r+':'+i)),rowIds:Array.from({length:1000},(_,i)=>'r'+i),rowCount:1000};
+  const io={inputs:{data:{datasetId:'large'},startRow:996,startColumn:24},tables:{inputs:{data}},outputs:{rowCount:1000}};
+  const children=plain(c.children(state,style,style.w,style.h,false,io)),handles=plain(c.handles(state,style.w,style.h,style,io));
+  assert.ok(children.some(child=>child.text==='999:31'),'last row and column can be displayed');
+  assert.ok(children.length<500);assert.ok(handles.length<=128);
+  const last=handles.find(handle=>handle.id==='cell-3-7');
+  assert.deepEqual(last.datasetCell,{input:'data',datasetId:'large',rowId:'r999',column:'c31',revision:9});
+  assert.equal(last.inline.mode,'edit');assert.equal(last.inline.references,false);assert.equal(last.editorOnly,true);
+  assert.equal(handles.some(handle=>handle.id==='addRow'),false,'a full dataset has no Add action');
+  assert.equal(c.hitEdit(state,last.x,last.y,style.w,style.h,style,io),last.id);
+  const firstIo={...io,inputs:{...io.inputs,startRow:0,startColumn:0}},first=plain(c.handles(state,style.w,style.h,style,firstIo));
+  assert.equal(first.filter(handle=>handle.datasetCell).length,96,'at most twelve rows and eight columns are editable at once');
+  assert.equal(first.find(handle=>handle.id==='startRow').options.at(-1).value,996);
+  assert.equal(first.find(handle=>handle.id==='startColumn').options.at(-1).value,24);
+  const compact=plain(c.children(state,style,330,270,false,{...io,tables:{inputs:{data:{...data,columns:data.columns.slice(0,2),rows:data.rows.map(row=>row.slice(0,2))}}},inputs:{...io.inputs,startRow:0,startColumn:0}}));
+  assert.ok(compact.some(child=>child.text==='0:0' && parseFloat(child.font.split(' ')[1])>=11),'compact views keep text legible and show fewer rows');
+});
+
+test('Dataset editor defaults read-only, keeps paging available, and only edits owned current rows',()=>{
+  const c=source('data-table'),style=c.initStyle(),data={...table,datasetId:'regatta',revision:3,editable:true,rowIds:['r8','r2','r4','r5','r6']};
+  const io={inputs:{data:ref,startRow:0,startColumn:0},tables:{inputs:{data}},outputs:{rowCount:5}};
+  assert.equal(c.tablePresentation,'full');assert.equal(c.initState().editDataset,false);assert.equal(c.initState().allowReaderEdit,false);
+  assert.deepEqual(plain(c.handles(c.initState(),style.w,style.h,style,io)).map(h=>h.id),['startRow','startColumn']);
+  const editing={...c.initState(),editDataset:true,allowReaderEdit:true};
+  const selected={...io,inputs:{...io.inputs,data:{datasetId:'regatta',rows:[8,2,4,5,6]}},boundInputs:['startRow']};
+  const handles=plain(c.handles(editing,style.w,style.h,style,selected));
+  assert.equal(handles.some(h=>h.id==='startRow'||h.id==='addRow'),false,'bound page inputs and selected-view append have no manual control');
+  assert.deepEqual(handles.find(h=>h.id==='delete-0').action,{type:'deleteDatasetRow',input:'data',datasetId:'regatta',revision:3,rowId:'r8'});
+  assert.equal(handles.find(h=>h.id==='cell-0-0').editorOnly,false);
+  assert.equal(handles.find(h=>h.id==='cell-0-0').value,'Kestrel');
+  const readonly={...io,tables:{inputs:{data:{...data,editable:false}}}};
+  assert.deepEqual(plain(c.handles(editing,style.w,style.h,style,readonly)).map(h=>h.id),['startRow','startColumn']);
+  for(const bad of [-1,1.5,Infinity])assert.throws(()=>compute(c,{data:ref,startRow:bad}),/nonnegative integers/);
 });
 
 test('chart selects a numeric column, honors explicit keys, and rejects nonnumeric values',()=>{

@@ -205,7 +205,7 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 64 API v2 catalog definitions match their editable source files. Captioned components
+verify that all 65 API v2 catalog definitions match their editable source files. Captioned components
 retain their instance names in canvas, SVG, and offline HTML; Spreadsheet deliberately uses its
 whole box for the cell grid and is excluded from the caption check.
 
@@ -241,7 +241,8 @@ checks manual/connected/hidden switches, Undo and independent copies, plus offli
 `tests/component-input-switch-contracts.test.cjs` validates the host Boolean-input handle guard. `tests/data-transform-runtime.test.cjs` exercises the
 bounded derived-table contract, downstream propagation, and persistence through the real sandbox.
 `tests/reader-data-actions.test.cjs` checks replacement-schema rules, filename validation, and CSV/JSON
-serialization. `tests/data-workflow.test.cjs` covers explicit import/download controls in the editor
+serialization, shared dataset identity, and separate current/committed revision ownership.
+`tests/data-workflow.test.cjs` covers explicit import/download controls in the editor
 and offline HTML, including cancellation, invalid replacements, and no automatic action replay.
 `tests/dataset-reload-host.test.cjs` checks fresh file reads, remembered delimiters, missing handles,
 schema/permission failures, stale ownership, and competing reads. Reload declaration/edge tests in
@@ -267,11 +268,41 @@ inline edit descriptors used by Spreadsheet and the standalone Countdown timer.
 `tests/spreadsheet-worker.test.cjs` runs a shared lookup chain through the real Worker deadline,
 repairs an ambiguous output type through cell editing, and follows independent OUTPUT values
 through connected consumers in the editor and offline HTML.
+`tests/spreadsheet-dataset-contracts.test.cjs` covers dataset formulas, stable port types, read-only cells,
+literal copying, and import limits. `tests/spreadsheet-data-host.test.cjs` validates full table presentation
+and shared read-only inline behavior across the editor and reader. `tests/spreadsheet-datasets.test.cjs`
+exercises full/selected dataset values, live replacement, reference picking, and staged editable copies
+from connected tables or CSV, including Cancel, Undo, source isolation, and rotated grouped resizing.
 
-`tests/example-workspace.test.cjs` validates all twenty shipped tabs and preserves the original
+`tests/dataset-model-contracts.test.cjs` covers immutable append/update/delete/replace commands,
+stable row identities and revisions, type/conflict validation, selection remapping, and replay using
+the committed data revision. `tests/dataset-model-runtime.test.cjs` checks shared cache invalidation,
+in-flight cancellation, history ownership, and Undo/Redo without resuming a paused simulation.
+`tests/shared-dataset-editing.test.cjs` exercises empty typed dataset creation, shared bound-cell edits,
+sorted source identity, literal text, stale-edit rejection, and reader editing permissions.
+`tests/capture-row-contracts.test.cjs` covers field declarations and destination/type validation.
+`tests/shared-dataset-capture.test.cjs` follows real Trigger/Text/Number signals through row capture,
+sampled queued values, held-high suppression, Undo/Redo, row limits, and opted-in offline capture.
+It also keeps saved row selections aligned when a dataset change commits during another history transaction.
+`tests/dataset-owner-copy.test.cjs` checks independent stores for duplicated or pasted owners,
+shared links for consumer-only copies, cross-document/library placement, validated ownership hints,
+and atomic rejection when a copied store would exceed dataset limits.
+`tests/dataset-source-actions.test.cjs` covers owner/action declarations, optional-source isolation,
+explicit owner → transform → owner updates, settled source snapshots, definition-change re-priming,
+simultaneous-action rejection, reader permission, stale replacement revisions, and ownership revocation.
+It also checks paused Step snapshots across later edits, the 64-command queue with a bounded overflow
+notice, and the shared 2,000,000-character snapshot budget.
+`tests/dataset-source-browser.test.cjs` runs actual Workers and host dispatch for source Replace/Append,
+Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
+Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
+
+`tests/example-workspace.test.cjs` validates all twenty-five shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
-and read-only live reader results. All affected walkthroughs use zero-based selections,
+and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner
+Replace/Append examples. `tests/dataset-owner-source.test.cjs` checks Dataset ownership declarations,
+owned-only publication, and the separate source-update reader permission.
+All affected walkthroughs use zero-based selections,
 channels, storage taps, and matrix rows/columns, while tab numbering stays ordinal. `tests/feedback-workspace.test.cjs` verifies the three practical counter
 loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
 positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:
@@ -290,3 +321,19 @@ keeps the previous pair, and a failed publication rolls back replaced files. Con
 publication. If the filesystem also prevents rollback, the tool reports retained recovery copies.
 `tests/example-workspace-generator.test.cjs` covers successful publication, export and second-file
 failures, concurrent edits, and recovery-copy retention without launching a browser.
+
+Dataset editing and calculated table checks:
+
+- `tests/dataset-editor.test.cjs` exercises typed record edits, stable identities through sorting,
+  full row/column paging, Add/Delete and Undo/Redo, stale drafts/actions, read-only results, and
+  explicit HTML editing permission/session reset.
+- `tests/spreadsheet-table-output.test.cjs` validates result schemas, range bounds, scalar-port
+  collisions, nulls, literal values, formula/type errors, and dataset limits.
+- `tests/spreadsheet-table-output-runtime.test.cjs` uses real Workers and the Inputs dialog,
+  materializes evaluated tables, and verifies the offline reader and linked-page results.
+- The workspace tests exercise tabs 24 and 25 together: independent working edits, Live overwrite,
+  source-to-formula-to-Dataset refresh, and current result downloads.
+- `tests/dataset-live.test.cjs` checks publication provenance, same-data refreshes, initial setup,
+  restored baselines, exact snapshots, failure recovery, chains/cycles, and paused stepping.
+- `tests/dataset-live-browser.test.cjs` checks destination-edit persistence, Undo, actual same-data
+  file reload through a Spreadsheet result, and reader refresh/permission behavior.

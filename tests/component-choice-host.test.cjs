@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-const names=['smartNumber','componentPortName','componentTableSnapshot','normalizeComponentChoiceHandle','componentChoiceSnapshot','nextComponentChoiceInput','validateSmartReply'];
+const names=['smartNumber','componentPortName','datasetOwnersOf','componentTableSnapshot','normalizeComponentChoiceHandle','componentChoiceSnapshot','nextComponentChoiceInput','validateSmartReply'];
 const scope=vm.createContext({isNum:v=>typeof v==='number' && Number.isFinite(v)});
 const functions=names.map(name=>{const start=html.indexOf('  function '+name+'('),end=html.indexOf('\n  function ',start+3);assert.ok(start>=0 && end>start);return html.slice(start,end);});
 const dataStart=html.indexOf('// ---------- embedded datasets ----------'),dataEnd=html.indexOf('// End of embedded dataset contract.');

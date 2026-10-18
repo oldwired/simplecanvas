@@ -76,7 +76,7 @@ const flow=[
  {key:'dataTable',bindings:{data:{uid:'data-2',port:'data'}}},
  {key:'dataBarChart',inputValues:{category:'group',value:'result'},bindings:{data:{uid:'data-2',port:'data'}}},
  {key:'dataDownload',inputValues:{filename:'leaderboard'},bindings:{data:{uid:'data-2',port:'data'}}},
- {key:'dataSource',componentName:'Other view',inputValues:{data:{datasetId:'fleet'}}}
+ {key:'dataTable',componentName:'Other view',inputValues:{data:{datasetId:'fleet'}}}
 ].map((item,index)=>({...item,x:40+(index%3)*450,y:50+Math.floor(index/3)*250}));
 const expected=[['Borealis',3],['Calypso',7],['Aurora',8]];
 async function resultTable(run,index=2){return run(`(async()=>{const graph=await ensureEditorComponentGraph(),record=graph.get(items[${index}]);
@@ -100,7 +100,7 @@ async function chooseFile(page,text,name='updated.tsv'){
  return dialog;
 }
 
-test('editor data actions download derived results without replay and replacement is one undoable source-local change',async()=>app(async({page,run})=>{
+test('editor data actions download derived results without replay and replacement is one undoable shared dataset change',async()=>app(async({page,run})=>{
  await seed(run,flow,{fleet});assert.deepEqual((await resultTable(run)).rows,expected);
  const downloads=[];page.on('download',download=>downloads.push(download.suggestedFilename()));
  await clickHandle(page,run,5,'json');const result=await downloadDialog(page,'json');
@@ -112,15 +112,15 @@ test('editor data actions download derived results without replay and replacemen
  await dialog.getByRole('button',{name:'Replace data',exact:true}).click();await dialog.waitFor({state:'detached'});await run('smartHitSettled');
  assert.deepEqual((await resultTable(run)).rows,[['Dawn, "Go"',1],['Aurora',2],['Borealis',15]]);
  assert.equal(await run('undoStack.length'),before.undo+1);assert.deepEqual(await run('items[6].inputValues.data'),{datasetId:'fleet'});
- assert.deepEqual(await run('datasets.fleet'),fleet,'another source retains its original data');
- assert.equal((await output(run,6)).rowCount,5);
+ assert.deepEqual(await run('datasets.fleet.rows'),[['Aurora',2],['Borealis',6],['Borealis',9],['Dawn, "Go"',1]],'all sources follow the shared dataset revision');
+ assert.equal((await output(run,6)).rowCount,4);
  await clickHandle(page,run,5,'csv');const csvDownload=await downloadDialog(page,'csv');await run('smartHitSettled');
  assert.equal(csvDownload.text,'group,result\r\n"Dawn, ""Go""",1\r\nAurora,2\r\nBorealis,15\r\n');
  await run('undo()');assert.deepEqual((await resultTable(run)).rows,expected);
  await run('redo()');assert.deepEqual((await resultTable(run)).rows,[['Dawn, "Go"',1],['Aurora',2],['Borealis',15]]);
  await run('render();save()');await page.reload();await run('appStarted');assert.equal((await resultTable(run)).rows.length,3);
  assert.deepEqual(downloads,['leaderboard.json','leaderboard.csv'],'undo, redo, redraw and reload never replay downloads');
- assert.deepEqual(Object.keys(await run('JSON.parse(localStorage.getItem(docKey(activeTabId))).datasets')).length,2,'computed tables are never persisted');
+ assert.deepEqual(Object.keys(await run('JSON.parse(localStorage.getItem(docKey(activeTabId))).datasets')).length,1,'only the current shared dataset is persisted');
 }));
 
 test('editor reader-style imports reject mismatched schemas and stale file reads without modifying data',async()=>app(async({page,run})=>{

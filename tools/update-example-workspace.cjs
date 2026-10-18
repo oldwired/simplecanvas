@@ -4,6 +4,34 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
 const sources={
+  "demo-24-source": "data-source.js",
+  "demo-24-working": "data-source.js",
+  "demo-24-source-editor": "data-table.js",
+  "demo-24-working-editor": "data-table.js",
+  "demo-25-source": "data-source.js",
+  "demo-25-source-editor": "data-table.js",
+  "demo-25-sheet": "spreadsheet.js",
+  "demo-25-results": "data-source.js",
+  "demo-25-result-editor": "data-table.js",
+  "demo-25-download": "data-download.js",
+  "demo-23-source": "data-source.js",
+  "demo-23-filter": "table-filter.js",
+  "demo-23-target": "data-source.js",
+  "demo-23-incoming": "spreadsheet.js",
+  "demo-23-threshold": "number-control.js",
+  "demo-23-replace": "trigger.js",
+  "demo-23-append": "trigger.js",
+  "demo-23-chart": "data-bar-chart.js",
+  "demo-23-sheet": "spreadsheet.js",
+  "demo-22-source": "data-source.js",
+  "demo-22-label": "text-input.js",
+  "demo-22-value": "number-control.js",
+  "demo-22-pulse": "trigger.js",
+  "demo-22-capture": "capture-row.js",
+  "demo-22-offset": "number-control.js",
+  "demo-22-sheet": "spreadsheet.js",
+  "demo-22-chart": "data-bar-chart.js",
+  "demo-22-download": "data-download.js",
   "demo-1-source": "number-control.js",
   "demo-1-gauge": "gauge.js",
   "demo-1-readout": "value-label.js",
@@ -128,7 +156,13 @@ const sources={
   "demo-20-sheet": "spreadsheet.js",
   "demo-20-total": "value-label.js",
   "demo-20-active": "status-indicator.js",
-  "demo-20-status": "text-label.js"
+  "demo-20-status": "text-label.js",
+  "demo-21-source": "data-source.js",
+  "demo-21-offset": "number-control.js",
+  "demo-21-sheet": "spreadsheet.js",
+  "demo-21-points": "value-label.js",
+  "demo-21-rows": "value-label.js",
+  "demo-21-scaled": "value-label.js"
 };
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){
@@ -171,6 +205,7 @@ async function updateExampleWorkspace({root:directory=root,exportReader=exportWo
     if(item.type!=='smart')continue;
     if(!sources[item.uid])throw new Error('Add the source filename for '+item.uid+' to this generator');
     item.script=io.readFileSync(path.join(examples,sources[item.uid]),'utf8');
+    if(sources[item.uid]==='data-source.js')item.datasetOwner='data';
   }
   const staging=io.mkdtempSync(path.join(examples,'.smart-components-workspace-'));
   let preserveRecovery=false;
