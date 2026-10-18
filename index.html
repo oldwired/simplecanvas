@@ -10588,8 +10588,17 @@ self.onmessage = function(e){
       }
     ],
     "ports": {
-      "inputs": {},
-      "outputs": {}
+      "inputs": {
+        "energy": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "outputs": {
+        "Total_Energy": {
+          "type": "number"
+        }
+      }
     }
   },
   {
