@@ -2,6 +2,7 @@
 // A fresh runtime or changed range draws immediately; late wakes never catch up in a burst.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{min:{type:'number',default:0},max:{type:'number',default:100}},
   outputs:{value:{type:'number'}},
   initState(){return {value:0,showIndicators:true};},
@@ -16,12 +17,13 @@
     const now=context.now;
     if(!Number.isFinite(now) || now<0)throw new Error('Random requires a valid monotonic time');
     const fresh=!Number.isFinite(memory?.nextAt) || memory.min!==inputs.min || memory.max!==inputs.max;
-    const due=fresh || now>=memory.nextAt;
+    const due=fresh || (!context.historical && now>=memory.nextAt);
     const value=due?inputs.min+Math.floor(Math.random()*(inputs.max-inputs.min+1)):state.value;
     const nextAt=due?now+1000:memory.nextAt;
     if(!Number.isFinite(nextAt))throw new Error('Random wake time is outside the numeric range');
     return {state:{...state,value},memory:{min:inputs.min,max:inputs.max,nextAt},nextWakeAt:nextAt};
   },
+  publish(state){if(!Number.isSafeInteger(state.value))throw new Error('Output state must contain a safe integer');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

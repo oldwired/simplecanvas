@@ -90,7 +90,10 @@ Tool shortcuts: **V** Select, **P** Pen, **M** Highlighter, **B** Felt-tip, **E*
 
 Sketches and tabs are saved automatically to this browser's local storage and restored on the
 next visit. This storage is local to the browser; downloadable JSON files let you keep a backup
-or move your work elsewhere. Sketch/workspace JSON retains smart-shape scripts and saved state.
+or move your work elsewhere. Sketch/workspace JSON retains placed smart-shape scripts, saved state,
+and connections. A workspace contains all open sketch tabs; it excludes the library, pins, and
+category organization. The library is saved separately in this browser. **Export library…** makes
+a portable backup of it.
 
 | File action | Scope |
 | --- | --- |
@@ -104,7 +107,9 @@ The app asks before closing a tab that contains objects.
 
 Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
 offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
-Library changes are separate from sketch saves and autosave: use **Export library…** to retain them.
+Library changes are saved separately in this browser, including the Working collection and
+categories. If that save is pending or fails, the app warns before leaving; a visible failure banner
+offers **Retry** and **Export library…**. Export also provides a backup if browser data is cleared.
 
 ## Export and print
 
@@ -171,62 +176,102 @@ display size does not guarantee physical dimensions.
 ## Shape libraries and smart shapes
 
 The shape library is optional. The small toolbar popup remains a quick picker for your
-**working collection**. Click a shape, then click the canvas to place it. Open the expanded
-library browser with the **Browse** icon when you want to find more shapes: search by name or
-tags, choose a category, and filter the collection with **All collections**, **Built-in**, or **Mine**.
-**Back to collection** returns to the quick picker.
+**Working collection** of pinned shortcuts. Click a shape, then click the canvas to place it.
+Open the expanded library browser with the **Browse** icon: search by name or
+keywords, choose a category, and use the **Source** filter for **Built-in** or **My shapes**.
+**Collapse library** closes the expanded browser and leaves the quick picker available.
 
-| Category | Examples |
+| Default category | Examples |
 | --- | --- |
-| Controls | Number control, Toggle, Constant, Trigger |
+| Controls | Number control, Text input, Number input, Toggle, Constant, Trigger |
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
-| Displays | Gauge, Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
-| Tools & time | Live clock, Stopwatch, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Drawing | Rectangle, Ellipse |
+| Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 39 connected API v2 components.
+The catalog includes 67 entries, including 58 connected API v2 components. Every smart-shape
+template is available in **Built-in**. Drill template and Race start timer remain in the
+importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
 You can place an entry directly from the browser without adding it to the working collection.
 Each browser entry has a pin: filled means it is in the working collection; outline means it
-is outside. Click the pin to toggle membership, or use **Keep in collection** / **Remove from
-collection** in the entry details. Unpinning only removes the shortcut; its catalog entry and
+is outside. Click the pin to toggle membership, or use **Pin to working collection** / **Unpin from
+working collection** in the entry details. Unpinning only removes the shortcut; its catalog entry and
 already-placed objects remain available. Keeping a built-in entry references the same definition
 rather than creating a user copy.
 
-Built-in entries are available offline and cannot be edited in place. Use **Copy to mine**
-to customize one. This creates a separate entry in Mine and adds it to the working collection.
-**Edit details** changes its name, category, description, and tags. Personal entries also offer
-**Edit source…** and **Delete** from their browser details, including when they are unpinned.
-**Add selection** saves selected canvas objects to your collection, and
-**Manage → Import…** opens a library file. **Manage** also offers **Add smart shape…**, rename,
-delete, and replacement with the current selection. For your smart shapes, **Edit** opens the
-script authoring dialog. Library edits never update already-placed objects. Images cannot be
-included in library entries.
+Built-in shape definitions are available offline and read-only. Use **Copy to My shapes**
+to customize one. This creates a separate entry in My shapes and pins it to the working collection.
+For an entry already in My shapes, the same action is called **Duplicate**.
+**Edit details** changes a personal entry's name, description, and search **Keywords**. Personal
+entries also offer **Edit script…** and **Delete from library** in their browser details, including when unpinned.
+**Add selection** adds selected canvas objects to My shapes and pins the new entry.
+The **Actions** buttons in the compact picker and browser open the same **Library actions**
+surface, including **Import shape…**, **Import library…**, **Export library…**, and
+**Add smart shape…**, on desktop and mobile.
+Library edits never update already-placed objects. Images cannot be included in library entries.
+
+**Export shape…** in an entry's browser details or compact Actions downloads a `name.shape.json`
+file for that entry. It supports ordinary shapes, smart shapes, connected components, and grouped
+items, retaining their internal connections, categories, keywords, description, preview, and source
+credits. **Actions → Import shape…** adds it to My shapes with a fresh ID and unique name, then pins
+it. This adds to the current library; even an exported built-in becomes an editable personal copy.
+Exporting one shape does not clear the whole library’s unexported-change indicator.
+
+Categories are named tags: an entry can belong to several, including built-in entries. Create,
+rename, and remove categories through **Library actions**, and assign memberships to entries.
+An entry's **Edit categories…** dialog also offers **New category…** while choosing memberships.
+Removing a category removes that membership, while preserving shapes, pins, and other categories.
+Empty categories remain available; entries with no memberships appear under **Uncategorized**.
+Search **Keywords** are separate from category membership.
 
 **Export library…** downloads a self-contained `shapes-library.json`, including the working
-collection, every entry in Mine, and the definitions they need. Kept built-ins are included as snapshots, so the
-file does not depend on another installation having the same built-in version. Library format 2
-preserves entry IDs, categories, tags, and working-collection membership. Older flat libraries
-still import; their entries appear in **Mine** and initially populate the working collection.
-Importing a user library leaves the built-in catalog available.
+collection, every entry in My shapes, category organization, and the definitions they need.
+Pinned built-ins are included as snapshots, so the file does not depend on another installation
+having the same built-in version. Library format 2
+preserves entry IDs, category memberships (including built-in overrides and empty categories),
+keywords, and working-collection membership. Older flat libraries and single-category entries
+still import; personal entries appear in **My shapes**. **Import library…** replaces the current user library
+and its organization and pins, while leaving the built-in definitions available.
 
-Library edits and working-collection changes last only for the current visit, separately from
-sketch saves and autosave. An indicator shows unexported changes; importing another library or
-leaving the page warns before those changes are discarded. Export and reimport the file to
-retain your collection for another visit.
+Your personal library, scripts, PNG previews, category organization (including built-in overrides),
+and Working collection pins are saved automatically in IndexedDB. They survive reloads and closing
+the tab in the same browser/profile at the same site and application URL path. Sketch/workspace
+files remain separate; importing a library also saves its replacement contents to this browser.
+Built-ins are saved by ID and use the installed definitions on restore; personal scripts are retained.
+If another tab saves a newer library, the conflict banner asks you to export your changes and reload
+before continuing, preventing this tab from silently overwriting that newer copy.
+
+An indicator tracks changes since the last **Export library…**; it does not mean the browser copy
+is unsaved. Leaving the page warns only while a browser save is pending or has failed. A failure
+banner offers **Retry** and **Export library…**, and the library remains usable in memory. Export
+is for backups and sharing, rather than a prerequisite for the next visit. Keep a downloaded copy
+when the collection matters: clearing site data or ending a private-browsing session can remove
+the browser copy.
 
 Libraries include PNG thumbnails, which display without running shape scripts. Ordinary missing
 previews are generated automatically. Imported smart shapes with missing previews show placeholders
 and ask before running scripts to generate pictures; **Use placeholders** still loads the library.
-**Generate missing previews…** lets you generate them later. Export the library to retain new previews.
+**Generate missing previews…** lets you generate them later. Browser saves retain previews with
+your personal library, and library exports include them. Restoring the library does not execute
+shape scripts or grant permission to generate missing smart previews.
 
 ### Smart shapes
 
-**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock,
+**Actions → Add smart shape…** creates script-defined shapes from templates such as Clock,
 Live clock, Stopwatch, Ruler, Timer, Arrow, Arc, and Chart. Double-click a placed smart shape to
 edit its handles, then double-click again or click outside to leave. If it belongs to a group,
 the first double-click enters group editing and the second opens its smart controls. Clicks
 and drags support undo/redo.
+
+When shapes overlap, separate clicks cycle through the layers for selection and moving.
+A double-click keeps the smart shape the gesture started on and opens its controls, including
+a smart shape you already selected underneath another shape. Double-tapping works the same way.
+
+You can also place any template directly from **Built-in** or pin it to your working collection;
+the authoring dialog remains available for source authoring. **Clock** has manually adjusted
+hands, **Timer** is a connected countdown, and **Chart** retains its editable bars. **Minimal** is the circle starter;
+**Blank** is an intentionally empty authoring starter. All are bundled for offline use.
 
 Scripts run in an isolated Worker with blocked network access, and generated shapes are
 validated before rendering or export. The app still works as a single local HTML file.
@@ -235,7 +280,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore eight connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore seventeen connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -249,6 +294,15 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Routing | Step through four values with pulse and reset controls. |
 | Shift memory | Move a bit through two cascaded registers. |
 | LED patterns | Drive matrices with Boolean lines and row bytes. |
+| Self-reset | Let completion reset its own countdown; count every completed cycle. |
+| Stop at zero | Disable a pulse generator when its counter reaches zero. |
+| Reset and stop | Reset the counter and retain the stop command in an SR latch. |
+| Latch laboratory | Compare a dedicated SR latch with cross-connected NOR and NAND gates. |
+| Shared-edge storage | Clock two flip-flops together and sample a numeric value. |
+| Sequences | Circulate a bit, construct a Johnson sequence, and clock a decoded decade counter. |
+| Delayed feedback | Watch a NOT/Delay loop alternate with a real time boundary. |
+| Text and notes | Submit text to a label and memo, replace or clear the memo, and enter a numeric value. |
+| Embedded data | Filter sailing results by boat and update a table and bar chart, entirely offline. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -256,6 +310,72 @@ directly. Select a component and open **Inputs…** in the editor to inspect or 
 bindings. The illustrative arrows are ordinary drawing objects. Each tab is independent;
 timing pauses while that tab is inactive. Reader changes survive tab switches, and reloading
 the HTML restores the exported snapshot.
+
+**Text input** and **Number input** provide typed entry with a **Submitted** Boolean pulse.
+Click their entry field, type directly on the canvas, and press **Enter** or **Submit**. The field
+stays focused for the next entry. Accepting the same value again produces another pulse. **Escape**
+or clicking outside discards an unsubmitted draft; invalid entries stay open with an error.
+Editing leaves the simulation running unless you have paused it. Text input has maximum-length,
+required-value, and placeholder settings. Number input has minimum, maximum, and step settings;
+its output is a number, while Text input preserves a string such as `0012`. Input masks and
+additional text-validation rules are deferred. These are separate from the slider-based Number control.
+
+Connect **Text input · value** to **Text label · value** to display a string. To collect submissions,
+also connect **Text input · value** to **Memo · line**, and **Text input · submitted** to
+**Memo · append**. Each accepted entry then appends exactly once, including repeated identical text.
+The input queues up to 64 pending submissions within its storage budget, preserving their values
+and order while paused; Step or Resume processes them. Reopening, copying, or restoring history
+retains the text/number but does not replay pending submissions.
+
+Text input also has a Boolean **Clear** input. A false-to-true pulse empties the field and cancels
+pending submissions without emitting Submitted. Connect a Trigger button to Clear for a separate
+reset, or connect the Text input's own **submitted** output to its **clear** input to empty the field
+after submission. Memo still captures the accepted text before the field clears. A Clear input
+already high when the drawing starts establishes a baseline without erasing the saved value.
+
+**Memo** stores text until a rising edge on **Set**, **Append**, or **Clear**. Set replaces it with
+**Content**; Append adds **Line** as a new line; Clear empties it. If several triggers rise together,
+Clear wins over Set, then Append. Outputs are the complete **Text** and **Line count**. An empty memo
+has zero lines; appending an empty line creates one blank line. Limits default to 100 lines and
+2,000 characters; a rejected update leaves the previous contents intact and shows a notice. A long
+memo displays its latest lines while its output retains the full text. Text label and Memo display
+incoming text literally. Text label starts as plain text without a frame; Memo uses a compact
+content area. Enable Text label's normal stroke controls to add an outline using the selected
+color, thickness, and line style. In **Inputs…**, enable **Show submission state** or **Show hints** for the input
+controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
+label. These optional details start hidden; errors and rejected-update notices remain visible.
+
+**Embedded data** adds Dataset, Table filter, Data table, and Data bar chart to the built-in
+library. Place Dataset, select it, and open **Inputs…**. For its **data** input, choose an existing
+embedded dataset or **Import CSV/TSV/JSON…**. Inspect the first rows and column types, then **Save**.
+For CSV/TSV, **Delimiter** defaults to **Automatic**; choose **Comma**, **Semicolon**, or **Tab** to override it.
+The preview refreshes when you change the delimiter, and ambiguous detection shows a notice.
+Cancel leaves the drawing and its datasets unchanged. Connect Dataset's **data** output to Table
+filter, then connect the filter's **data** output to Data table and Data bar chart.
+
+CSV and TSV use the first row as unique column headers and support quoted delimiters, escaped quotes,
+and multiline cells. Automatic detection compares comma, semicolon, and tab parsing while respecting quoted
+cells. Each column becomes text, number, or Boolean; empty cells become null. Decimal-comma values
+remain text; choosing semicolon does not change number parsing. Numeric-looking identifiers with
+leading zeroes and integers outside JavaScript's exact range remain text.
+JSON imports an array of flat objects with scalar or null values; missing properties become null,
+and a column cannot mix non-null types. Nested objects and arrays are rejected. Try the matching
+[sailing-results CSV](examples/sailing-results.csv) or [JSON](examples/sailing-results.json).
+
+In Table filter's **Inputs…**, choose a column key and operation, then set or connect the matching
+**text**, **number**, or **boolean** comparison input. A blank column passes every row. Connect a
+Text input's **value** to **text** for live search; the example starts with `Aurora`, and a blank
+search shows all boats. Numeric columns support comparisons; text supports contains/equality;
+all types support empty/nonempty checks. Data bar chart uses a category column and a numeric value
+column, with one bar per row. Column dropdowns show the connected table's columns; the stored values use their exact keys.
+
+A sketch accepts up to 16 datasets, with 1,000 rows, 32 columns, and 2,000 characters per text cell.
+Each dataset is limited to 500,000 serialized characters; the combined active datasets are limited
+to 2,000,000. Oversized or malformed imports leave existing data intact. Table views and charts show
+a bounded preview and report when more data exists; filtering still evaluates the whole dataset.
+Data travels with sketch/workspace JSON, copied components, saved library entries, and HTML exports.
+The HTML reader needs no network or source file. Reader-side file import, editing table cells,
+aggregations, and tables in feedback loops are later work.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
@@ -265,8 +385,13 @@ Their script templates also remain available for authoring. Select the gauge, cl
 choose **Number control · value** for its
 `value` input, and save. The same dialog can name an instance or set a literal input value.
 It lists compatible outputs from components in the active sketch.
-Give repeated instances distinct names in **Inputs…** so their outputs are easy to identify.
-Every built-in component displays that instance name as its caption, separately from its
+When several sources share a name, the picker adds qualifiers such as **#1 (left)** and
+**#2 (right)**. These drawing-order and position hints help identify the source; they do not
+rename instances or change their connections. You can still give instances distinct names.
+After changing a source or literal, the dialog previews the proposed outputs and reports errors.
+**Save** applies the changes; **Cancel** leaves the drawing unchanged. This is a paused preview:
+it does not advance timers, consume pulse edges, or change component state.
+Every built-in API v2 component displays that instance name as its caption, separately from its
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports.
 
@@ -354,16 +479,49 @@ true does not shift again. Each stage has its own output and visible value; `val
 the current last stage, `qN`. The numeric variant accepts finite numbers, including fractions.
 
 `shiftedOut` holds the last value removed from the end of the register. To cascade registers on
-**the same pulse**, connect **shiftedOut → value** and share the pulse and reset signals. Connecting
-current `qN` would pass the already-updated last stage and move data one stage too early. With
-separate clocks, connect `qN` when you want to sample the upstream register's current last stage.
+**the same pulse**, connect **value → value** (or `qN → value`) and share pulse/reset. All registers
+sample the pre-edge values together before any publishes its next state, so one pulse advances
+exactly one cell across a register boundary. `shiftedOut` is available for observing removed data;
+it is not the shared-clock cascade connection.
 
 Reset clears all stages and `shiftedOut` to false or 0; hold the `reset` input true or use **Reset**
 in the component controls, also available in exported HTML. An initial high pulse and reset release
 during high do not shift. Changing Stages clears the stored sequence and starts fresh pulse
 observation. Reload, copying canvas instances, and undo preserve contents without replaying a pulse;
 fresh placement from the library starts empty. Instance names and optional indicators work as for
-other logic components. Internal storage does not enable feedback connections between components.
+other logic components. Feedback can circulate stored data through a register or an explicit delay.
+
+**Feedback and memory.** Connections may form loops. The runtime processes changed signals in
+bounded settling rounds: each round reads one consistent snapshot and commits state changes
+together. A counter can connect its own `reached` output to `reset`; downstream components still
+observe the brief completion pulse. To stop at zero, connect `reached → NOT → Pulse generator.enable`.
+To reset and remain stopped, also set an SR latch and use its stored output to disable the generator.
+
+**SR latch** has `set`/`reset` inputs and `q`, `notQ`, and `value` outputs. **D latch** follows `d`
+while `enable` is true. **D flip-flop** captures `d` on a rising `clock`. **Register (Boolean)** and
+**Register (number)** capture `value` on a rising `pulse` when enabled. Reset wins over clock and
+clears storage; a held-high clock never repeatedly captures. Boolean memory can display **X** for
+unknown state; the SR latch also becomes X if set and reset are asserted together.
+Cross-connected NOR/NAND gates can also form latches; an explicit set/reset command
+establishes their initial state. X is distinct from **Z**, which means no driven signal.
+
+**Ring counter**, **Johnson counter**, and **Decoded decade counter (4017-style)** advance on rising
+`clock` while `enable` is true. Reset wins and returns to the initial pattern. Ring and Johnson have
+1–16 configurable stages; ring starts with only `q1` true and repeats after N clocks, while Johnson
+starts all false and repeats after 2N. The decade counter exposes `q0`–`q9`, a zero-based `position`,
+and `carry` high for positions 0–4. These are logical models with explicit saved state.
+
+**Pause / Step / Resume** controls appear when the drawing contains components, in both editor
+and exported HTML. Pause stops active simulation time and keeps the visible signals. Step advances
+one propagation round; if the circuit is settled, it moves to the next scheduled event. The status
+shows time, round, and a recent signal change. Resume continues the simulation. Pause belongs to
+the current tab/session; it is not saved as part of the drawing. Step advances the active-document
+schedule; Live clock, Stopwatch, and Timer still read real wall time and are not fast-forwarded.
+
+A loop that cannot settle reports an error instead of hanging the drawing. Use a positive Delay
+when a loop should advance over time; zero delay is still subject to the settling limit. Each input
+continues to have one source. Combine signals with gates, arithmetic, or selectors; shared buses
+and multiple drivers remain deferred.
 
 **Trigger**, in **Controls**, is a pushbutton with a boolean `value` output. Double-click it to
 enter its controls, then click **Press**: each completed click emits `true` for 0.1 seconds and
@@ -373,7 +531,57 @@ holds up to 64 waiting presses and reports an error if full. Connect **Trigger �
 Counter's `value` input through **Inputs…**. In exported HTML, click the button directly.
 Queued presses are transient; reopening, copying, or undoing never replays old presses.
 
-The **Tools & time** category adds connected signals with per-instance timing:
+The **Tools & time** category includes **Live clock**, which follows wall time in the selected
+timezone. In **Inputs…**, set its string `timezone` input to `local` (the default), `UTC`, or an
+IANA name such as `Europe/Berlin` or `America/New_York`. Invalid timezones show an error.
+Its hands, digital readout, and string `time` output share the same `HH:mm:ss` snapshot.
+Place a fresh Live clock from the built-in library to use these ports; existing instances retain
+their embedded scripts.
+
+Four boolean outputs emit nominal 100 ms pulses: `second` on each observed consecutive second,
+`minute` at second 00, `hour` at minute/second 00, and `halfDay` at noon and midnight in the
+selected timezone. For example, connect **Live clock · second** to **Counter · value** through
+**Inputs…** to count observed seconds. The `time` output is a string, so it cannot connect to the
+existing numeric Value label. Optional LEDs labelled **1s**, **1m**, **1h**, and **12h** show the
+pulses; the clock also displays its instance name.
+
+Fresh placement, reload, and timezone changes start with all pulses false. Missed boundaries and
+clock jumps never replay pulses. Live updates run in the active tab; returning to the tab realigns
+the clock to current wall time. Static exports capture its last settled snapshot without advancing
+it, while exported HTML keeps the clock live.
+
+**Stopwatch** has boolean `run` and `reset` inputs and one numeric output, `elapsed`, in seconds
+including milliseconds. Connect a Toggle to `run`: changing it to true starts or resumes timing;
+changing it to false pauses and publishes the accumulated result. For example, connect
+**Stopwatch · elapsed** to **Value label · value** to show the result after pausing. While timing
+runs, the output holds the previous paused total; Reset clears it to zero and stops timing.
+
+The live display uses `HH:mm:ss.mmm` and refreshes every 100 ms while running. It follows saved
+wall timestamps, so a running stopwatch continues through tab switches, backgrounding, and
+reloads. Double-click for **Start/Pause** and **Reset** in the editor, or use them directly in HTML.
+Manual actions remain in effect until `run` changes again; a held true `reset` always keeps the
+stopwatch cleared and stopped. Place a fresh Stopwatch to get these ports. Older instances keep
+their embedded source, and new placements start stopped.
+
+**Timer** keeps its red countdown wedge and adds connected controls. In **Inputs…**, choose
+**Unit** (**minutes** by default, or **seconds**) and **Starting duration** (0–60, initially 45).
+Dragging the dial hand also sets the starting duration, refills the timer, and stops it. The top
+of the dial means 0; set a full 60 through **Inputs…**. Changing either setting refills and stops.
+
+Boolean `run` and `reset` inputs default to false. A change to run=true starts/resumes; changing
+to false pauses. **Start/Pause** and **Reset** also work directly in the component controls.
+The latest manual action remains effective until run changes; held reset overrides it, refills,
+and stops. Releasing reset alone does not start. At zero, the timer stops and holds `reached=true`.
+An explicit Start or a new run rising edge refills and starts once; holding run true never loops.
+
+The boolean `tick` output emits a nominal 100 ms pulse for each observed whole configured unit
+elapsed. Connect it to Counter's `value`, or connect `reached` to a Status indicator. The instance
+caption and optional LEDs show the timer's identity and outputs. A running Timer follows wall
+time across hidden tabs and reloads. Missed ticks are not replayed; expiry while hidden sets
+`reached` on return. Reload clears a stale tick. Static exports keep the last settled dial and
+output snapshot; exported HTML runs the countdown. Place a fresh Timer to get the new ports.
+
+Other connected signals use per-instance intervals or edge observation:
 
 - **Pulse generator** publishes boolean `value` with configurable `seconds` (period, initially 1),
   `width` (high time, initially 0.1), and `enable` (initially true). It starts low and emits its
@@ -409,9 +617,11 @@ The **Tools & time** category adds connected signals with per-instance timing:
 Configure and connect them in **Inputs…**. For example, connect Random integer → Sample & hold
 (integer) → Value label, or Toggle → Delay → Counter → Status indicator using `reached`.
 The controls, names, indicators, and connections work in exported HTML too.
-Timing uses active document time: hidden/inactive documents and the open **Inputs…** dialog pause
-it. Late wakes replay Delay transitions and queued pulses from Edge to pulse in order. Pulse generator advances
-one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
+Interval timing uses active document time: hidden/inactive documents and the open **Inputs…**
+dialog pause it. Live clock resumes at current wall time; running Stopwatch and Timer instances
+retain elapsed wall time. Late wakes replay queued Delay transitions in timestamp order, so an
+earlier clock edge samples the earlier data even when a later change is also overdue. Queued
+pulses remain distinct. Pulse generator advances one phase at a time without a catch-up burst; Random and Sample & hold take one new sample,
 without a burst of missed samples. These are browser-timed signals, not a real-time circuit simulator.
 Counts and current outputs are saved. Pending Delay transitions and timing/edge memory are transient:
 reload, copy, undo, rewiring, or recovery from unavailable inputs starts fresh observation without
@@ -442,23 +652,31 @@ and computations. Datasets, events, and external actions remain future work.
 
 ### Demo library
 
-The public demo library includes thirteen shapes. Open the shape library in the toolbar,
+The public demo working collection contains thirteen entries: eight demo-specific shapes and
+five pinned built-ins (**Clock**, **Chart**, **Live clock**, **Stopwatch**, and **Ruler**). The five
+reuse their existing catalog entries; the eight appear under **My shapes**. Open the shape library,
 choose a shape, then click the canvas to place it. All demo entries include saved previews.
 You can also import [examples/demo-shapes-library.json](examples/demo-shapes-library.json)
-through **Manage → Import…** when using the app locally.
+through **Actions → Import library…** when using the app locally.
+
+**Sailing** groups the boats, course shapes, and race-start timer; **Workshop** groups the drilling
+template and ruler. These also appear in **Drawing** or **Tools & time**. The clocks and stopwatch
+share **Tools & time** and **Displays**, while the chart appears in **Displays**. The format 2 file
+preserves stable entry IDs and category tags, with all thirteen entries pinned in the working collection.
+Built-in category overrides keep the demo grouping, and full built-in snapshots keep the file portable.
 
 | Shapes | What they do |
 | --- | --- |
 | Six sailing shapes | Two boats, start and finish lines, a course mark, and a wind arrow |
 | **Clock** | Manually adjustable clock; double-click to drag its hands |
-| **Bar chart** | Drag bars and add/remove them with the +/− controls in edit mode |
+| **Chart** | Drag bars and add/remove them with the +/− controls in edit mode |
 | **[Drill template](examples/drill-template.js)** | Handles adjust hole diameter and position; resizing changes hole spacing while diameter stays fixed in millimeters |
 | **[Race start timer](examples/race-start-timer.js)** | A draggable clock hand and clickable mast controls for changing flags |
-| **[Live clock](examples/live-clock.js)** | Follows local time |
-| **[Stopwatch](examples/stopwatch.js)** | Start/Pause and Reset controls in edit mode; a running stopwatch continues across tab switches and reloads |
+| **[Live clock](examples/live-clock.js)** | Local or selected timezone, synchronized hands/readout, and connected second/minute/hour/half-day pulse outputs |
+| **[Stopwatch](examples/stopwatch.js)** | Live millisecond display, run/reset inputs, and an elapsed-seconds result published on pause; manual controls and running time survive tab switches and reloads |
 | **[Ruler](examples/ruler.js)** | Extends its markings at fixed spacing; in edit mode, click the unit label to cycle cm with mm divisions, inches with sixteenth-inch divisions, and pixels |
 
-Live clock, Stopwatch, and Ruler are also templates under **Manage → Add smart shape…**.
+Live clock, Stopwatch, and Ruler are also templates under **Actions → Add smart shape…**.
 See [Physical scale](#physical-scale) for printing rulers and drilling templates.
 
 ### Import icons
@@ -479,9 +697,12 @@ unchanged; icons with no usable geometry cannot be imported.
 ## Deployment and settings
 
 When hosted, an optional `shapes-library.json` beside the HTML supplies the initial user library
-and working collection alongside the built-in catalog.
-The file is read only at startup; opening the picker never reloads it. File imports work when
-hosted or opened locally, including importing the demo file via **Manage → Import…**.
+and working collection alongside the built-in catalog. A personal library already saved in this
+browser takes precedence, so changing the hosted starter file does not replace your collection.
+An unchanged starter is not cached merely by loading it; the first library edit or import creates
+the personal browser copy. The starter is read only at startup; opening the picker never reloads
+it. File imports work when hosted or opened locally, including importing the demo file via
+**Actions → Import library…**.
 For a standard deployment, copy just `index.html`. Add your own library as `shapes-library.json`
 if needed. The HTML works on its own without a library file.
 
@@ -508,9 +729,9 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | Feature | Effect when `false` |
 | --- | --- |
 | `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
-| `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
-| `shapeLibraryManagement` | Hides library management and disables pins, copying to Mine, library import/export, rename, replace, and delete. The browser and direct placement remain available. |
-| `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into Mine, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
+| `shapeLibrary` | Hides the entire library and skips its starter file and browser storage. Objects in existing drawings still render and remain editable. |
+| `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
+| `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
 | `smartComponents` | Hides component templates, source editing, and Inputs; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
@@ -541,7 +762,9 @@ disabled, so existing tabs and unsaved changes can always be recovered. Opening 
 
 ### GitHub Pages
 
-The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` prepares a directory with
+The **Deploy demo to Pages** workflow in `.github/workflows/pages.yml` first runs the complete
+Chromium and WebKit regression suites. Deployment proceeds only after both pass, then prepares a
+directory with
 `index.html` and `shapes-library.json`, plus `settings.json` if present. It copies the tracked
 `examples/demo-shapes-library.json` to that conventional library name, so the existing loader
 picks it up.
@@ -553,7 +776,8 @@ is uploaded to Pages.
 For a new deployment or fork, ensure the workflow is present on `main`, then open the
 repository's **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 Run **Deploy demo to Pages** from the Actions tab. Subsequent changes to the HTML, demo library,
-either settings file, or workflow on `main` deploy automatically.
+either settings file, test dependencies, regression tests, the example generator, or workflow on
+`main` run the test gate before deploying automatically.
 
 ## Development and releases
 
@@ -563,17 +787,22 @@ requires no build step or runtime dependencies.
 
 ### Update the demo library
 
-Import `examples/demo-shapes-library.json`, edit it in **Manage**, export the library, and save
-the download back as `examples/demo-shapes-library.json`. The contributor shapes embed their
+Import `examples/demo-shapes-library.json`, edit its eight demo-specific entries, export the library,
+and save the download back as `examples/demo-shapes-library.json`. To customize one of its five
+read-only built-ins, use **Copy to My shapes** for an editable personal variant. Keep the shipped
+demo's built-in snapshots identical to their canonical catalog definitions, and store demo category
+memberships in `builtinCategoryTags`. The contributor shapes embed their
 complete `.js` example scripts: keep the drilling template and race-start timer examples and
 library sources in sync. Live clock, Stopwatch, and Ruler also have embedded authoring templates
 in `index.html`; update those copies, their `.js` examples, library sources, and saved previews
 together when changing a script.
+Keep [Timer's source](examples/timer.js), embedded authoring template, built-in catalog definition,
+and preview in sync as well.
 
 ### Releases
 
 Push a version tag beginning with `v` followed by a digit, such as `v1.0.0`, to create
-a GitHub release with automatically generated release notes:
+a GitHub release with automatically generated release notes after the Chromium and WebKit suites pass:
 
 ```sh
 git tag v1.0.0

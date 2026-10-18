@@ -73,7 +73,8 @@ async function readerToggle(page,index,on){
   },{index,on});
 }
 async function svgRenderings(page,run){
-  const svg=await run('itemsToSVGMarkup(items,{liveSmart:true})');
+  // Real exports freeze the scene so live clocks cannot invalidate their in-flight snapshot.
+  const svg=await run('itemsToSVGMarkup(clone(items),{liveSmart:true})');
   return page.evaluate(svg=>[...new DOMParser().parseFromString(svg,'image/svg+xml').querySelectorAll('[data-smart-index]')].map(host=>({
     text:host.textContent,
     leds:[...host.querySelectorAll('ellipse')].map(ellipse=>ellipse.getAttribute('fill')).filter(color=>['#15803d','#64748b','#2563eb','#fbbf24'].includes(color)),
@@ -84,7 +85,8 @@ async function settledDrawings(page){
   await page.waitForFunction(()=>__test.run('items.every(item=>smartChildrenCache.has(item.uid))'));
 }
 
-const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
+const sourceFiles={numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
+  dataSource:'data-source.js',tableFilter:'table-filter.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
   delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
@@ -92,9 +94,11 @@ const sourceFiles={numberControl:'number-control.js',toggle:'toggle.js',constant
   selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
   steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js',
   shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
-  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',spreadsheet:'spreadsheet.js'};
+  srLatch:'sr-latch.js',dLatch:'d-latch.js',dFlipFlop:'d-flip-flop.js',registerBoolean:'register-boolean.js',registerNumber:'register-number.js',
+  ringCounter:'ring-counter.js',johnsonCounter:'johnson-counter.js',decadeCounter:'decade-counter.js',
+  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js',spreadsheet:'spreadsheet.js'};
 
-test('bundled scalar component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
+test('bundled component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
     const item=clone(d.items[0]),owner=createSmartExecution(item);
     try{
@@ -428,11 +432,12 @@ test('Math operations are configured per instance in Inputs and persist through 
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
-test('every API2 catalog component uses its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
+test('every API2 catalog component can show its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
     // the spreadsheet deliberately draws no caption: its cells fill the whole shape
     const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && definition.key!=='spreadsheet');
+    datasets={catalog:{name:'Catalog sample',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['Sample',2]]}};
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
       numberFunction:{value:-7.5,operation:'abs'},pulseGenerator:{seconds:60,width:.1,enable:false},edgePulse:{value:false,edge:'rising',seconds:.1},
@@ -443,8 +448,9 @@ test('every API2 catalog component uses its instance name in canvas, SVG, and of
     };
     items=definitions.map((definition,index)=>({
       ...clone(definition.items[0]),uid:'catalog-name-'+index,x:40+(index%4)*360,y:40+Math.floor(index/4)*200,
+      ...(definition.key==='textLabel'?{state:{...clone(definition.items[0].state),showName:true}}:{}),
       inputValues:{...Object.fromEntries(Object.entries(definition.ports.inputs).map(([name,port])=>[
-        name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:'sample')
+        name,Object.hasOwn(port,'default')?port.default:port.options?.[0]??(port.type==='number'?2:port.type==='boolean'?true:port.type==='table'?{datasetId:'catalog'}:'sample')
       ])),...validInputs[definition.key]}
     }));setTool('select');selection=[];render();save();return definitions.map(definition=>definition.key);
   })()`);
@@ -454,7 +460,7 @@ test('every API2 catalog component uses its instance name in canvas, SVG, and of
     await run(`selection=[${index}];render()`);await page.locator('#componentBindingsBtn').click();
     await page.locator('#componentNameInput').fill(name);await page.locator('#componentBindingsSave').click();
     await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
-    await page.waitForFunction(({index,name})=>__test.run(`smartChildrenCache.get(items[${index}].uid)?.kids.some(child=>child.text===${JSON.stringify(name)})`),{index,name},{timeout:5000})
+    await page.waitForFunction(({index,name})=>__test.run(`smartChildrenCache.get(items[${index}].uid)?.kids.some(child=>child.text===${JSON.stringify(name)})`),{index,name},{timeout:10000})
       .catch(()=>{throw new Error(definitions[index]+' did not repaint its custom instance name');});
   }
   const painted=await page.evaluate(()=>{

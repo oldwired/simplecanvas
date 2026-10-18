@@ -4,7 +4,7 @@
   apiVersion:2,
   inputs:{value:{type:'boolean'},direction:{type:'string',default:'up',options:['up','down']},start:{type:'number',default:3},threshold:{type:'number',default:3},reset:{type:'boolean',default:false}},
   outputs:{count:{type:'number'},reached:{type:'boolean'}},
-  initState(){return {count:0,configuredDirection:'up',configuredStart:3,showIndicators:true};},
+  initState(){return {count:0,configuredDirection:'up',configuredStart:3,configuredThreshold:3,showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _configuration(inputs={}){
     const direction=inputs.direction??'up',start=inputs.start??3;
@@ -39,7 +39,13 @@
         count++;
       }
     }
-    return {state:{...state,count,configuredDirection:config.direction,configuredStart:config.start},memory:{previous:inputs.value},nextWakeAt:null};
+    return {state:{...state,count,configuredDirection:config.direction,configuredStart:config.start,configuredThreshold:inputs.threshold},memory:{previous:inputs.value},nextWakeAt:null};
+  },
+  publish(state){
+    const direction=state.configuredDirection??'up',threshold=state.configuredThreshold??3;
+    if(!Number.isSafeInteger(state.count) || state.count<0 || !['up','down'].includes(direction) ||
+       !Number.isSafeInteger(threshold) || threshold<0)throw new Error('Invalid Counter output state');
+    return {count:state.count,reached:direction==='down'?state.count===0:state.count>=threshold};
   },
   compute(inputs,state){
     this._validate(inputs,state);
@@ -118,7 +124,7 @@
   dragEdit(state,handle,lx,ly,w,h,style,io={}){
     if(handle==='reset'){
       const config=this._configuration(io.inputs);
-      return {state:{...state,count:config.direction==='down'?config.start:0,configuredDirection:config.direction,configuredStart:config.start}};
+      return {state:{...state,count:config.direction==='down'?config.start:0,configuredDirection:config.direction,configuredStart:config.start,configuredThreshold:io.inputs?.threshold??state.configuredThreshold??3}};
     }
     return {state:handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state};
   }

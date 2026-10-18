@@ -1,0 +1,74 @@
+[
+  {
+    "Boat": "Aurora",
+    "Race": "Race 1",
+    "Points": 3,
+    "Finished": true
+  },
+  {
+    "Boat": "Aurora",
+    "Race": "Race 2",
+    "Points": 1,
+    "Finished": true
+  },
+  {
+    "Boat": "Aurora",
+    "Race": "Race 3",
+    "Points": 4,
+    "Finished": true
+  },
+  {
+    "Boat": "Aurora",
+    "Race": "Race 4",
+    "Points": 2,
+    "Finished": true
+  },
+  {
+    "Boat": "Borealis",
+    "Race": "Race 1",
+    "Points": 2,
+    "Finished": true
+  },
+  {
+    "Boat": "Borealis",
+    "Race": "Race 2",
+    "Points": 4,
+    "Finished": false
+  },
+  {
+    "Boat": "Borealis",
+    "Race": "Race 3",
+    "Points": 2,
+    "Finished": true
+  },
+  {
+    "Boat": "Borealis",
+    "Race": "Race 4",
+    "Points": 3,
+    "Finished": true
+  },
+  {
+    "Boat": "Calypso",
+    "Race": "Race 1",
+    "Points": 1,
+    "Finished": true
+  },
+  {
+    "Boat": "Calypso",
+    "Race": "Race 2",
+    "Points": 3,
+    "Finished": true
+  },
+  {
+    "Boat": "Calypso",
+    "Race": "Race 3",
+    "Points": 1,
+    "Finished": true
+  },
+  {
+    "Boat": "Calypso",
+    "Race": "Race 4",
+    "Points": 4,
+    "Finished": true
+  }
+]

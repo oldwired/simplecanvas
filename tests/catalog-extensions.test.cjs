@@ -188,13 +188,13 @@ test('numeric dialogs cancel on visibility changes without leaving the offline g
  const point=await editorPoint(page,run,0,'entry');await page.mouse.click(point.x,point.y);
  await page.getByLabel('Value',{exact:true}).fill('9');
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
- assert.equal(await page.locator('dialog[data-smart-number-input]').count(),0);
+ assert.equal(await page.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));});
  await run('smartHitSettled');assert.deepEqual(await outputs(run,0),{value:4});
  const {preview}=await openExport(page,run,context);await readerClick(preview,0,point.handle);
  await preview.getByLabel('Value',{exact:true}).fill('7');
  await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
- assert.equal(await preview.locator('dialog[data-smart-number-input]').count(),0);
+ assert.equal(await preview.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0);
  await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));});
  await readerClick(preview,0,point.handle);await preview.getByLabel('Value',{exact:true}).fill('6');
  await preview.getByRole('button',{name:'Apply',exact:true}).click();
@@ -223,7 +223,7 @@ test('kind:text handles edit in place over their rect, or in a dialog without on
  const input=page.locator('input[data-smart-number-input]');await input.waitFor();
  const box=await input.boundingBox(),canvas=await page.locator('#canvas').boundingBox();
  assert.deepEqual([box.x-canvas.x,box.y-canvas.y,box.width,box.height].map(Math.round),[80+128,120,64,24],'the field covers cell C1 exactly');
- assert.equal(await page.locator('dialog[data-smart-number-input]').count(),0,'no dialog for a handle with rect');
+ assert.equal(await page.locator('dialog[data-smart-number-input],dialog[data-smart-text-input]').count(),0,'no dialog for a handle with rect');
  await input.fill('=OUTPUT(A1*100,"Cents")');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>__test.run('items[0].state.cells.C1')==='=OUTPUT(A1*100,"Cents")');
  await page.waitForFunction(()=>!document.querySelector('input[data-smart-number-input]'));   // Enter only applies: no next field
@@ -243,9 +243,9 @@ test('kind:text handles edit in place over their rect, or in a dialog without on
    script:'({initState(){return {t:"hi"};},children(s,st,w,h){return [{type:"text",x:0,y:0,w,h,text:s.t,strokeOn:false,fill:false}];},handles(s,w,h){return [{id:"t",x:w/2,y:h/2,kind:"text",value:s.t,label:"Note"}];},hitEdit(){return "t";},dragEdit(s,id,v){return {...s,t:v||"-"};}})',
    state:{t:'hi'}});render();})()`);
  const dpt=await editorPoint(page,run,2,'t');await page.mouse.click(dpt.x,dpt.y);
- await page.waitForSelector('dialog[data-smart-number-input]');
- assert.equal(await page.locator('dialog[data-smart-number-input] label').textContent(),'Note');
- await page.locator('#smartNumberValue').fill('typed');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
+ await page.waitForSelector('dialog[data-smart-text-input]');
+ assert.equal(await page.locator('dialog[data-smart-text-input] label').textContent(),'Note');
+ await page.locator('#smartTextValue').fill('typed');await page.getByRole('button',{name:'Apply',exact:true}).click();await run('smartHitSettled');
  assert.equal(await run('items[2].state.t'),'typed');
  const bad=await run(`(async()=>{const it={...items[0],uid:'bad',script:'({apiVersion:2,initState(){return {};},children(){return [];},handles(){return [{id:"t",x:1,y:1,kind:"text",value:5}];}})'};
    try{const r=await requestSmartCall(it,'handles',[{},10,10,{}]);return r==null?'rejected':'accepted '+JSON.stringify(r);}catch(e){return 'rejected';}})()`);

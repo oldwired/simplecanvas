@@ -6,7 +6,13 @@ on:
       - 'v[0-9]*'
 
 jobs:
+  test:
+    uses: ./.github/workflows/browser-tests.yml
+    permissions:
+      contents: read
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write

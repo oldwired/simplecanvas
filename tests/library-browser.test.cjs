@@ -70,9 +70,15 @@ async function canvasTexts(page){
 }
 async function downloadLibrary(page,run){
   const download=page.waitForEvent('download');await run('exportShapeLibrary()');
-  return JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  const data=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+  // Roundtrip tests reload immediately afterward. Include the export bookkeeping in the
+  // durable snapshot, rather than accepting a beforeunload warning for a pending save.
+  await page.waitForFunction(()=>__test.run('!shapeLibraryDirty && !shapeLibrarySavePending && !shapeLibraryStorageError'));
+  return data;
 }
 async function importLibrary(page,data){
+  // setInputFiles bypasses the inert startup UI; wait for normal user interaction readiness.
+  await page.evaluate(()=>__test.run('appReady'));
   await page.locator('#shapeLibraryInput').setInputFiles({name:'library.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});
 }
 async function openExport(page,run,context){
@@ -110,6 +116,102 @@ async function readerClick(page,index,x,y){
 async function readerIndicator(page,text){
   await page.waitForFunction(text=>document.querySelector('[data-smart-index="4"]')?.textContent.includes('Status indicator') && document.querySelector('[data-smart-index="4"]').textContent.includes(text),text,{timeout:10000});
 }
+
+test('every smart-shape template has a matching built-in, fresh defaults, and an inert preview',async()=>app(async({page,run})=>{
+  const catalog=await run(`(()=>{
+    const expected=Object.fromEntries(Object.entries(SMART_TEMPLATES).map(([key,template])=>[key,template.script]));
+    return Object.entries(expected).map(([key,script])=>{
+      const matches=BUILTIN_LIBRARY_DEFINITIONS.filter(entry=>entry.key===key),entry=matches[0];
+      const installed=entry && builtInShapeLibrary.find(candidate=>candidate.name===entry.name && candidate.items[0]?.script===entry.items[0]?.script);
+      return {key,expected:script,matches:matches.length,script:entry?.items[0]?.script,name:entry?.name,
+        id:installed?.id,preview:!!installed && !!validShapeThumbnail(installed)};
+    });
+  })()`);
+  for(const entry of catalog){
+    assert.equal(entry.matches,1,entry.key+' has exactly one built-in definition');
+    assert.equal(entry.script.trim(),entry.expected.trim(),entry.key+' preserves the authoring template source');
+    assert.ok(entry.id && entry.preview,entry.key+' supplies a valid cached thumbnail');
+  }
+  await browse(page);await page.locator('#libraryCollection').selectOption('builtin');
+  for(const name of ['Drill template','Race start timer']){
+    await page.locator('#librarySearch').fill(name);
+    assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),0,name+' remains an example rather than a built-in');
+  }
+  for(const entry of catalog){
+    await page.locator('#librarySearch').fill(entry.name);
+    const button=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place '+entry.name,exact:true});
+    assert.equal(await button.count(),1,entry.key+' is discoverable by name');
+    await page.waitForFunction(button=>button.querySelector('img')?.naturalWidth===128,await button.elementHandle());
+  }
+  assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'browsing all template previews executes no component code');
+
+  const initialized=await run(`(async()=>{
+    const results=[];
+    for(const key of ${JSON.stringify(catalog.map(entry=>entry.key))}){
+      const definition=BUILTIN_LIBRARY_DEFINITIONS.find(entry=>entry.key===key),item=clone(definition.items[0]);
+      const saved=clone(item.state),owner=createSmartExecution(item),caps=await requestSmartCaps(item,owner);
+      try{
+        const fresh=caps.initState?await requestSmartCall(item,'initState',[],owner):{};
+        const style=caps.initStyle?await requestSmartCall(item,'initStyle',[],owner):{};
+        await initializeSmartItem(item,caps,()=>true,owner);
+        const previews=await warmSmartExportCache([item],true);
+        results.push({key,saved,fresh,placed:item.state,style,applied:Object.fromEntries(Object.keys(style||{}).map(key=>[key,item[key]])),
+          width:item.w,height:item.h,children:previews.get(item).length});
+      }finally{disposeSmartExecution(owner);}
+    }
+    return results;
+  })()`);
+  for(const entry of initialized){
+    assert.deepEqual(entry.saved,entry.fresh,entry.key+' stores fresh defaults');
+    assert.deepEqual(entry.placed,entry.fresh,entry.key+' initializes fresh placement');
+    assert.deepEqual(entry.applied,entry.style||{},entry.key+' applies its declared default style');
+    assert.ok(entry.width>0 && entry.height>0);
+    assert.equal(entry.children===0,entry.key==='blank',entry.key+' has a usable drawing, except the intentionally empty Blank starter');
+  }
+}));
+
+test('new template built-ins place and pin through the browser, with independent Chart instances in saved and offline drawings',async()=>app(async({page,run,context})=>{
+  const initialWorking=await run('shapeLibrary?.workingCollection?.length||0');
+  const first=await place(page,run,'Chart',240,240),second=await place(page,run,'Chart',650,240);
+  await place(page,run,'Clock',1050,240);await place(page,run,'Arc',240,580);
+  await place(page,run,'Blank',650,580);await place(page,run,'Arrow',1050,580);
+  assert.notEqual(first.uid,second.uid);
+  assert.deepEqual(first.state.values,[30,60,45,80]);assert.deepEqual(second.state.values,first.state.values);
+  assert.equal(await run('items[0].state.values===items[1].state.values'),false,'placements own independent mutable state');
+  assert.equal(await run('shapeLibrary?.workingCollection?.length||0'),initialWorking,'placing a template does not implicitly pin it');
+  const add=await run(`requestSmartCall(items[0],'handles',[items[0].state,items[0].w,items[0].h,smartResolvedStyle(items[0])]).then(handles=>handles.find(handle=>handle.id==='add'))`);
+  await editorClick(page,run,0,add.x,add.y);
+  assert.equal(await run('items[0].state.values.length'),5);assert.equal(await run('items[1].state.values.length'),4);
+  assert.equal(await run('items[4].componentApi===undefined'),true,'Blank remains an ordinary editable smart starter');
+  await page.waitForFunction(()=>__test.run('smartChildrenCache.has(items[4].uid)'));
+  assert.deepEqual(await run('smartChildrenCache.get(items[4].uid).kids'),[]);
+
+  await browse(page);await page.locator('#librarySearch').fill('Chart');
+  await page.getByRole('button',{name:'Pin Chart to working collection',exact:true}).click();
+  await page.locator('#librarySearch').fill('Arc');
+  await page.getByRole('button',{name:'Pin Arc to working collection',exact:true}).click();
+  assert.equal(await run('shapeLibrary.workingCollection.length'),initialWorking+2);
+  const pinned=await downloadLibrary(page,run);
+  const snapshot='items.map(item=>({uid:item.uid,script:item.script,state:item.state,w:item.w,h:item.h}))';
+  const saved=await run('save();'+snapshot);await page.reload();await run('appStarted');
+  assert.deepEqual(await run(snapshot),saved,'placed API1 scripts and independent state survive reload');
+  await importLibrary(page,pinned);
+  await page.waitForFunction(count=>__test.run('shapeLibrary?.workingCollection?.length')===count,initialWorking+2);
+  assert.equal(await run('shapeLibrary.workingCollection.length'),initialWorking+2);
+  await browse(page);await page.locator('#librarySearch').fill('Chart');
+  assert.equal(await page.getByRole('button',{name:'Unpin Chart from working collection',exact:true}).getAttribute('aria-pressed'),'true');
+  await page.locator('#shapeLibBtn').click();
+
+  const {preview,errors,requests}=await openExport(page,run,context);
+  await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===6);
+  const bars=index=>preview.locator('[data-smart-index="'+index+'"] text').evaluateAll(nodes=>nodes.filter(node=>/^\d+$/.test(node.textContent)).length);
+  assert.equal(await bars(0),5);assert.equal(await bars(1),4);
+  await readerClick(preview,0,add.x,add.y);
+  await preview.waitForFunction(()=>[...document.querySelector('[data-smart-index="0"]').querySelectorAll('text')].filter(node=>/^\d+$/.test(node.textContent)).length===6);
+  assert.equal(await bars(1),4,'editing one exported Chart leaves the second unchanged');
+  assert.equal(await preview.locator('[data-component-error]').count(),0);
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
 
 test('the library browser filters built-ins and places directly without adding to the working collection',async()=>app(async({page,run})=>{
   await browse(page);
@@ -252,9 +354,13 @@ test('personal metadata can change without renaming an entry that shares a pinne
   await page.locator('#libraryKeepBtn').click();
   assert.equal(await page.locator('#shapeGrid .shape-thumb').count(),2);
   await page.locator('#libraryCollection').selectOption('mine');await details(page,'Rectangle');
+  await run("createLibraryCategory('Routing')");
+  await page.locator('#libraryCategoriesEditBtn').click();
+  await page.locator('#libraryMembershipOptions').getByLabel('Drawing',{exact:true}).uncheck();
+  await page.locator('#libraryMembershipOptions').getByLabel('Routing',{exact:true}).check();
+  await page.locator('#libraryMembershipSave').click();
   await page.locator('#libraryEditBtn').click();
   assert.equal(await page.locator('#libraryEntryName').inputValue(),'Rectangle');
-  await page.locator('#libraryEntryCategory').fill('Routing');
   await page.locator('#libraryEntryDescription').fill('A reusable reviewed route marker.');
   await page.locator('#libraryEntryTags').fill('reviewed, links');
   await page.locator('#libraryMetadataForm').getByRole('button',{name:'Save details',exact:true}).click();

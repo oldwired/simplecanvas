@@ -1,11 +1,17 @@
 # From smart shapes to connected components
 
-Status: stage 1, its authoring setting, and the expanded stage 2 library, logic, routing, and timed
-signals are implemented on `feature/smart-components`, based on `main`, updated 2026-10-16.
-Stage 2 includes an editable eight-tab example workspace and offline HTML reader; a focused
-authoring-experience pass remains before closeout.
+Status: stages 1 and 2 are complete on `feature/smart-components`, based on `main`,
+validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, timed signals,
+an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
-Stages 3–6 remain proposals; the delivery tables define their intended order and prerequisites.
+Stage 3's first embedded-data milestone is implemented on the branch; stages 4–6 remain proposals.
+The delivery tables define their intended order and prerequisites.
+The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
+Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
+fifteen-tab workspace. A subsequent text-passing milestone adds Text input, Number input, Text label,
+Memo, and a sixteenth example tab before stage 3. Embedded data adds a seventeenth tab with
+CSV/TSV/JSON imports, filtering, and a connected table/chart in the offline reader. Shared buses and multiple drivers are deferred;
+each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
@@ -13,8 +19,8 @@ For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
 SimpleCanvas already creates portable interactive documents. An HTML export contains its
 visuals, smart-shape scripts, saved state, and an isolated runtime; readers can use it offline.
-On the feature branch, connected shapes exchange scalar values, and a categorized browser makes
-components easy to find, place, and combine. Consuming datasets and requesting explicit actions follow.
+On the feature branch, connected shapes exchange scalar values and table references, and a categorized browser makes
+components easy to find, place, and combine. Embedded datasets support offline data tools; explicit actions follow.
 
 The proposed direction is a visual authoring tool for small, self-contained interactive
 HTML documents. Preserve the ordinary drawing workflow and make component authoring optional.
@@ -43,14 +49,16 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | Programmable shapes | Each `smart` item carries a script, JSON state, dimensions, and styling. Scripts return drawing primitives and interactive handles. |
 | Connected scalar values — feature branch | API v2 scripts declare typed ports and compute outputs from inputs and state. Number control and Gauge templates demonstrate saved bindings, undo/redo, independent copies, and offline HTML. |
 | Isolated execution | Each instance runs in its own Worker, managed by an opaque-origin sandboxed frame. Network access is blocked, replies are validated, and hook timeouts terminate the offending Worker. HTML exports use the same isolation machinery. |
-| Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Live clock and stopwatch templates derive readings from timestamps. Refreshes do not mutate saved state or create undo entries. |
+| Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Timestamp-based presentation, such as Stopwatch, does not mutate saved state or create undo entries. |
+| Connected wall clock — feature branch | Live clock uses API v2 transitions to synchronize timezone-aware hands/readout, four boundary-pulse outputs, and a string time output. Pure computation reads its settled snapshot. |
+| Connected stopwatch — feature branch | Stopwatch accepts run/reset commands and publishes elapsed seconds on pause/reset. Its live display independently follows saved wall timestamps without updating the output on each refresh. |
 | Interactive HTML | One offline file embeds the drawing, scripts, saved state, sandbox, and runtime. Controls work directly, without entering editor edit mode. An initial SVG remains visible before startup or when JavaScript is unavailable. |
 | Author and reader controls | `editorOnly` removes marked visuals and handles from exports. `exportBehavior` independently permits moving, rotating, and resizing either dimension; the default layout stays fixed. |
 | Library authoring | Existing library scripts can be edited and their previews regenerated. Each new placement initializes independently. Already-placed instances retain their own script and state. |
 | Library previews | Bundled PNG previews display without executing scripts. Missing imported smart previews use placeholders and require approval before generation; authoring a definition already authorizes its preview. Placement still runs hooks in the sandbox. |
 | Deployment variants | Settings can disable authoring, library management, workspace controls, and other features. Fixed libraries remain usable, and Really SimpleCanvas disables all optional features. |
 | Component authoring switch — feature branch | `features.smartComponents:false` hides component templates, source editing, and Inputs, and blocks adding component library entries. Existing drawings, copies, deployed-library placements, and HTML exports keep working. This switch depends on `smartShapeAuthoring`; it does not disable execution. |
-| Library browser — feature branch | The existing popup stays the working collection. An optional adjacent browser provides search, categories, Built-in/Mine filters, direct placement, and pins controlling working membership. Built-in definitions and static previews are bundled; library format 2 preserves IDs, metadata, and membership. |
+| Library browser — feature branch | The compact Working collection shows pinned shortcuts. An optional adjacent browser provides search, multiple category memberships, a Built-in/My shapes Source filter, and direct placement. Shared Library actions manage entries and category tags; format 2 preserves IDs, metadata, category organization, and pins. |
 | Practical examples | Live clock, stopwatch, chart, ruler, drilling template, and sailing shapes exercise timing, stateful controls, and physical units. Actual-size and tiled printing support physical templates. |
 
 The original, still-supported hook contract is:
@@ -66,12 +74,12 @@ hitEdit(state, lx, ly, w, h, style)
 dragEdit(state, handle, lx, ly, w, h, style)
 ```
 
-API v2 adds pure `compute(inputs, state)`, the optional stateful `transition` hook, resolved `io`
+API v2 adds pure `compute(inputs, state)` and optional `publish(state)`, the stateful `transition` hook, resolved `io`
 on drawing/interaction hooks, and an explicit `{state}` return from `dragEdit`. The [scripting reference](../SMART_SHAPES.md#connected-components-api-v2)
 defines the implemented contract and budgets.
 
 Hooks return synchronously inside the Worker; requests and replies cross an asynchronous
-bridge. Globals and definition-local mutations are disposable because idle Workers can be
+bridge. Globals and definition-local mutations are disposable because Workers expire or can be
 evicted. Durable interaction values belong in returned state.
 
 The [scripting reference](../SMART_SHAPES.md#the-script-object),
@@ -82,25 +90,31 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including stage 1.
+These boundaries describe the feature branch, including the feedback, text-passing, and first embedded-data milestones.
 
-- **Connections carry scalar values within one sketch.** Number, string, and boolean ports are
-  supported. Shared datasets, cross-tab connections, and routed events remain future work.
+- **Connections stay within one sketch.** Number, string, boolean, and table-reference ports are
+  supported. Tables resolve through a bounded per-document pool. Cross-tab connections and routed
+  events remain future work; tables cannot participate in feedback cycles in this slice.
 - **A handle action changes local state.** There is no component API for downloading results,
   navigating the document, or calling a service. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
-  Component API v2 is explicit and separate from document format 4. There is no state-migration
+  Component API v2 is explicit and separate from document format 5. There is no state-migration
   or automatic definition-upgrade contract.
 - **State is small.** Scripts are limited to 50,000 characters; state to 4,000 serialized JSON
-  characters. Invalid state updates are rejected. Bulk datasets need a separate representation.
+  characters. Invalid state updates are rejected. Bulk data lives in the document dataset pool.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
-- **Library edits require explicit export.** The browser and working collection last for the
-  current visit. Import replaces the user catalog and its working membership; built-ins remain.
-  Constant and Value label are numeric. Compare accepts two numbers and a selectable relation;
+- **The library saves separately in this browser.** IndexedDB retains the modified/imported personal
+  library, Working collection pins, scripts, inert previews, categories, and built-in overrides for
+  this browser/profile and site/application URL path. Import replaces personal entries,
+  organization, and pins; built-in definitions remain. Export is for backups and sharing.
+  Workspace saves/autosave retain sketch tabs and placed scripts, state, and connections, but
+  exclude the library, pins, and category organization.
+- **Ports remain explicitly typed.** Text input and Text label carry strings; Number input,
+  Constant, and Value label carry numbers. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
 - **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
   document-wide Run/Preview mode inside the editor would be an additional feature.
@@ -114,7 +128,7 @@ Keep these checks as the regression baseline for subsequent stages.
 - Rapid input changes settle on the newest value; stale Worker replies cannot overwrite it.
 - Undo/redo and JSON save/load restore local state and bindings; derived outputs recompute.
 - Duplicate/copy/paste, source deletion, and colliding UIDs in different tabs cannot misroute data.
-- Missing ports, invalid types, cycles, unsupported versions, and failed computations show useful
+- Missing ports, invalid types, non-settling loops, unsupported versions, and failed computations show useful
   errors and preserve recoverable source data.
 - HTML contains the required scripts, bindings, and state, keeps author controls hidden, and
   retains the current fixed-layout defaults and reload semantics.
@@ -123,9 +137,12 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stage 1, the expanded stage 2 catalog, and the example workspace are implemented on the feature
-branch; a focused stage 2 authoring-experience pass remains. The stage numbers give the
-proposed planning order, not a requirement to finish every earlier feature before starting
+Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
+branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
+Both precede stage 3 and reuse the scalar graph.
+Stage 3 has its first complete embedded-data slice; stages 4–6 remain proposals. Shared buses are
+explicitly outside the feedback milestone.
+The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
 Share runtime helpers between editor and export throughout.
@@ -133,8 +150,10 @@ Share runtime helpers between editor and export throughout.
 | Stage | Deliverable | Evidence that it works |
 | --- | --- | --- |
 | 1. Connected values — implemented on branch | Versioned metadata, scalar producers/consumers, saved bindings, asynchronous computation, and optional authoring | A numeric control drives a separate Gauge in editor and offline HTML; undo, save/load, and independent copies preserve the relationship. Existing smart scripts keep working. |
-| 2. Component library and logic — catalog and examples implemented; authoring pass remains | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, and an eight-tab example workspace | An author builds the threshold-and-toggle indicator from the library without editing scripts; pinning and metadata roundtrip, and the examples work in editor and offline HTML. |
-| 3. Embedded data | Dataset schema and budgets first, then CSV/JSON import, typed table inputs, and simple filtering | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
+| 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Inputs feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
+| 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
+| 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
+| 3. Embedded data — first milestone implemented on branch | Bounded dataset schema and storage, CSV/TSV/JSON import, typed table inputs, filtering, and table/chart built-ins | A small table feeds a chart through a filter; export includes its data; invalid or oversized imports preserve the document. Reader-selected files are a subsequent extension. |
 | 4. Events and local outputs | Explicit event reception and a validated download action | A reader chooses data and downloads the expected result exactly once. Refresh, reload, retries, and undo do not download or resend anything. |
 | 5. Authoring and reader workflow | Run/Preview mode, clearer binding tools, reusable property controls, and an explicit results-saving policy | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
@@ -165,8 +184,8 @@ Make composing a useful connected document possible directly from the library, w
 the script editor. This milestone builds on the existing scalar API and source picker; it does
 not require datasets, events, or a new execution model.
 
-The delivery follows three steps: **2.1** library-entry identity, category/tag serialization,
-and built-in/user collection behavior; **2.2** the expandable browser and scalar controls,
+The delivery follows three steps: **2.1** library-entry identity, category/keyword serialization,
+and built-in/personal entry behavior; **2.2** the expandable browser and scalar controls,
 gates, and displays; **2.3** the complete example, library roundtrips, and offline HTML checks.
 The existing input picker is sufficient; visible wires remain optional later work.
 
@@ -174,7 +193,9 @@ The existing input picker is sufficient; visible wires remain optional later wor
 
 The [editable workspace](../examples/smart-components-workspace.json) covers **Basics**, **Threshold
 logic**, **Numeric tools**, **Countdown**, **Delayed pulses**, **Routing**, **Shift memory**, and
-**LED patterns**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
+**LED patterns**, plus seven feedback/sequential tabs: **Self-reset**, **Stop at zero**,
+**Reset and stop**, **Latch laboratory**, **Shared-edge storage**, **Sequences**, and
+**Delayed feedback**, followed by **Text and notes** and **Embedded data**. Open it with **File → Open workspace…**; this replaces all open tabs, so save
 the current workspace first if it should be retained. The matching
 [self-contained HTML reader](../examples/smart-components-workspace.html) works offline.
 
@@ -184,67 +205,132 @@ illustrative arrows are ordinary drawing objects. Countdown starts at 9 with **R
 tab has independent state and timing pauses while it is inactive. Reader tab switches retain
 changes; reloading restores the exported snapshot. JSON remains the editable source.
 
-This fills the shipped-example gap in step 2.3. A focused pass over component discovery, placement,
-input configuration, and error clarity remains before stage 2 closeout; it does not add a new
-runtime or require the proposed Run/Preview mode.
+Step 2.3 and the focused authoring pass are complete. Component discovery, placement, input
+configuration, and error recovery have been checked through the workflow recorded below.
+The feedback milestone extends these examples and adds Pause/Step/Resume; the text milestone
+adds typed entry and stored notes. Neither requires the proposed full Run/Preview authoring mode.
 
 ### Preserve the working popup
 
-The existing popup keeps its dimensions, grid, management flow, and Add selection/Add icon footer.
+The existing popup keeps its dimensions, grid, and Add selection/Add icon footer. Its stable
+**Working collection** heading identifies pinned shortcuts. **Actions** buttons in the compact
+picker and expanded browser open the same **Library actions** surface on desktop and mobile.
 A Browse control expands a single popover with the library browser alongside it. On narrow screens,
-the browser occupies the popover and Back to collection returns to the original view.
+the browser occupies the popover. **Collapse library** closes the expanded browser.
 
 Every browser entry supports direct placement and a separate pin. A filled pin includes the entry
 in the working collection; an outlined pin leaves it in the catalog only. Unpinning removes membership,
 not the definition or placed instances. Both panes use the same canonical entries. Keeping a built-in
-does not create a personal duplicate; Copy to mine explicitly creates an editable personal definition.
-Info opens details without starting placement. Browsing and placing never require a Manage detour.
+does not create a personal duplicate; built-ins offer **Copy to My shapes**, while personal entries
+offer **Duplicate**. Both create an editable personal definition. **Pin to working collection**
+and **Unpin from working collection** have the same scope
+as the pin icon. Info opens details without starting placement. Browsing and placing do not require
+opening Library actions.
 
 ### Categories and discovery
 
-Use one category per library entry, optional search tags, and a search field. Use
-**categories** for library organization; canvas **groups** continue to mean objects selected
-and transformed together. Nested folders can follow if real collections need them.
+Categories are named tags: each library entry may have several memberships. Users can create,
+rename, and remove categories and organize both built-in and personal entries. Removing a category
+removes its memberships, preserving shapes, pins, and other categories. Empty categories remain
+registered; entries with no category tags appear under **Uncategorized**. Separate **Keywords**
+support search. Canvas **groups** continue to mean objects selected and transformed together.
 
-| Category | Current built-in contents |
+| Default category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Toggle, numeric Constant, Trigger |
+| Controls | Number control, Text input, Number input, Toggle, numeric Constant, Trigger |
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
-| Displays | Gauge, numeric Value label, Status indicator, Seven-segment display, LED matrix (8×8) |
-| Tools & time | Ruler, Live clock, Stopwatch, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Drawing | Rectangle, Ellipse, and categorized user shapes/icons |
+| Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
 Selectors, four stepped switches, two Shift registers, Clamp, Range mapper, Number function,
-Seven-segment display, and LED matrix (8×8). The catalog now includes 39 API v2 components.
-The extension also expands Compare, Number control, Math, and Counter without adding another
-delivery stage.
+Seven-segment display, and LED matrix (8×8). Upgrading the existing Live clock, Stopwatch, and Timer to
+API v2 brings the catalog to 42 API v2 components. The extension also expands Compare, Number
+control, Math, and Counter without adding another delivery stage.
 
-Category and tag metadata survive library import/export. Existing flat libraries remain
-valid and appear under an uncategorized section. Keep library-entry identity separate from
+All smart-shape templates are also available as built-in library entries. Adding Clock, Arrow,
+Arc, Timer, Chart, Minimal, and Blank brought the stage 2 catalog to 51 entries. The feedback
+milestone adds eight storage/sequencing entries, bringing that catalog to 59 entries,
+including 50 API v2 components. Text input, Number input, Text label, and Memo bring the current
+catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Dataset, Table filter,
+Data table, and Data bar chart, bringing the current catalog to **67 entries / 58 API v2 components**.
+Timer now uses API v2; the other six retain their existing
+API v1 behavior. Minimal is the circle starter and Blank is intentionally
+empty. Authors can place or pin them offline, and the template authoring dialog remains available.
+Drill template and Race start timer remain standalone examples and entries in the importable
+demo library. Its thirteen-entry working collection combines eight demo-specific definitions
+with five pinned canonical built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Full snapshots
+preserve portability without duplicate browser entries; category overrides preserve demo grouping.
+
+Format 2 stores category memberships in each entry's `categoryTags` string array, a top-level
+`categories` registry that retains empty categories, and `builtinCategoryTags` organization
+overrides. Existing `tags` remain search Keywords. Legacy single `category` fields migrate on
+import; flat libraries remain valid, and unassigned entries appear under Uncategorized.
+All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
-existing connections. Cataloguing clocks here does not make their presentation refreshes into
-connected time sources.
+existing connections. Live clock's connected signals use explicit state transitions; presentation
+refreshes alone do not create connected time sources.
 
-### Built-in and user collections
+### Built-in and personal entries
 
-The browser offers a built-in collection alongside the user's collection. Collection origin and category
-serve different purposes: an author can find Logic components across both collections, while
-still seeing which entries are built in and which are their own.
+The **Source** filter distinguishes **Built-in** and **My shapes**. Source and category serve
+different purposes: an author can find Logic components from either source. Built-in definitions
+stay read-only while their category memberships can be organized through user overrides.
 
 Default components are ready to place, with descriptions and bundled previews. Their definitions
 are included in the standalone app, available without a hosted library file or network connection.
-Importing a user library does not replace the built-in collection. Format 2 exports include full
-snapshots of kept built-ins, all personal entries, and ordered working-collection IDs. A matching
+Importing a user library does not replace built-in definitions. Format 2 exports include full
+snapshots of pinned built-ins, all personal entries, ordered working-collection IDs, the category
+registry, and built-in category overrides. A matching
 built-in snapshot can reuse its installed definition; changed snapshots remain personal entries.
-Authors can copy a built-in definition into their own collection to customize it. Preserve
+Authors can copy a built-in definition into My shapes to customize it. Preserve
 existing instance snapshots: changing a library entry never silently updates placed components.
+
+Individual entries transfer through **Export shape…** in entry details or compact Actions and
+**Import shape…** under Library actions. The `name.shape.json` envelope is
+`{app:'SimpleCanvasShape', version:1, shape:<complete entry snapshot>}`. It retains regular and
+smart/component items, grouped internal connections, categories, keywords, description, preview,
+and source metadata. Import adds and pins a personal copy with a fresh ID and unique name, even
+for a built-in snapshot. **Import library…** replaces the user library; individual import adds to it.
+Single-shape export does not clear the whole library’s unexported-change indicator. Transfers retain
+existing authoring guards and script-preview consent; successful imports join browser persistence.
 
 The library and authoring deployment switches still apply, including `smartComponents` and the
 Really SimpleCanvas variant. A fixed deployed library remains placeable when component authoring
 is disabled. Exported documents carry the definitions they use and remain independent of the
-author's library. Browser persistence for user library edits is a separate decision; this
-milestone must keep the existing explicit library export workflow clear.
+author's library. Personal library persistence is an improvement to the existing library workflow;
+it does not advance phases 3–6 or add shared definitions between placed instances.
+
+### Browser persistence for the library and Working collection
+
+Save the full modified/imported personal library automatically in IndexedDB: definitions and
+scripts, inert PNG previews, personal entries, ordered Working collection pins, the category
+registry, and built-in category overrides. Store built-ins by canonical ID so restore uses the
+installed definitions, while retaining actual personal scripts. Scope the record to the current browser/profile and
+site/application URL path, so it survives reloads and closing the tab without mixing separate
+deployments. Workspace/sketch serialization continues to exclude library data.
+
+Restore a saved personal collection before using a hosted starter. A changed `shapes-library.json`
+seed must not overwrite a restored library. An unchanged hosted seed is not cached merely by
+loading it; editing/importing the library establishes the personal saved copy. With
+`shapeLibraryManagement:false`, bypass personal storage and retain the fixed deployment starter;
+with `shapeLibrary:false`, skip the library and its storage altogether.
+
+Restore stored definitions and thumbnails without running scripts. Missing smart previews keep
+the existing consent flow. Browser persistence must never convert an import/restore into execution
+consent or regenerate a smart preview automatically.
+
+Keep the unexported-change indicator independent of browser-save status. Leaving the page warns
+only while saving is pending or has failed. A visible storage-failure banner offers Retry and
+Export library, preserving the usable in-memory collection. Export remains important for backups
+and sharing: site-data deletion or private browsing can remove the browser copy. It is no longer
+required merely to retain a collection for the next visit.
+
+Acceptance is covered by [library persistence](../tests/library-persistence.test.cjs): full
+collection reload, category/built-in overrides and pins, inert scripts/previews, starter precedence,
+URL-path isolation, fixed/disabled deployment behavior, and save-failure recovery. Keep this within
+the completed library milestone; the feedback and later-phase boundaries stay unchanged.
 
 ### Logic components
 
@@ -279,7 +365,7 @@ Use declared types throughout: invalid or missing required inputs produce connec
 and an unavailable upstream value must not silently become `false`.
 
 Use traditional curved gate silhouettes, including inversion bubbles, with readable names and
-current input/output values. All built-in components display their instance name as the caption,
+current input/output values. All built-in API v2 components display their instance name as the caption,
 including Number control, Constant, Gauge, and the gates. Captions fit within the shape; operation
 symbols, readouts, and state labels remain separate. Optional per-instance LEDs default on: green means true, grey false,
 blue an available numeric value, and amber unavailable. The editor-only Indicators control toggles
@@ -379,11 +465,11 @@ Each false → true pulse shifts one snapshot of the previous cells: input data 
 The `value` output aliases current `qN`. A separate `shiftedOut` output captures old `qN`, the
 value removed by the accepted edge, and holds that value between edges.
 
-For cascades sharing one pulse, connect `shiftedOut` to the next register's `value` and share
-pulse/reset. The existing evaluator advances producers before their consumers, so connecting
-current `qN` would expose the new cell and shorten the combined sequence by one stage per
-boundary. `shiftedOut` gives the consumer the old tail without changing graph evaluation.
-With separate clocks, a consumer can instead sample current `qN` if that is the intended behavior.
+For cascades sharing one pulse, connect current `value` (or `qN`) to the next register's `value`
+and share pulse/reset. All registers sample the pre-edge snapshot before any publishes its next
+state, so one edge moves data exactly one cell across the boundary. `shiftedOut` remains an
+observation of the last removed cell; it is not used to compensate for producer-first evaluation.
+This replaces the original stage 2 cascade wiring; the bundled workspace is rewritten accordingly.
 
 Initial high and held-high pulses do not shift repeatedly. Held reset clears every cell and
 `shiftedOut` to false/0 while tracking pulse, so releasing reset during high does not shift.
@@ -393,14 +479,47 @@ shifted-out value while starting fresh pulse observation; fresh library placemen
 Rewiring or recovery from unavailable inputs re-primes observation without shifting stored data.
 Reducing Stages leaves references to removed outputs visibly unavailable until rewired.
 
-The drawing shows each stage's value, instance name, and optional indicators. This is bounded
-internal storage within an acyclic component. General feedback connections and standalone
-latches/flip-flops remain part of the deferred discussion.
+The drawing shows each stage's value, instance name, and optional indicators. Stored outputs
+are published independently of current inputs, supporting bounded feedback and shared-clock
+compositions alongside the dedicated latches, flip-flops, and registers below.
 
 ### Stateful and timed signals
 
-Stage 2 also includes a bounded temporal extension to the existing acyclic graph:
+Stage 2 introduced the following bounded temporal components. The feedback milestone preserves
+their user-facing timing behavior while giving all of them the shared settling contract:
 
+- **Live clock:** string `timezone` input, default `local`, accepts IANA names such as
+  `Europe/Berlin`, `America/New_York`, and `UTC`; invalid zones show a visible error. Five fixed
+  outputs are boolean `second`, `minute`, `hour`, and `halfDay`, plus string `time` in `HH:mm:ss`
+  format. On observed consecutive wall seconds, nominal 100 ms pulses mark every second,
+  second 00 of each minute, minute/second 00 of each hour, and noon/midnight respectively.
+  Hands, digital readout, and outputs share the same per-second transition snapshot. Fresh
+  placement, reload, and timezone changes prime pulses false; missed boundaries and clock jumps
+  never replay pulses. The named clock has optional LEDs labelled 1s, 1m, 1h, and 12h.
+  Connect `second` to Counter's `value` through **Inputs…** to count observed seconds. `time`
+  is a string and cannot feed the existing numeric Value label.
+- **Stopwatch:** boolean `run` and `reset` inputs, and one numeric `elapsed` output in seconds
+  including milliseconds. A change of run to true starts/resumes, and to false pauses and
+  publishes the accumulated duration. While running, the output holds the previous paused
+  total; reset clears it to zero and stops. Manual Start/Pause and Reset remain available in
+  editor and reader; the most recent action stays effective until run changes, with held reset
+  taking priority. A `HH:mm:ss.mmm` display refreshes every 100 ms while running and uses saved
+  wall timestamps, retaining elapsed time across tabs, backgrounding, and reload. Pure compute
+  reads the stored stopped result; there is no live output, periodic transition, or tick autosave.
+  A fresh placement supplies these ports and starts stopped; older instances keep their source.
+- **Timer:** the red-wedge countdown retains its template/built-in identity and gains API v2.
+  Unit is minutes (default) or seconds; Starting duration is 0–60, default 45. Dial-hand edits
+  also set starting duration, refill, and stop; top means 0, with 60 entered through Inputs.
+  Unit/duration setting changes refill and stop. Boolean run/reset inputs default false; run
+  changes start/resume or pause. Manual Start/Pause and Reset remain available, with the latest
+  action effective until run changes; held reset overrides and refills/stops, and releasing it
+  alone never starts. At zero, the timer stops with `reached=true`. Explicit Start or a new run
+  rising edge refills/restarts once; held run never loops. `tick` emits a nominal 100 ms boolean
+  pulse for each observed whole configured unit elapsed. Running wall time survives inactivity
+  and reload; missed ticks never replay, stale tick state clears on fresh observation, and hidden
+  expiry becomes reached on return. Pure compute/rendering keep the last settled snapshot;
+  transitions update the dial roughly once per second without `refreshMs`. The name caption and
+  optional LEDs remain visible in editor and HTML.
 - **Trigger:** a pushbutton in Controls with a boolean `value` output, normally false. Each
   completed click emits a 100 ms high pulse. Holding does not repeat; rapid clicks queue up to
   64 waiting presses with at least a 10 ms low gap between pulses, preserving each rising edge.
@@ -415,7 +534,7 @@ Stage 2 also includes a bounded temporal extension to the existing acyclic graph
   at least 10 ms low between them. Edge-mode or duration changes discard the queue and re-prime.
 - **Delay:** boolean input/output, configured seconds (0–3,600), transport delay preserving every
   transition. Each instance queues at most 64 transitions, reports overflow, and emits at most one
-  due transition per settle so downstream counters observe short pulses. Changing seconds resets
+  due transition per propagation round so downstream counters observe short pulses. Changing seconds resets
   the pending queue and schedules the current input relative to the current output.
 - **Counter:** counts false → true edges in a selected `direction` (`up` by default, or `down`).
   Inputs include boolean `value`/`reset` and nonnegative safe integer `start`/`threshold` (both
@@ -433,22 +552,31 @@ Stage 2 also includes a bounded temporal extension to the existing acyclic graph
   sample at the start of each hold, beginning immediately, and hold for a configured 0.01–3,600
   seconds. Changing the duration starts a fresh hold. Integer inputs must be safe integers.
 
-The optional v2 `transition(inputs, state, memory, {now})` hook returns staged durable state,
+The optional v2 `transition(inputs, state, memory, {now, historical})` hook returns staged durable state,
 transient per-instance memory, and an optional next-wake deadline. The host owns bounded scheduling,
 validation, and ordered commits. `compute()` remains pure and sees the staged state. State and memory
 have the same 4 KB limit. Only current successful nodes commit; failed branches stay unavailable.
 An accepted control change settles before the next accepted change; drag previews do not consume
 edges until released. Timed changes do not create an undo entry for every tick.
 
-Clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
+Interval clocks use active-document time and pause for hidden/inactive documents and the Inputs dialog.
 Delay preserves its pending queue across those pauses. Random and Sample & hold sample once after
-a late wake, without replaying missed intervals. Current outputs/counts persist, while queues,
-deadlines, and previous-input observations do not. Reload, copy, undo, script/binding replacement,
+a late wake, without replaying missed intervals. For these interval and edge components, current
+outputs/counts persist, while queues, deadlines, and previous-input observations do not. Reload,
+copy, undo, script/binding replacement,
 or unavailable-input recovery re-primes observations without creating a false initial count.
 Static exports and previews use pure computation; offline HTML uses the same temporal contract.
+Live clock updates while active and realigns to current wall time after inactivity. Its pure
+computation keeps the last settled snapshot for static exports; the HTML reader runs it live.
+Stopwatch likewise follows wall time while running, but only commands change its durable timing
+state and published result. It saves the last observed `run` level so reopening preserves manual
+overrides. Its display refreshes do not advance the connected `elapsed` output.
+Timer also preserves wall-time progress, including expiry during inactivity. Its transitions
+settle the countdown and outputs together; static paths never advance that saved snapshot.
 
-Feedback loops, latches, and flip-flops remain deferred. A boolean value is still distinct from an event or
-request trigger; remaining true must not imply repeated external actions in later stages.
+The feedback milestone below extends this timing foundation with loops, latches, and flip-flops.
+A Boolean value remains distinct from a routed event or external-action request; remaining true
+must not imply repeated external actions in later stages.
 
 ### Stage 2 acceptance
 
@@ -456,10 +584,16 @@ request trigger; remaining true must not imply repeated external actions in late
   entries directly; pinning/unpinning changes only working membership and survives export/import.
 - Categories and search make the default controls, gates, and displays discoverable. They are
   ready to place in the standalone app without importing a file or editing a script.
-- Importing a user library retains the built-in collection. Older flat libraries still load;
-  category/tag metadata survives export and reimport, and placed instances remain unchanged.
+- Importing a user library retains the built-in definitions. Older flat libraries still load;
+  category memberships and Keywords survive export and reimport, and placed instances remain unchanged.
+  Multiple memberships, built-in overrides, and empty categories roundtrip. Renaming/removing
+  categories preserves entries and pins; removal leaves unrelated memberships intact.
 - The complete threshold-and-toggle example can be composed through the library and **Inputs…**.
   With Enabled on, 70 produces false and 71 produces true; Enabled off always produces false.
+- Same-named sources are distinguishable in the input picker without changing instance names
+  or UID/port bindings. Proposed source/literal changes refresh output previews and error feedback;
+  rapid edits retain the latest result and keyboard focus. Cancel leaves saved state and bindings
+  unchanged, while Save validates and commits. Preview never advances temporal state or consumes edges.
 - AND, NAND, OR, NOR, XOR, XNOR, NOT, and Buffer satisfy their boolean truth tables; the numeric
   Inverter switches the sign of finite numbers. Type errors and unavailable inputs
   remain visible and do not masquerade as valid false outputs.
@@ -478,13 +612,27 @@ request trigger; remaining true must not imply repeated external actions in late
   independent saved positions, and re-prime on restoration or channel-count changes. Inactive
   distributor outputs are 0/false, including after copy, save/load, and offline HTML startup.
 - Boolean and numeric shift registers expose each stored cell and shift once per rising pulse.
-  Two cascaded two-stage registers using `shiftedOut` match a single four-stage register,
+  Two cascaded two-stage registers using current `value` match a single four-stage register,
   independently of scene order. Held/reset-release-high inputs and restoration create no shifts;
   reset and stage-count changes clear storage. Saved contents survive reload/copy/undo, fresh
   library placements start empty, and the same behavior works in offline HTML.
 - Trigger emits one distinct pulse per accepted click without replay on restoration.
   Pulse generator retains observable high/low phases on late wakes; Edge to pulse preserves queued
   qualifying edges without replaying initial levels or stale queues after reconfiguration.
+- Live clock accepts local/IANA timezones and keeps its hands, readout, and `time` output in sync.
+  Its four boundary pulses drive boolean consumers such as Counter; fresh observation, timezone
+  changes, missed boundaries, and clock jumps create no replay. Invalid zones remain visible.
+  Returning to a tab realigns wall time, while static export/inspection never advances the snapshot.
+- Stopwatch run/reset inputs and manual controls start, pause, resume, and clear independently
+  per instance; held reset wins. Its millisecond display continues while running, including
+  elapsed wall time across inactive tabs and reloads, while the sole `elapsed` output updates
+  only on pause/reset. Pure inspection and display refreshes do not alter state or autosave;
+  bindings, stopped results, and manual/command behavior work in offline HTML.
+- Timer supports minute/second configuration and dial-hand duration edits, manual and run/reset
+  commands, pause/resume, and explicit restart at zero. Held run never loops; held reset and
+  configuration changes refill/stop, and reset release alone never starts. Unit ticks remain
+  short and do not replay after inactivity/reload; reached stays true at expiry. Static inspection
+  is pure, and the settled dial, independent instances, and commands work in offline HTML.
 - Delay preserves pulse order. Counter increments or decrements once per rising edge, stops at
   zero in down mode, and publishes the direction's completion condition. Reset uses the mode's
   baseline; initial high, reset release during high, restoration, and configuration restarts
@@ -498,36 +646,182 @@ request trigger; remaining true must not imply repeated external actions in late
 - Disabling component authoring hides creation/editing controls while existing drawings,
   copies, fixed-library placements, and exports continue working.
 
-### Discussion checkpoint: after stage 2, before stage 3
+### Stage 2 closeout evidence — 2026-10-17
 
-Revisit feedback and sequential logic with the user before starting stage 3. Keep the current
-acyclic evaluator until that design is agreed. The discussion must establish which feedback paths
-are allowed, whether stateful components sample old values together or follow explicit time steps,
-how clock edges and resets are ordered, and how non-settling loops are stopped and explained.
-Browser scheduling, saved-state restoration, and offline HTML must follow the same chosen rules.
-A zero-delay loop must not silently depend on scene order or run indefinitely.
+The phase 2 suites passed **237/237 in Chromium and 237/237 in WebKit**, with no failures or skips.
+The final authoring walkthrough also passed in both engines; desktop and narrow-screen Inputs
+layouts were visually checked.
 
-The candidates below are a backlog for that discussion, not committed deliveries or prerequisites
-for stage 3. The user explicitly deferred the requested **4017-style counter** until flip-flops
-and feedback are understood. This scheduling decision also keeps related sequential-logic additions
-coherent. Some could use bounded internal state in today's acyclic runtime, just as Counter and
-Shift register already do; external feedback support is not a technical prerequisite for every row.
+- [x] Build the threshold-and-toggle example from a blank canvas, distinguish repeated sources,
+  and inspect proposed outputs/errors before Save. Cancel preserves the drawing; rapid edits and
+  dynamic ports retain correct feedback. Coverage: [Inputs](../tests/components-inputs.test.cjs)
+  and [library browser](../tests/library-browser.test.cjs).
+- [x] Duplicate the connected group, change one copy independently, download/reload JSON, delete
+  a source, and repair its binding. Both copies respond in downloaded HTML without HTTP requests.
+  The [component regressions](../tests/components.test.cjs) retain the wiring and persistence baseline.
+- [x] Roundtrip category memberships, pins, library definitions, and individual grouped shapes.
+  Coverage: [library organization](../tests/library-organization.test.cjs) and
+  [shape transfer](../tests/library-transfer.test.cjs).
+- [x] Exercise all eight shipped workspace tabs in the editor and offline reader.
+  Coverage: [example workspace](../tests/example-workspace.test.cjs).
 
-| Candidate family | Decisions to settle before implementation |
+Stage 2 is complete on the feature branch. Its original acyclic execution contract is the
+baseline for the implemented feedback milestone below; phase 3 remains separate.
+
+## Feedback and sequential logic: implemented milestone before stage 3
+
+The post-stage-2 discussion is complete and all three approved increments are implemented on the
+feature branch, ready for testing together. Shared buses and multiple-output input bindings remain
+deferred. This is an unmerged development branch with no users: the bundled scripts and examples
+use one rewritten contract, without compatibility modes or migrations. The increment descriptions
+below record the agreed design and acceptance scope.
+
+The motivating examples are practical control loops:
+
+| Desired behavior | Connection and expected result |
 | --- | --- |
-| SR and D latches; SR, D, JK, and T flip-flops | Define level-sensitive versus edge-triggered behavior, active levels/edges, reset/set priority, simultaneous-input cases, and how unknown or unavailable signals appear. Agree how connected storage elements sample and commit state. |
-| Registers with parallel load and enable | Define reset/load/shift/hold priority, the values sampled on a shared edge, and how these extend the existing Shift register without changing its current contract. |
-| Ring and Johnson counters | Choose seed/reset patterns, sequence length, treatment of invalid states, and how circulating state is represented and observed. Decide whether these are composite feedback examples, built-in state machines, or both. |
-| Decoded decade counter, requested as “4017-style” | Define ten decoded outputs, clock enable/inhibit, reset, and any carry output; keep the model's observable contract distinct from a simple circulating one-hot ring. |
-| Binary/decade counters with bit outputs; ripple, synchronous, and up/down variants | Define edge propagation versus simultaneous updates, overflow/wrap, carry/borrow, and reset/enable behavior. These would extend the existing scalar Counter rather than replace its up/down modes. |
-| Small memory blocks and register files; bounded FIFO memory | Set capacity/address limits, read/write timing and same-address collisions, reset/clear rules, and persistence. Separate practical memory budgets from the later document-dataset model. |
-| Oscillators and timers constructed with feedback | Define explicit time or state boundaries, startup conditions, scheduling limits, pause/stop controls, and visible failure for loops that cannot settle. Existing Pulse generator and Delay remain usable independently. |
-| LFSR sequence/pseudorandom generator | Choose bounded register width, taps/seed rules, repeatability and reset behavior, and serial versus numeric outputs. Decide whether users can inspect or construct its feedback network; keep it separate from the existing Random integer source. |
-| Consistent floating-point support | Generalize Sample & hold (integer) to Sample & hold (number), add a floating-point random source or mode, and agree decimal formatting plus an optional tolerance for equality comparisons. Existing numeric ports already carry finite floating-point values; keep counts, stage sizes, and bit patterns integer-only. |
-| Function generator | Consider sine, square, triangle, and sawtooth waveforms with frequency, amplitude, offset, phase, and applicable duty-cycle controls. Define the sampling clock, supported frequency range, reset/enable behavior, and what happens when settings change or a scheduled update is late. |
-| Scope / oscilloscope | Plot one or more numeric signals over time with a time base, vertical scale, trigger, and pause/hold controls. Define timestamped sampling, channel alignment, bounded history, and treatment of unavailable values and missed samples. |
-| FFT / spectrogram display | Show a frequency spectrum and a spectrum-over-time view. Decide sample rate, window size/function, overlap, frequency/amplitude scales, supported frequency range, bounded history, and processing limits. Define startup, gaps, and configuration changes without presenting incomplete or stale samples as a valid spectrum. |
-| Audio components — even later | Candidates include oscillators/noise sources, sample players, gain, mixers, filters, envelopes, and audio input/output. Define audio streams versus scalar controls, channel/sample formats, timing and latency, host-owned playback/device controls, and saved-asset/offline-export behavior. |
+| Count down, reset, repeat | Counter `reached → reset`: one pulse takes 1 to 0, `reached` becomes true, reset restores the start value, and `reached` returns false. Every connected observer sees the completion edge. |
+| Count down and stop at zero | `NOT reached → Pulse generator.enable`: reaching zero turns the generator off, including any pending high phase, and the counter remains at zero. |
+| Reset the counter and remain stopped | `reached → reset` and set a Stop latch; `NOT Stop → Pulse generator.enable`. Resetting the count clears `reached` but the latch retains the stop command until explicitly cleared. |
+
+### Increment 1: feedback runtime and counter examples
+
+Replace unconditional cycle rejection with bounded, change-driven settling. Components read one
+consistent input snapshot in a round; all accepted state/output changes become visible together
+in the next round. Worker completion order and drawing order must never choose the result.
+The host records every observed Boolean transition, including a high that returns low before the
+next screen redraw. Settling rounds advance no simulation time; timed wakes are separate events.
+
+A pure optional `publish(state)` hook exposes stored outputs before current inputs are resolved.
+Stateful components use this to break the dependency between reading their stored value and
+reacting to their current inputs. `transition` computes next state from the round snapshot; it
+must not commit another component's state. Ordinary `compute` remains pure. Numeric/Boolean
+controls, counters, timers, delays, registers, and editor/export execution share this model.
+An unavailable input, including Z, prevents state advancement but does not hide independently
+published stored outputs. Downstream consumers follow the actual published value.
+
+A held-high pulse counts once. Reset has priority over a simultaneous clock edge. Initial
+observation and restoration re-prime edge memory without creating a pulse. A disabled pulse
+generator cancels its pending output activity. Positive Delay schedules changes at later active
+document times; zero Delay remains part of the same bounded settling calculation.
+
+Detect a circuit that does not settle within a finite round budget, highlight the affected loop,
+stop that loop, and keep unrelated components and the editor usable. A self-connected NOT gate
+must never hang the app or quietly depend on item order. Bring forward minimal **Pause / Step /
+Resume** simulation controls so otherwise invisible feedback transitions can be inspected. These
+controls are not the later full Run/Preview authoring mode.
+Pause and simulation time belong to the tab and survive Undo/Redo; restored objects re-prime
+transient edge/deadline observation. Dependency tracking retains each script definition once and
+uses compact revision keys for transitive wiring changes.
+
+Acceptance includes the three counter circuits above, delayed feedback, visible non-settling
+failure, reset priority, stale-result cancellation, save/reload/undo behavior, tab lifecycle, and
+identical offline HTML behavior. Pure Inputs previews and static exports must not consume edges
+or advance timers.
+
+### Increment 2: dedicated and gate-built latches
+
+Add a dedicated SR latch and corresponding cross-connected NOR and NAND examples using the same
+settling runtime. Distinguish unknown startup/conflicting state **X** from high impedance **Z** and
+from missing/failed connections. Boolean ports explicitly opt into X using `unknown:true`;
+unknown-aware gate truth tables propagate uncertainty but still resolve controlling values
+(for example `false AND X = false`, `true OR X = true`). Never coerce X to truthy Boolean true.
+
+A gate-built latch starts unknown when neither input establishes a state. A definite set/reset
+command initializes it; releasing that command retains the result. Simultaneous conflicting
+controls and their release cannot choose a state based on which gate evaluates first. Document
+the dedicated latch's conflict/priority rule and test the gate-built circuit's behavior explicitly.
+
+Acceptance includes set, reset, hold, unknown initialization, conflicting controls, release from
+conflict, independent copies, and the reset-and-latched-stop counter example. Both editor and
+exported HTML display X visibly rather than inventing a stored bit.
+
+### Increment 3: clocked storage and sequencing examples
+
+Add dedicated D storage/flip-flops and registers with explicit clock, reset, and enable behavior.
+Registers receiving one shared clock edge all sample the same settled pre-edge data before any
+of them publishes its next state. Update the existing Boolean/number Shift registers and their
+examples to that rule: cascade the current final stage into the next register's data input.
+The `shiftedOut` output may remain an observation of the last removed value, but it must not be
+needed to compensate for producer-first evaluation.
+
+Add practical ring and Johnson sequences and a 4017-style decoded decade example, with explicit
+seed/reset patterns, clock inhibit/enable behavior, and visible outputs. Prefer inspectable
+compositions where they demonstrate feedback; built-ins may provide convenient dedicated forms.
+Define invalid/unknown-state behavior instead of silently fabricating a one-hot seed. The decoded
+decade model has ten selected outputs and an explicit carry contract, rather than claiming to be
+an identical transistor-level model of a hardware device.
+
+Acceptance includes shared-edge order independence, no multi-stage ripple on one edge,
+reset-over-clock priority, held-high behavior, storage restoration, ring/Johnson periods, decoded
+decade output sequence, and editor/offline HTML parity. Regenerate the existing eight-tab workspace
+with current scripts, correct its shift cascade, and add focused feedback/sequential examples.
+
+### Feedback delivery evidence — 2026-10-17
+
+All three increments are implemented together. The catalog adds **SR latch**, **D latch**,
+**D flip-flop**, **Register (Boolean)**, **Register (number)**, **Ring counter**, **Johnson counter**,
+and **Decoded decade counter (4017-style)**. Existing timed components publish stored outputs;
+Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
+copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
+
+The feedback milestone contributed fifteen tabs to the [current seventeen-tab workspace](../examples/smart-components-workspace.json):
+the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
+practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
+ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
+Its [HTML reader](../examples/smart-components-workspace.html) is regenerated through the real editor
+exporter by [the update tool](../tools/update-example-workspace.cjs); it has no HTTP dependencies.
+
+- [Feedback runtime](../tests/feedback-runtime.test.cjs): bounded settling, observed intermediate
+  signals, unknown logic, feedback memory/restoration, ordering, and independent-branch recovery.
+- [Simulation controls](../tests/feedback-controls.test.cjs): editor and offline Pause/Step/Resume.
+- [Review regressions](../tests/feedback-review.test.cjs): bounded retained wiring keys, stored
+  outputs through Z, offline and Inputs preview parity, and Pause/time preservation across Undo/Redo.
+- [Deadline ordering](../tests/feedback-deadlines.test.cjs): overdue signals settle chronologically,
+  so an earlier clock edge samples earlier data after a late wake; cancellation is atomic and
+  positive-time feedback has a separate bounded-backlog error/recovery path.
+- [Wake policies](../tests/temporal-wake-policies.test.cjs): queued/latest validation and the nine
+  periodic/phase/wall-clock components preserve their no-catch-up behavior during replay.
+- [Sequential contracts](../tests/sequential-components.test.cjs): all eight new built-ins,
+  three-valued gate truth tables, priorities, bounded ports, source parity, and rendering.
+- [Workspace](../tests/example-workspace.test.cjs) and
+  [feedback examples](../tests/feedback-workspace.test.cjs): the fifteen feedback-milestone tabs, current source snapshots,
+  local bindings, the original eight control workflows, counter feedback, latch initialization/hold,
+  shared-edge storage, sequences, delayed feedback, and actual offline interaction.
+
+After review fixes, the full regression run passes **470/470 in Chromium**. The WebKit full run
+records **468 passes, zero failures, and two skips** for Chromium-only raw touch injection.
+The four earlier WebKit geometry failures were test precision errors: native pointer injection
+quantizes fractional screen positions. The tests now compare the exported drawing with delivered
+pointer coordinates, preserving strict movement, rotation, anchoring, scale, and cancellation
+assertions. The runtime already handled those coordinates correctly. The final import/history
+checks, including the extreme-angle regression, pass **10/10 in each engine**. Worker lifecycle checks
+pass **7/7 in each engine**, covering background timers, Promise/async continuations, and standalone
+HTML. The eight workspace checks also pass in both browsers. Pages and tagged releases now require
+both browser suites to pass, and the workspace generator stages both artifacts before publication,
+with rollback on failure. Review fixes also bind sketch imports to their initiating tab and bound
+imported geometry before rounding.
+Visual inspection covers the new examples, including the latch laboratory layout, readable mobile
+tabs, and reader controls. That feedback delivery precedes the separate phase 3 milestone below; shared buses and the later
+component backlog remain outside its scope.
+
+### Remaining component backlog
+
+These candidates remain later work; they are not acceptance requirements for this milestone or
+for stage 3. The milestone above covers the agreed practical feedback and storage scope.
+
+| Candidate family | Decisions still needed |
+| --- | --- |
+| Additional latch/flip-flop variants such as JK and T | Decide active levels/edges, asynchronous control priorities, and how their observable contracts extend the implemented SR and D storage. |
+| Binary/decade counters with bit outputs; ripple, synchronous, and up/down variants | Define overflow/wrap, carry/borrow, and asynchronous ripple versus simultaneous clocks. |
+| Small memory blocks and register files; bounded FIFO memory | Set capacity/address limits, read/write timing and same-address collisions, reset/clear rules, and persistence. |
+| Additional oscillators and timers constructed with feedback | Establish startup conditions, time boundaries, useful frequency limits, and inspection controls for real examples. |
+| LFSR sequence/pseudorandom generator | Choose bounded register width, taps/seed rules, repeatability, and serial versus numeric outputs. |
+| Consistent floating-point support | Generalize Sample & hold (integer), add floating random values, and agree decimal formatting and optional equality tolerance; counts and bit patterns remain integer-only. |
+| Function generator | Define waveforms, sampling rate, frequency/amplitude/offset/phase controls, late updates, and reset/enable behavior. |
+| Scope / oscilloscope | Define timestamped channels, trigger and pause, bounded history, unavailable values, and missed samples. |
+| FFT / spectrogram display | Define sample rate, windows, overlap, scales, bounded histories, startup, gaps, and processing limits. |
+| Audio components — even later | Define streams versus scalar controls, playback/device ownership, latency, channel formats, and saved assets. |
 
 These floating-point improvements and signal instruments are explicitly deferred. A useful order
 is component consistency, then a shared sampling/time model, then Function generator and Scope,
@@ -550,12 +844,69 @@ so “4017-style decoded decade counter” is the precise candidate label here. 
 ring-counter analogy describes its sequencing role, not an identical internal design.
 [Texas Instruments CD4017B documentation](https://www.ti.com/product/CD4017B).
 
-Shared-bus support is deferred. Once stage 2 is complete, discuss it with the user before
-starting stage 3; do not implement it as part of the current stage or automatically at that checkpoint.
-The idea to revisit is connecting several tri-state buffers to one destination, with only one
-enabled at a time, potentially through a dedicated Bus component. Proposed behavior: no active
-driver produces Z, one active driver supplies its value, and multiple active drivers show a visible
-error. The interface and resolution policy remain to be agreed. Until then, each input keeps one source.
+Shared-bus support and multiple drivers on one input are explicitly deferred. They are not
+needed for the approved feedback examples or a prerequisite for stage 3. Each input retains one
+source or literal/default; selectors choose among sources, gates combine Boolean values, and
+arithmetic components combine numbers. Revisit a Bus only when a drawing needs shared tri-state
+wiring and contention diagnosis. Its potential no-driver Z / one-driver value / multiple-driver
+error policy remains a proposal, not an implicit behavior of ordinary connections.
+
+## Text passing: implemented milestone before stage 3
+
+String ports already belonged to API v2; this milestone makes them useful through ready-to-place
+controls and displays. It follows feedback and precedes embedded datasets. Text passing does not
+introduce routed events, downloads, or network effects: submission is an ordinary bounded Boolean
+pulse connected through the existing graph.
+
+- **Text input** exposes string `value` and Boolean `submitted`. Its host-owned field appears directly
+  on the control and accepts Enter or Submit, with maximum length, required-value, and placeholder settings. It preserves
+  strings such as `0012`; masks, regular-expression validation, and password input remain later work.
+  Its Boolean `clear` input (default false) empties the value on a rising edge, cancels pending
+  submissions, and lowers Submitted without emitting a new submission. Initial high Clear primes
+  the detector without erasing stored text. A self-connection from Submitted to Clear empties the
+  field after consumers such as Memo have captured the accepted value.
+- **Number input** exposes numeric `value` and Boolean `submitted`, with inclusive min/max and a
+  positive step anchored at min. Invalid, non-finite, off-grid, and out-of-range entries are rejected.
+  It uses the same inline entry interaction. The existing Number control retains its slider,
+  step buttons, and dialog-based direct entry.
+- **Inline editing** keeps focus after submission for repeated entries. Escape or clicking outside
+  discards an unsubmitted draft and exits; blur never submits. The simulation continues while typing,
+  with an existing user pause respected. Tab changes and stale gestures close the field. Optional
+  Show submission state and Show hints settings start off on both input controls; validation errors
+  remain visible.
+- **Submission** normally emits one 100 ms high pulse per accepted entry, with at least 10 ms low
+  between queued pulses, even for repeated equal values. Clear can end a pulse early and cancel
+  the remaining queue. Each pulse retains its own associated value. Up to 64
+  pending submissions fit within the existing state budget; a full queue rejects further entries
+  visibly. Paused submissions wait for Step or Resume. Reopening, copying, or undo restoration
+  preserves the latest value without replaying pending actions. Canceled drafts and failed validation emit nothing.
+- **Text label** displays and republishes its string `value` input. Wrapping/truncation affects only
+  the drawing; the complete output remains available. Connected text renders literally as a plain
+  label without a frame. The normal stroke controls can add an outline with the selected color,
+  thickness, and line style. Show name and Show hints are optional and start off.
+- **Memo** takes string `content` and `line`, plus Boolean `set`, `append`, and `clear` commands.
+  Commands act on rising edges, with Clear > Set > Append priority when several rise together.
+  Set replaces the stored content; Append adds a logical line/block; Clear empties it. Its outputs
+  are complete string `text` and numeric `lineCount`. An empty buffer has zero lines; appending an
+  empty line creates one blank line. CRLF and lone CR normalize to LF. Initial high commands
+  establish baselines without changing saved contents. A compact inset leaves most of its area
+  for the stored text. Show counts and Show hints start off; rejected-update notices and input
+  errors always remain visible.
+- **Bounds** remain explicit: strings use at most 2,000 UTF-16 code units and state at most 4,000
+  serialized JSON characters. Memo defaults to 100 lines and 2,000 characters. Rejected updates
+  preserve the old buffer atomically and show a notice; lowering limits never truncates existing
+  content. Long buffers show their latest wrapped lines while retaining the complete output.
+
+The **Text and notes** workspace tab connects Text input `value` to Text label `value` and Memo
+`line`, and Text input `submitted` to Memo `append`. Separate buttons demonstrate Set and Clear;
+a line-count readout and a separate Number input/Gauge pair show the two output types. It belongs
+to the same editable workspace and offline HTML reader as the earlier examples.
+
+Acceptance covers literal rendering, independent instances, accepted versus rejected submissions,
+repeated equal values, queued ordering, Pause/Step/Resume, restoration without replay, Text input
+Clear and clear-after-submit, Memo command priority, blank lines, and budget rejection. Inline entry
+shares commit/cancel behavior between the editor and reader. Sensitive input handling for external
+integrations remains part of step 6.1 rather than an implied capability of ordinary text ports.
 
 ## The connected document
 
@@ -596,9 +947,9 @@ and validated by the runtime. Existing unversioned scripts retain their original
 V2 adds declared `inputs` and `outputs`, a `compute(inputs, state)` hook, and an extra `io`
 argument on drawing and interaction hooks containing resolved inputs and outputs plus the instance
 `name` for presentation. It starts
-with `number`, `string`, and `boolean`. Table types can follow with the dataset model.
-Metadata crosses the same validated sandbox boundary as hook results. `compute` is required
-when outputs are declared; an input-only display is valid. `io` also reaches `exportBehavior`.
+with `number`, `string`, and `boolean`, now extended with compact `table` references in stage 3.
+Metadata crosses the same validated sandbox boundary as hook results. A component declaring
+outputs must provide `compute`, `publish`, or both; an input-only display is valid. `io` also reaches `exportBehavior`.
 
 `inputs` and `outputs` can be static descriptor maps or pure `inputs(state)` / `outputs(state)`
 functions. Optional `settings` metadata describes authoring fields stored in state: scalar type,
@@ -607,9 +958,11 @@ these fields and rebuilds port choices. Port-defining settings are not live port
 and reader interactions must not change the declared port layout. This supports a bounded channel
 count while retaining stable names (`in1`, `out1`, etc.) for connection identity.
 
-A `kind:'number'` handle declares a finite value and optional min/max/step. The host owns the entry
-dialog, validates acceptance, and invokes `dragEdit` with the accepted number in `lx`; cancellation
-makes no state change. Editor and offline HTML use this same contract.
+A `kind:'number'` handle declares a finite value and optional min/max/step. A `kind:'text'` handle
+declares a string and optional maxLength/required/placeholder. The host owns the entry dialog,
+validates acceptance, and invokes `dragEdit` with the accepted typed value in `lx`; cancellation
+makes no state change. Editor and offline HTML use this same contract. Text children can set
+`plainText:true` to render connected/user-entered content literally rather than enabling Markdown.
 
 An optional `unavailableChildren(state, style, w, h, editing, io)` view hook can retain a component's
 recognizable silhouette before its inputs are connected. The host supplies empty inputs/outputs
@@ -647,23 +1000,49 @@ to v2's scalar values or `{state}` envelope; retain compatibility with existing 
 ### Change-driven evaluation
 
 Inputs and state determine computed outputs. Changes to component state, scripts, bindings, or
-literal inputs invalidate the sketch's component graph, which is evaluated in dependency order.
-Stage 1 reevaluates the graph as a whole; selective downstream recomputation is a future
-optimization. Cycles are rejected. Each input accepts one source or a literal/default, and
-multiple consumers may use an output.
+literal inputs invalidate the sketch's graph. Stored-output `publish(state)` hooks expose state
+without first resolving current inputs; pure combinational `compute` hooks resolve the remaining
+signals. Each transition round reads one consistent snapshot and commits all accepted changes
+together. Shared-clock storage therefore samples old values together. Every observed output change
+reaches downstream transitions, including short highs within one zero-time settling event.
 
-Computation crosses the existing asynchronous Worker bridge. The host waits for upstream results
-and uses document/item ownership and graph signatures to discard replies superseded by edits,
-undo, deletion, or tab changes. Preserve these guarantees and accepted interaction order when
-adding new sources or optimizing evaluation. Do not depend on all Workers being resident at once.
+Queued timed events replay chronologically against the last committed scene before a later
+external edit is applied. A delayed clock scheduled for 100 ms must sample the 100 ms data even
+if the browser also finds a data update due at 200 ms when it wakes at 250 ms. Each timestamp
+settles atomically before the next. Top-level `wakePolicy` is `'queued'` by default or `'latest'`
+for periodic/phase/wall-clock sources that retain their no-catch-up behavior. Transition context
+includes `historical`: true at replayed timestamps, false at current observed time. A latest-policy
+component still reacts to changed inputs during replay but suppresses autonomous expiration.
+At most 128 historical timestamps replay per run; a larger backlog reports a visible error on
+the affected branch and can recover after an input/configuration change.
 
-Treat `compute` as a pure value-producing hook. Rendering and recomputation must not trigger
-external actions. Keep `refreshMs` as presentation refresh. Stage 2's explicit `transition`
-contract supplies stateful/timed signals; redraws do not themselves advance that timeline.
+Each input accepts one source or a literal/default; multiple consumers may use an output. Bounded
+feedback is supported. Unknown-aware Boolean gate cycles start X until definite inputs establish
+a result; accepted combinational feedback signals are saved separately as host-owned `signalState`
+to preserve gate-built memory on reload, copy, and undo. This is not a new user-script state hook.
+A loop that does not settle within 256 rounds reports an error for its path/dependents without
+blocking unrelated branches. Positive delays schedule later active-document events; zero-delay
+loops remain subject to the settling budget.
 
-Apply execution and value-size budgets to computations as well as drawing hooks. If a producer
-fails, mark its outputs unavailable and identify affected bindings. A last valid drawing may
-remain visible, but stale values must not silently drive further actions.
+Computation crosses the asynchronous Worker bridge. Document/item ownership, graph signatures,
+and timeline revisions discard replies superseded by edits, undo, deletion, or tab changes.
+Preserve these guarantees and accepted interaction order when optimizing evaluation. Do not
+depend on Worker residency or completion order. `compute` and `publish` stay pure; rendering,
+Inputs previews, and static exports do not consume edges or trigger external actions.
+`refreshMs` remains presentation refresh. Stateful/timed execution belongs in `transition`.
+
+**Pause / Step / Resume** is per document and lasts for the current session. Pause retains the
+current signal snapshot and stops active simulation time. Step advances one propagation round;
+when already settled, it advances to the next scheduled signal event. The status reports active
+simulation time, the settling round, and a recent signal change. Resume settles pending work and
+continues scheduling. Step advances logical active-document time; Live clock, Stopwatch, and Timer
+still read actual wall time and are not fast-forwarded. Editor and exported HTML share the same
+behavior; this is smaller than the later full Run/Preview workflow.
+
+Apply execution and value-size budgets to all hooks. If a producer fails, mark its outputs
+unavailable and identify affected bindings. A last valid drawing may remain visible, but stale
+values must not silently drive later behavior. Shared-bus resolution, multiple drivers, external
+actions, and a routed-event API remain outside this milestone.
 
 ### Connections and authoring
 
@@ -687,29 +1066,58 @@ selections with remapped IDs; references outside a copied selection remain expli
 Deleting a source reports an unavailable binding, and undo restores it. Keep these behaviors
 when adding visible wires, new reference types, or richer port editing.
 
+The stage 2 authoring pass distinguishes same-named sources with drawing-order and world-position
+qualifiers, such as `#1 (left)` and `#2 (right)`. These labels do not rename instances or alter
+UID/port identity. Source and literal edits refresh proposed outputs and graph/validation errors
+after a short debounce; stale replies cannot replace the latest edit, and the fields retain focus.
+Pending or unavailable results replace stale output values. Preview is bounded,
+pure inspection of a temporary proposal: it does not run transitions, consume edges, advance
+timed state, or mutate the drawing. Save validates and commits; Cancel discards the proposal.
+This does not add the future document-wide Run/Preview mode.
+
 An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
 and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.
 
-### Embedded data and persistence — proposed stage 3
+### Embedded data and persistence — stage 3 first milestone
 
-Add a bounded document-level dataset store for embedded CSV/JSON and, later, reader-selected
-files. Keep row data out of the 4,000-character interaction state; state should hold selections,
-filters, and stable references. The existing asset pool and pruning logic are image-specific,
-so generic data requires explicit schema, reference tracking, validation, and save/export changes.
+The first slice is implemented: **Dataset → Table filter → Data table + Data bar chart**, controlled
+by a Text input and shipped as the **Embedded data** workspace tab. Import the matching
+[sailing-results CSV](../examples/sailing-results.csv) or [JSON](../examples/sailing-results.json) through
+**Inputs…** on a table port. The same drawing and its data work in the offline HTML export.
 
-Set document, dataset, computed-output, and transfer budgets before accepting tables. Resolve
-references through the host, with bounded data passed into Workers; avoid copying a full dataset
-into every instance's saved state or every redraw. Unsupported data must produce a recoverable
-error without destroying the surrounding drawing.
+- Each sketch stores immutable tables once in `datasets`, separate from 4,000-character component
+  state. A table has a name, ordered typed columns (`key`, `name`, `type`), and scalar/null cells.
+  Ports carry `{datasetId, rows?}`; row selections retain original indices rather than copying data.
+- CSV and TSV use a unique header row and column-wide type inference; quotes, escaped quotes, and embedded
+  line breaks are supported. The import delimiter is configurable as Automatic (default), Comma,
+  Semicolon, or Tab. Detection respects quoted cells and warns on ambiguity; changing the choice refreshes
+  the preview before Save. Delimiters do not change type inference: decimal-comma values remain text.
+  Empty cells become null, and leading-zero/unsafe-integer identifiers
+  remain strings. JSON accepts flat row objects with consistent non-null column types and null for
+  missing fields. Unsupported structures and malformed rows reject the whole import.
+- Limits are 16 active datasets per sketch, 32 columns, 1,000 rows, 2,000 characters per string cell,
+  500,000 serialized characters per dataset, 2,000,000 per active pool, and 1,000,000 input-file
+  characters. Worker table transfers are bounded to 2,000,000 characters per call and 16,000,000
+  per evaluation. Limit errors preserve the surrounding drawing and accepted data.
+- Computation receives full resolved inputs through `context.tables`. Rendering receives at most
+  24 rows per input/output and 160 characters per text cell through `io.tables`; full row counts
+  remain available. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
+  are rejected in this first slice.
+- **Inputs…** previews imported column types and initial rows before Save. Cancel discards pending
+  data; tab/session changes cancel stale imports. Existing datasets can be selected directly.
+- Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
+  paste, and library transfer carry referenced datasets with collision-safe IDs. Undo/redo keeps
+  immutable prior data; exported files omit data reachable only from history.
 
-Extend sketch/workspace JSON and offline HTML together. Derived outputs can be recomputed;
-a saved document must retain the definitions, state, datasets, and bindings needed to do so.
-Static PNG/SVG/print should capture the settled visible result without running actions.
+Table filter supports text contains/equality, typed equality/inequality, numeric ordering, and
+empty/nonempty checks. Data table and Data bar chart show bounded views and disclose omissions;
+filtering evaluates all accepted rows. The chart draws one bar per row with a shared zero baseline.
+The earlier manually editable **Chart** template remains separate.
 
-Reader persistence is a separate product decision. A later explicit **Save results** action
-could export JSON or CSV. A new HTML snapshot or full HTML-to-editor round trip requires a
-complete editable document model in the export and a defined import path; the present playback
-model is not sufficient on its own.
+Reader-selected files, table-cell editing, aggregation/sorting, computed datasets with new columns,
+and additional chart types are later extensions. Reader persistence also remains separate: a later
+explicit **Save results** action can export JSON or CSV. A new HTML snapshot or full HTML-to-editor
+round trip requires a complete editable document model in the export and a defined import path.
 
 ### Definition identity and updates
 
@@ -784,9 +1192,10 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
 - **Configuration and references.** Persist operation definitions and instance-scoped references,
   never live clients or request handles. Define copy/remapping, deletion, and missing-reference
   behavior. Reference validity does not itself authorize an operation.
-- **Reusable input fields.** Text, number, toggle, and password fields need shared focus, keyboard,
-  commit/cancel, and validation behavior in editor and exported HTML. This small field-control
-  capability is required before configurable connections; it need not wait for full Run/Preview.
+- **Reusable input fields.** Text and number entry already share host-owned keyboard, commit/cancel,
+  and validation behavior in editor and exported HTML; Toggle is also available. Reuse those
+  contracts for configurable connections, and design password entry and sensitive-value handling
+  separately. This does not need to wait for full Run/Preview.
   Sensitive values use a host-managed session store and restricted references to approved
   configuration consumers, not ordinary persisted string outputs visible to arbitrary scripts.
 - **Execution policy.** Keep network execution separate from `smartComponents`, which only hides
@@ -930,7 +1339,7 @@ independent, and redraws or restored state never produce extra requests.
 Support MQTT as another transport in the host-managed integration service. This belongs to
 the component runtime shared by the editor and exported HTML; the separate deployment-plugin
 experiment is not a dependency. MQTT uses the shared input, transient-value, credential, and
-execution contracts from step 6.1. It is future work, beyond the implemented scalar API v2.
+execution contracts from step 6.1. It is future work, beyond the implemented value/table API v2.
 
 Browser clients require MQTT over WebSockets: a broker must expose a `ws://` or `wss://`
 endpoint, or be reachable through a gateway providing one. Prefer secure WebSockets for hosted
@@ -1035,17 +1444,19 @@ handling are tested separately from broker delivery.
 
 ## Decisions before each stage
 
-1. **Stage 2 — established:** Format 2 defines category/tag serialization, stable library-entry
-   identity, catalog definitions, and ordered working membership; flat imports remain supported.
-2. **Stage 3:** Define the table contract and dataset storage, transfer, and computation budgets
-   before accepting embedded tables. Preserve recoverable unsupported data.
+1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
+   built-in organization overrides, Keywords, stable library-entry identity, catalog definitions,
+   and ordered working membership; flat and legacy single-category imports remain supported.
+2. **Stage 3 — established first slice:** Compact references, typed nullable columns, immutable
+   document datasets, storage/transfer budgets, and atomic imports are defined above. Extensions
+   must preserve these limits and recoverable failures.
 3. **Stage 4:** Define a supported revision for event/action envelopes, receiving hooks, dispatch
    identity, and propagation limits before adding handlers or download controls.
 4. **Stage 5:** Use the library example to choose binding/control improvements and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
    connection identity, and artifact-specific credential/startup policy before either transport.
-   These require explicit contract extensions, not implicit additions to scalar API v2.
+   These require explicit contract extensions, not implicit additions to the value/table API v2.
 6. **Transport steps:** Fix HTTP response mapping and request limits before 6.2; MQTT client-ID,
    reconnect, QoS, and retained-reading rules before 6.3; trigger baselines before 6.4; write retry,
    duplicate, and acknowledgement policies before 6.5. Keep execution settings separate from

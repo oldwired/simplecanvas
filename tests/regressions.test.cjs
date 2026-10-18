@@ -1167,6 +1167,109 @@ test('grouped smart object: double-click steps group edit mode -> the object\'s 
     'third dblclick (the smart object\'s own re-dblclick-exits toggle) leaves script-edit mode, still in group edit mode');
 }));
 
+// A double-click is two selection clicks before its own event arrives. Smart controls must keep
+// the item grabbed by the first press, while separate clicks still reach the layers behind it.
+const overlappingSmart = uid => ({type:'smart',uid,x:100,y:100,w:180,h:140,
+  color:'#1f2937',fillColor:'#ffd166',fill:false,strokeOn:true,textColor:'#000',size:2,state:{},
+  script:`({children(state,style,w,h){return[{type:'rect',x:0,y:0,w,h,color:style.color,strokeOn:true,fill:false}];}})`});
+async function seedOverlap(run, scene){
+  await run(`cancelGesture();items=${JSON.stringify(scene)};selection=[];setTool('select');render();`);
+}
+test('overlapping smart controls open on a fresh or already-selected double-click', async () => app(async ({page,run}) => {
+  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
+  for(const selected of [false,true]){
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    if(selected) await page.mouse.click(box.x+190,box.y+160);
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.dblclick(box.x+190,box.y+160);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
+    assert.deepEqual(await run('selectedUids()'),['smart']);
+    assert.equal(await run('pointEditIdx'),null,'the background is not converted or edited');
+    assert.deepEqual(await run('items'),scene,'entering controls leaves all drawing data unchanged');
+  }
+}));
+
+test('double-click keeps a selected lower smart component beneath a shape or another component', async () => app(async ({page,run}) => {
+  for(const top of [rectangle('top'),overlappingSmart('top')]){
+    const scene=[rectangle('bottom'),overlappingSmart('selected'),top];
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    assert.deepEqual(await run('selectedUids()'),['selected'],'separate clicks reach the lower component');
+    box=await page.locator('#canvas').boundingBox();
+    await page.mouse.dblclick(box.x+190,box.y+160);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+    assert.deepEqual(await run('selectedUids()'),['selected']);
+    assert.deepEqual(await run('items'),scene);
+  }
+}));
+
+test('separate clicks still cycle behind smart controls and dragging moves the selected lower shape', async () => app(async ({page,run}) => {
+  const scene=[rectangle('background'),overlappingSmart('smart')];
+  await seedOverlap(run,scene);
+  for(const expected of ['smart','background','smart','background']){
+    const box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+190,box.y+160);
+    assert.deepEqual(await run('selectedUids()'),[expected]);
+  }
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.move(box.x+190,box.y+160);await page.mouse.down();
+  await page.mouse.move(box.x+225,box.y+180);await page.mouse.up();
+  assert.deepEqual(await run('selectedUids()'),['background']);
+  assert.deepEqual(await run('items[0]'),{...scene[0],x:135,y:120});
+  assert.deepEqual(await run('items[1]'),scene[1]);
+  assert.equal(await run('editingSmartIdx'),null);
+}));
+
+test('ordinary overlapping shapes keep their cycled double-click target', async () => app(async ({page,run}) => {
+  const scene=['bottom','middle','top'].map(uid=>rectangle(uid));
+  await seedOverlap(run,scene);
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  assert.deepEqual(await run('selectedUids()'),['middle']);
+  assert.equal(await run('pointEditIdx'),1);
+  assert.equal(await run('items[1].type'),'polygon');
+  assert.deepEqual(await run('[items[0],items[2]]'),[scene[0],scene[2]]);
+}));
+
+test('overlapping grouped smart controls retain group entry then smart editing', async () => app(async ({page,run}) => {
+  const scene=[rectangle('background'),overlappingSmart('smart')].map(it=>({...it,group:'overlap',groupRotation:0}));
+  await seedOverlap(run,scene);
+  let box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  assert.equal(await run('editingGroupId'),'overlap');
+  assert.equal(await run('editingSmartIdx'),null);
+  assert.deepEqual(await run('selectedUids()'),['smart']);
+  box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+190,box.y+160);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  assert.equal(await run('editingGroupId'),'overlap');
+  assert.deepEqual(await run('selectedUids()'),['smart']);
+  assert.deepEqual(await run('items'),scene);
+}));
+
+test('overlapping smart controls keep the first touch target on double-tap', async () => app(async ({page,run}) => {
+  const scene=[rectangle('bottom'),rectangle('middle'),overlappingSmart('smart')];
+  for(const selected of [false,true]){
+    await seedOverlap(run,scene);
+    let box=await page.locator('#canvas').boundingBox();
+    if(selected){
+      await page.touchscreen.tap(box.x+190,box.y+160);
+      await page.waitForTimeout(400);
+    }
+    box=await page.locator('#canvas').boundingBox();
+    await page.touchscreen.tap(box.x+190,box.y+160);
+    await page.touchscreen.tap(box.x+198,box.y+166);
+    await page.waitForFunction(()=>__test.run('editingSmartIdx')===2);
+    assert.deepEqual(await run('selectedUids()'),['smart']);
+    assert.equal(await run('pointEditIdx'),null);
+    assert.deepEqual(await run('items'),scene);
+  }
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+
 test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
   await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
     color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2}];setTool('select');render();`);
@@ -1525,16 +1628,19 @@ test('icon search offline shows a message instead of failing', async () => app(a
   assert.equal(await page.locator('#iconResults .shape-entry').count(), 0);
 }));
 
-test('the Timer template shows a large "N Minutes left" readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
+test('the Timer template shows a large Minutes or Seconds left readout under the dial, inside the box, never wrapping', async () => app(async ({run}) => {
   const r = JSON.parse(await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
-    const init = await requestSmartCall(script, 'initStyle', []);
+    const seed = clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='timer').items[0]);
+    const init = await requestSmartCall(seed, 'initStyle', []);
+    const initial = await requestSmartCall(seed, 'initState', []);
     const out = [];
     for(const [w,h] of [[init.w, init.h], [160,190], [90,110], [70,84]]){
-      const it = {type:'smart', w, h, color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
+      const it = {type:'smart', uid:'timer-readout', componentApi:2, componentName:'Timer', w, h, color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
         size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12), script};
-      for(const value of [-45, -59, -1]){
-        const kids = await requestSmartCall(script, 'children', [{value}, smartResolvedStyle(it), w, h, false]);
+      for(const unit of ['minutes','seconds'])for(const duration of [45,59,1]){
+        it.state={...initial,unit,duration,configuredUnit:unit,configuredDuration:duration,remainingMs:duration*(unit==='minutes'?60000:1000)};
+        const kids = (await warmSmartExportCache([it],true)).get(it);
         const t = kids.find(c=>c.type==='text' && /left$/.test(c.text));
         ctx.font = t.font;
         out.push({w, h, text:t.text, bottom:t.y+t.h, px:+/(\\d+)px/.exec(t.font)[1], textW:ctx.measureText(t.text).width, boxW:t.w-12});
@@ -1547,6 +1653,8 @@ test('the Timer template shows a large "N Minutes left" readout under the dial, 
   assert.equal(big.text, '45 Minutes left');
   assert.ok(big.px >= 24, `large type at the default size (${big.px}px)`);
   assert.equal(r.out[2].text, '1 Minute left', 'singular at one minute');
+  assert.equal(r.out[3].text, '45 Seconds left');
+  assert.equal(r.out[5].text, '1 Second left', 'singular at one second');
   for(const o of r.out){
     assert.ok(o.bottom <= o.h + 0.5, `readout inside the box at ${o.w}x${o.h}`);
     assert.ok(o.textW <= o.boxW, `"${o.text}" fits on one line at ${o.w}x${o.h} (${o.textW.toFixed(1)} <= ${o.boxW})`);
@@ -1556,10 +1664,12 @@ test('the Timer template shows a large "N Minutes left" readout under the dial, 
 test('a Timer scaled down to almost nothing, or any script arc with a negative radius, renders without errors', async () => app(async ({page,run}) => {
   await run(`(async()=>{
     const script = SMART_TEMPLATES.timer.script;
+    const seed = clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='timer').items[0]);
+    const state = await requestSmartCall(seed,'initState',[]);
     const base = {type:'smart', color:'#1f2937', fillColor:'#dc2626', fill:false, strokeOn:true, textColor:'#1f2937',
       size:2, fontFamily:'sans', fontSize:12, font:fontStr('sans',12)};
     items = [
-      ...[[30,36],[12,14],[4,5],[1,1]].map(([w,h],k)=>({...base, uid:'t'+k, x:40+k*60, y:40, w, h, script, state:{value:-45}})),
+      ...[[30,36],[12,14],[4,5],[1,1]].map(([w,h],k)=>({...base, uid:'t'+k, x:40+k*60, y:40, w, h, script, componentApi:2, state:clone(state)})),
       {...base, uid:'neg', x:400, y:40, w:50, h:50,
        script:'({children(){return [{type:"polygon",closed:true,fill:true,fillColor:"#ff0000",color:"#ff0000",strokeOn:false,points:[{x:25,y:25},{x:25,y:20,arcTo:{cx:25,cy:25,r:-3,a1:0,a2:1}},{x:30,y:25}]}]}})'}];
     render();
@@ -1620,22 +1730,74 @@ async function exportedPoint(host,x,y,parent=false){
     return {x:p.x,y:p.y};
   },{x,y,parent});
 }
+// Native pointer injection can quantize screen coordinates. Keep real browser gestures, but
+// assert geometry against the events the app received using matrices captured before the drag.
+async function recordExportGesture(host,gesture){
+  await host.evaluate(el=>{
+    const matrix=el.firstElementChild.getScreenCTM(),inverse=matrix.inverse();
+    const state={down:null,latest:null,up:null};
+    const record=event=>{
+      const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(inverse);
+      const sample={screen:{x:event.clientX,y:event.clientY},local:{x:point.x,y:point.y}};
+      if(event.type==='pointerdown'){state.down=sample;state.latest=null;}
+      else if(state.down)state[event.type==='pointermove'?'latest':'up']=sample;
+    };
+    const types=['pointerdown','pointermove','pointerup'];
+    for(const type of types)window.addEventListener(type,record,true);
+    el.__testGesture={state,stop:()=>{for(const type of types)window.removeEventListener(type,record,true);}};
+  });
+  try{
+    await gesture();
+    const result=await host.evaluate(el=>el.__testGesture.state);
+    assert.ok(result.down,'the gesture must deliver a pointerdown');
+    const end=result.up||result.latest||result.down;
+    return {...result,end,screenDelta:{x:end.screen.x-result.down.screen.x,y:end.screen.y-result.down.screen.y},
+      localDelta:{x:end.local.x-result.down.local.x,y:end.local.y-result.down.local.y}};
+  }finally{await host.evaluate(el=>{el.__testGesture.stop();delete el.__testGesture;});}
+}
+function gestureRotation(gesture,w,h){
+  const end=gesture.latest||gesture.end,start=gesture.down;
+  const delta=Math.atan2(end.local.y-h/2,end.local.x-w/2)-Math.atan2(start.local.y-h/2,start.local.x-w/2);
+  return Math.atan2(Math.sin(delta),Math.cos(delta));
+}
+function rotatedPoint(point,center,angle){
+  const dx=point.x-center.x,dy=point.y-center.y,c=Math.cos(angle),s=Math.sin(angle);
+  return {x:center.x+c*dx-s*dy,y:center.y+s*dx+c*dy};
+}
 async function exportClick(preview,host,x,y){const p=await exportedPoint(host,x,y);await preview.mouse.click(p.x,p.y);}
-async function exportDrag(preview,host,x,y,dx,dy){
+async function exportDrag(preview,host,x,y,dx,dy,release=true){
   const a=await exportedPoint(host,x,y),b=await exportedPoint(host,x+dx,y+dy);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();
-  await preview.mouse.move(b.x,b.y,{steps:5});await preview.mouse.up();
+  const gesture=await recordExportGesture(host,async()=>{
+    await preview.mouse.move(a.x,a.y);await preview.mouse.down();
+    await preview.mouse.move(b.x,b.y,{steps:5});if(release)await preview.mouse.up();
+  });
+  assert.ok(gesture.latest,'drag must deliver a pointermove');
+  if(release)assert.ok(gesture.up,'released drag must deliver a pointerup');
+  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'drag reaches the requested screen endpoint within one CSS pixel');
+  return gesture;
 }
 async function exportRotate(preview,host,w,h,angle,release=true){
   const radius=h/2+30,a=await exportedPoint(host,w/2,-30);
   const b=await exportedPoint(host,w/2+Math.sin(angle)*radius,h/2-Math.cos(angle)*radius);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
-  if(release)await preview.mouse.up();
+  const gesture=await recordExportGesture(host,async()=>{
+    await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y,{steps:6});
+    if(release)await preview.mouse.up();
+  });
+  assert.ok(gesture.latest,'rotation must deliver a pointermove');
+  if(release)assert.ok(gesture.up,'released rotation must deliver a pointerup');
+  assert.ok(Math.abs(gesture.end.screen.x-b.x)<=1 && Math.abs(gesture.end.screen.y-b.y)<=1,'rotation reaches the requested screen endpoint within one CSS pixel');
+  return gesture;
 }
 
 test('HTML smart shapes run offline with live timing, direct ordered controls and a locked layout',async()=>app(async({page,run,context})=>{
-  await run(`items=[{...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script,w:260,h:110,state:{elapsedMs:0,startedAt:null}},
-    {...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.liveClock.script,x:500,h:208}];setTool('select');selection=[];render();save();`);
+  // Keep this refresh-only/API1 fixture inert in saved state. API2 Live Clock
+  // deliberately publishes durable time and pulses and has its own connection tests.
+  const clockScript=`({refreshMs(){return 1000;},children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:new Date().toISOString(),strokeOn:false}];}})`;
+  const stopwatch=await run(`(async()=>{
+    const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
+    items=[sw,{...${JSON.stringify(smartFixture(clockScript))},uid:'refresh-clock',x:500,h:208}];
+    setTool('select');selection=[];render();save();return sw;
+  })()`);
   const before=await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})');
   const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
     // Force early callbacks, as can occur naturally when browsers round fractional delays.
@@ -1647,14 +1809,15 @@ test('HTML smart shapes run offline with live timing, direct ordered controls an
   assert.match(await sw.textContent(),/Start.*Reset/,'operating buttons are visible immediately');
   const firstClock=await clock.textContent();
   await preview.waitForFunction(first=>document.querySelector('[data-smart-index="1"]').textContent!==first,firstClock);
-  await exportClick(preview,sw,65,88);
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Pause'));
-  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.0'));
-  await exportClick(preview,sw,65,88);
+  await preview.waitForFunction(()=>!document.querySelector('[data-smart-index="0"]').textContent.includes('00:00:00.000'));
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
   const paused=await sw.textContent();await preview.waitForTimeout(250);assert.equal(await sw.textContent(),paused);
   // Quick released clicks still execute in order. Reset, Start, Pause must end stopped.
-  await exportClick(preview,sw,195,88);await exportClick(preview,sw,65,88);await exportClick(preview,sw,65,88);
+  await exportClick(preview,sw,stopwatch.w*.75,stopwatch.h*.86);
+  await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);await exportClick(preview,sw,stopwatch.w/4,stopwatch.h*.86);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Start'));
   const box=await sw.boundingBox();await exportDrag(preview,sw,20,20,60,40);await preview.waitForTimeout(100);
   assert.deepEqual(await sw.boundingBox(),box,'the body cannot be moved');
@@ -1695,30 +1858,34 @@ test('ruler author controls bind moving and rotation; HTML extends opted-in inst
   assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'clicking another shape clears the old selection');
   await exportClick(preview,ruler,50,40);await preview.keyboard.press('Escape');
   assert.equal(await ruler.locator('[data-rotate]').isVisible(),false,'Escape clears selection');
-  const initial=await exportedPoint(ruler,0,0),destination=await exportedPoint(ruler,45,20);
-  await exportDrag(preview,ruler,50,40,45,20);
+  const initial=await exportedPoint(ruler,0,0);
+  const movement=await exportDrag(preview,ruler,50,40,45,20);
+  const destination={x:initial.x+movement.screenDelta.x,y:initial.y+movement.screenDelta.y};
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!=='translate(100 100)');
   const moved=await exportedPoint(ruler,0,0);assert.ok(Math.abs(moved.x-destination.x)<.1 && Math.abs(moved.y-destination.y)<.1,'rotated body follows the pointer');
   const oldWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
-  await exportDrag(preview,ruler,oldWidth,shape.h/2,96,0);
-  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+95,oldWidth);
+  const extension=await exportDrag(preview,ruler,oldWidth,shape.h/2,96,0);
+  const expectedWidth=oldWidth+extension.localDelta.x;
+  await preview.waitForFunction(w=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')-w)<.1,expectedWidth);
   const newWidth=+(await ruler.locator('rect[pointer-events="all"]').getAttribute('width'));
-  assert.ok(Math.abs(newWidth-oldWidth-96)<.1);
+  assert.ok(Math.abs(newWidth-expectedWidth)<.1);
   assert.equal(await ruler.locator('rect[pointer-events="all"]').getAttribute('height'),String(shape.h));
   const tickPositions=await ruler.locator('rect').evaluateAll(rects=>rects.filter(r=>+r.getAttribute('y')>45 && +r.getAttribute('height')<23 && +r.getAttribute('height')>0)
     .map(r=>+r.getAttribute('x') + +r.getAttribute('width')/2));
   assert.ok(tickPositions.length>100);assert.ok(Math.abs(tickPositions[3]-tickPositions[2]-96/25.4)<.001,'extension retains millimeter spacing');
   const center=await exportedPoint(ruler,newWidth/2,shape.h/2),edge=await exportedPoint(ruler,0,0);
-  await exportRotate(preview,ruler,newWidth,shape.h,Math.PI/2);
+  const rotation=await exportRotate(preview,ruler,newWidth,shape.h,Math.PI/2);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
   const turnedCenter=await exportedPoint(ruler,newWidth/2,shape.h/2),turnedEdge=await exportedPoint(ruler,0,0);
   assert.ok(Math.hypot(turnedCenter.x-center.x,turnedCenter.y-center.y)<.1,'rotation keeps the ruler center fixed');
-  assert.ok(Math.hypot(turnedEdge.x-(center.x-(edge.y-center.y)),turnedEdge.y-(center.y+(edge.x-center.x)))<.1);
-  await exportDrag(preview,ruler,newWidth,shape.h/2,60,0);
-  await preview.waitForFunction(w=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')>w+59,newWidth);
+  const expectedEdge=rotatedPoint(edge,center,gestureRotation(rotation,newWidth,shape.h));
+  assert.ok(Math.hypot(turnedEdge.x-expectedEdge.x,turnedEdge.y-expectedEdge.y)<.1);
+  const rotatedExtension=await exportDrag(preview,ruler,newWidth,shape.h/2,60,0);
+  const extendedWidth=newWidth+rotatedExtension.localDelta.x;
+  await preview.waitForFunction(w=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('width')-w)<.1,extendedWidth);
   const extendedEdge=await exportedPoint(ruler,0,0);
   assert.ok(Math.hypot(extendedEdge.x-turnedEdge.x,extendedEdge.y-turnedEdge.y)<.1,'extending after rotation anchors the left edge');
-  await exportClick(preview,ruler,newWidth+60-44,11);await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('inch'));
+  await exportClick(preview,ruler,extendedWidth-44,11);await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('inch'));
   assert.ok(await ruler.locator('[data-resize-width]').count());assert.ok(initial.x!==moved.x);
   assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
 }));
@@ -1765,32 +1932,32 @@ test('HTML rotation and height resizing work independently of movement and width
   const origin=await exportedPoint(shape,0,0);await exportDrag(preview,shape,70,70,30,20);await preview.waitForTimeout(100);
   assert.deepEqual(await exportedPoint(shape,0,0),origin,'rotation permission does not grant body movement');
   const center=await exportedPoint(shape,90,50),corner=await exportedPoint(shape,0,0);
-  await exportRotate(preview,shape,180,100,Math.PI/2);
+  const rotation=await exportRotate(preview,shape,180,100,Math.PI/2);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform').includes('rotate('));
   const rotatedCorner=await exportedPoint(shape,0,0);
-  assert.ok(Math.hypot(rotatedCorner.x-(center.x-(corner.y-center.y)),rotatedCorner.y-(center.y+(corner.x-center.x)))<.1);
+  const expectedCorner=rotatedPoint(corner,center,gestureRotation(rotation,180,100));
+  assert.ok(Math.hypot(rotatedCorner.x-expectedCorner.x,rotatedCorner.y-expectedCorner.y)<.1);
   const transform=await shape.locator(':scope>g').getAttribute('transform');
   await exportRotate(preview,shape,180,100,Math.PI/4,false);
   await preview.waitForFunction(t=>document.querySelector('[data-smart-index="0"]>g').getAttribute('transform')!==t,transform);
   await preview.keyboard.press('Escape');await preview.mouse.up();
   assert.equal(await shape.locator(':scope>g').getAttribute('transform'),transform,'Escape restores rotation');
-  await exportDrag(preview,shape,90,100,0,50);
-  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>149);
+  const resize=await exportDrag(preview,shape,90,100,0,50),height=100+resize.localDelta.y;
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height);
   assert.equal(await shape.locator('rect[pointer-events="all"]').getAttribute('width'),'180');
   const resizedCorner=await exportedPoint(shape,0,0);
   assert.ok(Math.hypot(resizedCorner.x-rotatedCorner.x,resizedCorner.y-rotatedCorner.y)<.1,'height resizing after rotation anchors the top edge');
-  const start=await exportedPoint(shape,90,150),end=await exportedPoint(shape,90,180);
-  await preview.mouse.move(start.x,start.y);await preview.mouse.down();await preview.mouse.move(end.x,end.y);
-  await preview.waitForFunction(()=>+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')>179);
+  const pendingResize=await exportDrag(preview,shape,90,height,0,30,false);
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height+pendingResize.localDelta.y);
   await preview.keyboard.press('Escape');await preview.mouse.up();
-  await preview.waitForFunction(()=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-150)<.1);
+  await preview.waitForFunction(h=>Math.abs(+document.querySelector('[data-smart-index="0"] rect[pointer-events="all"]').getAttribute('height')-h)<.1,height);
   await exportClick(preview,shape,40,40);
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="0"] text').textContent==='1');
   const retained=await shape.locator(':scope>g').getAttribute('transform');
   await preview.locator('.tab-select').nth(1).click();await preview.locator('.tab-select').nth(0).click();
   assert.equal(await shape.locator(':scope>g').getAttribute('transform'),retained);
   assert.equal(await shape.locator('[data-rotate]').isVisible(),false,'tab switches clear selection while keeping transforms');
-  assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-150)<.1);
+  assert.ok(Math.abs(+(await shape.locator('rect[pointer-events="all"]').getAttribute('height'))-height)<.1);
   assert.deepEqual(errors,[]);
 }));
 
@@ -1817,10 +1984,11 @@ test('editor and HTML Shift-rotation snap to absolute 15-degree steps, including
   assert.ok(Math.abs(await angle()-45)<1e-4,'HTML snaps the visible 38-degree angle to 45, rather than snapping its drag delta');
   await preview.keyboard.up('Shift');await preview.mouse.up();
   assert.ok(Math.abs(await angle()-45)<1e-4,'pointerup keeps the last snapped angle when Shift has been released');
-  await exportRotate(preview,shape,180,180,-7*Math.PI/180);
-  assert.ok(Math.abs(await angle()-38)<1e-4,'rotation stays free without Shift');
+  const freeRotation=await exportRotate(preview,shape,180,180,-7*Math.PI/180);
+  const freeAngle=45+gestureRotation(freeRotation,180,180)*180/Math.PI;
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'rotation follows the received pointer without Shift');
   await preview.keyboard.down('Shift');await exportClick(preview,shape,90,-30);await preview.keyboard.up('Shift');
-  assert.ok(Math.abs(await angle()-38)<1e-4,'a stationary handle click does not change the angle');
+  assert.ok(Math.abs(await angle()-freeAngle)<1e-4,'a stationary handle click does not change the angle');
   await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,-76*Math.PI/180);await preview.keyboard.up('Shift');
   assert.ok(Math.abs(await angle()+45)<1e-4,'negative angles use the same absolute snapping grid');
   await preview.keyboard.down('Shift');await exportRotate(preview,shape,180,180,43*Math.PI/180);await preview.keyboard.up('Shift');
@@ -1837,27 +2005,29 @@ test('HTML scripted drags use rotated local coordinates, coalesce replies, and c
   await run(`items=[{...${JSON.stringify(smartFixture(script,{value:50}))},rotation:.35}];render();`);
   const {preview,errors}=await openExport(page,run,context),shape=preview.locator('[data-smart-index="0"]');
   await preview.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
-  const box=await shape.boundingBox();await exportDrag(preview,shape,50,60,70,25);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  const box=await shape.boundingBox(),drag=await exportDrag(preview,shape,50,60,70,25);
+  const value=String(Math.round(drag.end.local.x));
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,value);
   assert.deepEqual(await shape.boundingBox(),box,'dragging a scripted control changes state, not the container');
-  const a=await exportedPoint(shape,50,60),b=await exportedPoint(shape,90,80);
-  await preview.mouse.move(a.x,a.y);await preview.mouse.down();await preview.mouse.move(b.x,b.y);
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='90');
+  const pendingDrag=await exportDrag(preview,shape,50,60,40,20,false);
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(pendingDrag.latest.local.x)));
   await preview.keyboard.press('Escape');await preview.mouse.up();
-  await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='120');
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,value);
   const frozen=await shape.textContent();
   await preview.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
   await preview.waitForTimeout(100);assert.equal(await shape.textContent(),frozen);
   await preview.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
-  await exportDrag(preview,shape,50,60,30,0);await preview.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='80');
+  const resumedDrag=await exportDrag(preview,shape,50,60,30,0);
+  await preview.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(resumedDrag.end.local.x)));
   assert.deepEqual(errors,[]);
   // Use the same file and runtime on a touch device. Taps need no double-tap edit gesture.
   const touch=await browser.newContext({viewport:{width:1280,height:900},hasTouch:true});
   try{
     const tp=await touch.newPage();await tp.goto(preview.url());
     await tp.waitForFunction(()=>document.querySelector('[data-smart-ready="true"]'));
-    const handle=await exportedPoint(tp.locator('[data-smart-index]'),60,60);await tp.touchscreen.tap(handle.x,handle.y);
-    await tp.waitForFunction(()=>document.querySelector('[data-smart-index]').textContent==='60');
+    const touchShape=tp.locator('[data-smart-index]'),handle=await exportedPoint(touchShape,60,60);
+    const tap=await recordExportGesture(touchShape,()=>tp.touchscreen.tap(handle.x,handle.y));
+    await tp.waitForFunction(value=>document.querySelector('[data-smart-index]').textContent===value,String(Math.round(tap.down.local.x)));
   }finally{await touch.close();}
 }));
 
@@ -1865,8 +2035,11 @@ test('HTML isolates hostile or hung scripts, preserves frozen fallback, and esca
   const attack="</script><script>window.exportEscaped=true</script> $& $` $'";
   const hostile=`({children(s,style,w,h){return [{type:'text',x:0,y:0,w,h,text:s.text+' '+typeof document+' '+typeof fetch,strokeOn:false}];}})`;
   const hang=`({children(s,style,w,h,editing){if(editing)while(true){}return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#22c55e'}];}})`;
-  await run(`items=[${JSON.stringify(smartFixture(hostile,{text:attack}))},{...${JSON.stringify(smartFixture(hang))},uid:'hang',x:400},
-    {...${JSON.stringify(smartFixture(''))},uid:'clock',script:SMART_TEMPLATES.liveClock.script,x:700,h:208}];render();`);
+  await run(`(async()=>{
+    const clock={...${JSON.stringify(smartFixture(''))},uid:'clock',script:SMART_TEMPLATES.liveClock.script,x:700};
+    await initializeSmartItem(clock);
+    items=[${JSON.stringify(smartFixture(hostile,{text:attack}))},{...${JSON.stringify(smartFixture(hang))},uid:'hang',x:400},clock];render();
+  })()`);
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
   assert.equal(await preview.evaluate(()=>window.exportEscaped),undefined);
@@ -2174,7 +2347,7 @@ test('live clock, stopwatch and ruler are available as matching source templates
   for(const [key,file,name] of definitions){
     const source=fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8');
     assert.equal(await run(`SMART_TEMPLATES[${JSON.stringify(key)}].script`),source);
-    assert.equal(entries.find(entry=>entry.name===name+' (smart)').items[0].script,source);
+    assert.equal(entries.find(entry=>entry.name===name).items[0].script,source);
     await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();await page.locator('#newSmartObjectBtn').click();
     await page.locator('#smartTemplateSelect').selectOption(key);
     assert.equal(await page.locator('#smartObjectNameInput').inputValue(),name);
@@ -2194,9 +2367,11 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
     await initializeSmartItem(clock);items=[clock];setTool('select');selection=[];render();return clock;
   })()`);
   await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.some(c=>/^\\d{2}:\\d{2}:\\d{2}$/.test(c.text))"));
-  const first=await run("smartChildrenCache.get('smart-test').kids.find(c=>c.type==='text').text");
-  await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids.find(c=>c.type==='text')?.text")!==first,first);
-  assert.deepEqual(await run('items[0].state'),{});
+  const first=await run("items[0].state.time");
+  await page.waitForFunction(first=>__test.run("items[0].state.time")!==first,first);
+  assert.equal(await run('items[0].componentApi'),2);
+  assert.match(await run('items[0].state.time'),/^\d{2}:\d{2}:\d{2}$/);
+  assert.equal(await run("['second','minute','hour','halfDay'].every(port=>typeof items[0].state[port]==='boolean')"),true);
   await run(`(async()=>{const sw={...${JSON.stringify(smartFixture(''))},script:SMART_TEMPLATES.stopwatch.script};await initializeSmartItem(sw);
     items=[sw];selection=[0];editingSmartIdx=0;undoStack=[];redoStack=[];render();})()`);
   await page.waitForFunction(()=>__test.run("smartHandlesCache.get('smart-test')?.hs.length")===2);
@@ -2208,13 +2383,13 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   await click('toggle');
   const started=await run('items[0].state.startedAt');assert.equal(typeof started,'number');
   await page.waitForFunction(()=>{
-    const reading=__test.run("smartChildrenCache.get('smart-test')?.kids[1]?.text");
-    return typeof reading==='string' && reading!=='00:00:00.0';
+    const reading=__test.run("smartChildrenCache.get('smart-test')?.kids.find(child=>/^\\d{2,}:\\d{2}:\\d{2}\\.\\d{3}$/.test(child.text))?.text");
+    return typeof reading==='string' && reading!=='00:00:00.000';
   });
   assert.equal(await run('undoStack.length'),1,'refreshes do not become undo steps');
   // Model a delayed/background redraw: elapsed time must follow the saved timestamp, not tick count.
   await run('items[0].state.startedAt=Date.now()-62300;render();save()');
-  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]/);
+  const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]\d{2}/);
   await page.reload();assert.equal(await run('typeof items[0].state.startedAt'),'number');
   await run('setTool("select");selection=[0];editingSmartIdx=0;render()');
   await click('toggle');assert.equal(await run('items[0].state.startedAt'),null);
@@ -2224,7 +2399,7 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   await click('reset');assert.equal(await run('items[0].state.elapsedMs'),0);
   await run('undo()');assert.equal(await run('items[0].state.elapsedMs'),paused);
   await run('redo()');assert.equal(await run('items[0].state.elapsedMs'),0);
-  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null});
+  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null,observedRun:false});
 }));
 
 test('ruler grows at a fixed drill-template scale and unit switching is undoable and survives saving',async()=>app(async({page,run})=>{
@@ -2605,7 +2780,7 @@ test('fixed libraries block mutations and Iconify while existing smart handles s
   assert.equal(await page.locator('dialog[open]').count(),0);
   assert.equal(iconRequests,0);
   await page.locator('#shapeLibBtn').click();
-  await page.getByRole('button',{name:'Place Clock (smart)',exact:true}).click();
+  await page.getByRole('button',{name:'Place Clock',exact:true}).click();
   let canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+450,canvas.y+240);
   await run('shapePlacementQueue');
   canvas=await page.locator('#canvas').boundingBox();
@@ -2623,10 +2798,10 @@ test('fixed libraries block mutations and Iconify while existing smart handles s
 test('smart authoring can be disabled independently while static library additions remain available',async()=>app(async({page,run})=>{
   await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
-  assert.equal(await page.getByRole('button',{name:'Edit Clock (smart)',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'Edit Drill template',exact:true}).count(),0);
   assert.equal(await page.locator('#newSmartObjectBtn').isVisible(),false);
   assert.equal(await page.locator('#addIconBtn').isVisible(),true,'Iconify is independent of script authoring');
-  await run(`editLibrarySmartSource(shapeLibrary.shapes[6],shapeLibrary.shapes[6].items[0]);
+  await run(`editLibrarySmartSource(shapeLibrary.shapes[8],shapeLibrary.shapes[8].items[0]);
     document.getElementById('newSmartObjectBtn').click();document.getElementById('smartObjectDialogForm').dispatchEvent(new Event('submit',{cancelable:true}));`);
   assert.equal(await page.locator('#smartObjectDialog').isVisible(),false);
   await page.locator('#manageShapesBtn').click();
@@ -2732,8 +2907,50 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'saved previews need no script consent');
   assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0,'browsing the demo runs no smart scripts');
   assert.equal(await run('shapeLibraryDirty'),false);
+  const expectedWorking=JSON.parse(demoLibrary).workingCollection;
+  const canonical={Clock:'builtin:clock:1',Chart:'builtin:chart:1','Live clock':'builtin:liveClock:1',Stopwatch:'builtin:stopwatch:1',Ruler:'builtin:ruler:1'};
+  const expectedCategories={
+    'builtin:clock:1':['Tools & time','Displays'],'builtin:chart:1':['Displays'],
+    'builtin:liveClock:1':['Tools & time','Displays'],'builtin:stopwatch:1':['Tools & time','Displays'],
+    'builtin:ruler:1':['Workshop','Tools & time']
+  };
+  const inspectDemo=()=>run(`({
+    working:shapeLibrary.workingCollection,
+    entries:shapeLibrary.shapes.map(entry=>({id:entry.id,name:entry.name,builtin:builtInShapeEntries.has(entry),
+      canonical:builtInShapeLibrary.find(candidate=>candidate.id===entry.id)===entry,categories:effectiveLibraryCategories(entry),
+      catalogCopies:libraryCatalogEntries().filter(candidate=>candidate.id===entry.id).length})),
+    builtinCount:builtInShapeLibrary.length
+  })`);
+  const loaded=await inspectDemo();
+  assert.equal(loaded.working.length,13);assert.deepEqual(loaded.working,expectedWorking,'the familiar working collection keeps its original order');
+  assert.equal(loaded.entries.filter(entry=>entry.builtin).length,5);
+  assert.equal(loaded.entries.filter(entry=>!entry.builtin).length,8);
+  assert.equal(loaded.entries.some(entry=>entry.name.includes('(smart)')),false,'smart status is no longer repeated in entry names');
+  assert.ok(loaded.entries.some(entry=>entry.name==='Finishing line'));
+  await page.locator('#browseShapesBtn').click();
+  await page.locator('#libraryCollection').selectOption('mine');
+  assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),8,'My shapes contains only the eight demo-owned entries');
+  await page.locator('#libraryCollection').selectOption('builtin');
+  assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),loaded.builtinCount);
+  for(const [name,id] of Object.entries(canonical)){
+    const entry=loaded.entries.find(entry=>entry.name===name);
+    assert.equal(entry.id,id);assert.equal(entry.builtin,true);assert.equal(entry.canonical,true);
+    assert.equal(entry.catalogCopies,1,name+' appears once in the catalog');
+    assert.deepEqual(entry.categories,expectedCategories[id]);
+    const card=page.locator('#libraryBrowserGrid [data-entry-id='+JSON.stringify(id)+']');
+    assert.equal(await card.count(),1);assert.equal(await card.locator('.library-origin').textContent(),'Built-in');
+  }
+  const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.deepEqual(exported.workingCollection,expectedWorking);
+  assert.deepEqual(exported.builtinCategoryTags,expectedCategories,'demo-specific memberships are exported separately from canonical definitions');
+  const revision=await run('shapeLibraryRevision');await importLibrary(page,exported);
+  await page.waitForFunction(previous=>__test.run('shapeLibraryRevision')>previous,revision);
+  assert.deepEqual(await inspectDemo(),loaded,'export/reimport keeps categories, pins, order, and canonical identity without creating personal copies');
+  assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the canonical cached previews remain inert after reimport');
+  assert.equal(await page.evaluate(()=>window.__smartWorkerStarts),0);
+  if(await page.locator('#libraryBrowser').isVisible())await page.locator('#closeLibraryBrowserBtn').click();
   let canvas=await page.locator('#canvas').boundingBox();
-  for(const [name,x] of [['Starboard tack boat',180],['Clock (smart)',480],['Bar chart (smart)',820]]){
+  for(const [name,x] of [['Starboard tack boat',180],['Clock',480],['Chart',820]]){
     if(await page.locator('#shapePicker').isHidden()) await page.locator('#shapeLibBtn').click();
     await page.getByRole('button',{name:'Place '+name,exact:true}).click();
     canvas=await page.locator('#canvas').boundingBox();
@@ -2773,14 +2990,14 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
 }}));
 
 test('contributor demo entries keep their source scripts, working controls, and saved state',async()=>app(async({page,run})=>{
-  const sourceFiles=[['Drill template (smart)','drill-template.js'],['Race start timer (smart)','race-start-timer.js']];
+  const sourceFiles=[['Drill template','drill-template.js'],['Race start timer','race-start-timer.js']];
   const entries=JSON.parse(demoLibrary).shapes;
   for(const [name,file] of sourceFiles){
     assert.equal(entries.find(entry=>entry.name===name).items[0].script.replace(/\r\n/g,'\n'),
       fs.readFileSync(path.join(__dirname,'..','examples',file),'utf8').replace(/\r\n/g,'\n'));
   }
   await page.waitForFunction(count=>__test.run('shapeLibrary?.shapes.length')===count,demoShapeCount);
-  for(const [name,x] of [['Drill template (smart)',300],['Race start timer (smart)',800]]){
+  for(const [name,x] of [['Drill template',300],['Race start timer',800]]){
     await page.locator('#shapeLibBtn').click();await page.getByRole('button',{name:'Place '+name,exact:true}).click();
     const canvas=await page.locator('#canvas').boundingBox();await page.mouse.click(canvas.x+x,canvas.y+260);
     await run('shapePlacementQueue');
@@ -2849,7 +3066,7 @@ test('startup libraries keep missing smart previews inert until the library is o
   const library={shapes:[{name:'Startup smart',items:[smartFixture(slowClickScript)]}]};
   await page.route('**/shapes-library.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(library)}));
   await page.reload();
-  await page.waitForFunction(()=>document.querySelector('#shapeLibraryStatus').textContent.includes('1 shape'));
+  await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===1);
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
   await page.locator('#shapeLibBtn').click();
@@ -3283,9 +3500,32 @@ test('Manage opens existing smart source without executing it; cancelling an asy
   assert.equal(await page.getByRole('button',{name:'Edit Box',exact:true}).count(),0);
   await page.getByRole('button',{name:'Edit Counter',exact:true}).click();
   assert.equal(await page.locator('#smartObjectNameInput').inputValue(),'Counter');
+  assert.equal(await page.locator('#smartObjectNameField').isHidden(),true,'editing an existing source does not offer library renaming');
+  assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true,'the hidden creation-only field is excluded from editing');
+  assert.equal(await page.locator('#smartObjectScriptInput').evaluate(element=>element===document.activeElement),true,'source editing focuses the script');
   assert.equal(await page.locator('#smartObjectScriptInput').inputValue(),slowClickScript);
+  assert.deepEqual(await page.locator('#smartObjectScriptInput').evaluate(input=>({start:input.selectionStart,top:input.scrollTop,left:input.scrollLeft})),
+    {start:0,top:0,left:0},'opening a script starts at its first line');
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),false);
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'reading code alone does not execute it');
+  const assertEditorFits=async(width,height)=>{
+    const dialog=await page.locator('#smartObjectDialog').boundingBox(),editor=await page.locator('#smartObjectScriptInput').boundingBox();
+    const buttons=await Promise.all(['#smartObjectDialogCancel','#smartObjectDialogSubmit'].map(selector=>page.locator(selector).boundingBox()));
+    assert.ok(dialog.x>=-.5 && dialog.y>=-.5 && dialog.x+dialog.width<=width+.5 && dialog.y+dialog.height<=height+.5,
+      'the source dialog fits the '+width+'×'+height+' viewport');
+    assert.ok(editor.width>0 && editor.height>0 && editor.x>=dialog.x && editor.x+editor.width<=dialog.x+dialog.width+.5,
+      'the script editor stays inside the dialog');
+    assert.ok(editor.y+editor.height<=Math.min(...buttons.map(button=>button.y))+.5,'the script editor does not cover Save or Cancel');
+    for(const button of buttons)assert.ok(button.y>=0 && button.y+button.height<=height+.5 && button.x>=0 && button.x+button.width<=width+.5,
+      'Save and Cancel stay visible without scrolling the dialog');
+    return {dialog,editor};
+  };
+  const desktop=await assertEditorFits(1280,900);
+  assert.ok(desktop.dialog.width>850 && desktop.editor.width>800,'desktop source editing uses the available width');
+  assert.ok(desktop.editor.height>350,'desktop source editing provides substantially more than the old ten-row area');
+  await page.setViewportSize({width:390,height:844});await assertEditorFits(390,844);
+  await page.setViewportSize({width:844,height:390});await assertEditorFits(844,390);
+  await page.setViewportSize({width:1280,height:900});
   await page.locator('#smartObjectScriptInput').fill('({children(){return [];}})');
   await page.locator('#smartObjectDialogCancel').click();
   assert.equal(await run('shapeLibrary.shapes[0].items[0].script'),slowClickScript);
@@ -3307,6 +3547,9 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
   await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
   await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
+  assert.equal(await page.locator('#smartObjectNameField').isHidden(),true);
+  assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true);
+  await page.locator('#smartObjectNameInput').evaluate(input=>{input.value='Renamed by a stale form';});
   await page.locator('#smartObjectScriptInput').fill('({initState(){return {};}})');
   await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>document.querySelector('#smartObjectDialogError').textContent.includes('children'));
@@ -3315,6 +3558,7 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
   const after=await downloadedJSON(page,run,'exportShapeLibrary()');
   assert.equal(after.shapes.length,1,'saving updates the entry instead of adding a duplicate');
+  assert.equal(after.shapes[0].name,'Color box','saving source ignores changes to the hidden creation-only name field');
   assert.deepEqual(after.shapes[0].items[0],{...before.shapes[0].items[0],script:newScript});
   assert.notEqual(after.shapes[0].thumbnail.png,before.shapes[0].thumbnail.png);
   assert.equal(await run('items[0].script'),oldScript,'placed instances keep their own definition');
@@ -3326,6 +3570,9 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.locator('#smartObjectDialogCancel').click();
   await page.locator('#newSmartObjectBtn').click();
   assert.equal(await page.locator('#smartTemplateRow').isVisible(),true);
+  assert.equal(await page.locator('#smartObjectNameField').isVisible(),true,'creation restores the name field after source editing');
+  assert.equal(await page.locator('#smartObjectNameInput').isEnabled(),true);
+  assert.equal(await page.locator('#smartObjectNameInput').evaluate(element=>element===document.activeElement),true,'new-shape creation still starts with its name');
   await page.locator('#smartObjectNameInput').fill('New shape');
   await page.locator('#smartObjectScriptInput').fill(newScript);await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
@@ -3342,6 +3589,7 @@ test('composite library entries expose each smart script and edit only the chose
   await page.locator('#smartObjectScriptInput').fill(updated);await page.locator('#smartObjectDialogSubmit').click();
   await page.waitForFunction(()=>!document.querySelector('#smartObjectDialog').open);
   const exported=await downloadedJSON(page,run,'exportShapeLibrary()');
+  assert.equal(exported.shapes[0].name,'Composite');
   assert.equal(exported.shapes[0].items[0].script,first.script);
   assert.equal(exported.shapes[0].items[1].type,'rect');
   assert.deepEqual(exported.shapes[0].items[2].state,{n:2});

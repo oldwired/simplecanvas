@@ -9,6 +9,11 @@ on:
       - settings.json
       - reallysimple/settings.json
       - .github/workflows/pages.yml
+      - .github/workflows/browser-tests.yml
+      - package.json
+      - package-lock.json
+      - tests/**
+      - tools/update-example-workspace.cjs
   workflow_dispatch:
 
 permissions:
@@ -21,7 +26,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    uses: ./.github/workflows/browser-tests.yml
+    permissions:
+      contents: read
+
   deploy:
+    needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:

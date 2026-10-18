@@ -404,7 +404,7 @@ test('high impedance is permitted only on declared boolean tri-state outputs',as
   }
 }));
 
-test('high impedance never masks later binding, type, option, cycle, or computation errors',async()=>app(async({run})=>{
+test('high impedance never masks later binding, type, option, or computation errors',async()=>app(async({run})=>{
   const z=smart('z',triStateSourceScript,{enabled:false,value:true});
   const blocked=smart('blocked',booleanConsumerScript,{}, {bindings:{value:{uid:'z',port:'value'}}});
   const shape=(port={type:'boolean'})=>`({apiVersion:2,inputs:{first:{type:'boolean'},later:${JSON.stringify(port)}},
@@ -417,7 +417,6 @@ test('high impedance never masks later binding, type, option, cycle, or computat
     {name:'missing required literal',expected:/Missing value or binding/},
     {name:'wrong literal type',literal:3,expected:/matching boolean/},
     {name:'unsupported option',port:{type:'string',options:['allowed']},literal:'other',expected:/Unsupported value/},
-    {name:'cycle after Z input',binding:{uid:'subject',port:'value'},expected:/cycle/},
     {name:'failed computation after Z input',binding:{uid:'broken',port:'value'},expected:/Computation failed/},
     {name:'missing compute hook after Z input',literal:true,noCompute:true,expected:/require compute/}
   ];
@@ -682,7 +681,7 @@ test('offline HTML shows component failures while independent components remain 
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-component-error]').length>=2);
   const messages=await preview.locator('[data-component-error]').allTextContents();
-  assert.ok(messages.some(message=>/cycle|cyclic/i.test(message)));
+  assert.ok(messages.some(message=>/unknown|cycle|cyclic/i.test(message)));
   assert.ok(messages.some(message=>/version|unsupported/i.test(message)));
   const healthy=preview.locator('[data-smart-index="2"]');
   await preview.waitForFunction(()=>document.querySelector('[data-smart-index="2"]').textContent==='Source:8');

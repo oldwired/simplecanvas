@@ -2,6 +2,7 @@
 // Disable or a timing change restarts the sequence. Late wakes emit one phase, never a burst.
 ({
   apiVersion:2,
+  wakePolicy:'latest',
   inputs:{seconds:{type:'number',default:1},width:{type:'number',default:0.1},enable:{type:'boolean',default:true}},
   outputs:{value:{type:'boolean'}},
   initState(){return {value:false,showIndicators:true};},
@@ -26,15 +27,16 @@
       else{
         phase=memory.phase;nextAt=memory.nextAt;
         // A late wake preserves both levels: each phase starts from the actual wake time.
-        if(now>=nextAt){
+        if(!context.historical && now>=nextAt){
           phase=phase==='high'?'low':'high';
           nextAt=now+(phase==='high'?inputs.width:inputs.seconds-inputs.width)*1000;
         }
       }
     }
-    if(nextAt!==null && (!Number.isFinite(nextAt) || nextAt<=now))throw new Error('Pulse generator wake time is outside the numeric range');
+    if(nextAt!==null && (!Number.isFinite(nextAt) || (!context.historical && nextAt<=now)))throw new Error('Pulse generator wake time is outside the numeric range');
     return {state:{...state,value:phase==='high'},memory:{seconds:inputs.seconds,width:inputs.width,enable:inputs.enable,phase,nextAt},nextWakeAt:nextAt};
   },
+  publish(state){if(typeof state.value!=='boolean')throw new Error('Output state must contain a Boolean value');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;

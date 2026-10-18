@@ -3,6 +3,11 @@
 The application still runs by opening `index.html`; these dependencies are only for development.
 
 Install the test tools with `npm install` and `npx playwright install chromium`, then run `npm test`.
+Pull requests, Pages deployment, and tagged releases use the shared **Browser tests** workflow.
+It installs the locked npm dependencies plus each Playwright browser and its system libraries,
+then runs the full suite with two test files at a time in separate Chromium and WebKit jobs.
+Pages publishing and release creation require both jobs to pass.
+
 To use an existing Chromium-based browser, set `BROWSER_EXECUTABLE` to its executable path.
 For WebKit, install `npx playwright install webkit`, then run `BROWSER_ENGINE=webkit npm test`.
 
@@ -24,7 +29,7 @@ still requires a manual integration check.
 
 An iPad-sized touch scenario exercises endpoint cycling and double-tap point editing in Chromium
 and WebKit. Mouse checks cover undo/reload/import, curve tangents, and preserving heads during drags.
-The raw touch-drag test uses Chromium's CDP interface and is skipped in WebKit. A physical iPad
+Two raw touch-drag tests use Chromium's CDP interface and are skipped in WebKit. A physical iPad
 Safari pass is still needed before release to check native touch behavior and the on-screen keyboard.
 
 For the smart-shape rendering and library-preview benchmark, run
@@ -40,8 +45,10 @@ editing and undo, drawing with only the HTML file deployed, and an import arrivi
 library response.
 The contributor shapes bundled into the demo must match their `.js` example sources; their actual
 handles, undo/redo, sketch exports, and saved state are exercised from the shipped library file.
+Demo checks retain thirteen pins while distinguishing eight personal definitions from five reused
+canonical built-ins, including category overrides and import/export without duplicate catalog entries.
 Timed-shape checks cover autonomous redraws, interval bounds, hidden/inactive document cleanup,
-unchanged history/storage, live clock updates, stopwatch controls and timestamp recovery, matching
+unchanged history/storage for presentation-only refreshes, live clock updates, stopwatch controls and timestamp recovery, matching
 example/template sources, and ruler units and resizing. Physical-scale checks measure full-inch
 tick spacing in an actual 2× PNG and preserve fractional SVG dimensions for actual-size printing.
 Print-preview checks cover the Actual size/Landscape defaults, actual-size units, fitting and the
@@ -62,7 +69,7 @@ Connected-component regressions in `tests/components.test.cjs` cover the Number 
 input-picker workflow, scalar computation, actual drawing/SVG results, JSON and undo/redo,
 duplicate/clipboard binding remapping, cross-tab UID isolation, and downloaded offline HTML.
 They check rapid changes, unsupported-version recovery, legacy raw-state compatibility, missing
-or incompatible ports, source deletion, cycles, and isolation of failed computations. Format 4
+or incompatible ports, source deletion, non-settling loops, and isolation of failed computations. Format 4
 retains component API markers and wiring; earlier drawing formats remain readable.
 The `smartComponents` deployment switch is checked for disabled authoring, preserved legacy
 authoring, and working saved connections, copies, deployed-library placements, and offline HTML.
@@ -86,6 +93,10 @@ movement, independent rotation permissions, rotation cancellation, absolute Shif
 shared with the editor, independent height resizing, and width extension at fixed scale,
 editor-only visuals/actions, static script permissions,
 state across tabs with colliding UIDs, script/source escaping, and hung-script fallback and isolation.
+Rotated-interaction checks use the pointer coordinates delivered by the browser. WebKit's injected
+native mouse events use whole CSS pixels, so fractional requested coordinates are not an exact reference.
+Movement, free rotation, resize amounts, and scripted values are checked against the delivered
+events; anchoring, snapped angles, and vector scale keep their strict numerical assertions.
 
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.
@@ -94,17 +105,67 @@ Library browser regressions in `tests/library-browser.test.cjs` exercise direct 
 expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
 metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the
 threshold/AND/indicator example through Inputs and operate the actual downloaded HTML offline.
+Category checks cover multiple memberships, create/rename/remove, built-in organization overrides,
+empty-category preservation, legacy single-category imports, and separate search Keywords.
+Removing a category preserves shapes, pins, and other memberships. Shared Library actions,
+Source filtering, and Collapse library are checked without changing the compact picker workflow.
+Workspace saves retain placed scripts/state/connections but exclude library entries, pins, and
+category organization; those have separate browser persistence and library export/import.
+Individual transfer checks in `tests/library-transfer.test.cjs` use real shape downloads and
+file imports. They cover source-aware Copy/Duplicate actions, additive imports and name
+collisions, preserved categories and attribution, inert smart previews, independently wired
+group placements, unresolved external connections, invalid-file rejection, and feature guards.
+Exporting one shape leaves the library's unexported-change status intact.
+
+`tests/library-persistence.test.cjs` checks automatic IndexedDB storage of personal definitions,
+scripts, inert previews, categories, built-in overrides, and Working collection pins across reloads.
+It covers restored-library precedence over hosted starters, URL-path isolation, fixed/disabled
+library settings, and visible save-failure recovery. Export status remains separate from browser
+save status; restoring library data does not execute smart scripts or bypass preview consent.
+
+Focused template-catalog checks cover the seven added entries: Clock, Arrow, Arc, Timer,
+Chart, Minimal, and Blank. They verify source parity and
+availability for direct placement and pinning in the 63-entry offline catalog.
 `tests/library-components.test.cjs` checks bundled/example source parity, sandboxed boolean truth
 tables for all eight gates, numeric inversion, threshold boundaries, Math operations and arithmetic
 errors, visible unavailable inputs, and editor-only configuration controls. Indicator and naming
 tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
 input choices from literals and bindings in the editor and offline exports. Failure tests ensure
 unavailable views replace stale results, recover correctly, and leave independent controls usable.
-A catalog-wide naming check renames every built-in component through Inputs and verifies its
+`tests/text-input-contracts.test.cjs` and `tests/text-memo-contracts.test.cjs` cover typed
+submission queues, validation, literal text, Memo trigger priority, blank lines, and bounded storage.
+`tests/text-components.test.cjs` checks editor and offline-reader entry, repeated submissions,
+Pause/Resume, independent instances, restoration without replay, and literal rendering. Text and
+Number input entry happens in place, with Enter/Submit keeping focus and Escape/outside-click
+discarding drafts. Appearance settings control optional submission state, counts, names, and hints;
+errors remain visible when those details are hidden.
+`tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
+unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
+late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
+A catalog-wide naming check renames every built-in API v2 component through Inputs and verifies its
 caption on canvas, in SVG, and in offline HTML.
 Tri-state checks distinguish healthy Z from missing inputs and false, validate output metadata,
 connect consumers while disabled, and exercise recovery in the editor and offline HTML. Other
-invalid inputs and cycles must not be hidden by a Z input.
+invalid inputs and non-settling loops must not be hidden by a Z input.
+
+`tests/live-clock.test.cjs` checks timezone inputs, second pulses connected to Counter, synchronized
+time-string consumers, independent instances, invalid-zone validation, reload, and offline HTML.
+The browser-independent `tests/live-clock-contracts.test.cjs` controls wall and active-document time
+separately to check local/IANA formatting, DST and noon/midnight boundaries, pulse widths, missed
+ticks, timezone changes, fresh observation, and pure snapshots.
+
+`tests/stopwatch.test.cjs` checks run/reset input connections, manual Start/Pause and Reset,
+published elapsed seconds, independent instances, saved timestamp recovery, and offline HTML.
+The browser-independent `tests/stopwatch-contracts.test.cjs` uses controlled wall time to check
+pause/resume totals, milliseconds, command/manual precedence, held reset, and pure computation.
+The tests distinguish the live display from the single stopped-result output: presentation
+refreshes do not publish running elapsed time, schedule tick transitions, or autosave each tick.
+
+`tests/timer.test.cjs` checks the countdown's settings and dial controls, run/reset bindings,
+manual actions, connected tick/reached outputs, saved progress, and offline HTML.
+The browser-independent `tests/timer-contracts.test.cjs` uses controlled time for unit boundaries,
+short tick pulses, pause/resume, zero/restart, held reset/run, configuration resets, missed ticks,
+reload observation, and pure settled snapshots.
 
 `tests/temporal-components.test.cjs` exercises the bounded transition contract, transport Delay,
 rising-edge Counter/reset, Random integer, both typed Sample & hold entries, and Trigger pushbutton
@@ -120,7 +181,7 @@ offline HTML countdown/reset behavior. Run with `node --test tests/counter-modes
 prefixed with `BROWSER_ENGINE=webkit`.
 
 `tests/shift-register.test.cjs` checks Boolean and numeric cascades using a shared pulse and
-`shiftedOut`, independent stored stages, pure inspection, and restoration without phantom shifts.
+current `value`, independent stored stages, pure inspection, and restoration without phantom shifts.
 Editor checks configure stages through Inputs, connect a parallel output, and exercise Trigger
 sampling, JSON reload, and actual offline HTML shifting/reset. Run with
 `node --test tests/shift-register.test.cjs`, optionally prefixed with `BROWSER_ENGINE=webkit`.
@@ -144,5 +205,51 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 35 API v2 catalog definitions match their editable source files and retain
+verify that all 58 API v2 catalog definitions match their editable source files and retain
 their instance names in canvas, SVG, and offline HTML.
+
+
+`tests/feedback-runtime.test.cjs` exercises bounded settling, simultaneous stored-state publication,
+unknown Boolean logic, and gate-built memory through the real sandbox.
+`tests/feedback-controls.test.cjs` checks the editor and exported Pause/Step/Resume controls.
+`tests/feedback-review.test.cjs` checks compact retained wiring keys, stored outputs through Z
+in the graph, Inputs preview and offline reader, and per-tab Pause/time across Undo/Redo.
+`tests/import-integrity.test.cjs` checks Open sketch ownership across asynchronous file/picker
+steps and tab switches, plus bounded geometry that cannot overflow during import rounding.
+`tests/sandbox-lifecycle.test.cjs` checks that returned hooks cannot leave timer, microtask, or
+async work running indefinitely, including in standalone HTML, and that realm reuse stays bounded.
+`tests/feedback-deadlines.test.cjs` verifies chronological overdue deadlines, prevents later data
+from reaching an earlier clock edge, and checks atomic cancellation and bounded-backlog recovery.
+`tests/temporal-wake-policies.test.cjs` checks queued/latest metadata and confirms that periodic,
+phase-based, and wall-clock components preserve their no-catch-up behavior during historical replay.
+`tests/sequential-components.test.cjs` checks the dedicated latch/register/counter contracts,
+three-valued gate truth tables, pure publication, rendering, and bundled source parity.
+
+`tests/data-import-contracts.test.cjs` checks quoted/multiline CSV/TSV, comma/semicolon/tab parsing and detection,
+type inference, exact numeric-looking identifiers, flat JSON rows, nullable typed cells, reference
+validation, and import budgets without a browser. `tests/data-component-contracts.test.cjs` covers
+typed filtering, chained row references,
+missing values, literal table rendering, and positive/negative chart data. The browser suite
+`tests/data-components.test.cjs` exercises real import controls, delimiter selection and preview refresh,
+atomic Save/Cancel, malformed and oversized imports, independent instances, dataset persistence/copying,
+and the offline HTML slice.
+
+`tests/example-workspace.test.cjs` validates all seventeen shipped tabs and preserves the original
+control/HTML walkthrough. `tests/feedback-workspace.test.cjs` verifies the three practical counter
+loops, dedicated/NOR/NAND latches, shared-edge storage, ring/Johnson/decoded-decade sequences,
+positive-delay feedback, and the offline reader. Run both browser suites with Chromium and WebKit:
+
+```sh
+node --test tests/example-workspace.test.cjs tests/feedback-workspace.test.cjs
+BROWSER_ENGINE=webkit node --test tests/example-workspace.test.cjs tests/feedback-workspace.test.cjs
+```
+
+After changing bundled scripts, the workspace JSON, or the export runtime, regenerate the shipped
+reader with `node tools/update-example-workspace.cjs`. This refreshes each placed component from
+its editable source file, imports the JSON through the real editor, and downloads its HTML export.
+The JSON remains the editable layout and wiring source; new component UIDs must be added to the
+generator's source map. Both artifacts are staged before either is replaced; an export failure
+keeps the previous pair, and a failed publication rolls back replaced files. Concurrent edits abort
+publication. If the filesystem also prevents rollback, the tool reports retained recovery copies.
+`tests/example-workspace-generator.test.cjs` covers successful publication, export and second-file
+failures, concurrent edits, and recovery-copy retention without launching a browser.
