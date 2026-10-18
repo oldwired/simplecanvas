@@ -6,6 +6,7 @@
   initState(){ return {}; },
   initStyle(){ return { w:260, h:120, fontSize:24, strokeOn:false, fillColor:'#2563eb' }; },
   compute(inputs,state){ return { percentage:Math.max(0,Math.min(100,inputs.value)) }; },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -28,7 +29,7 @@
     return [
       {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
       {type:'text',x:0,y:0,w,h:h*.23,...this._caption(io.name,'Gauge',w,h*.23,style),align:'center',color:style.textColor,strokeOn:false,fill:false},
-      {type:'text',x:0,y:h*.25,w,h:h*.28,text:value+'%',align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},
+      {type:'text',x:0,y:h*.25,w,h:h*.28,text:this._number(value)+'%',align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},
       {type:'rect',x:8,y:h*.6,w:Math.max(1,w-16),h:h*.25,fill:false,strokeOn:true,color:style.color,size:1},
       {type:'rect',x:8,y:h*.6,w:Math.max(0,w-16)*value/100,h:h*.25,fill:true,fillColor:style.fillColor,strokeOn:false}
     ];

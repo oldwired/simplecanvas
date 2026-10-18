@@ -7,6 +7,7 @@
   initState(){return {showIndicators:true};},
   initStyle(){return {w:240,h:150,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   compute(inputs){return {value:-inputs.value};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -27,7 +28,7 @@
   children(state,style,w,h,editing,io){
     const inputs=io?.inputs||{},outputs=io?.outputs||{},scale=Math.min(w/240,h/150);
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
-    const label=value=>Number.isFinite(value)?String(value):'—';
+    const label=value=>this._number(value);
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor,strokeOn:false,fill:false});
     const cy=h*.49,available=Number.isFinite(inputs.value)&&Number.isFinite(outputs.value);
     const children=[

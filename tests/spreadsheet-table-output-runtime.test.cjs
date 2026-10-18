@@ -48,7 +48,8 @@ async function readerClick(page,index,handle){const p=await page.locator('[data-
 async function handles(run,index){return run(`requestSmartCall(items[${index}],'handles',[items[${index}].state,items[${index}].w,items[${index}].h,smartResolvedStyle(items[${index}])])`);}
 
 test('Inputs enables a real Worker table output; bad cells withhold the complete result and repair restores it',async()=>app(async({page,run,context})=>{
-  const state=JSON.parse(JSON.stringify(def('spreadsheet').initState()));
+  const state={...JSON.parse(JSON.stringify(def('spreadsheet').initState())),tableRange:'A2:C4',tableColumns:'energy:number\nprice:number\ncost:number',
+    cells:{A1:'kWh',A2:'10',A3:'12.5',A4:'7',B1:'Price',B2:'0.3',B3:'0.3',B4:'0.32',C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4'}};
   await seed(run,[item('spreadsheet','sheet',state),item('data-table','result',{}, {x:760,y:100,bindings:{data:{uid:'sheet',port:'table'}}})]);
   assert.ok(scripts.spreadsheet.length<=50000);assert.equal((await record(run)).caps.outputs.table,undefined);
   await run('selection=[0];editingSmartIdx=null;render();');await page.locator('#componentBindingsBtn').click();

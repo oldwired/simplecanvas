@@ -32,7 +32,7 @@
     }
     return {text:lines.join('\n'),font:(style.font||'600 20px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px')};
   },
-  _label(value){return value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):Number.isFinite(value)?String(value).length<10?String(value):Number(value.toPrecision(3)).toString():'—';},
+  _label(value){return value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):'—';},
   children(state,style,w,h,editing,io={}){
     const scale=Math.min(w/320,h/230),color=style.textColor||style.color,inputs=io.inputs||{},outputs=io.outputs||{};
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color,strokeOn:false,fill:false});

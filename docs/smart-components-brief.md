@@ -398,6 +398,14 @@ output range, supports reversed output bounds, and clamps by default; disabling 
 extrapolation. Number function offers abs, round, floor, and ceil, with Math.round's half-toward-
 positive-infinity rule. Invalid ranges or nonfinite results become unavailable.
 
+Ordinary built-in numeric labels use up to eight significant digits, keeping safe integers exact.
+This presentation policy applies across scalar controls, routing/storage readouts, timing captions,
+dataset/chart values, and general Spreadsheet cells. Input editing, stored values, calculations,
+connections, and data downloads retain the original precision. Explicit Spreadsheet formats and
+dedicated time/measurement formats retain their chosen precision; strings remain literal text.
+In tab 3, **Numeric tools**, input `2.8` now displays `56%` on the gauge while the connected output
+retains its full floating-point value, `55.99999999999999`.
+
 Number control exposes min/max/step inputs (defaults 0/100/1), a slider, step buttons, and direct
 number entry. Negative and fractional values work. All interactions share a bounded step grid
 anchored at min, with max also reachable. Direct entry uses a host-owned number dialog in the
@@ -861,7 +869,7 @@ for stage 3. The milestone above covers the agreed practical feedback and storag
 | Small memory blocks and register files; bounded FIFO memory | Set capacity/address limits, read/write timing and same-address collisions, reset/clear rules, and persistence. |
 | Additional oscillators and timers constructed with feedback | Establish startup conditions, time boundaries, useful frequency limits, and inspection controls for real examples. |
 | LFSR sequence/pseudorandom generator | Choose bounded register width, taps/seed rules, repeatability, and serial versus numeric outputs. |
-| Consistent floating-point support | Generalize Sample & hold (integer), add floating random values, and agree decimal formatting and optional equality tolerance; counts and bit patterns remain integer-only. |
+| Additional floating-point support | Generalize Sample & hold (integer), add floating random values, and agree optional equality tolerance; display formatting is implemented, while counts and bit patterns remain integer-only. |
 | Function generator | Define waveforms, sampling rate, frequency/amplitude/offset/phase controls, late updates, and reset/enable behavior. |
 | Scope / oscilloscope | Define timestamped channels, trigger and pause, bounded history, unavailable values, and missed samples. |
 | FFT / spectrogram display | Define sample rate, windows, overlap, scales, bounded histories, startup, gaps, and processing limits. |
@@ -1002,6 +1010,15 @@ required default, optional label, numeric min/max/positive step, and string opti
 these fields and rebuilds port choices. Port-defining settings are not live ports; transitions
 and reader interactions must not change the declared port layout. This supports a bounded channel
 count while retaining stable names (`in0`, `out0`, etc.) for connection identity.
+
+An optional API v2 `configure(nextState, previousState)` hook runs when an author changes an
+Inputs setting, before the proposed ports are resolved. Draft-only settings, including choice
+lists, also pass through the hook when Save is pressed; the author reviews the configuration
+and saves again to apply it. It returns `null` to accept the proposed
+state unchanged, or `{state, confirm?}` with an optional confirmation message of at most 500
+characters. The host validates the state and obtains confirmation before staging it. Declining
+restores the previous draft; Save applies one undoable change and Cancel preserves the original
+instance. Runtime transitions and HTML reader interactions do not invoke this authoring hook.
 
 A `kind:'number'` handle declares a finite value and optional min/max/step. A `kind:'text'` handle
 declares a string and optional maxLength/required/placeholder. The host owns the entry dialog,
@@ -1244,6 +1261,8 @@ Trigger connects to Dataset's reload input.
 
 **Connected spreadsheet** adds a small authored formula grid with typed signal ports:
 
+- New built-in instances and script initialization use an empty 6×6 grid with no formula-declared
+  inputs or outputs. Demonstration values and formulas are explicit example-workspace content.
 - `INPUT("name")` declares a numeric input; `INPUT("name","boolean"|"string")` declares Boolean or text inputs.
   `OUTPUT(value,"name")` publishes that argument as a numeric, Boolean, or string signal. Multiple
   OUTPUT calls in one cell publish independently, even when the cell combines their results.
@@ -1273,6 +1292,14 @@ Trigger connects to Dataset's reload input.
   values and formulas. References to dataset cells use their actual scalar values. Row/column edits
   cannot move or delete the reserved data area. Formatting, column widths, copying cell text, and
   formula reference picking still work there. Source changes flow through in the editor and HTML.
+- Selecting Dataset or expanding the displayed rectangle checks for nonempty cell overlap and
+  formula declarations that become invalid, including reserved `data`/`startRow` input conflicts
+  and ambiguous output types that clearing the cells can resolve. A
+  confirmation offers to discard all cell contents, formulas, and cell formatting, retaining grid
+  size, column widths, and settings. Declining restores the previous draft configuration; accepting
+  stages the clear until Inputs Save, as one undoable change. Inputs Cancel keeps the original
+  sheet. Formulas outside the linked rectangle are retained without a prompt when their port
+  declarations remain valid.
 - `DATA("port",row,"column",type?)`, `COLUMN("port","column")`, and `ROWS("port")` declare named
   table inputs and read the complete selected table, including rows outside the visible area.
   Dataset row positions start at zero and follow the current filtered/sorted order. DATA defaults

@@ -1,6 +1,7 @@
 // View or edit shared dataset records. The host validates every write; drawing stays read-only.
 ({
   apiVersion:2,
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
   settings:{maxRows:{type:'number',default:12,min:1,max:12,step:1,label:'Visible rows'},maxColumns:{type:'number',default:8,min:1,max:8,step:1,label:'Visible columns'},showCounts:{type:'boolean',default:true,label:'Show row count'},editDataset:{type:'boolean',default:false,label:'Edit dataset records'},allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'}},
   inputs:{data:{type:'table'},startRow:{type:'number',default:0},startColumn:{type:'number',default:0}},
@@ -15,7 +16,7 @@
   },
   _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400,align='left'){
     const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;
-    const chars=Array.from(String(value).replace(/\s+/g,' '));let text='',used=0;
+    const chars=Array.from((typeof value==='number'?this._number(value):String(value)).replace(/\s+/g,' '));let text='',used=0;
     for(let i=0;i<chars.length;i++){
       const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;
       if((used+next+remaining)*size>w){text+='…';break;}

@@ -43,6 +43,12 @@ async function openInputs(page,run,index=0){
   await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
 }
 async function saveInputs(page){await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);}
+async function confirmConfiguration(page,change,accept){
+  page.removeAllListeners('dialog');const pending=page.waitForEvent('dialog'),changing=change();
+  const dialog=await pending;assert.equal(dialog.type(),'confirm');assert.match(dialog.message(),/Discard all cell contents, formulas and cell formatting\?/);
+  await (accept?dialog.accept():dialog.dismiss());await changing;
+  await page.waitForFunction(()=>!__test.run('componentDialogSession?.rendering')&&!document.querySelector('#componentBindingFields').disabled);
+}
 async function stagedRows(page,count){await page.waitForFunction(count=>__test.run(`(()=>{const s=componentDialogSession,r=s?.rows.find(r=>r.name==='data');if(!r)return false;try{const ref=JSON.parse(r.input.value);return ref.datasetId!=='fleet'&&s.datasets[ref.datasetId]?.rows.length===${count};}catch{return false;}})()`),count);}
 async function snapshot(run){return run('({items:clone(items),datasets:clone(datasets),undo:clone(undoStack),redo:clone(redoStack)})');}
 async function readerText(page,index,text){await page.waitForFunction(({index,text})=>{
@@ -56,6 +62,105 @@ async function openReader(page,run,context){
   reader.on('request',r=>{if(/^https?:/.test(r.url()))requests.push(r.url());});await reader.goto(pathToFileURL(file).href);return {reader,errors,requests};
 }
 const fleet={name:'Fleet',columns:[{key:'Boat',name:'Boat',type:'string'},{key:'Points',name:'Points',type:'number'}],rows:[['Aurora',8],['Borealis',2],['Calypso',5]]};
+const fleetSource=()=>item('data-source','fleet-source',{}, {x:1050,y:700,w:280,h:150,inputValues:{data:{datasetId:'fleet'}}});
+
+test('the built-in spreadsheet is blank and binds a dataset without clearing cells first',async()=>app(async({page,run})=>{
+  const confirmations=[];page.on('dialog',dialog=>confirmations.push(dialog.message()));
+  const definition=await run("clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='spreadsheet'))");
+  assert.deepEqual(definition.items[0].state.cells,{});assert.deepEqual(definition.ports,{inputs:{},outputs:{}});
+  await seed(run,[{...definition.items[0],uid:'sheet',x:60,y:160},fleetSource()],{fleet});
+  assert.deepEqual(await outputs(run),{});assert.deepEqual(await childrenText(run),[]);
+  await openInputs(page,run);await page.getByLabel('Grid source',{exact:true}).selectOption('Dataset');
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.equal(await run('items[0].state.source'),'Dataset');assert.deepEqual(await run('items[0].state.cells'),{});
+  assert.ok((await childrenText(run)).includes('Aurora'));assert.deepEqual(await run('datasets.fleet'),fleet);
+  assert.deepEqual(confirmations,[],'empty sheets need no discard confirmation');
+}));
+
+test('binding over authored spreadsheet cells confirms a staged discard and supports cancel and undo',async()=>app(async({page,run})=>{
+  const state={source:'Cells',cols:5,rows:6,dataColumns:2,dataRows:3,weights:[2,1,1,1,1],
+    cells:{A1:'Saved heading',A2:'Original value',D2:'=OUTPUT(INPUT("boost"),"result")'},formats:{A2:'0.00'},aligns:{D2:'right'}};
+  await seed(run,[item('spreadsheet','sheet',state,{inputValues:{boost:9}}),fleetSource()],{fleet});const original=await snapshot(run);
+  await openInputs(page,run);const draft=await run('clone(componentDialogSession.proposal)');
+  await confirmConfiguration(page,()=>page.getByLabel('Grid source',{exact:true}).selectOption('Dataset'),false);
+  assert.equal(await page.getByLabel('Grid source',{exact:true}).inputValue(),'Cells');
+  assert.deepEqual(await run('clone(componentDialogSession.proposal)'),draft,'declining leaves the complete draft intact');
+  assert.deepEqual(await snapshot(run),original);
+  await confirmConfiguration(page,()=>page.getByLabel('Grid source',{exact:true}).selectOption('Dataset'),true);
+  assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),{});
+  assert.deepEqual(await run('componentDialogSession.proposal.state.formats||{}'),{});assert.deepEqual(await run('componentDialogSession.proposal.state.aligns||{}'),{});
+  assert.deepEqual(await run('componentDialogSession.proposal.state.weights'),state.weights,'discarding content preserves column layout');
+  assert.equal(await run('componentDialogSession.proposal.inputValues.boost'),undefined,'removed formula ports lose their assignments');
+  assert.deepEqual(await snapshot(run),original,'confirming only stages the discard');
+  await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),original,'Inputs Cancel keeps all original cells');
+  await openInputs(page,run);
+  await confirmConfiguration(page,()=>page.getByLabel('Grid source',{exact:true}).selectOption('Dataset'),true);
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.deepEqual(await run('items[0].state.cells'),{});assert.deepEqual(await run('items[0].inputValues'),{data:{datasetId:'fleet'},startRow:0});
+  assert.ok((await childrenText(run)).includes('Aurora'));assert.equal(await run('undoStack.length'),original.undo.length+1);
+  await run('undo()');assert.deepEqual(await run('clone(items)'),original.items,'one undo restores content, formatting and assignments');
+  assert.deepEqual(await run('datasets.fleet'),fleet);
+}));
+
+test('binding a dataset preserves non-conflicting formulas outside its linked rectangle without a prompt',async()=>app(async({page,run})=>{
+  const confirmations=[];page.on('dialog',dialog=>confirmations.push(dialog.message()));
+  const cells={D2:'=OUTPUT(SUM(B2:B4),"total")'};
+  await seed(run,[item('spreadsheet','sheet',{source:'Cells',cols:5,rows:6,dataColumns:2,dataRows:3,cells}),fleetSource()],{fleet});
+  await openInputs(page,run);await page.getByLabel('Grid source',{exact:true}).selectOption('Dataset');
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.deepEqual(confirmations,[]);assert.deepEqual(await run('items[0].state.cells'),cells);assert.deepEqual(await outputs(run),{total:15});
+}));
+
+test('dataset binding can discard an incompatible formula port outside the linked rectangle',async()=>app(async({page,run})=>{
+  const state={source:'Cells',cols:5,rows:6,dataColumns:2,dataRows:3,cells:{D2:'=OUTPUT(INPUT("data","string"),"label")'}};
+  await seed(run,[item('spreadsheet','sheet',state,{inputValues:{data:'Original string'}}),fleetSource()],{fleet});const original=await snapshot(run);
+  await openInputs(page,run);
+  await confirmConfiguration(page,()=>page.getByLabel('Grid source',{exact:true}).selectOption('Dataset'),false);
+  assert.deepEqual(await snapshot(run),original);assert.equal(await page.getByLabel('data value',{exact:true}).inputValue(),'Original string');
+  await confirmConfiguration(page,()=>page.getByLabel('Grid source',{exact:true}).selectOption('Dataset'),true);
+  assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),{});
+  assert.equal(await page.getByLabel('data dataset',{exact:true}).inputValue(),'','the new table port does not retain the former string assignment');
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.deepEqual(await outputs(run),{});assert.ok((await childrenText(run)).includes('Aurora'));
+}));
+
+test('Save confirms a pending dataset setting that makes an outside formula output ambiguous',async()=>app(async({page,run})=>{
+  const state={source:'Cells',cols:5,rows:6,dataColumns:2,dataRows:3,cells:{D1:'=OUTPUT(A2,"result")'}};
+  await seed(run,[item('spreadsheet','sheet',state),fleetSource()],{fleet});const original=await snapshot(run);
+  assert.deepEqual(await outputs(run),{result:0});await openInputs(page,run);
+  // Exercise a setting editor that has kept its pending value without dispatching change yet.
+  const pending=()=>page.getByLabel('Grid source',{exact:true}).evaluate(el=>{el.value='Dataset';});
+  await pending();await confirmConfiguration(page,()=>page.locator('#componentBindingsSave').click(),false);
+  assert.equal(await page.getByLabel('Grid source',{exact:true}).inputValue(),'Cells');
+  assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),state.cells);assert.deepEqual(await snapshot(run),original);
+  await pending();await confirmConfiguration(page,()=>page.locator('#componentBindingsSave').click(),true);
+  assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),{});assert.deepEqual(await snapshot(run),original,'Save first stages the changed configuration and awaits a dataset choice');
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.deepEqual(await outputs(run),{});assert.ok((await childrenText(run)).includes('Aurora'));
+  await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
+}));
+
+test('sparse saved spreadsheet settings allow a dataset binding change with one Save',async()=>app(async({page,run})=>{
+  const other={...fleet,name:'Other fleet',rows:[['Delta',11]]};
+  const anchor=item('data-source','other-source',{}, {x:1050,y:700,w:280,h:150,inputValues:{data:{datasetId:'other'}}});
+  await seed(run,[sheet({}, {inputValues:{data:{datasetId:'fleet'}}}),anchor],{fleet,other});
+  const original=await snapshot(run);assert.equal(await run('items[0].state.tableOutput'),undefined,'the saved sheet omits default settings');
+  await openInputs(page,run);await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'other'}));
+  await saveInputs(page);
+  assert.deepEqual(await run('items[0].inputValues.data'),{datasetId:'other'});assert.ok((await childrenText(run)).includes('Delta'));
+  assert.equal(await run('undoStack.length'),original.undo.length+1);await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
+}));
+
+test('enlarging the dataset rectangle confirms before discarding newly covered formulas',async()=>app(async({page,run})=>{
+  const cells={C2:'=OUTPUT(B2*2,"doubled")'};
+  await seed(run,[sheet(cells,{inputValues:{data:{datasetId:'fleet'}}})],{fleet});const original=await snapshot(run);
+  await openInputs(page,run);
+  const grow=async()=>{await page.getByLabel('Dataset columns shown',{exact:true}).fill('3');await page.getByLabel('Dataset columns shown',{exact:true}).press('Tab');};
+  await confirmConfiguration(page,grow,false);assert.equal(await page.getByLabel('Dataset columns shown',{exact:true}).inputValue(),'2');
+  assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),cells);assert.deepEqual(await snapshot(run),original);
+  await confirmConfiguration(page,grow,true);assert.deepEqual(await run('componentDialogSession.proposal.state.cells'),{});
+  await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),original);
+}));
 
 test('dataset cells and formulas receive all rows and complete strings in editor and offline HTML',async()=>app(async({page,run,context})=>{
   const note='A'.repeat(200)+'tail',data={name:'Long table',columns:[{key:'Score',name:'Score',type:'number'},{key:'Note',name:'Note',type:'string'}],rows:Array.from({length:30},(_,i)=>[1000+i,i===29?note:'row '+i])};

@@ -39,6 +39,7 @@
     this._validate(inputs,state);const position=this._position(state);
     return {value:inputs['in'+position],position};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -62,7 +63,7 @@
     const position=Number.isInteger(outputs.position)?outputs.position:state.configuredChannels===channels&&state.position>=0&&state.position<channels?state.position:0;
     const distributor=false;
     const available=!io.error && Number.isInteger(outputs.position) && (distributor?this._valid(inputs.value):this._valid(outputs.value));
-    const label=value=>!this._valid(value)?'—':typeof value==='boolean'?String(value):String(value).length<=10?String(value):Number(value.toPrecision(4)).toString();
+    const label=value=>this._number(value);
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(6,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const dot=(x,y)=>({type:'ellipse',x:x-2.5*scale,y:y-2.5*scale,w:5*scale,h:5*scale,fill:true,fillColor:style.fillColor||'#f8fafc',color:style.color,strokeOn:true,size:Math.max(1,scale)});

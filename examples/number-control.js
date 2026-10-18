@@ -25,6 +25,7 @@
     return Math.max(min,Math.min(max,snapped))||0;
   },
   compute(inputs,state){const config=this._config(inputs);return {value:this._snap(state.value,config)};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -48,7 +49,7 @@
     const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15),y=h*.55;
     const textColor=style.textColor||style.color,font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
     const position=available && config.max!==config.min?(value-config.min)/(config.max-config.min):.5;
-    const label=Number.isFinite(value)?String(value).length<=12?String(value):Number(value.toPrecision(5)).toString():'—';
+    const label=this._number(value);
     const children=[
       {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
       {type:'text',x:0,y:0,w,h:h*.22,...this._caption(io.name,'Number control',w,h*.22,style),align:'center',color:textColor,strokeOn:false,fill:false},
@@ -58,7 +59,7 @@
     if(available){
       children.push({type:'ellipse',x:pad+(w-pad*2)*position-6*scale,y:y-6*scale,w:12*scale,h:12*scale,fill:true,fillColor:style.color,strokeOn:false});
       if(editing){
-        for(const [x,label] of [[0,'− '+config.step],[w/2,'+ '+config.step]]){
+        for(const [x,label] of [[0,'− '+this._number(config.step)],[w/2,'+ '+this._number(config.step)]]){
           children.push({type:'rect',x:x+4*scale,y:h*.72,w:Math.max(0,w/2-8*scale),h:h*.25,strokeOn:true,color:style.color,size:1,fill:false});
           children.push({type:'text',x,y:h*.72,w:w/2,h:h*.25,text:label,align:'center',font:font(16),color:textColor,strokeOn:false,fill:false});
         }

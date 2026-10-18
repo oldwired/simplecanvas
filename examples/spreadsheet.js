@@ -1,8 +1,7 @@
 // Editable formula grid; optional live dataset area and typed dataset formula ports.
-// Dataset row indices are zero-based; A1, VLOOKUP and MID use spreadsheet conventions.
-// Optional bound-cell edits target stable source row IDs through the host; formulas stay local.
 ({
   apiVersion:2,
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
   settings:{source:{type:'string',default:'Cells',options:['Cells','Dataset'],label:'Grid source'},
     dataRows:{type:'number',default:5,min:1,max:99,step:1,label:'Dataset rows shown'},
@@ -11,7 +10,7 @@
     allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'},
     tableOutput:{type:'boolean',default:false,label:'Publish table output'},
     tableRange:{type:'string',default:'A2:C4',label:'Result cells'},
-    tableColumns:{type:'string',default:'energy:number\nprice:number\ncost:number',format:'lines',label:'Result columns (name:type)'},
+    tableColumns:{type:'string',default:'column1:number\ncolumn2:number\ncolumn3:number',format:'lines',label:'Result columns (name:type)'},
     tableName:{type:'string',default:'Spreadsheet results',label:'Result table name'}},
   _COLS:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   _key(c,r){return this._COLS[c]+(r+1);},
@@ -27,6 +26,13 @@
     return state.source==='Dataset'?{cols:Math.min(dims.cols,n(state.dataColumns,3,26)),rows:Math.min(dims.rows,n(state.dataRows,5,99)+1)}:{cols:0,rows:0};
   },
   _reserved(state,c,r){const q=this._region(state);return c>=0&&r>=0&&c<q.cols&&r<q.rows;},
+  configure(state,previous){
+    if(state.source!=='Dataset'||['source','dataRows','dataColumns'].every(k=>state[k]===previous[k]))return null;
+    let conflict=Object.entries(state.cells||{}).some(([k,v])=>v!==''&&/^[A-Z][1-9]\d?$/.test(k)&&this._reserved(state,this._COLS.indexOf(k[0]),+k.slice(1)-1));
+    const cleared={...state,cells:{},formats:{},aligns:{}};
+    try{this.inputs(state);this.outputs(state);}catch{try{this.inputs(cleared);this.outputs(cleared);conflict=true;}catch{}}
+    return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Inputs keeps the original sheet.'}:null;
+  },
   _tableSpec(state,dims=this._dims(state)){
     if(state.tableOutput!==true)return null;
     const get=key=>state[key]??this.settings[key].default,range=get('tableRange'),name=get('tableName'),raw=get('tableColumns');
@@ -94,7 +100,7 @@
     let i=0;
     while(i<src.length){
       if(/^\s*$/.test(src.slice(i)))break;
-      const gone=/^\s*#REF!/i.exec(src.slice(i));   // a reference to a deleted cell
+      const gone=/^\s*#REF!/i.exec(src.slice(i));
       if(gone){out.push({t:'referr'});i+=gone[0].length;continue;}
       re.lastIndex=i;const m=re.exec(src);
       if(!m)throw {e:'#ERROR!'};
@@ -102,7 +108,7 @@
       if(m[1]!==undefined)out.push({t:'num',v:parseFloat(m[1])});
       else if(m[2]!==undefined||m[3]!==undefined)out.push({t:'str',v:m[2]!==undefined?m[2].replace(/""/g,'"'):m[3].replace(/''/g,"'")});
       else if(m[4]!==undefined)out.push({t:'id',v:m[4].toUpperCase()});
-      else out.push({t:m[5]===';'?',':m[5]});   // ';' is accepted as an argument separator, like ','
+      else out.push({t:m[5]===';'?',':m[5]});
     }
     return out;
   },
@@ -155,7 +161,7 @@
     for(const k of ['a','b'])this._walk(node[k],fn);
     if(node.args)for(const x of node.args)this._walk(x,fn);
   },
-  _inputType(node){   // INPUT("name") / INPUT("name","boolean"|"number"); null = malformed
+  _inputType(node){
     const a=node.args;
     if(!a.length||a.length>2||a[0].k!=='str')return null;
     if(a.length===1)return 'number';
@@ -481,9 +487,7 @@
   },
 
   initState(){
-    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,tableOutput:false,tableRange:'A2:C4',tableColumns:'energy:number\nprice:number\ncost:number',tableName:'Spreadsheet results',cols:6,rows:6,cells:{A1:'kWh',A2:'10',A3:'12.5',A4:'7',B1:'Price',B2:'0.3',B3:'0.3',B4:'0.32',
-      C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4',A6:'=SUM(A2:A4)',C6:'=SUM(C2:C4)',
-      E1:'Extra',E2:'=INPUT("energy")',F1:'Total',F2:'=OUTPUT(A6+E2,"Total Energy")'}};
+    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,tableOutput:false,tableRange:'A2:C4',tableColumns:'column1:number\ncolumn2:number\ncolumn3:number',tableName:'Spreadsheet results',cols:6,rows:6,cells:{}};
   },
   initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state,context={}){
@@ -538,7 +542,7 @@
     else if(raw)first=this._bool(raw)!==null||Number.isFinite(Number(raw))?raw:'"'+raw.replace(/"/g,'""')+'"';
     const filled=first!==null&&args.length?1:0;
     if(filled)args[0]=first;
-    const head='='+name+'(',text=head+args.join(',')+')';   // no spaces: arguments start right after ','
+    const head='='+name+'(',text=head+args.join(',')+')';
     if(filled<args.length){
       let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+1;
       const ph=args[filled],q=ph[0]==='"';
@@ -555,7 +559,7 @@
         {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol||t.col+1<region.cols},
         {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1||t.col<region.cols});
     }
-    if(t.col!==undefined&&t.row===undefined)   // on a column header: its width
+    if(t.col!==undefined&&t.row===undefined)
       items.push({separator:true},{id:'colw'+t.col,label:'Column width\u2026',edit:{handle:'cw'+t.col}},
         {id:'cwreset'+t.col,label:'Reset column width',disabled:dims.weights[t.col]===1});
     if(t.col!==undefined&&t.row!==undefined)items.push({separator:true});
@@ -564,7 +568,7 @@
         {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow||t.row+1<region.rows},
         {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1||t.row<region.rows});
     }
-    if(t.col!==undefined&&t.row!==undefined){   // on a cell: insert a function into it
+    if(t.col!==undefined&&t.row!==undefined){
       const cell=this._key(t.col,t.row),src=(state.cells||{})[cell]||'';
       items.push({separator:true},{label:'Insert function',disabled:this._reserved(state,t.col,t.row),items:this._FN_GROUPS.map(([group,fns])=>({label:group,
         items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
@@ -595,12 +599,7 @@
     if(code.startsWith('#,'))text=text.replace(/^(-?)(\d+)/,(all,sign,int)=>sign+int.replace(/\B(?=(\d{3})+(?!\d))/g,','));
     return text+(pct?'%':'');
   },
-  _fmt(v){
-    if(Object.is(v,-0))v=0;
-    const a=Math.abs(v);
-    if(a!==0&&(a>=1e9||a<1e-4))return v.toExponential(3);
-    return String(Math.round(v*1e4)/1e4);
-  },
+  _fmt(v){return this._number(v);},
   _draw(state,style,w,h,editing,inputs,errorNote,tables={}){
     const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),region=this._region(state,dims);
     let ports={ins:[],outs:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}

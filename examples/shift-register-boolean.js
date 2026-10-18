@@ -67,7 +67,7 @@
     const available=!io.error&&this._valid(rawInputs.value)&&typeof rawInputs.pulse==='boolean'&&typeof rawInputs.reset==='boolean'&&
       this._valid(rawOutputs.value)&&this._valid(rawOutputs.shiftedOut)&&Array.from({length:stages},(_,i)=>rawOutputs['q'+i]).every(value=>this._valid(value));
     const inputs=available?rawInputs:{},outputs=available?rawOutputs:{};
-    const label=value=>!this._valid(value)?'—':value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):String(value).length<=8?String(value):Number(value.toPrecision(3)).toString();
+    const label=value=>!this._valid(value)?'—':value==='X'?'X':value?'1':'0';
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const arrow=(x1,y,x2)=>[line(x1,y,x2,y),line(x2-4*scale,y-3*scale,x2,y),line(x2-4*scale,y+3*scale,x2,y)];

@@ -132,6 +132,11 @@ errors, visible unavailable inputs, and editor-only configuration controls. Indi
 tests cover per-instance choices, save/reload, and HTML behavior. Component tests validate string
 input choices from literals and bindings in the editor and offline exports. Failure tests ensure
 unavailable views replace stale results, recover correctly, and leave independent controls usable.
+`tests/numeric-formatting-contracts.test.cjs` checks consistent display rounding, exact safe
+integers, extreme finite values, literal strings, explicit Spreadsheet formats, and preservation
+of calculated signals and editable values. `tests/numeric-formatting-runtime.test.cjs` checks
+the 2.8 → 56% example through real Workers in the editor and offline HTML, unchanged numeric
+edits, and full-precision Dataset/Spreadsheet values in CSV/JSON downloads.
 `tests/text-input-contracts.test.cjs` and `tests/text-memo-contracts.test.cjs` cover typed
 submission queues, validation, literal text, Memo trigger priority, blank lines, and bounded storage.
 `tests/text-components.test.cjs` checks editor and offline-reader entry, repeated submissions,

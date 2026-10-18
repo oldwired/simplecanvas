@@ -7,6 +7,26 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 const source=name=>vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','examples',name+'.js'),'utf8'));
 const sheet=(cells,cols=6,rows=6)=>({cols,rows,cells});
 
+test('new spreadsheets start with an empty editable grid and no formula ports',()=>{
+  const def=source('spreadsheet'),state=def.initState();
+  assert.deepEqual(plain(state.cells),{});assert.equal(state.source,'Cells');
+  assert.deepEqual(plain(def.inputs(state)),{});assert.deepEqual(plain(def.outputs(state)),{});
+  assert.deepEqual(plain(def.compute({},state)),{});assert.deepEqual(plain(def._sheet(state,{})),{});
+  assert.ok(def.handles(state,552,168,def.initStyle()).filter(h=>h.kind==='text').every(h=>h.value===''));
+  assert.deepEqual(plain(def.inputs({...state,source:'Dataset'})),{data:{type:'table'},startRow:{type:'number',default:0}},'an empty grid can bind data without deleting sample formulas');
+});
+
+test('dataset configuration can discard a formula whose output type becomes ambiguous without cell overlap',()=>{
+  const def=source('spreadsheet'),previous={...def.initState(),dataColumns:2,dataRows:3,cells:{D1:'=OUTPUT(A2,"result")'}},before=JSON.stringify(previous);
+  assert.deepEqual(plain(def.outputs(previous)),{result:{type:'number'}});
+  const next={...previous,source:'Dataset'};assert.throws(()=>def.outputs(next),/ambiguous/);
+  const proposal=def.configure(next,previous);assert.match(proposal.confirm,/Discard all cell contents, formulas and cell formatting\?/);
+  assert.deepEqual(plain(proposal.state.cells),{});assert.deepEqual(plain(def.outputs(proposal.state)),{});
+  assert.equal(JSON.stringify(previous),before,'configuration proposes a replacement without mutating the authored sheet');
+  const typed={...previous,cells:{D1:'=OUTPUT(A2,"result","number")'}};
+  assert.equal(def.configure({...typed,source:'Dataset'},typed),null,'an explicit output type lets the authored formula coexist with the dataset');
+});
+
 test('spreadsheet publishes each OUTPUT argument independently of its containing expression',()=>{
   const def=source('spreadsheet'),state=sheet({
     A1:'=OUTPUT(1,"one")+OUTPUT(2,"two")',

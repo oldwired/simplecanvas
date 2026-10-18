@@ -22,6 +22,7 @@
   },
   publish(state){if(typeof state.value!=='boolean')throw new Error('Output state must contain a Boolean value');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -48,7 +49,7 @@
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     const reading=(value,x)=>({...text(label(value),x,h*.35,w*.29,h*.11,11),font:'600 '+Math.min(11*scale,w*.27/Math.max(1,label(value).length*.72))+'px sans-serif'});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
-    const seconds=Number.isFinite(inputs.seconds)?String(inputs.seconds):'—',cy=h*.49;
+    const seconds=this._number(inputs.seconds),cy=h*.49;
     const children=[
       {...text('',w*.04,0,w*.92,h*.18,16,'left'),...this._caption(io.name,'Sample & hold (Boolean)',w*.92,h*.18,{...style,fontSize:16*scale})},
       line(w*.02,cy,w*.30,cy),line(w*.69,cy,w*.98,cy),

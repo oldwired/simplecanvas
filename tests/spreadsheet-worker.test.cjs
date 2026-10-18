@@ -25,6 +25,30 @@ function sheetItem(cells,cols=6,rows=6){return {type:'smart',uid:'sheet',compone
   x:60,y:140,w:600,h:240,color:'#94a3b8',textColor:'#1f2937',fill:true,fillColor:'#ffffff',strokeOn:true,size:1,fontFamily:'sans',fontSize:14,bindings:{},inputValues:{}};}
 const record=(run,index)=>run(`(async()=>{const graph=await ensureEditorComponentGraph(),r=graph.get(items[${index}]);return {error:r.error,outputs:r.io?.outputs};})()`);
 
+test('configuration proposals cross the Worker boundary only as validated state and plain confirmation text',async()=>app(async({run})=>{
+  const item=sheetItem({A1:'Old content',D2:'=OUTPUT(3,"old")'});
+  const result=await run(`(async()=>{
+    const it=${JSON.stringify(item)},owner=createSmartExecution(it);
+    try{
+      const caps=await requestSmartCaps(it,owner);
+      const next={...it.state,source:'Dataset',dataColumns:2,dataRows:3};
+      const reply=await requestSmartSandbox({method:'call',src:it.script,fn:'configure',args:[next,it.state]},it,owner);
+      return {configure:caps.configure,result:reply.result,original:it.state};
+    }finally{disposeSmartExecution(owner);}
+  })()`);
+  assert.equal(result.configure,true);assert.deepEqual(result.result.state.cells,{});
+  assert.match(result.result.confirm,/Discard all cell contents, formulas and cell formatting/);
+  assert.deepEqual(result.original,item.state,'the sandbox does not mutate the saved state');
+  for(const bad of [{state:null},{state:[]},{state:{},confirm:''},{state:{},confirm:true},
+    {state:{},confirm:'x'.repeat(501)},{state:{},effects:[]},{state:{text:'x'.repeat(4001)}}]){
+    const error=await run(`(()=>{try{validateSmartReply({ok:true,apiVersion:2,result:${JSON.stringify(bad)}},
+      {method:'call',fn:'configure',componentApi:2});return '';}catch(e){return e.message;}})()`);
+    assert.ok(error,'invalid proposal rejected: '+JSON.stringify(bad).slice(0,100));
+  }
+  assert.equal(await run(`validateSmartReply({ok:true,apiVersion:2,result:null},{method:'call',fn:'configure',componentApi:2}).result`),null);
+  assert.equal(await run(`(()=>{try{validateSmartReply({ok:true,apiVersion:1,result:{state:{}}},{method:'call',fn:'configure',componentApi:1});return false;}catch{return true;}})()`),true);
+}));
+
 // The timeout is not overridden: successful requests exercise the same real Worker deadline as
 // ordinary components, including parsing and static typing during the capability request.
 test('a 35-row lookup chain declares and computes within the real 250ms Worker deadline',async()=>app(async({run})=>{

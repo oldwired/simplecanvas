@@ -44,6 +44,7 @@
     for(let i=0;i<cells.length;i++)outputs['q'+i]=cells[i];
     return {...outputs,value:cells[cells.length-1],shiftedOut};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -67,7 +68,7 @@
     const available=!io.error&&this._valid(rawInputs.value)&&typeof rawInputs.pulse==='boolean'&&typeof rawInputs.reset==='boolean'&&
       this._valid(rawOutputs.value)&&this._valid(rawOutputs.shiftedOut)&&Array.from({length:stages},(_,i)=>rawOutputs['q'+i]).every(value=>this._valid(value));
     const inputs=available?rawInputs:{},outputs=available?rawOutputs:{};
-    const label=value=>!this._valid(value)?'—':typeof value==='boolean'?(value?'1':'0'):String(value).length<=8?String(value):Number(value.toPrecision(3)).toString();
+    const label=value=>this._number(value);
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const arrow=(x1,y,x2)=>[line(x1,y,x2,y),line(x2-4*scale,y-3*scale,x2,y),line(x2-4*scale,y+3*scale,x2,y)];

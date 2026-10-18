@@ -12,6 +12,7 @@
     if(!Number.isFinite(value))throw new Error('Calculation overflow');
     return {value:value||0};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -32,7 +33,7 @@
   children(state,style,w,h,editing,io={}){
     const inputs=io.error?{}:io.inputs||{},outputs=io.error?{}:io.outputs||{},scale=Math.min(w/300,h/180);
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
-    const label=value=>!Number.isFinite(value)?'—':String(value).length<=9?String(value):Number(value.toPrecision(4)).toString();
+    const label=value=>this._number(value);
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     const available=Number.isFinite(inputs.value)&&Number.isFinite(outputs.value);
     const title={...text('',w*.04,0,w*.92,h*.2,18,'left'),...this._caption(io.name,'Number function',w*.92,h*.2,{...style,fontSize:18*scale})};

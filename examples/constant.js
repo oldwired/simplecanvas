@@ -7,6 +7,7 @@
   initStyle(){return {w:220,h:110,fontSize:20,strokeOn:false};},
   _value(state){return Number.isFinite(state.value)?state.value:70;},
   compute(inputs,state){return {value:this._value(state)};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -28,7 +29,7 @@
     const children=[
       {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
       {type:'text',x:0,y:0,w,h:h*.26,...this._caption(io.name,'Constant',w,h*.26,style),align:'center',color:style.textColor,strokeOn:false},
-      {type:'text',x:0,y:h*.28,w,h:h*.3,text:String(io.outputs.value),align:'center',font:style.font,color:style.textColor,strokeOn:false}
+      {type:'text',x:0,y:h*.28,w,h:h*.3,text:this._number(io.outputs.value),align:'center',font:style.font,color:style.textColor,strokeOn:false}
     ];
     if(editing)for(const [x,label] of [[0,'− 1'],[w/2,'+ 1']]){
       children.push({type:'rect',x:x+4,y:h*.68,w:Math.max(0,w/2-8),h:h*.28,fill:false,strokeOn:true,color:style.color,size:1,editorOnly:true});

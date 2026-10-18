@@ -11,6 +11,7 @@
     if(typeof inputs.select!=='boolean')throw new Error('Selector requires a Boolean selection input');
     return {value:inputs.select?inputs.b:inputs.a};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -31,7 +32,7 @@
   children(state,style,w,h,editing,io={}){
     const inputs=io.error?{}:io.inputs||{},outputs=io.error?{}:io.outputs||{},scale=Math.min(w/300,h/210);
     const available=this._valid(inputs.a)&&this._valid(inputs.b)&&typeof inputs.select==='boolean'&&this._valid(outputs.value);
-    const label=value=>!this._valid(value)?'—':typeof value==='boolean'?String(value):String(value).length<=10?String(value):Number(value.toPrecision(4)).toString();
+    const label=value=>this._number(value);
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(6,size*scale)+'px sans-serif',color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
     const dot=(x,y)=>({type:'ellipse',x:x-3*scale,y:y-3*scale,w:6*scale,h:6*scale,fill:true,fillColor:style.fillColor||'#f8fafc',color:style.color,strokeOn:true,size:Math.max(1,scale)});

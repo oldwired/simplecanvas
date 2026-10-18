@@ -636,6 +636,17 @@ dialog's draft until Save. Cancel preserves the original list.
 A string setting may use `format:'lines'` to request a multiline field, bounded to 2,000 characters.
 The component validates the line syntax. Capture row uses this for its `column:type` mappings.
 
+An optional API v2 `configure(nextState, previousState)` authoring hook handles changes to settings
+in **Inputs…**, before the host resolves the proposed state's ports. Settings edited as drafts,
+such as choice lists, pass through this hook when **Save** is pressed; the author then reviews
+the new configuration and presses Save again to apply it. The hook returns `null` to keep
+`nextState` unchanged, or `{state, confirm?}` to propose a replacement state. `confirm`, when present,
+is a confirmation message of at most 500 characters. The host validates the returned state against
+the ordinary JSON and 4,000-character state limits, then asks for confirmation before staging it.
+Declining restores the previous draft configuration. **Save** applies the accepted draft as one
+undoable change; **Cancel** preserves the original instance. This hook is not called by runtime
+transitions or HTML reader interactions and cannot mutate the live drawing while Inputs is open.
+
 Initialize setting fields in `initState()` and keep port-defining settings unchanged in
 `transition` and interactive reader hooks. Dynamic declarations must be deterministic from state;
 they do not authorize mutation during capability inspection. Changing Channels rebuilds the
@@ -790,6 +801,14 @@ when empty. Text label shows its caption only when **Show name** is enabled.
 Captions fit within the shape, with wrapping or truncation for long names, and remain
 separate from numeric readouts, state labels, and operation symbols. Spreadsheet uses its full box for the cell grid
 and does not draw a caption; its instance name still identifies it in Inputs and wiring.
+
+Built-in ordinary numeric labels, including general Spreadsheet cells and numeric dataset/chart
+readouts, use up to eight significant digits while preserving exact safe integers. Formatting
+belongs only in presentation hooks: `compute`, `publish`, input values, stored state, editable
+handle values, and CSV/JSON downloads retain their original numeric precision. The portable
+built-ins share the `_number` convention; custom scripts choose their own presentation.
+Explicit Spreadsheet formats and dedicated clock or measurement formats retain their chosen
+precision. String values are never reformatted as numbers.
 
 ```text
 children(state, style, w, h, editing, io)
@@ -1078,6 +1097,15 @@ Spreadsheet remains an authored cell grid. Dataset rows do not change its dimens
 formatting. Its optional linked rectangle and DATA/COLUMN/ROWS functions consume records; formulas
 and other cell metadata stay on the sheet instance. A1 references to a linked area follow visible
 positions, not stable record identities. Use Dataset editor for dynamic record editing.
+
+New Spreadsheet instances start with an empty 6×6 grid and no formula-declared ports. Switching
+**Grid source** to **Dataset**, or expanding its displayed area, uses `configure` to check for
+nonempty cells in the reserved rectangle and formula declarations that become invalid, including
+conflicting `data`/`startRow` input types or ambiguous output types. On conflict, confirmation
+offers to clear all cell contents, formulas, and cell
+formatting while keeping grid size, column widths, and settings. The clearing is staged until
+**Save**. Formulas outside the linked area remain intact without a prompt when their port
+declarations remain valid. The example workspace supplies its demonstration values and formulas explicitly.
 
 Spreadsheet optionally publishes a calculated range through the fixed **table** output:
 `tableOutput:true`, `tableRange:'A2:C4'`, `tableColumns:'energy:number\nprice:number\ncost:number'`,
@@ -1673,7 +1701,7 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
 - [Number control](examples/number-control.js): `min`, `max`, and positive `step` inputs, slider,
   step buttons, and direct numeric entry. Values clamp to bounds and snap to the step grid anchored
   at `min`; the upper bound is reachable even if not on that grid.
-- [Spreadsheet](examples/spreadsheet.js): a formula sheet in Controls, initially 6×6. Its context
+- [Spreadsheet](examples/spreadsheet.js): a formula sheet in Controls, initially an empty 6×6 grid. Its context
   menu inserts/deletes rows and columns, rewrites references, and edits column widths, number
   formatting, and alignment. Formula functions include arithmetic, comparisons, TRUE/FALSE,
   IF/AND/OR/NOT, SUM/AVERAGE/MIN/MAX, VLOOKUP, `^` and `&`, rounding, INT/ABS/SIGN/MOD/SQRT/POWER/PI,

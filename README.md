@@ -289,7 +289,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | --- | --- |
 | Basics | Change one number and watch a gauge and value label follow. |
 | Threshold logic | Combine a comparison with an enable toggle. |
-| Numeric tools | Scale and clamp a decimal value. |
+| Numeric tools | Scale and clamp a decimal value; try 2.8 to see the gauge show 56%. |
 | Countdown | Turn **Run** on to count down from 9 on a seven-segment display. |
 | Delayed pulses | Follow a pulse through a delay. |
 | Routing | Step through four values with pulse and reset controls. |
@@ -471,9 +471,9 @@ serialized characters; dataset mode uses all selected rows within the existing d
 Switching sources preserves the editable list. The nineteenth tab, **Choices and text lookup**,
 shows a manual list plus a shared dataset driving automatic selection and reverse lookup.
 
-**Spreadsheet** is a small formula sheet in the library's **Controls** category. Double-click it
-in the editor, then click a cell to edit a value or formula. Enter saves and finishes; Tab/Shift+Tab
-saves and moves right/left; clicking away saves; Escape discards the draft. While entering a formula,
+**Spreadsheet** is a small formula sheet in the library's **Controls** category. New sheets start
+with an empty 6×6 grid. Double-click it in the editor, then click a cell to edit a value or formula.
+Enter saves and finishes; Tab/Shift+Tab saves and moves right/left; clicking away saves; Escape discards the draft. While entering a formula,
 click or drag over cells to insert references. Right-click a cell or header for insertion/deletion,
 functions, formatting, alignment, and column widths. A cell can retain an invalid formula and display
 its error for correction.
@@ -495,6 +495,13 @@ read-only, but controls still drive the formulas and connected output displays e
 To use a dataset, open the sheet's **Inputs…**, set **Grid source** to **Dataset**, and choose a dataset,
 connect a table output, or import CSV/TSV/JSON. **Dataset rows shown** and **Dataset columns shown** reserve a data
 area at the top left, read-only by default; other cells remain editable. The `startRow` input pages through data from index 0.
+
+If switching to Dataset or expanding this area overlaps existing cells or invalidates formula ports,
+you can discard all cell contents, formulas, and cell formatting. Grid size, column widths, and
+settings stay in place. Declining keeps your previous configuration; accepting stages the clear
+until **Save**, as one undoable change. **Cancel** in Inputs keeps the original sheet. Formulas
+outside the data area remain intact without a prompt when their input and output types remain valid.
+
 `=SUM(COLUMN("data","Points"))` calculates across the complete selected column, even beyond the visible
 rows. `=DATA("data",0,"Boat","string")` reads the first selected boat; `=ROWS("data")` counts all selected
 rows. Other port names declare additional dataset inputs. To publish a dataset cell directly, specify
@@ -592,6 +599,12 @@ Built-in API v2 components display that instance name as their caption, separate
 operation, value, or state. This includes Number control, Constant, Gauge, and all logic gates.
 Long names fit within the caption area, and names persist in saved sketches and exports. Spreadsheet deliberately uses its whole box for cells and omits a caption;
 its instance name remains available in Inputs and connection choices.
+
+Built-in numeric readouts use up to eight significant digits and keep safe integers exact.
+This is display formatting only: editing fields, saved values, connections, calculations, and
+CSV/JSON downloads retain the original numeric precision. Spreadsheet formats you select,
+clock readouts, and measurement labels keep their chosen precision. Numeric-looking strings
+remain literal text.
 
 **Number control** has `min`, `max`, and `step` inputs, initially 0, 100, and 1. Set literals or
 connect these values through **Inputs…**. Negative bounds and fractional steps work. The slider,

@@ -61,6 +61,7 @@
     const next=this._compact({...state,current:phase!=='high' && pending.length?pending[0]:current,pending,submitted:phase==='high'});this._state(next);
     return {state:next,memory:{primed:true,phase,nextAt},nextWakeAt:nextAt};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -92,7 +93,7 @@
     const scale=Math.min(w/280,h/72),field=this._field(state,w,h,style),font=(size,weight=400)=>(style.font||weight+' '+size+'px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px');
     const text=(value,x,y,width,height,size,align='left')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     let available=false,value;try{this._state(state);value=this._latest(state);available=!io.error;}catch{}
-    const label=available?String(value):'Input unavailable',inset=Math.min(10*scale,field.w*.08);
+    const label=available?this._number(value):'Input unavailable',inset=Math.min(10*scale,field.w*.08);
     const children=[
       {...text('',0,0,w,20*scale,13*scale),...this._caption(io.name,'Number input',w,20*scale,{...style,fontSize:13*scale})},
       {type:'rect',x:field.x,y:field.y,w:field.w,h:field.h,fill:true,fillColor:style.fillColor||'#ffffff',strokeOn:true,color:style.color||'#94a3b8',size:style.size||1.5},

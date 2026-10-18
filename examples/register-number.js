@@ -14,6 +14,7 @@
     let value=state.value;if(inputs.reset)value=0;else if(inputs.enable&&memory?.previous===false&&inputs.pulse)value=inputs.value;
     return {state:{...state,value},memory:{previous:inputs.pulse},nextWakeAt:null};
   },
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -31,7 +32,7 @@
     }
     return {text:lines.join('\n'),font:(style.font||'600 20px sans-serif').replace(/\d+(?:\.\d+)?px/,size+'px')};
   },
-  _label(value){return value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):Number.isFinite(value)?String(value).length<10?String(value):Number(value.toPrecision(3)).toString():'—';},
+  _label(value){return value==='X'?'X':typeof value==='boolean'?(value?'1':'0'):this._number(value);},
   children(state,style,w,h,editing,io={}){
     const scale=Math.min(w/320,h/230),color=style.textColor||style.color,inputs=io.inputs||{},outputs=io.outputs||{};
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:'600 '+Math.max(5,size*scale)+'px sans-serif',color,strokeOn:false,fill:false});

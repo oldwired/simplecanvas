@@ -38,6 +38,7 @@
   },
   publish(state){if(typeof state.value!=='boolean')throw new Error('Output state must contain a Boolean value');return {value:state.value};},
   compute(inputs,state){this._validate(inputs,state);return {value:state.value};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -62,7 +63,7 @@
     const font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';
     const text=(value,x,y,width,height,size,align='center')=>({type:'text',x,y,w:width,h:height,text:value,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});
     const line=(x1,y1,x2,y2)=>({type:'line',x1,y1,x2,y2,color:style.color,size:Math.max(1,1.5*scale),strokeOn:true});
-    const timing=available?'T '+inputs.seconds+' s · on '+inputs.width+' s':'T — s · on — s';
+    const timing=available?'T '+this._number(inputs.seconds)+' s · on '+this._number(inputs.width)+' s':'T — s · on — s';
     const children=[
       {...text('',w*.04,0,w*.92,h*.18,16,'left'),...this._caption(io.name,'Pulse generator',w*.92,h*.18,{...style,fontSize:16*scale})},
       line(w*.02,cy,w*.23,cy),line(w*.76,cy,w*.98,cy),

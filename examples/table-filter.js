@@ -2,6 +2,7 @@
 // A blank column passes all rows. Comparison values use the selected column's declared type.
 ({
   apiVersion:2,
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   settings:{caseSensitive:{type:'boolean',default:false,label:'Case-sensitive text'}},
   inputs:{data:{type:'table'},column:{type:'string',default:'',columnOf:'data'},operation:{type:'string',default:'contains',options:['contains','=','≠','>','≥','<','≤','is empty','is not empty']},text:{type:'string',default:''},number:{type:'number',default:0},boolean:{type:'boolean',default:true}},
   outputs:{data:{type:'table'},rowCount:{type:'number'}},
@@ -64,7 +65,7 @@
     ];
     if(!available){children.push(text(io.error||'Connect a table in Inputs',pad,h*.43,w-pad*2,22*scale,12,'#92400e'));return children;}
     const column=table.columns.find(column=>column.key===inputs.column),target=column?.type==='number'?inputs.number:column?.type==='boolean'?inputs.boolean:inputs.text;
-    const condition=column?column.name+' '+inputs.operation+(['is empty','is not empty'].includes(inputs.operation)?'':' '+(typeof target==='string'?'“'+target+'”':target)):'All rows';
+    const condition=column?column.name+' '+inputs.operation+(['is empty','is not empty'].includes(inputs.operation)?'':' '+(typeof target==='string'?'“'+target+'”':typeof target==='number'?this._number(target):target)):'All rows';
     children.push(text(condition,pad,47*scale,w-pad*2,24*scale,14));
     children.push(text(io.outputs.rowCount+' of '+table.rowCount+' rows',pad,84*scale,w-pad*2,26*scale,20,undefined,600));
     if(column?.type==='string' && state.caseSensitive!==true && !['is empty','is not empty'].includes(inputs.operation))children.push(text('Ignoring letter case',pad,h-26*scale,w-pad*2,16*scale,10,'#64748b'));

@@ -8,13 +8,13 @@ const source=()=>vm.runInNewContext(script),plain=value=>JSON.parse(JSON.stringi
 const sheet=(cells={},more={})=>({cols:6,rows:6,cells,tableOutput:true,tableRange:'A2:C4',tableColumns:'energy:number\nprice:number\ncost:number',tableName:'Results',...more});
 const table=(def,state,inputs={},context={})=>plain(def.compute(inputs,state,context).table.table);
 
-test('table output is optional and enabling it on the default sheet publishes the energy calculation',()=>{
+test('table output is optional and enabling it on an empty sheet publishes blank cells',()=>{
   const def=source(),state=def.initState();assert.equal(state.tableOutput,false);assert.ok(script.length<=50000);
-  assert.deepEqual(plain(def.outputs(state)),{Total_Energy:{type:'number'}});
-  assert.deepEqual(plain(def.outputs({...state,tableRange:'bad',tableColumns:'bad',tableName:''})),{Total_Energy:{type:'number'}});
-  const enabled={...state,tableOutput:true};assert.deepEqual(plain(def.outputs(enabled)),{Total_Energy:{type:'number'},table:{type:'table'}});
-  assert.deepEqual(table(def,enabled,{energy:2}),{name:'Spreadsheet results',columns:[{key:'energy',name:'energy',type:'number'},{key:'price',name:'price',type:'number'},{key:'cost',name:'cost',type:'number'}],rows:[[10,.3,3],[12.5,.3,3.75],[7,.32,2.24]]});
-  assert.equal(def.compute({energy:2},enabled).Total_Energy,31.5);
+  assert.deepEqual(plain(def.outputs(state)),{});
+  assert.deepEqual(plain(def.outputs({...state,tableRange:'bad',tableColumns:'bad',tableName:''})),{});
+  const enabled={...state,tableOutput:true,tableRange:'A1:B2',tableColumns:'label:string\namount:number'};
+  assert.deepEqual(plain(def.outputs(enabled)),{table:{type:'table'}});
+  assert.deepEqual(table(def,enabled),{name:'Spreadsheet results',columns:[{key:'label',name:'label',type:'string'},{key:'amount',name:'amount',type:'number'}],rows:[[null,null],[null,null]]});
 });
 
 test('configured result cells emit exact evaluated scalars and nulls without formula or formatting metadata',()=>{

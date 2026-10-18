@@ -6,6 +6,7 @@
   initState(){return {};},
   initStyle(){return {w:220,h:100,fontSize:24,strokeOn:false};},
   compute(inputs){return {value:inputs.value};},
+  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
     const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
@@ -28,6 +29,6 @@
     return [
     {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},
     {type:'text',x:0,y:0,w,h:h*.36,...caption,align:'center',color:style.textColor,strokeOn:false},
-    {type:'text',x:0,y:h*.38,w,h:h*.56,text:String(io.outputs.value),align:'center',font:style.font,color:style.textColor,strokeOn:false}
+    {type:'text',x:0,y:h*.38,w,h:h*.56,text:this._number(io.outputs.value),align:'center',font:style.font,color:style.textColor,strokeOn:false}
   ];}
 })
