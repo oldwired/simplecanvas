@@ -24,12 +24,12 @@ test('the first row names the columns and the column types follow the cells',()=
   assert.deepEqual(plain(def.outputs(state)),{Energy_costs:{type:'table'},Usage:{type:'table'}},'each range is its own named port');
   assert.deepEqual(table(def,state,{},{},'Energy_costs'),{name:'Energy costs',columns:[{key:'Hall',name:'Hall',type:'string'},
     {key:'kWh',name:'kWh',type:'number'},{key:'Cost',name:'Cost',type:'number'}],rows:[['Hall 1',120,36],['Hall 2',80,24]]});
-  assert.throws(()=>def.outputs({...state,cells:{...state.cells,B3:'many'}}),/E1: column kWh needs one value type/);
+  assert.throws(()=>def.compute({},{...state,cells:{...state.cells,B3:'many'}}),/E1: column kWh needs one value type/);
   // an empty column has no type to follow: the third argument supplies it
   const empty={cols:6,rows:6,cells:{A1:'Hall',B1:'Note',A2:'Hall 1',E1:'=OUTPUT(A1:B2,"Notes")'}};
-  assert.throws(()=>def.outputs(empty),/column Note needs one value type/);
+  assert.throws(()=>def.compute({},empty),/column Note needs one value type/);
   assert.deepEqual(table(def,{...empty,cells:{...empty.cells,E1:'=OUTPUT(A1:B2,"Notes","string,string")'}},{},{},'Notes').rows,[['Hall 1',null]]);
-  assert.throws(()=>def.outputs({...state,cells:{...state.cells,B1:'=1+1'}}),/B1 needs a unique column name as text/);
+  assert.throws(()=>def.compute({},{...state,cells:{...state.cells,B1:'=1+1'}}),/B1 needs a unique column name as text/);
 });
 
 test('the range follows inserted and deleted columns and rows like any reference',()=>{
@@ -48,19 +48,19 @@ test('result cells emit exact evaluated scalars and nulls without formula or for
   assert.equal(JSON.stringify(state),before,'publishing never rewrites authored cells or layout');
 });
 
-test('result schema is validated independently of current values',()=>{
+test('result schema problems are reported by compute with the formula cell',()=>{
   const def=source();
   for(const formula of ['=OUTPUT(A2:C4,"")','=OUTPUT(A2:C4,"'+'x'.repeat(121)+'")','=OUTPUT(A2:C4,"r","value:number")',
     '=OUTPUT(A2:C4,"r","x:number,x:string,z:boolean")','=OUTPUT(A2:C4,"r","constructor:number,y:number,z:number")',
     '=OUTPUT(A2:C4,"r","x:date,y:number,z:number")','=OUTPUT(A2:C4,"r")'])
-    assert.throws(()=>def.outputs(sheet({F1:formula})),/Table output in F1/,formula);
+    assert.throws(()=>def.compute({},sheet({F1:formula})),/Table output in F1/,formula);
   assert.deepEqual(table(def,sheet({F1:'=OUTPUT(B3:B3,"Results","value:number")',B3:'7'})).rows,[[7]]);
 });
 
 test('an output name may be used once, and at most 32 outputs exist',()=>{
   const def=source();
-  assert.throws(()=>def.outputs(sheet({E1:'=OUTPUT(4,"Results")'})),/Output Results/);
-  assert.throws(()=>def.outputs(sheet({E1:'=OUTPUT(A2:C4,"Results","a:number,b:number,c:number")'})),/declared twice/);
+  assert.throws(()=>def.compute({},sheet({E1:'=OUTPUT(4,"Results")'})),/Output Results/);
+  assert.throws(()=>def.compute({},sheet({E1:'=OUTPUT(A2:C4,"Results","a:number,b:number,c:number")'})),/declared twice/);
   const cells=Object.fromEntries(Array.from({length:32},(_,i)=>[String.fromCharCode(65+i%6)+(1+Math.floor(i/6)),'=OUTPUT('+i+',"out'+i+'")']));
   assert.throws(()=>def.outputs(sheet({...cells,F6:RESULTS})),/at most 32 inputs and 32 outputs/);
 });

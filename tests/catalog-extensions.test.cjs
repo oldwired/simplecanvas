@@ -746,3 +746,13 @@ test('an edit-mode cell field grows to the right with long text and shrinks back
  await page.waitForFunction(w=>Math.abs(document.querySelector('[data-smart-inline-input]').getBoundingClientRect().width-w)<4,cellW);
  await page.keyboard.press('Escape');
 }));
+
+test('table layout problems reach the editor as their own message, not as an invalid script',async()=>app(async({run})=>{
+ const error=(cells,bind=true)=>run(`(async()=>{cancelGesture();datasets=normalizeDatasets({boats:{name:'Boats',columns:[{key:'name',name:'Name',type:'string'}],rows:[['Aurora'],['Borealis']]}});
+   items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'s',x:80,y:120,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},inputValues:${bind?"{data:{datasetId:'boats'}}":'{}'}}];
+   render();const g=await ensureEditorComponentGraph();return g.get(items[0]).error||'';})()`);
+ assert.equal(await error({E1:'=INPUT("data",A1:A3)'}),'');
+ assert.match(await error({E1:'=INPUT("data",A1:A3)',A2:'5'}),/A2 lies in the table range; clear it/);
+ assert.match(await error({A2:'=INPUT("data",A1:A3)'}),/must lie outside table ranges/);
+ assert.match(await error({A1:'Hall',A2:'1',A3:'x',C1:'=OUTPUT(A1:A3,"t")'},false),/column Hall needs one value type/);
+}));

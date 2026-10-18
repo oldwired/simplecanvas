@@ -297,7 +297,7 @@
     ctx.types.set(k,type);return type;
   },
   _ports(state){
-    const ctx=this._analysis(state),{cells,dims}=ctx,ins=[],outs=[];
+    const ctx=this._analysis(state),{cells,dims}=ctx,ins=[],outs=[],problems=[];
     const add=(port,type,cell)=>{
       const prior=ins.find(x=>x.port===port);
       if(prior&&prior.type!==type)throw new Error('Input '+port+' has conflicting '+prior.type+' and '+type+' types');
@@ -307,10 +307,10 @@
     for(const g of regions){
       const at='Table INPUT in '+(g.cell||'A1')+': ';
       if(!g.cell){add('data','table','grid');add('startRow','number','grid');}else add(g.port,'table',g.cell);
-      if(g.c2>=dims.cols||g.r2>=dims.rows||g.r2<=g.r1)throw new Error(at+'the range needs a header row and record rows inside the grid');
-      if(g.cell&&this._regionAt(state,this._COLS.indexOf(g.cell[0]),+g.cell.slice(1)-1))throw new Error(at+'the formula must lie outside table ranges');
-      if(regions.some(o=>o!==g&&o.c1<=g.c2&&g.c1<=o.c2&&o.r1<=g.r2&&g.r1<=o.r2))throw new Error(at+'table ranges overlap');
-      for(let r=g.r1;r<=g.r2;r++)for(let c=g.c1;c<=g.c2;c++){const k=this._key(c,r);if(g.cell&&(state.cells||{})[k])throw new Error(at+k+' lies in the table range; clear it');}
+      if(g.c2>=dims.cols||g.r2>=dims.rows||g.r2<=g.r1)problems.push(at+'the range needs a header row and record rows inside the grid');
+      if(g.cell&&this._regionAt(state,this._COLS.indexOf(g.cell[0]),+g.cell.slice(1)-1))problems.push(at+'the formula must lie outside table ranges');
+      if(regions.some(o=>o!==g&&o.c1<=g.c2&&g.c1<=o.c2&&o.r1<=g.r2&&g.r1<=o.r2))problems.push(at+'table ranges overlap');
+      for(let r=g.r1;r<=g.r2;r++)for(let c=g.c1;c<=g.c2;c++){const k=this._key(c,r);if(g.cell&&(state.cells||{})[k])problems.push(at+k+' lies in the table range; clear it');}
     }
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const cell=this._key(c,r),src=cells[cell];
@@ -323,9 +323,10 @@
         }
         const data=this._dataCall(n);if(data)add(data.port,'table',cell);
         if(n.name==='OUTPUT'&&n.args[0]?.k==='range'){
-          const table=this._rangeTable(n,ctx,cell),port=this._port(n.args[1].v);
-          if(outs.some(o=>o.port===port))throw new Error('Output '+port+' is declared twice');
-          outs.push({port,type:'table',cell,table});
+          const port=this._port(n.args[1]?.k==='str'&&n.args[1].v.trim()?n.args[1].v:'table');let table=null;
+          try{table=this._rangeTable(n,ctx,cell);}catch(err){problems.push(err.message);}
+          if(outs.some(o=>o.port===port))problems.push('Output '+port+' is declared twice');
+          else outs.push({port,type:'table',cell,table});
         }else if(n.name==='OUTPUT'){
           const type=this._outputType(n,ctx);
           if(type){const port=this._port(n.args[1].v),prior=outs.find(o=>o.port===port);
@@ -336,7 +337,7 @@
       });
     }
     if(ins.length>32||outs.length>32)throw new Error('Spreadsheet supports at most 32 inputs and 32 outputs');
-    return {ins,outs};
+    return {ins,outs,problems};
   },
   inputs(state){const m={};for(const x of this._ports(state).ins)m[x.port]={type:x.type,...(x.type==='table'?{}:{default:x.type==='boolean'?false:x.type==='string'?'':0})};return m;},
   outputs(state){const m={};for(const o of this._ports(state).outs){
@@ -517,8 +518,9 @@
   },
   initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state,context={}){
-    const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={};
-    for(const o of this._ports(state).outs){
+    const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={},ports=this._ports(state);
+    if(ports.problems.length)throw new Error(ports.problems[0]);
+    for(const o of ports.outs){
       if(o.table){out[o.port]=this._resultTable(run,o.table);continue;}
       if(o.type==='mixed')throw new Error('Output '+o.port+' in '+o.cell+': result type is ambiguous; use OUTPUT(expression,\"port\",\"number\"|\"string\"|\"boolean\") or one consistent value type');
       let value;
@@ -555,7 +557,7 @@
     ['Text',{CONCAT:['text1','text2'],LEN:['text'],UPPER:['text'],LOWER:['text'],LEFT:['text','count'],RIGHT:['text','count'],
       MID:['text','start','count']}],
     ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
-    ['Datasets',{INTABLE:['"data"','A1:C6','0','"edit"'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
+    ['Datasets',{INTABLE:['"data"','A1:C6','INPUT("startRow")','"edit"'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
   ],
   _cellFormat(state,k){const f=(state.formats||{})[k];return this._FORMATS.some(([c])=>c&&c===f)?f:'';},
   _cellAlign(state,k){const a=(state.aligns||{})[k];return ['left','center','right'].includes(a)?a:'';},
@@ -600,7 +602,7 @@
         items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
           return {id:'fn:'+name+':'+cell,label:(name==='INTABLE'?'INPUT':name)+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
       const fc=this._cellFormat(state,cell),al=this._cellAlign(state,cell),tick=on=>on?'  \u2713':'';
-      items.push({label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
+      items.push({separator:true},{label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
         label:name+(code?'  '+this._fmtCode(code.endsWith('%')?.1235:1234.5678,code):'')+tick(code===fc)}))},
         {label:'Alignment',items:this._ALIGNS.map(([a,name])=>({id:'al:'+(a||'default')+':'+cell,label:name+tick(a===al)}))});
     }
@@ -628,7 +630,8 @@
   _fmt(v){return this._number(v);},
   _draw(state,style,w,h,editing,inputs,errorNote,tables={}){
     const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),regions=this._regions(state);
-    let ports={ins:[],outs:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}
+    let ports={ins:[],outs:[],problems:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}
+    errorNote=errorNote||ports.problems[0]||'';
     const ink=style.color||'#64748b',textInk=style.textColor||'#1f2937',grid='#cbd5e1';
     const family=['sans','serif','mono','cursive'].includes(style.fontFamily)?style.fontFamily:'sans';
     const cap=size=>Math.max(6,Math.round(Math.min(style.fontSize||L.px,size)));
