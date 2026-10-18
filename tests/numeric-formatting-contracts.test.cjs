@@ -92,7 +92,7 @@ test('Dataset editor and charts format numeric cells while retaining literal str
 
 test('Spreadsheet general cells format values without changing authored cells, formulas, outputs, or explicit formats',()=>{
   const def=source('spreadsheet'),state={...def.initState(),cols:4,rows:3,
-    cells:{D1:'=OUTPUT(A1:B1,"table","number:number,text:string")',A1:String(artifact),B1:"'"+String(artifact),A2:'=OUTPUT((2.8*2/10)*100,"result")',B2:'=A1>55.99999999999998',A3:'0.125'},formats:{A3:'0.00%'}};
+    cells:{D1:'=OUTPUT(C2:D3,"table","number,string")',C2:'number',D2:'text',C3:'=A1',D3:'=B1',A1:String(artifact),B1:"'"+String(artifact),A2:'=OUTPUT((2.8*2/10)*100,"result")',B2:'=A1>55.99999999999998',A3:'0.125'},formats:{A3:'0.00%'}};
   const before=JSON.stringify(state),outputs=def.compute({},state),labels=draw(def,state,{},outputs);
   assert.equal(outputs.result,artifact);assert.equal(outputs.table.table.rows[0][0],artifact);assert.equal(outputs.table.table.rows[0][1],String(artifact));
   assert.equal(def._sheet(state,{}).B2.b,true);

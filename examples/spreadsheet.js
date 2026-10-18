@@ -12,9 +12,9 @@
     return {cols,rows,weights};
   },
   _fits(cols,rows){return cols<=26&&rows<=99&&cols*rows+1+cols<=128;},
-  // =INPUT("name",A1:C6[,start][,"edit"|"edit,reader"]) in a cell outside the range declares a table
+  // =INPUT("name",A1:C6[,start][,access]) in a cell outside the range declares a table
   // input and shows it there: the first row holds the column names, the rows below the records from start
-  // (0-based). "edit" writes cells back to a Dataset-owned table, "reader" also in HTML. Sheets saved with
+  // (0-based). Access 1 writes cells back to a Dataset-owned table, 2 also in HTML, 0 (default) reads. Sheets saved with
   // the former Grid source: Dataset settings keep that area at A1 (input data, startRow).
   _rc:new WeakMap(),
   _regions(state){
@@ -30,53 +30,60 @@
       let n;try{n=this._parse(src.slice(1),dims);}catch{continue;}
       const a=n.k==='fn'&&n.name==='INPUT'?n.args:[],port=a[0]?.k==='str'?a[0].v:null;
       if(!port||a[1]?.k!=='range'||a.length>4)continue;
-      const opt=a.length===3&&a[2].k==='str'?a[2]:a[3],o=opt?.k==='str'?opt.v.toLowerCase():'';
-      list.push({cell:k,port:this._port(port),c1:a[1].c1,r1:a[1].r1,c2:a[1].c2,r2:a[1].r2,start:opt===a[2]?null:a[2]||null,edit:/edit/.test(o),reader:/reader/.test(o)});
+      const mode=!a[3]?0:a[3].k==='num'&&[0,1,2].includes(a[3].v)?a[3].v:-1;   // 0 read only, 1 edit, 2 edit also in HTML
+      list.push({cell:k,port:this._port(port),c1:a[1].c1,r1:a[1].r1,c2:a[1].c2,r2:a[1].r2,start:a[2]||null,mode,edit:mode>=1,reader:mode===2});
     }
     this._rc.set(state,list);return list;
   },
   _regionAt(state,c,r){return this._regions(state).find(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)||null;},
   _reserved(state,c,r){return !!this._regionAt(state,c,r);},
-  // OUTPUT(A1:C4,"name"[,"string,number,..."]): the range's first row names the columns, the rows below
-  // are the records; column types follow the cells or the third argument. With "col:type,..." there the
-  // whole range is records (e.g. a dataset area, whose header is not cell text).
+  // OUTPUT(A1:C4,"name"[,type,type,...]): the range's first row names the columns (as shown, so also a
+  // dataset header or a formula), the rows below are the records. Names and types are read when the sheet
+  // computes; optional type codes per column (0 automatic, 1 number, 2 string, 3 boolean) fix types.
   _rangeTable(n,ctx,at){
     const a=n.args,t=a[0],fail=m=>{throw new Error('Table output in '+at+': '+m);};
-    if(a.length<2||a.length>3||a[1].k!=='str'||!a[1].v.trim()||a[1].v.length>120)fail('use OUTPUT(A1:C4,"name")');
-    const keys=new Set(),cols=t.c2-t.c1+1,given=a[2]?(a[2].k==='str'?a[2].v.split(/[,;]/).map(x=>x.trim()):[]):null;
-    if(given&&given.length!==cols)fail('give one type per column');
-    const named=!!given&&given.every(x=>x.includes(':'));
-    const columns=[];
-    for(let c=t.c1;c<=t.c2;c++){
-      const k=this._key(c,t.r1),src=ctx.cells[k],at=named?given[c-t.c1].lastIndexOf(':'):-1;
-      const key=named?given[c-t.c1].slice(0,at).trim():typeof src==='string'&&src[0]!=='='?src.replace(/^'/,'').trim():'';
-      if(!key||key.length>100||['__proto__','prototype','constructor'].includes(key)||keys.has(key))fail((named?'column names':k)+' need'+(named?'':'s')+' a unique column name'+(named?'s':' as text'));
-      keys.add(key);
-      let type=given?(named?given[c-t.c1].slice(at+1):given[c-t.c1]).trim().toLowerCase():'';
-      if(!given){
-        const types=[];
-        for(let r=t.r1+(named?0:1);r<=t.r2;r++){const q=this._key(c,r);if(ctx.cells[q]!==undefined&&ctx.cells[q]!=='')types.push(this._cellType(q,ctx));}
-        type=this._joinTypes(types);
-      }
-      if(!['number','string','boolean'].includes(type))fail('column '+key+' needs one value type; add types as the third argument, e.g. "string,number"');
-      columns.push({key,name:key,type});
-    }
-    return {name:a[1].v.trim(),columns,c1:t.c1,r1:t.r1+(named?0:1),c2:t.c2,r2:t.r2,range:this._key(t.c1,t.r1)+':'+this._key(t.c2,t.r2)};
+    const cols=t.c2-t.c1+1;
+    if(a.length<2||a.length>2+cols||a[1].k!=='str'||!a[1].v.trim()||a[1].v.length>120)fail('use OUTPUT(A1:C4,"name"[,type per column])');
+    if(t.r2<=t.r1)fail('the range needs a header row and record rows');
+    const list=a.length===3&&a[2].k==='str'&&/[,;]/.test(a[2].v)?a[2].v.split(/[,;]/).map(v=>({k:'str',v})):a.slice(2);
+    if(list.length>cols)fail('give at most one type per column');
+    const types=Array.from({length:cols},(_,i)=>this._typeArg(list[i]));
+    if(types.includes(null))fail('types are 0 (automatic), 1 (number), 2 (string) or 3 (boolean)');
+    return {name:a[1].v.trim(),types,at,c1:t.c1,r1:t.r1,c2:t.c2,r2:t.r2,range:this._key(t.c1,t.r1)+':'+this._key(t.c2,t.r2)};
   },
-  _resultTable(run,spec){
-    const rows=[];
-    for(let r=spec.r1;r<=spec.r2;r++){
+  _resultTable(run,spec,state={},tables={}){
+    const fail=m=>{throw new Error('Table output in '+spec.at+': '+m);},keys=new Set(),columns=[],rows=[];
+    for(let c=spec.c1;c<=spec.c2;c++){
+      const k=this._key(c,spec.r1),x=run.cell(c,spec.r1);
+      if(x?.e)throw new Error('Table output in '+k+': '+x.e);
+      const key=x?String(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):x.v).trim():'';
+      if(!key||key.length>100||['__proto__','prototype','constructor'].includes(key)||keys.has(key))fail(k+' needs a unique column name');
+      // a dataset header cell keeps its column's key and name, so a mirrored table keeps its schema
+      const g=this._regionAt(state,c,spec.r1),src=g&&g.r1===spec.r1&&tables[g.port]?.columns?.[c-g.c1];
+      keys.add(key);columns.push({key:src?src.key:key,name:src?src.name:key,type:spec.types[c-spec.c1]||null});
+    }
+    for(let r=spec.r1+1;r<=spec.r2;r++){
       const row=[];
       for(let c=spec.c1;c<=spec.c2;c++){
-        const x=run.cell(c,r),type=spec.columns[c-spec.c1].type,key=this._key(c,r);
+        const x=run.cell(c,r),key=this._key(c,r);
         if(x?.e)throw new Error('Table output in '+key+': '+x.e);
-        const value=!x?null:x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;
-        if(value!==null&&(typeof value!==type||type==='number'&&(!Number.isFinite(value)||Number.isInteger(value)&&!Number.isSafeInteger(value))||type==='string'&&value.length>2000))throw new Error('Table output in '+key+': expected '+type+' within dataset limits');
+        const value=!x?null:x.t!==undefined?x.t:x.b!==undefined?x.b:x.v,type=columns[c-spec.c1].type;
+        if(type&&value!==null&&typeof value!==type)throw new Error('Table output in '+key+': expected '+type+' within dataset limits');   // given types: report the source cell first
         row.push(value);
       }
       rows.push(row);
     }
-    const table={name:spec.name,columns:spec.columns,rows};
+    columns.forEach((col,i)=>{
+      if(!col.type){
+        const found=[...new Set(rows.map(row=>row[i]).filter(v=>v!==null).map(v=>typeof v))];
+        if(found.length!==1)fail('column '+col.key+(found.length?' mixes types':' has no values')+'; give its type after the name, e.g. OUTPUT(A1:B4,"t",2,1) (1 number, 2 string, 3 boolean)');
+        col.type=found[0];
+      }
+      rows.forEach((row,r)=>{const value=row[i],type=col.type;
+        if(value!==null&&(typeof value!==type||type==='number'&&(!Number.isFinite(value)||Number.isInteger(value)&&!Number.isSafeInteger(value))||type==='string'&&value.length>2000))
+          throw new Error('Table output in '+this._key(spec.c1+i,spec.r1+1+r)+': expected '+type+' within dataset limits');});
+    });
+    const table={name:spec.name,columns,rows};
     if(JSON.stringify(table).length>500000)throw new Error('Table output exceeds the dataset storage limit');
     return {table};
   },
@@ -175,12 +182,18 @@
     for(const k of ['a','b'])this._walk(node[k],fn);
     if(node.args)for(const x of node.args)this._walk(x,fn);
   },
+  // A type argument: 0 automatic (''), 1 number, 2 string, 3 boolean, or the type's name; null if invalid.
+  _typeArg(n){
+    if(!n)return '';
+    if(n.k==='num')return ['','number','string','boolean'][n.v]??null;
+    const t=n.k==='str'?n.v.trim().toLowerCase():'';
+    return ['number','string','boolean'].includes(t)?t:null;
+  },
   _inputType(node){
     const a=node.args;
     if(!a.length||a.length>2||a[0].k!=='str')return null;
-    if(a.length===1)return 'number';
-    const t=a[1].k==='str'?a[1].v.trim().toLowerCase():'';
-    return ['number','boolean','string'].includes(t)?t:null;
+    const t=this._typeArg(a[1]);
+    return t===''?'number':t;
   },
   _dataCall(node){
     const a=node.args,f=node.name;
@@ -188,14 +201,13 @@
     if(f==='ROWS')return a.length===1?{port:this._port(a[0].v)}:null;
     const key=a[f==='DATA'?2:1];
     if(!key||key.k!=='str'||(f==='DATA'?(a.length<3||a.length>4):a.length!==2))return null;
-    const type=a[3]?(a[3].k==='str'?a[3].v.trim().toLowerCase():''):'number';
-    return ['number','string','boolean'].includes(type)?{port:this._port(a[0].v),key:key.v,type}:null;
+    const type=this._typeArg(a[3]);
+    return type===null?null:{port:this._port(a[0].v),key:key.v,type:type||'number'};
   },
   _outputType(node,ctx){
     const a=node.args;if(a.length<2||a.length>3||a[1].k!=='str')return null;
-    if(a.length===2)return this._typeOf(a[0],ctx);
-    const type=a[2].k==='str'?a[2].v.trim().toLowerCase():'';
-    return ['number','string','boolean'].includes(type)?type:null;
+    const type=this._typeArg(a[2]);
+    return type===''?this._typeOf(a[0],ctx):type;
   },
   _analysis(state){
     const dims=this._dims(state),cells={...(state.cells||{})};
@@ -307,6 +319,7 @@
     for(const g of regions){
       const at='Table INPUT in '+(g.cell||'A1')+': ';
       if(!g.cell){add('data','table','grid');add('startRow','number','grid');}else add(g.port,'table',g.cell);
+      if(g.mode<0)problems.push(at+'the fourth argument must be 0 (read only), 1 (edit) or 2 (edit, also in HTML)');
       if(g.c2>=dims.cols||g.r2>=dims.rows||g.r2<=g.r1)problems.push(at+'the range needs a header row and record rows inside the grid');
       if(g.cell&&this._regionAt(state,this._COLS.indexOf(g.cell[0]),+g.cell.slice(1)-1))problems.push(at+'the formula must lie outside table ranges');
       if(regions.some(o=>o!==g&&o.c1<=g.c2&&g.c1<=o.c2&&o.r1<=g.r2&&g.r1<=o.r2))problems.push(at+'table ranges overlap');
@@ -387,7 +400,7 @@
     const tryVal=a=>{try{return {v:val(a)};}catch(err){return {e:err&&err.e||'#ERROR!'};}};
     const isRange=a=>a.k==='range'||a.k==='fn'&&a.name==='COLUMN';
     const dataFor=n=>{const call=this._dataCall(n);if(!call)throw {e:'#VALUE!'};const table=tables[call.port];if(!table)throw {e:'#N/A'};return {call,table};};
-    const columnFor=n=>{const {call,table}=dataFor(n),index=table.columns.findIndex(c=>c.key===call.key);if(index<0)throw {e:'#N/A'};return {call,table,index};};
+    const columnFor=n=>{const {call,table}=dataFor(n);let index=table.columns.findIndex(c=>c.key===call.key);if(index<0)index=table.columns.findIndex(c=>c.name===call.key);if(index<0)throw {e:'#N/A'};return {call,table,index};};
     const cellsIn=a=>{
       if(a.k!=='range'){const {table,index}=columnFor(a);return table.rows.map(row=>row[index]==null?null:wrap(row[index]));}
       const out=[];for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++)out.push(cell(c,r));return out;
@@ -499,7 +512,7 @@
             return v;
           }
           if(f==='OUTPUT'&&a[0]?.k==='range')return a[1]?.k==='str'?a[1].v.trim():'#VALUE!';
-          if(f==='OUTPUT'){const type=this._outputType(n,ctx);if(!type)throw {e:'#VALUE!'};const value=val(a[0]);if(a.length===3&&typeof value!==type)throw {e:'#VALUE!'};return value;}
+          if(f==='OUTPUT'){const type=this._outputType(n,ctx);if(!type)throw {e:'#VALUE!'};const value=val(a[0]);if(this._typeArg(a[2])&&typeof value!==type)throw {e:'#VALUE!'};return value;}
           throw {e:'#NAME?'};
         }
       }
@@ -521,7 +534,7 @@
     const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={},ports=this._ports(state);
     if(ports.problems.length)throw new Error(ports.problems[0]);
     for(const o of ports.outs){
-      if(o.table){out[o.port]=this._resultTable(run,o.table);continue;}
+      if(o.table){out[o.port]=this._resultTable(run,o.table,state,context.tables||{});continue;}
       if(o.type==='mixed')throw new Error('Output '+o.port+' in '+o.cell+': result type is ambiguous; use OUTPUT(expression,\"port\",\"number\"|\"string\"|\"boolean\") or one consistent value type');
       let value;
       try{value=run.value(o.expression);}catch(err){throw new Error('Output '+o.port+' in '+o.cell+': '+(err&&err.e||'#ERROR!'));}
@@ -557,7 +570,7 @@
     ['Text',{CONCAT:['text1','text2'],LEN:['text'],UPPER:['text'],LOWER:['text'],LEFT:['text','count'],RIGHT:['text','count'],
       MID:['text','start','count']}],
     ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
-    ['Datasets',{INTABLE:['"data"','A1:C6','INPUT("startRow")','"edit"'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
+    ['Datasets',{INTABLE:['"data"','A1:C6','INPUT("startRow")','1'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
   ],
   _cellFormat(state,k){const f=(state.formats||{})[k];return this._FORMATS.some(([c])=>c&&c===f)?f:'';},
   _cellAlign(state,k){const a=(state.aligns||{})[k];return ['left','center','right'].includes(a)?a:'';},

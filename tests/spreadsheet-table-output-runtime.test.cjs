@@ -66,7 +66,7 @@ test('an OUTPUT range formula enables a real Worker table output; bad cells with
 }));
 
 test('a pure spreadsheet result can feed an editable owned snapshot without overwriting it until Apply, also offline',async()=>app(async({page,run,context})=>{
-  const state={cols:3,rows:3,cells:{A1:"'One",A2:"'Two",B1:'=INPUT("factor")*3',B2:'=INPUT("factor")*4',C1:'=OUTPUT(SUM(B1:B2),"total")',C2:'=OUTPUT(A1:B2,"table","label:string,amount:number")'}};
+  const state={cols:3,rows:3,cells:{A1:'label',B1:'amount',A2:"'One",A3:"'Two",B2:'=INPUT("factor")*3',B3:'=INPUT("factor")*4',C1:'=OUTPUT(SUM(B2:B3),"total")',C2:'=OUTPUT(A1:B3,"table")'}};
   const store={name:'Saved results',columns:[{key:'label',name:'Label',type:'string'},{key:'amount',name:'Amount',type:'number'}],rows:[]};
   await seed(run,[item('spreadsheet','sheet',state,{bindings:{factor:{uid:'factor',port:'value'}}}),
     item('number-control','factor',{value:2},{y:400,w:240,h:130,inputValues:{min:0,max:10,step:1}}),
@@ -87,7 +87,7 @@ test('a pure spreadsheet result can feed an editable owned snapshot without over
 
 test('table output from a bounded linked rectangle follows paging while keeping all spreadsheet metadata local',async()=>app(async({page,run,context})=>{
   const pool={source:{name:'Input',columns:[{key:'label',name:'Label',type:'string'},{key:'amount',name:'Amount',type:'number'}],rows:[['Alpha',10],['Beta',20],['Gamma',30]]}};
-  const state={source:'Dataset',cols:3,rows:3,dataRows:2,dataColumns:2,cells:{C1:'=OUTPUT(A2:C3,"table","label:string,value:number,doubled:number")',C2:'=B2*2',C3:'=B3*2'},formats:{C2:'0.00'}};
+  const state={cols:4,rows:3,cells:{D1:'=INPUT("data",A1:B3,INPUT("startRow"))',D2:'=OUTPUT(A1:C3,"table")',C1:'doubled',C2:'=B2*2',C3:'=B3*2'},formats:{C2:'0.00'}};
   await seed(run,[item('spreadsheet','sheet',state,{inputValues:{data:{datasetId:'source'}},bindings:{startRow:{uid:'page',port:'value'}}}),
     item('number-control','page',{value:0},{y:400,w:240,h:130,inputValues:{min:0,max:1,step:1}}),
     item('data-table','result',{}, {x:760,y:100,h:300,bindings:{data:{uid:'sheet',port:'table'}}})],pool);

@@ -754,5 +754,5 @@ test('table layout problems reach the editor as their own message, not as an inv
  assert.equal(await error({E1:'=INPUT("data",A1:A3)'}),'');
  assert.match(await error({E1:'=INPUT("data",A1:A3)',A2:'5'}),/A2 lies in the table range; clear it/);
  assert.match(await error({A2:'=INPUT("data",A1:A3)'}),/must lie outside table ranges/);
- assert.match(await error({A1:'Hall',A2:'1',A3:'x',C1:'=OUTPUT(A1:A3,"t")'},false),/column Hall needs one value type/);
+ assert.match(await error({A1:'Hall',A2:'1',A3:'x',C1:'=OUTPUT(A1:A3,"t")'},false),/column Hall mixes types/);
 }));
