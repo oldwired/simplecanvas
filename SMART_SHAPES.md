@@ -1276,22 +1276,14 @@ Range references follow permitted structure edits. A linked rectangle contribute
 whole-column calculations can still use COLUMN. Consumers can read results directly, or a Dataset
 can store them with Replace/Append or Live mode. Formulas and formatting stay on the sheet.
 
-### Table connection authoring
+### Formula and connection authoring
 
-The optional API v2 `tableRanges(state, change = null)` hook backs **Edit… → Table connections**.
-A read returns `{cols, rows, entries, state?}`, with at most 64 entries. Each entry has `cell`
-(A1 address), `kind` (`input` or `output`), `name`, `range`, `start`, `access` (`0`, `1`, or `2`),
-and `types`. Names, ranges, starting expressions, and comma-separated type choices are strings.
-`cols` is 1–26 and `rows` is 1–99; the host validates descriptors and any returned state.
-
-The helper sends a change containing those editable fields and an optional existing `cell`;
-`{cell, remove:true}` removes an existing declaration. The hook returns the updated description and
-state, or throws a readable error. Spreadsheet creates or edits the same INPUT/OUTPUT formulas
-available through cell editing, allocating a free declaration cell outside linked areas. It rejects
-occupied or invalid mappings without changing the draft. There is no second store of range settings.
-Adding, updating, or removing a connection stays provisional until the enclosing Edit **Save**;
-**Cancel** discards the draft. Binding selectors use the newly declared ports. This is an authoring
-hook; the HTML reader consumes the saved formulas and their access permissions.
+Spreadsheet declares table areas and outputs in cell formulas. **Insert function → Datasets**
+in the cell context menu inserts a formula for inline editing; authors choose the declaration cell
+and edit its name, range, start, access, or column types there. The Edit inspector retains the fixed
+component type, editable instance name, bindings for already-declared named inputs, and output
+previews. It does not duplicate formula authoring in a separate range editor. The HTML reader
+consumes the saved formulas and their access permissions.
 
 An optional `configurationError(state)` function returns `null` for valid configuration or a plain
 error message of up to 500 characters. Capabilities retain this diagnostic so the graph reports it

@@ -670,16 +670,17 @@ The twentieth tab, **Connected spreadsheet**, connects a Number control and Togg
 shows its three result types. Try changing B3 from 2 to 3 in the editor. In exported HTML, cells are
 read-only, but controls still drive the formulas and connected output displays entirely offline.
 
-To display a dataset, open **Edit… → Table connections**, add an input, and choose its port name,
-range, starting record, and access. The helper adds the formula to a free cell outside the range;
-**Save** applies the change and **Cancel** discards it. You can also author the formula directly:
-put `=INPUT("data",A1:C6,INPUT("startRow"),0)` in a cell **outside A1:C6**.
+To display a dataset, put `=INPUT("data",A1:C6,INPUT("startRow"),0)` in a cell **outside A1:C6**.
+Use the cell context menu's **Insert function → Datasets** to insert a declaration, then edit its
+arguments in the cell.
 It declares a table input named **data** and a numeric **startRow** input. Connect them in **Edit…**
 or Wiring mode. The range's first row displays column headers; subsequent rows show records from
 zero-based `startRow`. Omit the last two arguments to start at record 0 with read-only access.
 A start position can also be a fixed number or a cell reference. Multiple nonoverlapping INPUT
 rectangles can display independently connected tables anywhere on the sheet; ordinary cells beside
-them remain editable. **Insert function → Datasets** helps enter the declaration.
+them remain editable. **Edit…** shows the component type and editable instance name, binds the named
+inputs already declared by formulas, and previews their outputs. Ranges and access are edited in
+the formulas themselves.
 
 The fourth argument controls each rectangle: `0` read-only, `1` edit shared records in the editor,
 `2` also allow those edits in exported HTML. Headers, absent rows, derived results, and tables
@@ -751,7 +752,7 @@ reload of identical source data also counts. Source failures preserve accepted r
 or Undo does not replay a refresh. Enable **Allow source updates in HTML export** for this behavior
 in the reader. Tab 24, **Live dataset editor**, makes the source/working-copy distinction visible.
 
-Add an output through **Edit… → Table connections**, or write a table formula:
+Write a table formula, directly or through **Insert function → Datasets**:
 `=OUTPUT(A1:C4,"Energy costs")` creates an
 output port **Energy_costs**. The range's first row names the columns and the rows below are the
 records, so the range needs a header row and at least one data row. Headers may be formulas.

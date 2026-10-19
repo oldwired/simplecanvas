@@ -16,7 +16,7 @@ test('dataset ranges overlay empty header and body cells while formula cells sta
   assert.deepEqual(plain(def.compute({startRow:0},state,{tables:{data}})),{doubled:6,header:'Label'});
   const values=def._sheet(state,{startRow:0},{data});
   assert.equal(values.A1.t,'Label');assert.equal(values.A2.t,'First');assert.equal(values.B2.v,3);assert.equal(values.C2.b,true);
-  const without=def.tableRanges(state,{cell:'F1',remove:true}).state;
+  const without=def.dragEdit(state,'F1','',0,552,168).state;
   assert.equal(def.handles(without,552,168).find(h=>h.id==='A2').readOnly,undefined);
 });
 
@@ -253,32 +253,32 @@ test('default Insert table function stays editable even when its range contains 
   assert.equal(def._sheet(fixed,{},{data}).C2.v,3);
 });
 
-test('table range authoring places and relocates declarations without overwriting cells',()=>{
+test('table input formulas can be moved and removed without changing other authored cells',()=>{
   const def=source(),state=sheet({F1:'keep',E2:'=2+3'}),before=JSON.stringify(state);
-  const added=def.tableRanges(state,{kind:'input',name:'live "data"',range:'A1:C3',start:'INPUT("offset")',access:2});
-  assert.equal(added.entries.length,1);
-  assert.deepEqual(plain(added.entries[0]),{cell:'D1',kind:'input',name:'live "data"',range:'A1:C3',start:'INPUT("offset")',access:2,types:''});
-  assert.equal(added.state.cells.D1,'=INPUT("live ""data""",A1:C3,INPUT("offset"),2)');
+  const added=def.dragEdit(state,'D1','=INPUT("live ""data""",A1:C3,INPUT("offset"),2)',0,552,168).state;
+  assert.equal(def.configurationError(added),null);
+  assert.equal(def.inputs(added).offset.type,'number');
+  assert.equal(def.handles(added,552,168).find(h=>h.id==='A2').readOnly,true);
   assert.equal(JSON.stringify(state),before);
-  const moved=def.tableRanges(added.state,{...added.entries[0],range:'B1:D3',start:'0',access:1});
-  assert.equal(moved.entries[0].cell,'A1','the declaration moves outside its new range');
-  assert.equal(moved.state.cells.D1,undefined);assert.equal(moved.state.cells.F1,'keep');assert.equal(moved.state.cells.E2,'=2+3');
-  const removed=def.tableRanges(moved.state,{cell:'A1',remove:true});
-  assert.equal(removed.entries.length,0);assert.deepEqual(plain(removed.state.cells),plain(state.cells));
-  assert.throws(()=>def.tableRanges(state,{kind:'input',name:'data',range:'D1:F3',start:'0'}),/F1 lies in the table range/);
-  assert.throws(()=>def.tableRanges(state,{kind:'input',name:'data',range:'A1:F6'}),/No empty cell/);
-  assert.throws(()=>def.tableRanges(state,{kind:'input',name:'data',range:'A1:C99'}),/inside the grid/);
-  assert.throws(()=>def.tableRanges(state,{cell:'F1',remove:true}),/declaration has changed/);
+  const cleared=def.dragEdit(added,'D1','',0,552,168).state;
+  const moved=def.dragEdit(cleared,'A1','=INPUT("live ""data""",B1:D3,0,1)',0,552,168).state;
+  assert.equal(def.configurationError(moved),null);
+  assert.equal(moved.cells.D1,undefined);assert.equal(moved.cells.F1,'keep');assert.equal(moved.cells.E2,'=2+3');
+  assert.equal(def.handles(moved,552,168).find(h=>h.id==='B2').readOnly,true);
+  const removed=def.dragEdit(moved,'A1','',0,552,168).state;
+  assert.deepEqual(plain(def.inputs(removed)),{});assert.deepEqual(plain(removed.cells),plain(state.cells));
 });
 
-test('table range authoring creates typed output formulas and rejects duplicate ports',()=>{
+test('table output formulas publish typed rows and reject duplicate ports or invalid type arguments',()=>{
   const def=source(),state=sheet({A1:'name',B1:'amount',A2:'First',B2:'2'});
-  const added=def.tableRanges(state,{kind:'output',name:'Result table',range:'A1:B3',types:'2,number'});
-  assert.equal(added.state.cells.C1,'=OUTPUT(A1:B3,"Result table",2,"number")');
-  assert.deepEqual(plain(added.entries[0]),{cell:'C1',kind:'output',name:'Result table',range:'A1:B3',start:'0',access:0,types:'2,number'});
-  assert.deepEqual(plain(def.compute({},added.state).Result_table.table.rows),[['First',2],[null,null]]);
-  const mostlyEmpty=def.tableRanges(sheet({A1:'name'}),{kind:'output',name:'Empty',range:'A1:C3',types:'2,2,2'});
-  assert.equal(mostlyEmpty.entries[0].cell,'D1','generated output declarations stay outside their published rectangle');
-  assert.throws(()=>def.tableRanges(added.state,{kind:'output',name:'Result table',range:'A1:B3'}),/declared twice/);
-  assert.throws(()=>def.tableRanges(state,{kind:'output',name:'Results',range:'A1:B3',types:'number,date'}),/one type per column/);
+  const added=def.dragEdit(state,'C1','=OUTPUT(A1:B3,"Result table",2,"number")',0,552,168).state;
+  assert.deepEqual(plain(def.compute({},added).Result_table.table.rows),[['First',2],[null,null]]);
+  const mostlyEmpty=def.dragEdit(sheet({A1:'name',B1:'other',C1:'last'}),'D1','=OUTPUT(A1:C3,"Empty",2,2,2)',0,552,168).state;
+  assert.deepEqual(plain(def.compute({},mostlyEmpty).Empty.table.rows),[[null,null,null],[null,null,null]],'explicit types support entirely empty columns');
+  const duplicate=def.dragEdit(added,'D1','=OUTPUT(A1:B3,"Result table")',0,552,168).state;
+  assert.match(def.configurationError(duplicate),/declared twice/);
+  assert.throws(()=>def.compute({},duplicate),/declared twice/);
+  const invalid=def.dragEdit(state,'C1','=OUTPUT(A1:B3,"Results","number","date")',0,552,168).state;
+  assert.match(def.configurationError(invalid),/types are 0/);
+  assert.throws(()=>def.compute({},invalid),/types are 0/);
 });

@@ -34,7 +34,7 @@ async function record(run,index=0){return run(`(async()=>{const r=(await ensureE
 async function outputs(run,index=0){const r=await record(run,index);assert.ok(!r.error,r.error);return r.io.outputs;}
 async function childrenText(run,index=0){return run(`(async()=>{const it=items[${index}],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false,io])).filter(x=>x.type==='text').map(x=>x.text);})()`);}
 async function handlePoint(page,run,index,id){
-  const value=await run(`(async()=>{selection=[${index}];editingSmartIdx=${index};render();const it=items[${index}],io=await resolveSmartComponentIo(it),hs=await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it),io]);const h=hs.find(h=>h.id===${JSON.stringify(id)});return h?{x:it.x+h.x,y:it.y+h.y,handle:h}:null;})()`);
+  const value=await run(`(async()=>{selection=[${index}];editingSmartIdx=${index};render();const it=items[${index}],io=await resolveSmartComponentIo(it).catch(()=>undefined),hs=await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it),io]);const h=hs.find(h=>h.id===${JSON.stringify(id)});return h?{x:it.x+h.x,y:it.y+h.y,handle:h}:null;})()`);
   assert.ok(value,'handle '+id);const box=await page.locator('#canvas').boundingBox();return {...value,x:box.x+value.x,y:box.y+value.y};
 }
 async function clickHandle(page,run,index,id){const p=await handlePoint(page,run,index,id);await page.mouse.click(p.x,p.y);return p;}
@@ -43,18 +43,12 @@ async function openInputs(page,run,index=0){
   await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
 }
 async function saveInputs(page){await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);}
-async function tableConnection(page,{selection='new:input',name='data',range='A1:B4',start='0',access='0',types=''}={}){
-  await page.locator('#tableRangeSelect').selectOption(selection);
-  await page.getByLabel('Connection name',{exact:true}).fill(name);
-  await page.getByLabel('Cell range',{exact:true}).fill(range);
-  if(await page.getByLabel('Start row',{exact:true}).isVisible()){
-    await page.getByLabel('Start row',{exact:true}).fill(start);
-    await page.getByLabel('Editing access',{exact:true}).selectOption(access);
-  }else await page.getByLabel('Column types',{exact:true}).fill(types);
-  await page.getByRole('button',{name:selection.startsWith('new:')?'Add connection':'Update connection',exact:true}).click();
-  await page.waitForFunction(()=>!__test.run('componentDialogSession?.rendering')&&!document.querySelector('#componentBindingFields').disabled);
+async function editCell(page,run,cell,text,{cancel=false}={}){
+  await clickHandle(page,run,0,cell);
+  const input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+  assert.equal(await input.evaluate(el=>el.readOnly),false,'formula declaration stays editable');
+  await input.fill(text);await input.press(cancel?'Escape':'Enter');await input.waitFor({state:'detached'});await run('smartHitSettled');
 }
-async function connectionError(page,pattern){await page.waitForFunction(source=>new RegExp(source).test(document.querySelector('#componentBindingsError').textContent),pattern.source);}
 async function stagedRows(page,count){await page.waitForFunction(count=>__test.run(`(()=>{const s=componentDialogSession,r=s?.rows.find(r=>r.name==='data');if(!r)return false;try{const ref=JSON.parse(r.input.value);return ref.datasetId!=='fleet'&&s.datasets[ref.datasetId]?.rows.length===${count};}catch{return false;}})()`),count);}
 async function snapshot(run){return run('({items:clone(items),datasets:clone(datasets),undo:clone(undoStack),redo:clone(redoStack)})');}
 async function readerText(page,index,text){await page.waitForFunction(({index,text})=>{
@@ -70,64 +64,76 @@ async function openReader(page,run,context){
 const fleet={name:'Fleet',columns:[{key:'Boat',name:'Boat',type:'string'},{key:'Points',name:'Points',type:'number'}],rows:[['Aurora',8],['Borealis',2],['Calypso',5]]};
 const fleetSource=()=>item('data-source','fleet-source',{}, {x:1050,y:700,w:280,h:150,inputValues:{data:{datasetId:'fleet'}}});
 
-test('the blank built-in spreadsheet gains a dataset range through Table connections',async()=>app(async({page,run})=>{
+test('the blank built-in spreadsheet uses Insert function and a compact Edit inspector to connect a dataset',async()=>app(async({page,run})=>{
   const definition=await run("clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key==='spreadsheet'))");
   assert.deepEqual(definition.items[0].state.cells,{});assert.deepEqual(definition.ports,{inputs:{},outputs:{}});
   await seed(run,[{...definition.items[0],uid:'sheet',x:60,y:160},fleetSource()],{fleet});
   assert.deepEqual(await outputs(run),{});assert.deepEqual(await childrenText(run),[]);
-  const original=await snapshot(run);await openInputs(page,run);await tableConnection(page);
-  assert.deepEqual(await snapshot(run),original,'the helper stages a formula until Save');
-  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
-  assert.equal(await run('items[0].state.source'),undefined);
+  await openInputs(page,run);
+  assert.equal(await page.locator('#componentTypeName').textContent(),'Spreadsheet');
+  assert.equal(await page.locator('#componentNameInput').inputValue(),'Spreadsheet');
+  assert.equal(await page.locator('#componentConfigurationSection').isVisible(),false);
+  assert.equal(await page.getByRole('heading',{name:'Table connections',exact:true}).count(),0);
+  assert.equal(await page.locator('#componentTableRangesSection').count(),0);
+  await page.locator('#componentBindingsCancel').click();
+  const point=await handlePoint(page,run,0,'E1');await page.mouse.click(point.x,point.y,{button:'right'});
+  await page.getByRole('menuitem',{name:'Insert function',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Datasets',exact:true}).click();
+  await page.getByRole('menuitem',{name:'INPUT("data", A1:C6, INPUT("startRow"), 0)',exact:true}).click();
+  const input=page.locator('[data-smart-inline-input] #smartTextValue');await input.waitFor();
+  assert.equal(await input.inputValue(),'=INPUT("data",A1:C6,INPUT("startRow"),0)');
+  await input.fill('=INPUT("data",A1:B4,0,0)');await input.press('Enter');await input.waitFor({state:'detached'});await run('smartHitSettled');
+  await openInputs(page,run);const original=await snapshot(run);
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));
+  await page.locator('#componentNameInput').fill('Fleet sheet');
+  assert.equal(await page.locator('#componentTypeName').textContent(),'Spreadsheet');
+  assert.deepEqual(await snapshot(run),original,'name and binding changes stay staged until Save');await saveInputs(page);
+  assert.equal(await run('items[0].componentName'),'Fleet sheet');assert.equal(await run('items[0].state.source'),undefined);
   assert.deepEqual(Object.values(await run('items[0].state.cells')),['=INPUT("data",A1:B4,0,0)']);
   assert.ok((await childrenText(run)).includes('Aurora'));assert.deepEqual(await run('datasets.fleet'),fleet);
 }));
 
-test('a conflicting input range preserves authored cells, formatting and assignments; a free range saves and undoes',async()=>app(async({page,run})=>{
+test('a conflicting range remains repairable without losing authored cells, formatting or assignments',async()=>app(async({page,run})=>{
   const state={cols:5,rows:6,weights:[2,1,1,1,1],cells:{A1:'Saved heading',A2:'Original value',D2:'=OUTPUT(INPUT("boost"),"result")'},formats:{A2:'0.00'},aligns:{D2:'right'}};
   await seed(run,[item('spreadsheet','sheet',state,{inputValues:{boost:9}}),fleetSource()],{fleet});const original=await snapshot(run);
-  await openInputs(page,run);const draft=await run('clone(componentDialogSession.proposal)');
-  await tableConnection(page);await connectionError(page,/A1.*table range|A1.*clear/i);
-  assert.deepEqual(await run('clone(componentDialogSession.proposal)'),draft,'a rejected connection preserves the draft');assert.deepEqual(await snapshot(run),original);
-  await tableConnection(page,{range:'C3:D6'});
-  assert.deepEqual(await run('componentDialogSession.proposal.state.formats'),state.formats);
-  assert.deepEqual(await run('componentDialogSession.proposal.state.aligns'),state.aligns);
-  assert.deepEqual(await run('componentDialogSession.proposal.state.weights'),state.weights);
-  assert.equal(await run('componentDialogSession.proposal.inputValues.boost'),9);
-  await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),original);
-  await openInputs(page,run);await tableConnection(page,{range:'C3:D6'});
-  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  await editCell(page,run,'E1','=INPUT("data",A1:B4)',{cancel:true});assert.deepEqual(await snapshot(run),original);
+  await editCell(page,run,'E1','=INPUT("data",A1:B4)');assert.match((await record(run)).error,/A1.*table range|A1.*clear/i);
+  const bad=await run('clone(items[0])');
+  assert.deepEqual(bad.state.formats,state.formats);assert.deepEqual(bad.state.aligns,state.aligns);assert.deepEqual(bad.state.weights,state.weights);
+  assert.equal(bad.inputValues.boost,9);for(const [key,value] of Object.entries(state.cells))assert.equal(bad.state.cells[key],value);
+  await editCell(page,run,'E1','=INPUT("data",C3:D6)');
+  await openInputs(page,run);await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
   assert.deepEqual(await outputs(run),{result:9});assert.ok((await childrenText(run)).includes('Aurora'));
-  assert.equal(await run('undoStack.length'),original.undo.length+1);await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
+  await run('undo();undo();undo()');assert.deepEqual(await run('clone(items)'),original.items);
 }));
 
-test('a linked input range preserves formulas outside its rectangle',async()=>app(async({page,run})=>{
+test('a formula-defined input range preserves formulas outside its rectangle',async()=>app(async({page,run})=>{
   const cells={D2:'=OUTPUT(SUM(B2:B4),"total")'};
   await seed(run,[item('spreadsheet','sheet',{cols:5,rows:6,cells}),fleetSource()],{fleet});
-  await openInputs(page,run);await tableConnection(page);
+  await editCell(page,run,'E1','=INPUT("data",A1:B4)');await openInputs(page,run);
   await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
   assert.equal(await run('items[0].state.cells.D2'),cells.D2);assert.deepEqual(await outputs(run),{total:15});
 }));
 
-test('an incompatible formula port rejects a table connection and can be resolved with a distinct name',async()=>app(async({page,run})=>{
+test('a conflicting formula port can be repaired with a distinct name without losing its scalar assignment',async()=>app(async({page,run})=>{
   const state={cols:5,rows:6,cells:{D2:'=OUTPUT(INPUT("data","string"),"label")'}};
-  await seed(run,[item('spreadsheet','sheet',state,{inputValues:{data:'Original string'}}),fleetSource()],{fleet});const original=await snapshot(run);
-  await openInputs(page,run);const draft=await run('clone(componentDialogSession.proposal)');
-  await tableConnection(page);await connectionError(page,/type|conflict|data/i);
-  assert.deepEqual(await run('clone(componentDialogSession.proposal)'),draft);assert.deepEqual(await snapshot(run),original);
-  await tableConnection(page,{name:'fleet'});
+  await seed(run,[item('spreadsheet','sheet',state,{inputValues:{data:'Original string'}}),fleetSource()],{fleet});
+  await editCell(page,run,'E1','=INPUT("data",A1:B4)');assert.ok((await record(run)).error);
+  assert.equal(await run('items[0].inputValues.data'),'Original string');assert.equal(await run('items[0].state.cells.D2'),state.cells.D2);
+  await editCell(page,run,'E1','=INPUT("fleet",A1:B4)');await openInputs(page,run);
   assert.equal(await page.getByLabel('data value',{exact:true}).inputValue(),'Original string');
   await page.getByLabel('fleet dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
   assert.deepEqual(await outputs(run),{label:'Original string'});assert.ok((await childrenText(run)).includes('Aurora'));
 }));
 
-test('a table connection that makes a scalar output ambiguous is rejected without discarding its formula',async()=>app(async({page,run})=>{
+test('a range that makes a scalar output ambiguous preserves both formulas for inline repair',async()=>app(async({page,run})=>{
   const state={cols:5,rows:6,cells:{D1:'=OUTPUT(A2,"result")'}};
-  await seed(run,[item('spreadsheet','sheet',state),fleetSource()],{fleet});const original=await snapshot(run);
-  assert.deepEqual(await outputs(run),{result:0});await openInputs(page,run);const draft=await run('clone(componentDialogSession.proposal)');
-  await tableConnection(page);await connectionError(page,/ambiguous|type/i);
-  assert.deepEqual(await run('clone(componentDialogSession.proposal)'),draft);assert.deepEqual(await snapshot(run),original);
-  await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),original);
+  await seed(run,[item('spreadsheet','sheet',state),fleetSource()],{fleet});assert.deepEqual(await outputs(run),{result:0});
+  await editCell(page,run,'E1','=INPUT("data",A1:B4)');assert.ok((await record(run)).error);
+  assert.equal(await run('items[0].state.cells.D1'),state.cells.D1);assert.equal(await run('items[0].state.cells.E1'),'=INPUT("data",A1:B4)');
+  await editCell(page,run,'D1','=OUTPUT(A2,"result","string")');await openInputs(page,run);
+  await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));await saveInputs(page);
+  assert.deepEqual(await outputs(run),{result:'Aurora'});
 }));
 
 test('a formula-defined table input changes its dataset binding with one Save',async()=>app(async({page,run})=>{
@@ -139,50 +145,34 @@ test('a formula-defined table input changes its dataset binding with one Save',a
   assert.equal(await run('undoStack.length'),original.undo.length+1);await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
 }));
 
-test('updating a linked range rejects newly covered formulas and removing it is staged and undoable',async()=>app(async({page,run})=>{
+test('range formula edits report newly covered cells and removal is cancelable and undoable',async()=>app(async({page,run})=>{
   const cells={C2:'=OUTPUT(B2*2,"doubled")'};
   await seed(run,[sheet(cells,{inputValues:{data:{datasetId:'fleet'}}})],{fleet});const original=await snapshot(run);
-  await openInputs(page,run);const draft=await run('clone(componentDialogSession.proposal)');
-  await tableConnection(page,{selection:'E1',range:'A1:C4',start:'INPUT("startRow")'});await connectionError(page,/C2.*table range|C2.*clear/i);
-  assert.deepEqual(await run('clone(componentDialogSession.proposal)'),draft);assert.deepEqual(await snapshot(run),original);
-  await tableConnection(page,{selection:'E1',range:'A1:B3',start:'1'});
-  assert.equal(await run('componentDialogSession.proposal.state.cells.E1'),'=INPUT("data",A1:B3,1,0)');
-  await saveInputs(page);assert.deepEqual(await outputs(run),{doubled:4});
-  await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
-  const beforeRemoval=await snapshot(run);
-  await openInputs(page,run);await page.locator('#tableRangeSelect').selectOption('E1');
-  await page.getByRole('button',{name:'Remove connection',exact:true}).click();
-  await page.waitForFunction(()=>!__test.run('componentDialogSession?.proposal.state.cells.E1'));
-  assert.deepEqual(await snapshot(run),beforeRemoval,'removal is staged until Save');await saveInputs(page);
-  assert.equal(await run('items[0].inputValues.data'),undefined);assert.equal(await run('items[0].state.cells.C2'),cells.C2);
-  await run('undo()');assert.deepEqual(await run('clone(items)'),original.items);
+  await editCell(page,run,'E1','=INPUT("data",A1:C4,INPUT("startRow"),0)');assert.match((await record(run)).error,/C2.*table range|C2.*clear/i);
+  assert.equal(await run('items[0].state.cells.C2'),cells.C2);assert.deepEqual(await run('items[0].inputValues.data'),{datasetId:'fleet'});
+  await editCell(page,run,'E1','=INPUT("data",A1:B3,1,0)');assert.deepEqual(await outputs(run),{doubled:4});
+  await run('undo();undo()');assert.deepEqual(await run('clone(items)'),original.items);
+  const beforeRemoval=await snapshot(run);await editCell(page,run,'E1','',{cancel:true});assert.deepEqual(await snapshot(run),beforeRemoval);
+  await editCell(page,run,'E1','');assert.equal(await run('items[0].state.cells.E1'),undefined);assert.equal(await run('items[0].state.cells.C2'),cells.C2);
+  await run('undo()');assert.deepEqual(await run('clone(items)'),beforeRemoval.items);
 }));
 
-test('two named dataset areas and a table output are created, revised and removed through Table connections',async()=>app(async({page,run})=>{
+test('two named dataset areas and a table output are created, revised and removed as cell formulas',async()=>app(async({page,run})=>{
   const rates={name:'Rates',columns:[{key:'rate',name:'Rate',type:'number'}],rows:[[10],[20]]};
   const state={cols:6,rows:6,cells:{F1:'Combined',F2:'=B2+D2',F3:'=B3+D3',F4:'=B4'}};
   const ratesSource=item('data-source','rates-source',{}, {x:1050,y:900,w:280,h:150,inputValues:{data:{datasetId:'rates'}}});
-  await seed(run,[item('spreadsheet','sheet',state),fleetSource(),ratesSource],{fleet,rates});const original=await snapshot(run);
-  await openInputs(page,run);await tableConnection(page);
+  await seed(run,[item('spreadsheet','sheet',state),fleetSource(),ratesSource],{fleet,rates});
+  await editCell(page,run,'C1','=INPUT("data",A1:B4)');await editCell(page,run,'C2','=INPUT("rates",D1:D3)');
+  await editCell(page,run,'E1','=OUTPUT(F1:F4,"totals",1)');await openInputs(page,run);
   await page.getByLabel('data dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'fleet'}));
-  await tableConnection(page,{name:'rates',range:'D1:D3'});
-  await page.getByLabel('rates dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'rates'}));
-  await tableConnection(page,{selection:'new:output',name:'totals',range:'F1:F4',types:'1'});
-  assert.deepEqual(await snapshot(run),original,'all three declarations and bindings are staged');await saveInputs(page);
+  await page.getByLabel('rates dataset',{exact:true}).selectOption(JSON.stringify({datasetId:'rates'}));await saveInputs(page);
   let result=await record(run);assert.ok(!result.error,result.error);
   assert.deepEqual(result.io.tables.outputs.totals.rows,[[18],[22],[5]]);
   assert.equal(result.io.tables.inputs.data.datasetId,'fleet');assert.equal(result.io.tables.inputs.rates.datasetId,'rates');
-  const declaration=await run('Object.keys(items[0].state.cells).find(key=>items[0].state.cells[key].startsWith("=OUTPUT(F1:F4"))');
-  await openInputs(page,run);await tableConnection(page,{selection:declaration,name:'summary',range:'F1:F3',types:'1'});await saveInputs(page);
-  result=await record(run);assert.ok(!result.error,result.error);assert.equal(result.io.outputs.totals,undefined);
-  assert.deepEqual(result.io.tables.outputs.summary.rows,[[18],[22]]);
-  const saved=await snapshot(run);await openInputs(page,run);await page.locator('#tableRangeSelect').selectOption(declaration);
-  await page.getByRole('button',{name:'Remove connection',exact:true}).click();
-  await page.waitForFunction(cell=>!__test.run('componentDialogSession.proposal.state.cells['+JSON.stringify(cell)+']'),declaration);
-  assert.deepEqual(await snapshot(run),saved);await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),saved);
-  await openInputs(page,run);await page.locator('#tableRangeSelect').selectOption(declaration);
-  await page.getByRole('button',{name:'Remove connection',exact:true}).click();await saveInputs(page);
-  assert.deepEqual(await outputs(run),{});assert.equal(await run('items[0].state.cells.F2'),state.cells.F2);
+  await editCell(page,run,'E1','=OUTPUT(F1:F3,"summary",1)');result=await record(run);assert.ok(!result.error,result.error);
+  assert.equal(result.io.outputs.totals,undefined);assert.deepEqual(result.io.tables.outputs.summary.rows,[[18],[22]]);
+  const saved=await snapshot(run);await editCell(page,run,'E1','',{cancel:true});assert.deepEqual(await snapshot(run),saved);
+  await editCell(page,run,'E1','');assert.deepEqual(await outputs(run),{});assert.equal(await run('items[0].state.cells.F2'),state.cells.F2);
   await run('undo()');assert.deepEqual(await run('clone(items)'),saved.items);
 }));
 

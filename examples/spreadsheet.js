@@ -60,62 +60,6 @@
     let n;try{n=this._parse(src.slice(1),{cols:26,rows:99});}catch{return '';}
     return n.k==='fn'&&(n.name==='INPUT'&&n.args[1]?.k==='range'||n.name==='OUTPUT'&&n.args[0]?.k==='range')?n.name:'';
   },
-  _expression(n){
-    if(!n)return '0';
-    if(n.k==='str')return '"'+n.v.replace(/"/g,'""')+'"';
-    if(n.k==='num')return String(n.v);
-    if(n.k==='bool')return n.v?'TRUE':'FALSE';
-    if(n.k==='ref')return this._key(n.c,n.r);
-    if(n.k==='range')return this._key(n.c1,n.r1)+':'+this._key(n.c2,n.r2);
-    if(n.k==='error')return n.e;
-    if(n.k==='fn')return n.name+'('+n.args.map(a=>this._expression(a)).join(',')+')';
-    if(n.k==='neg')return '-('+this._expression(n.a)+')';
-    return '('+this._expression(n.a)+(n.op||n.k)+this._expression(n.b)+')';
-  },
-  // The authoring dialog edits these same declarations; formulas remain the stored source of truth.
-  tableRanges(state,change=null){
-    const dims=this._dims(state),entries=[];
-    for(const [cell,src] of Object.entries(state.cells||{})){
-      if(typeof src!=='string'||!/^=\s*(INPUT|OUTPUT)\s*\(/i.test(src)||!src.includes(':'))continue;
-      let n;try{n=this._parse(src.slice(1),{cols:26,rows:99});}catch{continue;}
-      if(n.k!=='fn'||!['INPUT','OUTPUT'].includes(n.name))continue;
-      const input=n.name==='INPUT',a=n.args,range=a[input?1:0],name=a[input?0:1];
-      if(range?.k!=='range'||name?.k!=='str')continue;
-      const types=!input&&a.length===3&&a[2].k==='str'&&/[,;]/.test(a[2].v)?a[2].v:a.slice(2).map(x=>x.k==='str'?x.v:this._expression(x)).join(',');
-      entries.push({cell,kind:input?'input':'output',name:name.v,range:this._expression(range),start:input?this._expression(a[2]):'0',
-        access:input&&a[3]?.k==='num'&&[0,1,2].includes(a[3].v)?a[3].v:0,types:input?'':types});
-    }
-    if(!change)return {cols:dims.cols,rows:dims.rows,entries,state};
-    if(!change||typeof change!=='object')throw new Error('Choose a table range to edit');
-    const old=change.cell?entries.find(e=>e.cell===change.cell):null;
-    if(change.cell&&!old)throw new Error('That declaration has changed; reopen Table connections');
-    const cells={...(state.cells||{})};if(old)delete cells[old.cell];
-    if(!change.remove){
-      if(!['input','output'].includes(change.kind)||typeof change.name!=='string'||!change.name.trim()||change.name.trim().length>120)throw new Error('Give the table port a name (1–120 characters)');
-      let range;try{range=this._parse('SUM('+String(change.range||'')+')',dims).args[0];}catch{}
-      if(range?.k!=='range'||range.r2<=range.r1)throw new Error('Choose a range inside the grid with a header row and at least one record row');
-      const input=change.kind==='input',access=Number(change.access||0);
-      if(input&&![0,1,2].includes(access))throw new Error('Choose read only, edit, or edit also in HTML');
-      let start={k:'num',v:0};if(input)try{start=this._parse(String(change.start||'0'),dims);}catch{throw new Error('Starting row must be a number, cell reference, or formula expression');}
-      const typeText=String(change.types||'').trim(),types=typeText?typeText.split(/[,;]/).map(v=>v.trim()):[];
-      if(!input&&(types.length>range.c2-range.c1+1||types.some(v=>!['0','1','2','3','number','string','boolean'].includes(v))))throw new Error('Use at most one type per column: 0 automatic, 1 number, 2 string, 3 boolean');
-      const quote=v=>'"'+v.replace(/"/g,'""')+'"',formula='='+(input?'INPUT('+quote(change.name.trim())+','+this._expression(range)+','+this._expression(start)+','+access:
-        'OUTPUT('+this._expression(range)+','+quote(change.name.trim())+(types.length?','+types.map(v=>/^\d$/.test(v)?v:quote(v)).join(','):''))+')';
-      const regions=this._regions({...state,cells}),free=k=>{
-        const c=this._COLS.indexOf(k[0]),r=+k.slice(1)-1;
-        return !cells[k]&&!regions.some(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)&&!(c>=range.c1&&c<=range.c2&&r>=range.r1&&r<=range.r2);
-      };
-      let cell=old&&free(old.cell)?old.cell:null;
-      for(let r=0;!cell&&r<dims.rows;r++)for(let c=0;!cell&&c<dims.cols;c++){const k=this._key(c,r);if(free(k))cell=k;}
-      if(!cell)throw new Error('No empty cell is available for the declaration outside the linked area; add a row or column first');
-      cells[cell]=formula;
-    }
-    const next={...state,cells},ports=this._ports(next);
-    if(ports.problems.length)throw new Error(ports.problems[0]);
-    this.outputs(next);
-    if(JSON.stringify(next).length>3900)throw new Error('The spreadsheet has reached its editable storage limit');
-    return this.tableRanges(next);
-  },
   _regionAt(state,c,r){return this._regions(state).find(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)||null;},
   _reserved(state,c,r){return !!this._regionAt(state,c,r);},
   // OUTPUT(A1:C4,"name"[,type,type,...]): the range's first row names the columns (as shown, so also a

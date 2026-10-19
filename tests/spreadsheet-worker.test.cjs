@@ -51,31 +51,6 @@ test('configuration proposals cross the Worker boundary only as validated state 
   assert.equal(await run(`(()=>{try{validateSmartReply({ok:true,apiVersion:1,result:{state:{}}},{method:'call',fn:'configure',componentApi:1});return false;}catch{return true;}})()`),true);
 }));
 
-test('table connection descriptions and edits cross the Worker boundary with bounded metadata',async()=>app(async({run})=>{
-  const item=sheetItem({D1:'=OUTPUT(2,"value")'});
-  const result=await run(`(async()=>{
-    const it=${JSON.stringify(item)},owner=createSmartExecution(it);
-    try{
-      const caps=await requestSmartCaps(it,owner);
-      const reply=await requestSmartSandbox({method:'call',src:it.script,fn:'tableRanges',args:[it.state,
-        {kind:'input',name:'fleet',range:'A1:B4',start:'INPUT("startRow")',access:2}]},it,owner);
-      return {supported:caps.tableRanges,result:reply.result,original:it.state};
-    }finally{disposeSmartExecution(owner);}
-  })()`);
-  assert.equal(result.supported,true);assert.deepEqual(result.original,item.state);
-  assert.deepEqual(result.result.entries,[{cell:'C1',kind:'input',name:'fleet',range:'A1:B4',start:'INPUT("startRow")',access:2,types:''}]);
-  assert.equal(result.result.state.cells.C1,'=INPUT("fleet",A1:B4,INPUT("startRow"),2)');
-  const valid={cols:6,rows:6,entries:result.result.entries,state:result.result.state};
-  for(const bad of [null,{...valid,cols:27},{...valid,rows:0},{...valid,entries:{}},{...valid,state:[]},
-    {...valid,entries:[{...valid.entries[0],access:3}]},{...valid,entries:[{...valid.entries[0],kind:'script'}]},
-    {...valid,entries:[{...valid.entries[0],name:'x'.repeat(2001)}]},{...valid,entries:[valid.entries[0],valid.entries[0]]}]){
-    assert.equal(await run(`(()=>{try{validateSmartReply({ok:true,apiVersion:2,result:${JSON.stringify(bad)}},
-      {method:'call',fn:'tableRanges',componentApi:2});return false;}catch{return true;}})()`),true,'invalid table metadata is rejected');
-  }
-  assert.equal(await run(`(()=>{try{validateSmartReply({ok:true,apiVersion:1,result:${JSON.stringify(valid)}},
-    {method:'call',fn:'tableRanges',componentApi:1});return false;}catch{return true;}})()`),true);
-}));
-
 // The timeout is not overridden: successful requests exercise the same real Worker deadline as
 // ordinary components, including parsing and static typing during the capability request.
 test('a bad linked range reports its declaration error before stale assignments and repairs without losing the connection',async()=>app(async({page,run})=>{
@@ -86,13 +61,6 @@ test('a bad linked range reports its declaration error before stale assignments 
   const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+60+500,box.y+140+40);
   const field=page.locator('#smartTextValue');await field.waitFor();assert.equal(await field.evaluate(el=>el.readOnly),false);
   await field.fill('=INPUT("data",A1:B3)');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
-  assert.deepEqual((await record(run,0)).outputs,{total:33});assert.deepEqual(await run('items[0].inputValues'),item.inputValues);
-  await run(`items[0].state.cells.C1='=INPUT("data",A1:B10)';editorComponentEvaluation=null;editingSmartIdx=null;render();openComponentBindings()`);
-  await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
-  await page.getByLabel('Cell range',{exact:true}).fill('A1:B3');await page.getByRole('button',{name:'Update connection',exact:true}).click();
-  await page.waitForFunction(()=>!document.querySelector('#componentBindingFields').disabled);
-  assert.equal(await page.getByLabel('data dataset',{exact:true}).inputValue(),JSON.stringify({datasetId:'source'}));
-  await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
   assert.deepEqual((await record(run,0)).outputs,{total:33});assert.deepEqual(await run('items[0].inputValues'),item.inputValues);
 }));
 

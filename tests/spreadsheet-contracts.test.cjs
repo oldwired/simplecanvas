@@ -13,20 +13,20 @@ test('new spreadsheets start with an empty editable grid and no formula ports',(
   assert.deepEqual(plain(def.inputs(state)),{});assert.deepEqual(plain(def.outputs(state)),{});
   assert.deepEqual(plain(def.compute({},state)),{});assert.deepEqual(plain(def._sheet(state,{})),{});
   assert.ok(def.handles(state,552,168,def.initStyle()).filter(h=>h.kind==='text').every(h=>h.value===''));
-  const linked=def.tableRanges(state,{kind:'input',name:'data',range:'A1:C3',start:'INPUT("startRow")',access:0}).state;
+  const linked=def.dragEdit(state,'D1','=INPUT("data",A1:C3,INPUT("startRow"),0)',0,552,168).state;
   assert.deepEqual(plain(def.inputs(linked)),{data:{type:'table'},startRow:{type:'number',default:0}},'an empty grid can bind data without deleting sample formulas');
 });
 
-test('table range configuration preserves authored cells and rejects ambiguous outputs until repaired',()=>{
+test('table input formulas preserve authored cells and report ambiguous outputs until repaired',()=>{
   const def=source('spreadsheet'),previous={...def.initState(),cells:{D1:'=OUTPUT(A2,"result")'}},before=JSON.stringify(previous);
-  const change={kind:'input',name:'data',range:'A1:B4',start:'0',access:0};
   assert.deepEqual(plain(def.outputs(previous)),{result:{type:'number'}});
-  assert.throws(()=>def.tableRanges(previous,change),/ambiguous/);
-  assert.equal(JSON.stringify(previous),before,'configuration never discards existing formulas');
-  const typed={...previous,cells:{D1:'=OUTPUT(A2,"result","number")'}};
-  const proposal=def.tableRanges(typed,change);
-  assert.equal(proposal.state.cells.D1,typed.cells.D1);
-  assert.deepEqual(plain(def.outputs(proposal.state)),{result:{type:'number'}});
+  const linked=def.dragEdit(previous,'C1','=INPUT("data",A1:B4,0,0)',0,552,168).state;
+  assert.throws(()=>def.outputs(linked),/ambiguous/);
+  assert.equal(JSON.stringify(previous),before,'editing a declaration never discards existing formulas');
+  assert.equal(linked.cells.D1,previous.cells.D1);
+  const repaired=def.dragEdit(linked,'D1','=OUTPUT(A2,"result","number")',0,552,168).state;
+  assert.equal(repaired.cells.C1,linked.cells.C1);
+  assert.deepEqual(plain(def.outputs(repaired)),{result:{type:'number'}});
 });
 
 test('spreadsheet publishes each OUTPUT argument independently of its containing expression',()=>{

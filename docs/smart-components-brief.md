@@ -1395,11 +1395,11 @@ Trigger connects to Dataset's reload input.
   different datasets. Remaining cells retain authored values and formulas. `start` is zero-based,
   defaults to 0, and may be a literal, cell expression, or `INPUT("startRow")`. Access `0`/omitted
   is read-only, `1` permits editor writeback, and `2` also permits HTML reader writeback.
-- **Edit… → Table connections** offers a form for input/output name, range, starting record,
-  access, and output column types. Add/Update/Remove writes the same cell formulas through the
-  optional `tableRanges` authoring hook; it allocates a free declaration cell and rejects conflicts.
-  The enclosing Save commits one undoable change, while Cancel keeps the original sheet. Formula
-  syntax remains available directly, and there is no duplicate configuration model to keep in sync.
+- **Insert function → Datasets** inserts a declaration for inline cell editing. Authors choose
+  its cell and edit the input/output name, range, starting record, access, and output column types
+  in that formula. **Edit…** retains the fixed component type, editable instance name, bindings for
+  already-declared inputs, and output previews. Its Save/Cancel stages binding changes; it does not
+  add a second interface for creating or editing formula declarations.
 - Invalid, out-of-bounds, self-containing, occupied, or overlapping declarations report errors
   while keeping authored cells editable. They do not silently publish partial results. Insert/delete
   operations before or after linked areas update references; operations that change a linked area's
@@ -1627,9 +1627,12 @@ current policy; closing this stage does not introduce an HTML-to-editor round tr
 
 ### Spreadsheet formula integration — 2026-10-19
 
-PR #12 adds multiple formula-defined dataset areas and named table outputs. **Edit → Table
-connections** creates and edits these declarations without requiring formula syntax; all changes
-remain staged until Save. Invalid ranges remain repairable and report their declaration error
+PR #12 adds multiple formula-defined dataset areas and named table outputs. The contributor's
+formula-first workflow is retained: author declarations in cells, with **Insert function → Datasets**
+as an insertion aid, then bind the resulting named inputs in **Edit…**. The integration-added table
+connection form and its authoring hook have been removed. General inspector improvements remain,
+including the fixed component type, editable instance name, and output previews.
+Invalid ranges remain repairable and report their declaration error
 before stale connection errors. Output schemas retain source keys and types, including all-null
 columns; conflicting keys are rejected with an actionable message. Structural edits cannot cut
 through linked areas and silently retarget formulas. Expanding inline editors preserve reference
