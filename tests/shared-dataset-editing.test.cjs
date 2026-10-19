@@ -157,12 +157,12 @@ test('New dataset builds a staged typed empty table, supports Cancel, and persis
   await page.reload();await run('appStarted');assert.equal(await run('items[0].inputValues.data.datasetId'),id);assert.deepEqual(await run(`datasets[${JSON.stringify(id)}]`),saved);
 }));
 
-test('Dataset Inputs separates owned storage from an optional source and saves an unconnected owner',async()=>app(async({page,run})=>{
+test('Dataset Edit separates owned storage from an optional source and saves an unconnected owner',async()=>app(async({page,run})=>{
   const other={...fleet,name:'Other fleet'};await seed(run,[sheet()],{fleet,other});
   await run('selection=[1];editingSmartIdx=null;render();');await page.locator('#componentBindingsBtn').click();
   await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
-  assert.equal(await page.getByText('Owned dataset',{exact:true}).count(),1);
-  assert.equal(await page.getByText('Incoming table (optional)',{exact:true}).count(),1);
+  assert.equal(await page.getByLabel('Owned dataset',{exact:true}).count(),1);
+  assert.equal(await page.getByLabel('Incoming table (optional)',{exact:true}).isVisible(),true);
   assert.equal(await page.locator('#component-input-0').isVisible(),false,'owned storage has no connection picker');
   const storage=page.getByLabel('data dataset',{exact:true});
   assert.equal(await storage.inputValue(),JSON.stringify({datasetId:'fleet'}));

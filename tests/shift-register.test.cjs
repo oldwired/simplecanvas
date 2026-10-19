@@ -126,7 +126,7 @@ async function editorCells(page,expected){
   await page.waitForFunction(expected=>__test.run('items[1].state.value===false && JSON.stringify(items[2].state.cells)==='+JSON.stringify(JSON.stringify(expected))),expected);
 }
 
-test('Inputs configures stages and parallel outputs; Trigger samples data and saved cells reload',async()=>app(async({page,run,context})=>{
+test('Edit configures stages and parallel outputs; Trigger samples data and saved cells reload',async()=>app(async({page,run,context})=>{
   await run(`cancelGesture();items=['toggle','trigger','shiftRegisterBoolean','statusIndicator'].map((key,index)=>({
     ...clone(BUILTIN_LIBRARY_DEFINITIONS.find(definition=>definition.key===key).items[0]),
     uid:'shift-ui-'+index,x:100+(index%2)*560,y:100+Math.floor(index/2)*330
@@ -134,9 +134,8 @@ test('Inputs configures stages and parallel outputs; Trigger samples data and sa
   await page.locator('#componentBindingsBtn').click();
   await page.getByLabel('Stages',{exact:true}).fill('3');await page.getByLabel('Stages',{exact:true}).press('Tab');
   await page.waitForFunction(()=>!document.querySelector('#componentBindingsSave').disabled);
-  const inputRow=name=>page.locator('#componentInputFields .component-input').filter({has:page.locator('label').filter({hasText:new RegExp('^'+name+' \\(')})});
-  await inputRow('value').locator('select').first().selectOption(JSON.stringify({uid:'shift-ui-0',port:'value'}));
-  await inputRow('pulse').locator('select').first().selectOption(JSON.stringify({uid:'shift-ui-1',port:'value'}));
+  await page.getByLabel('value (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'shift-ui-0',port:'value'}));
+  await page.getByLabel('pulse (boolean)',{exact:true}).selectOption(JSON.stringify({uid:'shift-ui-1',port:'value'}));
   await page.locator('#componentNameInput').fill('Shift history');await page.locator('#componentBindingsSave').click();
   await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);await editorCells(page,[false,false,false]);
   const ports=await run('requestSmartCaps(items[2])');

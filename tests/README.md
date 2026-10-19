@@ -259,6 +259,10 @@ bounded derived-table contract, downstream propagation, and persistence through 
 serialization, shared dataset identity, and separate current/committed revision ownership.
 `tests/data-workflow.test.cjs` covers explicit import/download controls in the editor
 and offline HTML, including cancellation, invalid replacements, and no automatic action replay.
+`tests/phase3-closeout.test.cjs` builds a data workflow from an empty canvas through the actual
+library, Edit/import dialogs, and drag-to-connect ports. It checks both drag directions,
+incompatible-link rejection, sorted shared-record editing and history, saved workspace data,
+and the downloaded offline reader with explicit result downloads and session-local edits.
 `tests/dataset-reload-host.test.cjs` checks fresh file reads, remembered delimiters, missing handles,
 schema/permission failures, stale ownership, and competing reads. Reload declaration/edge tests in
 `tests/data-transform-contracts.test.cjs` cover baseline suppression, queue bounds, and settled dispatch.

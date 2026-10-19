@@ -1,7 +1,7 @@
 # From smart shapes to connected components
 
-Status: stages 1 and 2 are complete on `feature/smart-components`, based on `main`,
-validated 2026-10-17. Stage 2 includes the expanded library, logic, routing, timed signals,
+Status: stages 1, 2, and 3 are complete on `feature/smart-components`, based on `main`,
+with the stage 3 closeout validated 2026-10-18. Stage 2 includes the expanded library, logic, routing, timed signals,
 an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
 Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
@@ -15,7 +15,7 @@ Visual wiring is brought forward into stage 3: the editor exposes typed flow lin
 Dataset associations, with drag-to-connect editing over the existing bindings. Data ports default
 to left/right and control ports to top/bottom, with optional per-port side overrides.
 General routed events, the remaining stage 5 reader workflow, and stage 6 integrations remain proposals.
-Stage 3 remains active; the shared dataset milestone does not close it.
+Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
 Pause/Step/Resume, gate-built memory, eight new storage/sequencing built-ins, and an expanded
@@ -175,12 +175,12 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stages 1 and 2, including the example workspace and authoring closeout, are complete on the feature
+Stages 1, 2, and 3, including their example workspaces and authoring closeouts, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
-Stage 3 implements the agreed data workflow and now includes a connected formula sheet, shared
-dataset editing/capture, and visual connection authoring brought forward from stage 5. It
-remains open for testing and follow-up. Stage 4 has a narrow host-owned download
+Stage 3 delivers the agreed data workflow, including a connected formula sheet, shared
+dataset editing/capture, and visual connection authoring brought forward from stage 5. Its
+closeout evidence and deferred extensions are recorded below. Stage 4 has a narrow host-owned download
 action plus explicitly declared dataset reloads and row capture; general events and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
@@ -194,7 +194,7 @@ Share runtime helpers between editor and export throughout.
 | 2. Component library and logic — complete on branch | Preserved working popup, expandable catalog, pins, categories/search, built-in/user entries, configurable scalar controls, displays, gates, numeric helpers, typed routing, bounded timed signals, an eight-tab example workspace, and clear Edit feedback | An author builds, copies, saves, and repairs the threshold-and-toggle example without editing scripts; repeated sources are distinguishable, proposed outputs/errors update before Save, library data roundtrips, and the examples work offline. |
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
-| 3. Embedded data and visual connections — active | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas, optional bound-cell editing, and visual wiring over existing bindings | One accepted capture or cell edit updates all views of the shared data in editor and opted-in HTML. Typed flow links and Dataset associations are distinguishable; compatible connections can be created, replaced, and removed with Undo. Invalid data or incompatible links preserve accepted state. |
+| 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
 | 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, and declared row-capture pulses; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, or captures one sampled row. Page refresh, restoration, retries, and Undo do not replay actions. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
@@ -1229,8 +1229,9 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
 - Computation receives full resolved inputs through `context.tables`. Rendering receives by default at most
   24 rows per input/output and 160 characters per text cell through `io.tables`; full row counts
   remain available. `tablePresentation:'full'` opts into complete input snapshots under the same transfer
-  budget. Presentation refreshes reuse the settled graph. Tables inside feedback cycles
-  remain unsupported.
+  budget. Presentation refreshes reuse the settled graph. Combinational table feedback is
+  rejected; explicit Dataset Replace/Append actions can sample a transformed view of the owner's
+  records after propagation settles. Live source feedback is also rejected.
 - **Edit…** previews imported column types and initial rows before Save. **New dataset…** creates
   an empty table with named, nullable typed columns. Cancel discards pending data; tab/session changes
   cancel stale imports. Existing datasets can be selected directly.
@@ -1522,6 +1523,57 @@ or general routed events.
 Result downloads contain data, not the full editable workspace. A new HTML snapshot or full
 HTML-to-editor round trip still requires a complete editable document model in the export and a
 defined import path.
+
+### Stage 3 closeout evidence — 2026-10-18
+
+The full regression pass ran **909 tests per browser**. Chromium reported **907 passed, 2 failed,
+0 skipped**; WebKit reported **905 passed, 2 failed, 2 skipped**. Both failures came from stale
+test labels after the Edit dialog layout changed, in the shared-dataset and shift-register suites.
+Their selectors now use the controls' existing accessible names. The two affected suites and the
+new blank-canvas acceptance test then passed together: **14/14 in Chromium and 14/14 in WebKit**.
+WebKit's two skips are the intentional
+Chromium-CDP touch tests. These are the original full-run totals plus passing targeted reruns,
+not a claim that the entire suite was rerun after correcting the selectors.
+
+The new [blank-canvas closeout test](../tests/phase3-closeout.test.cjs) passed in both engines.
+It places components through the real library, imports semicolon-separated data through Edit,
+connects ports by dragging in both directions, rejects an incompatible link, edits shared records,
+checks Undo/Redo and reload, and operates the actual downloaded HTML and result download offline.
+
+- [x] Author a Dataset → Filter → Sort workflow with shared record views, a chart, and downloads.
+  Dataset associations and typed table flows are distinct; incompatible links preserve existing
+  bindings. The [wiring regressions](../tests/component-wiring-runtime.test.cjs) also cover replacement,
+  disconnection, and Undo.
+- [x] Keep filtered/sorted edits attached to their source records, preserve independent stored
+  aggregate results, and overwrite Live working edits only on an accepted source publication.
+  Coverage: [record editing](../tests/dataset-editor.test.cjs),
+  [Live updates](../tests/dataset-live-browser.test.cjs), and the
+  [workspace comparisons](../tests/example-workspace.test.cjs).
+- [x] Preserve ownership, revisions, connections, and accepted data through copies, history,
+  browser reload, and editable JSON. Coverage: [owner copies](../tests/dataset-owner-copy.test.cjs),
+  [dataset history](../tests/dataset-model-runtime.test.cjs), and
+  [imports and persistence](../tests/data-components.test.cjs).
+- [x] Keep Spreadsheet formulas/layout separate from records while publishing evaluated table
+  results. Reader import, edit, capture, and source-update permissions stay explicit; downloads
+  retain current result data without saving reader changes into the HTML. Coverage:
+  [spreadsheet results](../tests/spreadsheet-table-output-runtime.test.cjs),
+  [data actions](../tests/data-workflow.test.cjs), and
+  [capture](../tests/shared-dataset-capture.test.cjs).
+- [x] Exercise all 26 shipped tabs and their offline reader. Visually inspect the newly authored
+  editor/reader workflow and Wiring in tabs 17, 24, and 26. The documentation now includes a
+  blank-canvas data walkthrough and consistently describes Edit, downloads, and permitted manual
+  Dataset feedback.
+
+No production defect was found in this closeout; fixes were limited to stale test selectors and
+documentation inconsistencies. Physical iPad Safari, native Office paste, and physical printer
+behavior still require their broader release checks; browser-engine coverage does not certify them.
+
+Stage 3 is complete on the feature branch. Coordinated current-record controls, record-wise
+calculated columns, further chart types, and explicit read/write metadata on visual links remain
+extensions, not missing acceptance requirements. Shared buses and multiple drivers remain deferred.
+General routed events belong to stage 4, Run/Preview and reader result-saving policy to stage 5,
+and HTTP/MQTT providers and writes to stage 6. Reader changes remain session-local under the
+current policy; closing this stage does not introduce an HTML-to-editor round trip.
 
 ### Definition identity and updates
 

@@ -582,6 +582,24 @@ Tab 26, **Views and stored results**, compares these behaviors using the same so
 
 Dedicated remote providers, coordinated current-record controls, and calculated dataset columns remain future work.
 
+To build a small data workflow from a blank canvas:
+
+1. Place **Dataset**, **Text input**, **Table filter**, **Dataset editor**, and **Data bar chart** from the library.
+2. Open the Dataset's **Edit…**, name it **Results**, and import the
+   [sailing-results CSV](examples/sailing-results.csv). Inspect its preview and **Save**.
+3. Enable **Wiring**. Connect Results **data** → Table filter **data**, then the filter's **data**
+   output → both the Dataset editor's and chart's **data** inputs. Connect Text input **value** → filter **text**.
+4. In the filter's **Edit…**, select column **Boat** and operation **contains**. In the chart,
+   choose category **Boat** and value **Points**. Save each configuration.
+5. Turn Wiring off. Double-click the Text input, enter a boat name, and press Enter.
+   The table and chart show matching records; submitting empty text restores all records.
+6. Optionally enable **Edit dataset records** in the Dataset editor. Double-click that view and
+   edit a Points cell: the chart and original stored record update together. Enable **Allow reader edits**
+   separately if readers should have the same editing permission.
+7. Save the editable workspace and export HTML. Open the HTML file to use the filter and permitted
+   controls offline. Add **Download table** connected to the filter to retain current result rows;
+   reloading the HTML itself restores the exported snapshot.
+
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
 with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
 

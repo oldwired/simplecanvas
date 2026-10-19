@@ -902,7 +902,7 @@ advance timed state, or change the drawing. **Save** validates and commits the p
 
 Deployments can disable component authoring with
 `features.smartComponents:false` in `settings.json`; existing components still execute and export.
-The flag hides component templates, source editing, input controls, and Wiring, and blocks adding component
+The flag hides component templates, source editing, Edit, and Wiring, and blocks adding component
 library entries. Ordinary smart-shape authoring has its own `smartShapeAuthoring` switch, which
 must also be enabled to author components. A binding takes precedence over a saved literal; an
 unbound input uses its literal, then its declared default. Missing required inputs, missing
@@ -1248,7 +1248,8 @@ that schema. Their optional switches follow the Boolean input-handle contract ab
 Dataset's `allowReaderImport` setting enables explicit reader file replacement and its declared
 `reload` trigger. The new table must retain all existing column keys and types; extra columns are allowed. The file chooser,
 delimiter selection, preview, and acceptance belong to the host. Download table takes table `data`
-and string `filename` inputs. Its CSV/JSON controls act only on a reader's explicit click; runtime
+and string `filename` inputs. Its CSV/JSON controls work in the editor and HTML reader, acting only
+on an explicit click followed by confirmation; runtime
 re-evaluation, restore, and retries never request a download. See the host-owned table action contract above.
 
 ### Component index convention
