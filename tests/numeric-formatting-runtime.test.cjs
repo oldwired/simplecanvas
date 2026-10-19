@@ -137,3 +137,22 @@ test('paused editor and exported signal traces use display formatting while reta
   await exported.page.waitForFunction(()=>/value=0\.6, submitted=true/.test(document.querySelector('#feedbackStatus').textContent));
   await clickReader(exported.page,0,handle);await readerField.waitFor();assert.equal(await readerField.inputValue(),String(nextValue));await readerField.press('Escape');assert.deepEqual(exported.errors,[]);
 }));
+
+test('a table INPUT with access 2 lets the HTML reader write a cell back; access 1 keeps the reader read-only',async()=>app(async({page,run,context})=>{
+  const records={name:'Boats',columns:[{key:'boat',name:'Boat',type:'string'},{key:'points',name:'Points',type:'number'}],rows:[['Aurora',4],['Borealis',2]]};
+  const sheet=access=>({...defs.spreadsheet.initState(),cells:{E1:'=INPUT("data",A1:B3,0,'+access+')'}});
+  await seed(run,[item('spreadsheet','sheet',{w:552,h:168,state:sheet(2),inputValues:{data:{datasetId:'records'}}}),
+    item('data-source','owner',{x:950,y:100,datasetOwner:'data',inputValues:{data:{datasetId:'records'}}})],{records});
+  const handle=await clickEditor(page,run,0,'B2'),field=page.locator('#smartTextValue');await field.waitFor();
+  await page.keyboard.press('Escape');await field.waitFor({state:'detached'});await run('smartHitSettled');
+  const exported=await reader(page,run,context,2);await readerText(exported.page,0,'4');
+  await clickReader(exported.page,0,handle);const input=exported.page.locator('#smartTextValue');await input.waitFor();
+  await input.fill('32');await input.press('Enter');
+  await readerText(exported.page,0,'32');
+  assert.equal(await exported.page.locator('[role=alert]:not([hidden])').count(),0,'no "Reader editing is disabled"');
+  assert.deepEqual(exported.errors,[]);
+  // access 1: the reader gets no editable cell at all
+  await run(`items[0].state=${JSON.stringify(sheet(1))};render();ensureEditorComponentGraph()`);
+  const readOnly=await reader(page,run,context,2);await readerText(readOnly.page,0,'4');
+  assert.equal(await run(`(async()=>{const it=items[0],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it),io])).find(h=>h.id==='B2').editorOnly;})()`),true);
+}));

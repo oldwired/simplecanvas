@@ -346,8 +346,12 @@ Dataset editing and calculated table checks:
 - `tests/dataset-editor.test.cjs` exercises typed record edits, stable identities through sorting,
   full row/column paging, Add/Delete and Undo/Redo, stale drafts/actions, read-only results, and
   explicit HTML editing permission/session reset.
-- `tests/spreadsheet-table-output.test.cjs` validates result schemas, range bounds, scalar-port
-  collisions, nulls, literal values, formula/type errors, and dataset limits.
+- `tests/spreadsheet-table-output.test.cjs` validates formula-declared table outputs, header/data
+  ranges, result schemas, scalar-port collisions, nulls, literal values, formula/type errors, and
+  dataset limits. Table types accept numeric codes and type names; declaration cells stay blank.
+- Spreadsheet dataset tests cover named INPUT rectangles, zero-based start positions, access
+  `0`/`1`/`2`, direct DATA/COLUMN/ROWS reads, shared editing, and independent editable copies.
+  The demo uses formula declarations rather than legacy Grid source/table-output settings.
 - `tests/spreadsheet-table-output-runtime.test.cjs` uses real Workers and the Edit dialog,
   materializes evaluated tables, and verifies the offline reader and linked-page results.
 - The workspace tests exercise tabs 24 and 25 together: independent working edits, Live overwrite,

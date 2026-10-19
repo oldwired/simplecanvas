@@ -47,17 +47,13 @@ async function readerText(page,index,text){await page.waitForFunction(({index,te
 async function readerClick(page,index,handle){const p=await page.locator('[data-smart-index="'+index+'"]').evaluate((host,h)=>{const p=new DOMPoint(h.x,h.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};},handle);await page.mouse.click(p.x,p.y);}
 async function handles(run,index){return run(`requestSmartCall(items[${index}],'handles',[items[${index}].state,items[${index}].w,items[${index}].h,smartResolvedStyle(items[${index}])])`);}
 
-test('Inputs enables a real Worker table output; bad cells withhold the complete result and repair restores it',async()=>app(async({page,run,context})=>{
-  const state={...JSON.parse(JSON.stringify(def('spreadsheet').initState())),tableRange:'A2:C4',tableColumns:'energy:number\nprice:number\ncost:number',
+test('an OUTPUT range formula enables a real Worker table output; bad cells withhold the complete result and repair restores it',async()=>app(async({page,run,context})=>{
+  const state={...JSON.parse(JSON.stringify(def('spreadsheet').initState())),
     cells:{A1:'kWh',A2:'10',A3:'12.5',A4:'7',B1:'Price',B2:'0.3',B3:'0.3',B4:'0.32',C1:'Cost',C2:'=A2*B2',C3:'=A3*B3',C4:'=A4*B4'}};
   await seed(run,[item('spreadsheet','sheet',state),item('data-table','result',{}, {x:760,y:100,bindings:{data:{uid:'sheet',port:'table'}}})]);
-  assert.ok(scripts.spreadsheet.length<=50000);assert.equal((await record(run)).caps.outputs.table,undefined);
-  await run('selection=[0];editingSmartIdx=null;render();');await page.locator('#componentBindingsBtn').click();
-  await page.getByLabel('Publish table output',{exact:true}).selectOption('true');
-  await page.waitForFunction(()=>!document.querySelector('#componentBindingFields').disabled);
-  assert.equal(await page.getByLabel('Result cells',{exact:true}).inputValue(),'A2:C4');
-  assert.equal(await page.getByLabel('Result columns (name:type)',{exact:true}).inputValue(),'energy:number\nprice:number\ncost:number');
-  await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);await run('ensureEditorComponentGraph()');
+  assert.ok(scripts.spreadsheet.length<=64000);assert.equal((await record(run)).caps.outputs.table,undefined);
+  // explicit column types keep a mistyped cell a runtime error of that cell (inferred types would reject the port)
+  await cell(page,run,0,'E1','=OUTPUT(A1:C4,"table","number,number,number")');await run('ensureEditorComponentGraph()');
   const initial=await record(run);assert.equal(initial.caps.outputs.table.type,'table');assert.match(initial.io.outputs.table.datasetId,/^~/);
   assert.deepEqual(initial.io.tables.outputs.table.rows,[[10,.3,3],[12.5,.3,3.75],[7,.32,2.24]]);assert.equal(initial.io.tables.outputs.table.editable,false);
   assert.equal((await output(run,1)).rowCount,3);assert.deepEqual(await run('Object.keys(datasets)'),[],'pure result tables are not persisted stores');
@@ -65,12 +61,12 @@ test('Inputs enables a real Worker table output; bad cells withhold the complete
   assert.ok((await record(run,1)).error);await cell(page,run,0,'A3','4');assert.equal((await record(run)).io.tables.outputs.table.rows[1][2],1.2);
   await cell(page,run,0,'C3','=1/0');assert.match((await record(run)).error,/Table output in C3: #DIV\/0!/);
   await cell(page,run,0,'C3','=A3*B3');assert.equal((await output(run,1)).rowCount,3);
-  const {reader,errors,requests}=await openReader(page,run,context);await readerText(reader,1,'1.2');await readerText(reader,1,'energy');
+  const {reader,errors,requests}=await openReader(page,run,context);await readerText(reader,1,'1.2');await readerText(reader,1,'kWh');
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
 test('a pure spreadsheet result can feed an editable owned snapshot without overwriting it until Apply, also offline',async()=>app(async({page,run,context})=>{
-  const state={cols:3,rows:3,cells:{A1:"'One",A2:"'Two",B1:'=INPUT("factor")*3',B2:'=INPUT("factor")*4',C1:'=OUTPUT(SUM(B1:B2),"total")'},tableOutput:true,tableRange:'A1:B2',tableColumns:'label:string\namount:number',tableName:'Calculated'};
+  const state={cols:3,rows:3,cells:{A1:'label',B1:'amount',A2:"'One",A3:"'Two",B2:'=INPUT("factor")*3',B3:'=INPUT("factor")*4',C1:'=OUTPUT(SUM(B2:B3),"total")',C2:'=OUTPUT(A1:B3,"table")'}};
   const store={name:'Saved results',columns:[{key:'label',name:'Label',type:'string'},{key:'amount',name:'Amount',type:'number'}],rows:[]};
   await seed(run,[item('spreadsheet','sheet',state,{bindings:{factor:{uid:'factor',port:'value'}}}),
     item('number-control','factor',{value:2},{y:400,w:240,h:130,inputValues:{min:0,max:10,step:1}}),
@@ -91,7 +87,7 @@ test('a pure spreadsheet result can feed an editable owned snapshot without over
 
 test('table output from a bounded linked rectangle follows paging while keeping all spreadsheet metadata local',async()=>app(async({page,run,context})=>{
   const pool={source:{name:'Input',columns:[{key:'label',name:'Label',type:'string'},{key:'amount',name:'Amount',type:'number'}],rows:[['Alpha',10],['Beta',20],['Gamma',30]]}};
-  const state={source:'Dataset',cols:3,rows:3,dataRows:2,dataColumns:2,cells:{C2:'=B2*2',C3:'=B3*2'},formats:{C2:'0.00'},tableOutput:true,tableRange:'A2:C3',tableColumns:'label:string\nvalue:number\ndoubled:number',tableName:'Visible results'};
+  const state={cols:4,rows:3,cells:{D1:'=INPUT("data",A1:B3,INPUT("startRow"))',D2:'=OUTPUT(A1:C3,"table")',C1:'doubled',C2:'=B2*2',C3:'=B3*2'},formats:{C2:'0.00'}};
   await seed(run,[item('spreadsheet','sheet',state,{inputValues:{data:{datasetId:'source'}},bindings:{startRow:{uid:'page',port:'value'}}}),
     item('number-control','page',{value:0},{y:400,w:240,h:130,inputValues:{min:0,max:1,step:1}}),
     item('data-table','result',{}, {x:760,y:100,h:300,bindings:{data:{uid:'sheet',port:'table'}}})],pool);

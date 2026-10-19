@@ -26,7 +26,14 @@ async function app(fn){
     await page.route('http://example-workspace.test/**',route=>route.fulfill({
       status:route.request().url().endsWith('index.html')?200:404,contentType:'text/html',body:html}));
     await page.goto('http://example-workspace.test/index.html');
-    const run=source=>page.evaluate(async source=>{await __test.run('appReady');return __test.run(source);},source);
+    const run=source=>page.evaluate(source=>{
+      // Chromium's DevTools awaitPromise can lose an unrooted evaluation promise while
+      // Workers and a newer graph evaluation keep running. Retain this test bridge's
+      // completion until it settles; this neither retries nor changes application work.
+      const pending=window.__testPending||(window.__testPending=new Set());
+      const call=Promise.resolve(__test.run('appReady')).then(()=>__test.run(source));
+      const result=call.finally(()=>pending.delete(result));pending.add(result);return result;
+    },source);
     await run('appStarted');await fn({page,run,context});
     assert.deepEqual(errors,[],'no uncaught editor errors');
   }finally{await context.close();}

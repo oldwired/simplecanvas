@@ -1110,7 +1110,8 @@ An API v2 inline text handle can declare a host-owned cell edit instead of calli
  datasetCell:{input:'data',datasetId:'results',rowId:'r0',column:'Points',revision:0}}
 ```
 
-`datasetCell` contains exactly `input`, `datasetId`, `rowId`, `column`, and `revision`. Its input must
+`datasetCell` contains `input`, `datasetId`, `rowId`, `column`, and `revision`, with an optional
+Boolean `reader` permission. Its input must
 still resolve to the same stored dataset and include the row; the revision must match the snapshot
 from which the editor opened. The handle must use `kind:'text'`, `inline.mode:'edit'`, and cannot be
 read-only. The host validates the live Dataset owner and column type, then commits one update. It uses the stable row identity,
@@ -1120,9 +1121,11 @@ read-only. A stale edit is rejected rather than silently applied to a different 
 Text is literal, including leading `=`. Numeric entry accepts a finite supported number, Boolean
 entry accepts `true` or `false`, and an empty numeric/Boolean entry means null; empty text stays an
 empty string. This path never evaluates a spreadsheet formula or invokes `dragEdit`. In HTML the
-handle must also be reader-visible and `state.allowReaderEdit` must be true. Spreadsheet exposes
-**Edit dataset cells** (`editDataset`) and **Allow reader edits** (`allowReaderEdit`), both false by
-default. Its headers and absent/derived cells stay read-only, and ordinary formulas remain local.
+handle must also be reader-visible, and either `datasetCell.reader` or `state.allowReaderEdit`
+must be true. Spreadsheet's INPUT access `2` sets `datasetCell.reader:true` for that range;
+access `1` only allows editor writes, while omitted access or `0` is read-only. Dataset editor
+keeps its separate **Allow reader edits** setting. Headers and absent/derived cells stay read-only,
+and ordinary formulas remain local.
 
 ### Dataset record controls and view layout
 
@@ -1152,24 +1155,54 @@ formatting. Its optional linked rectangle and DATA/COLUMN/ROWS functions consume
 and other cell metadata stay on the sheet instance. A1 references to a linked area follow visible
 positions, not stable record identities. Use Dataset editor for dynamic record editing.
 
-New Spreadsheet instances start with an empty 6×6 grid and no formula-declared ports. Switching
-**Grid source** to **Dataset**, or expanding its displayed area, uses `configure` to check for
-nonempty cells in the reserved rectangle and formula declarations that become invalid, including
-conflicting `data`/`startRow` input types or ambiguous output types. On conflict, confirmation
-offers to clear all cell contents, formulas, and cell
-formatting while keeping grid size, column widths, and settings. The clearing is staged until
-**Save**. Formulas outside the linked area remain intact without a prompt when their port
-declarations remain valid. The example workspace supplies its demonstration values and formulas explicitly.
+New Spreadsheet instances start with an empty 6×6 grid and no formula-declared ports. The example
+workspace supplies demonstration values and formulas explicitly. A standalone declaration
+`INPUT("data",A1:C6[,start][,access])` maps a named table input into a rectangle. Put the declaration
+outside the mapped range; its first row shows headers, with at least one record row beneath it.
+`start` defaults to 0 and may be a nonnegative integer, a cell expression, or `INPUT("startRow")`.
+Access defaults to `0` (read-only); `1` permits editor writes; `2` also permits HTML reader writes.
+Several nonoverlapping rectangles may consume independent inputs. Their declaration cells remain
+editable when invalid, and errors explain out-of-bounds, occupied, overlapping, or self-containing
+ranges. Invalid declarations must not silently publish partial results or hide their authored cells.
+Structure edits before/after a linked area preserve reference mapping; edits that alter the area's
+mapped row or column structure are rejected. Change its INPUT formula deliberately to resize it.
 
-Spreadsheet optionally publishes a calculated range through the fixed **table** output:
-`tableOutput:true`, `tableRange:'A2:C4'`, `tableColumns:'energy:number\nprice:number\ncost:number'`,
-`tableName:'Spreadsheet results'`. The range is body cells, within the authored grid, with one unique
-`name:type` line per column (string, number, or boolean). The normal derived-table wrapper contains
-evaluated scalar/null values only. Blank cells become null, literal empty strings stay strings, and
-formula/type/range errors reject the entire result. The scalar OUTPUT port name `table` is reserved
-only when table output is enabled. A linked rectangle contributes the current visible page; whole
-column calculations can still use COLUMN. Consumers can read the result directly, or a Dataset can
-store it with Replace/Append or Live mode. Formulas and formatting are never stored in the result.
+Spreadsheet publishes a calculated range through `OUTPUT(range,"name"[,type,type,...])`, one
+named table output port per declaration. Every result range includes a header row and at least one
+data row; header cells may be literal or calculated. Types are inferred from non-null values or
+set per column with `0` auto, `1` number, `2` string, and `3` Boolean. Type names are also accepted;
+a single comma-separated type string is supported. INPUT and DATA scalar types use the same codes,
+with `0`/omitted meaning number. For example, `OUTPUT(D1:E4,"Readings",2,1)` publishes three records.
+A single-cell argument such as `OUTPUT(A2,"value",1)` remains a scalar output, not a table.
+Header keys must be unique; linked headers preserve their source key, display name, and type where
+possible. The derived table contains evaluated scalar/null values only. Blank cells become null,
+literal empty strings stay strings, and formula/type errors reject the entire result. INPUT/OUTPUT
+range declaration cells are blank in calculations and outputs; editor-only markers identify them.
+Range references follow permitted structure edits. A linked rectangle contributes the current page;
+whole-column calculations can still use COLUMN. Consumers can read results directly, or a Dataset
+can store them with Replace/Append or Live mode. Formulas and formatting stay on the sheet.
+
+### Table connection authoring
+
+The optional API v2 `tableRanges(state, change = null)` hook backs **Edit… → Table connections**.
+A read returns `{cols, rows, entries, state?}`, with at most 64 entries. Each entry has `cell`
+(A1 address), `kind` (`input` or `output`), `name`, `range`, `start`, `access` (`0`, `1`, or `2`),
+and `types`. Names, ranges, starting expressions, and comma-separated type choices are strings.
+`cols` is 1–26 and `rows` is 1–99; the host validates descriptors and any returned state.
+
+The helper sends a change containing those editable fields and an optional existing `cell`;
+`{cell, remove:true}` removes an existing declaration. The hook returns the updated description and
+state, or throws a readable error. Spreadsheet creates or edits the same INPUT/OUTPUT formulas
+available through cell editing, allocating a free declaration cell outside linked areas. It rejects
+occupied or invalid mappings without changing the draft. There is no second store of range settings.
+Adding, updating, or removing a connection stays provisional until the enclosing Edit **Save**;
+**Cancel** discards the draft. Binding selectors use the newly declared ports. This is an authoring
+hook; the HTML reader consumes the saved formulas and their access permissions.
+
+An optional `configurationError(state)` function returns `null` for valid configuration or a plain
+error message of up to 500 characters. Capabilities retain this diagnostic so the graph reports it
+before checking saved connections. Invalid spreadsheet declarations therefore keep their useful
+cell-addressed error even when a previous dataset assignment is still present; repair handles remain available.
 
 ### Authoring imports and copies
 
@@ -1182,7 +1215,8 @@ connected sources use the published snapshot frozen when Edit opened, not a draf
 **Cancel** discards the copy. The hook cannot modify the source dataset or access files; the HTML
 reader does not expose this authoring action.
 Existing dataset selection and CSV/TSV/JSON import previews supply the source. Spreadsheet replaces its
-grid with a literal copy, switches to Cells mode, and rejects data exceeding its grid or state budget.
+grid with a literal copy, removes its former formula declarations, and rejects data exceeding its
+grid or state budget.
 
 The author creates an empty typed table through **New dataset…** or imports CSV/TSV/JSON through a
 table input's **Edit…** controls. Creation names the dataset and its nullable typed columns; it
@@ -1565,7 +1599,7 @@ still rescale output. Check a known division on a printed template before use.
 
 ## Constraints and sandbox
 
-- **Script length**: 50,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
+- **Script length**: 64,000 characters. **State**: 4,000 characters once `JSON.stringify`'d.
   Both are enforced at execution as well as load. Oversized state updates are rejected, not
   truncated. State contains only JSON data, has at most 16 levels, and cannot use the keys
   `__proto__`, `prototype`, or `constructor`. The longest shipped example is below this limit.
@@ -1768,19 +1802,22 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
   Types follow saved formulas; possible branches/lookup results must have one scalar type.
   Deleted references remain errors that IFERROR can catch. Cells use `inline.mode:'edit'` handles
   with navigation/reference picking; HTML keeps ordinary formula cells read-only while recomputing connected signals.
-  **Grid source: Dataset** reserves a header/body area at the top left, read-only by default, with editable formulas
-  alongside it; numeric `startRow` selects the first visible data row, starting at zero. The configured
-  data rows/columns are clipped to the sheet size. `DATA("port",row,"column",type?)`,
+  `INPUT("port",A1:C6[,start][,access])` maps a header/body rectangle anywhere on the grid; the declaration
+  belongs outside it. Multiple independent ranges are allowed. `start` selects a zero-based record
+  position and can be driven by `INPUT("startRow")`. Access is `0` read-only (default), `1` editor
+  writeback, or `2` editor and HTML writeback. `DATA("port",row,"column",type?)`,
   `COLUMN("port","column")`, and `ROWS("port")` declare table inputs and read the complete selection,
-  independent of the visible window. DATA defaults to numeric values; use `"string"` or `"boolean"`
-  for other types. COLUMN is a range for aggregate functions. Direct dataset cell outputs need a
+  independent of the visible window; columns match by key or display name. DATA defaults to numeric
+  values; use `2`/`"string"` or `3`/`"boolean"` for other types. COLUMN is a range for aggregate
+  functions. Direct dataset cell outputs need a
   stable explicit type, e.g. `OUTPUT(A2,"boat","string")`. Importing an editable copy replaces the
   grid, preserves literal strings (including leading `=`), and leaves the source untouched. A leading
   apostrophe also forces manually entered cell content to be text. Copies must fit the 128-handle
   grid budget (cells + column controls + one header handle), 26 columns, and 4,000-character state.
-  **Edit dataset cells** enables host-owned writes to existing source rows; **Allow reader edits**
-  separately exposes those edits in HTML. Both default off. Data is edited by stable row identity,
-  including through filtered/sorted views, and aggregate results remain read-only.
+  Writable INPUT ranges use host-owned writes by stable row identity, including through filtered/sorted
+  views; aggregate results remain read-only. `OUTPUT(A1:C4,"results"[,type,type,...])` publishes a
+  calculated table, with headers in the first row and at least one data row. Multiple outputs are
+  allowed; types use `0` auto, `1` number, `2` string, `3` Boolean, or the corresponding names.
 - [Capture row](examples/capture-row.js): whole-table `data` input, Boolean `capture`, and 1–24
   scalar inputs declared by **Fields (column:type)**. Lines map in order to `field0` through
   `field23`; supported types are number, string, and Boolean. Each false → true pulse samples one

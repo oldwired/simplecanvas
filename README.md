@@ -479,8 +479,9 @@ click or drag over cells to insert references. Right-click a cell or header for 
 functions, formatting, alignment, and column widths. A cell can retain an invalid formula and display
 its error for correction.
 
-`=INPUT("amount")` declares a numeric input; `=INPUT("enabled","boolean")` declares a Boolean input.
-Use `=INPUT("message","string")` for text.
+`=INPUT("amount")` declares a numeric input; `=INPUT("enabled",3)` declares a Boolean input.
+Use `=INPUT("message",2)` for text. Type codes are `0` auto/default, `1` number, `2` string,
+and `3` Boolean; the names `"number"`, `"string"`, and `"boolean"` also work.
 `=OUTPUT(B2*B3,"total")` publishes a formula argument as a typed output. Connect these ports through
 **Edit…**, just like other components. Functions include IF, IFERROR, SUM, AVERAGE, VLOOKUP,
 Boolean operations, rounding, and text operations; commas or semicolons separate arguments.
@@ -493,15 +494,24 @@ The twentieth tab, **Connected spreadsheet**, connects a Number control and Togg
 shows its three result types. Try changing B3 from 2 to 3 in the editor. In exported HTML, cells are
 read-only, but controls still drive the formulas and connected output displays entirely offline.
 
-To use a dataset, open the sheet's **Edit…**, set **Grid source** to **Dataset**, and choose a dataset,
-connect a table output, or import CSV/TSV/JSON. **Dataset rows shown** and **Dataset columns shown** reserve a data
-area at the top left, read-only by default; other cells remain editable. The `startRow` input pages through data from index 0.
+To display a dataset, open **Edit… → Table connections**, add an input, and choose its port name,
+range, starting record, and access. The helper adds the formula to a free cell outside the range;
+**Save** applies the change and **Cancel** discards it. You can also author the formula directly:
+put `=INPUT("data",A1:C6,INPUT("startRow"),0)` in a cell **outside A1:C6**.
+It declares a table input named **data** and a numeric **startRow** input. Connect them in **Edit…**
+or Wiring mode. The range's first row displays column headers; subsequent rows show records from
+zero-based `startRow`. Omit the last two arguments to start at record 0 with read-only access.
+A start position can also be a fixed number or a cell reference. Multiple nonoverlapping INPUT
+rectangles can display independently connected tables anywhere on the sheet; ordinary cells beside
+them remain editable. **Insert function → Datasets** helps enter the declaration.
 
-If switching to Dataset or expanding this area overlaps existing cells or invalidates formula ports,
-you can discard all cell contents, formulas, and cell formatting. Grid size, column widths, and
-settings stay in place. Declining keeps your previous configuration; accepting stages the clear
-until **Save**, as one undoable change. **Cancel** in Edit keeps the original sheet. Formulas
-outside the data area remain intact without a prompt when their input and output types remain valid.
+The fourth argument controls each rectangle: `0` read-only, `1` edit shared records in the editor,
+`2` also allow those edits in exported HTML. Headers, absent rows, derived results, and tables
+without a live, unique Dataset owner stay read-only. Invalid declarations remain editable and report
+errors; linked areas cannot overlap authored content or another linked area. Insert/delete operations
+around a linked area move its references; operations that would change its mapped rows or columns
+are rejected. Formula declarations remain blank in calculated values and show INPUT/OUTPUT markers
+only while editing.
 
 `=SUM(COLUMN("data","Points"))` calculates across the complete selected column, even beyond the visible
 rows. `=DATA("data",0,"Boat","string")` reads the first selected boat; `=ROWS("data")` counts all selected
@@ -516,12 +526,14 @@ limits; larger data can remain connected and be used in formulas. The twenty-fir
 **Dataset spreadsheet**, demonstrates the live grid, paging, calculations, and copy workflow.
 
 To edit the shared data itself, connect the Dataset owner's output to **Dataset editor** and enable
-**Edit dataset records** in **Edit…**. **Edit dataset cells** remains available in a Spreadsheet's bounded dataset area. A table without a live, unique owner remains read-only.
+**Edit dataset records** in **Edit…**, or use access `1`/`2` in a Spreadsheet's INPUT range.
+A table without a live, unique owner remains read-only.
 Edits change the original typed cells, so other sheets, tables, charts, and choices using that dataset
 update together. Sorting and filtering preserve row identity: an edit targets the displayed source
 record even when its position has changed. Aggregate results remain read-only. Dataset text is literal,
 including a leading `=`; spreadsheet formulas stay in the sheet's ordinary cells. **Allow reader edits**
-separately enables these bound-cell edits in HTML. Both options default off.
+separately enables Dataset editor changes in HTML; a Spreadsheet enables them per range with access `2`.
+Editing is disabled by default.
 
 **Capture row** records connected live values into a whole dataset. In **Fields (column:type)**,
 enter one mapping per line, such as `label:string`, `value:number`, and `active:boolean`.
@@ -563,13 +575,19 @@ reload of identical source data also counts. Source failures preserve accepted r
 or Undo does not replay a refresh. Enable **Allow source updates in HTML export** for this behavior
 in the reader. Tab 24, **Live dataset editor**, makes the source/working-copy distinction visible.
 
-Spreadsheet can publish a range as a table: enable **Publish table output**, enter **Result cells**
-(for example `D2:E4`), and define **Result columns (name:type)** with one column per line, such as
-`label:string` and `value:number`. The range contains body rows; the column definitions provide names.
-Only calculated values leave the sheet; formulas and formatting stay with it. Blank cells become null,
-and formula/type errors reject the table result. Connect its **table** output directly to a chart or
-download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
-tables**, demonstrates this in the editor and offline HTML. A formula referring to a linked cell is
+Add an output through **Edit… → Table connections**, or write a table formula:
+`=OUTPUT(A1:C4,"Energy costs")` creates an
+output port **Energy_costs**. The range's first row names the columns and the rows below are the
+records, so the range needs a header row and at least one data row. Headers may be formulas.
+Column types follow the calculated values, or use explicit types such as
+`=OUTPUT(A1:C4,"Energy costs",2,1,1)` (`"string","number","number"` also works).
+Use explicit types for empty or ambiguous columns. The range follows permitted row/column edits,
+and a sheet may publish several independent tables. Only calculated values leave the sheet; formulas
+and formatting stay with it. Blank cells
+become null, and formula/type errors reject the table result. Connect the output directly to a chart
+or download, or to another Dataset's **source** to store an editable result. Tab 25, **Spreadsheet result
+tables**, demonstrates this in the editor and offline HTML; it also exposes a separate **Source_readings**
+output for the visible source rows. A formula referring to a linked cell is
 positional: paging or sorting can change which record that cell displays.
 
 Tab 26, **Views and stored results**, compares these behaviors using the same source records:

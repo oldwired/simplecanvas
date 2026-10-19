@@ -705,3 +705,86 @@ test('script-driven resizing in offline HTML preserves the origin of rotated com
  }
  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
+
+test('an edit-mode cell field grows to the right with long text and shrinks back to its cell',async()=>app(async({page,run})=>{
+ await run(`(async()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'sheet',x:80,y:120}];
+   setTool('select');selection=[0];editingSmartIdx=0;render();await ensureEditorComponentGraph();})()`);
+ const box=await page.locator('#canvas').boundingBox(),cellW=await run('items[0].w/6');
+ await page.mouse.click(box.x+80+cellW*1.5,box.y+120+14);
+ const form=page.locator('[data-smart-inline-input]');await form.waitFor();
+ const width=()=>form.evaluate(f=>f.getBoundingClientRect().width);
+ const start=await width();assert.ok(Math.abs(start-cellW)<4,'starts at the cell width: '+start+' vs '+cellW);
+ await page.keyboard.type('=SUM(A1:A6)+AVERAGE(B1:B6)*ROUND(C2,2)');
+ await page.waitForFunction(w=>{const f=document.querySelector('[data-smart-inline-input]'),i=f.querySelector('input');return f.getBoundingClientRect().width>w*2&&i.scrollWidth<=i.clientWidth+1;},cellW);
+ const grown=await form.evaluate(f=>{const r=f.getBoundingClientRect(),i=f.querySelector('input');return {right:r.right,fits:i.scrollWidth<=i.clientWidth+1};});
+ assert.ok(grown.fits,'the whole formula is visible');assert.ok(grown.right<=await page.evaluate(()=>innerWidth),'never past the window edge');
+ await form.locator('input').fill('7');
+ await page.waitForFunction(w=>Math.abs(document.querySelector('[data-smart-inline-input]').getBoundingClientRect().width-w)<4,cellW);
+ await page.keyboard.press('Escape');
+}));
+
+test('a grown formula field still picks covered neighbouring cells and edits text in its own cell',async()=>app(async({page,run})=>{
+ await seed(run,[{key:'spreadsheet',w:384,h:144,state:{cols:6,rows:6,cells:{B1:'3',C1:'4'}}}]);
+ const a=await editorPoint(page,run,0,'A1'),b=await editorPoint(page,run,0,'B1'),c=await editorPoint(page,run,0,'C1');
+ await page.mouse.click(a.x,a.y);
+ const form=page.locator('[data-smart-inline-input]'),input=form.locator('input');await input.waitFor();
+ await input.fill('=SUM(1000000,2000000,');
+ await page.waitForFunction(x=>document.querySelector('[data-smart-inline-input]').getBoundingClientRect().right>x,c.x);
+ assert.equal(await page.evaluate(({x,y})=>document.elementFromPoint(x,y).tagName,b),'INPUT','the expanded input covers B1');
+ await page.mouse.click(a.x,a.y);
+ assert.equal(await input.evaluate(el=>el.selectionStart<el.value.length),true,'clicking the original cell positions the native text caret');
+ await input.evaluate(el=>el.setSelectionRange(el.value.length,el.value.length));
+ await page.mouse.move(b.x,b.y);await page.mouse.down();await page.mouse.move(c.x,c.y,{steps:3});await page.mouse.up();
+ assert.equal(await input.inputValue(),'=SUM(1000000,2000000,B1:C1','dragging through the covered area inserts a range');
+ await page.keyboard.type(')');
+ await page.mouse.click(a.x,a.y);
+ assert.equal(await input.inputValue(),'=SUM(1000000,2000000,B1:C1)','clicking the original cell leaves the text intact');
+ assert.equal(await input.evaluate(el=>document.activeElement===el),true,'the original cell remains a native text editor');
+ await input.press('Enter');await form.waitFor({state:'detached'});
+ assert.equal(await run('items[0].state.cells.A1'),'=SUM(1000000,2000000,B1:C1)');
+}));
+
+test('long inline fields stay within the viewport when their component is rotated',async()=>app(async({page,run,context})=>{
+ const script=`({apiVersion:2,inputs:{},outputs:{},compute(){return {};},
+ children(s,st,w,h){return [{type:'rect',x:0,y:0,w,h,fill:true,fillColor:'#ffffff',strokeOn:true}];},
+ handles(s,w,h){return [{id:'value',kind:'text',x:w/2,y:h/2,value:s.value||'',inline:{x:0,y:0,w,h,mode:'edit'}}];},
+ hitEdit(){return 'value';},dragEdit(s,id,value){return {state:{...s,value}};}})`;
+ await seed(run,[Math.PI/2,-Math.PI/2,Math.PI,Math.PI/4].map((rotation,index)=>({key:'textInput',script,state:{value:''},w:100,h:24,rotation,x:400+(index%2)*400,y:260+Math.floor(index/2)*280})));
+ const {preview,errors,requests}=await openExport(page,run,context);
+ for(const target of [page,preview]){
+   for(let index=0;index<4;index++){
+     if(target===page){
+       const at=await run(`(async()=>{selection=[${index}];editingSmartIdx=${index};render();const item=items[${index}],p=toWorld(item,item.x+item.w/2,item.y+item.h/2),box=canvas.getBoundingClientRect();return {x:box.x+p.x,y:box.y+p.y};})()`);
+       await page.mouse.click(at.x,at.y);await run('smartHitSettled');
+     }else await readerClick(preview,index,{x:50,y:12});
+     const form=target.locator('[data-smart-inline-input]'),input=form.locator('input');await input.waitFor();
+     await input.fill('A long value '.repeat(50));
+     await target.waitForFunction(()=>parseFloat(document.querySelector('[data-smart-inline-input]').style.width)>100);
+     const bounds=await form.evaluate(el=>{const r=el.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight};});
+     assert.ok(bounds.left>=7&&bounds.top>=7&&bounds.right<=bounds.width-7&&bounds.bottom<=bounds.height-7,JSON.stringify(bounds));
+     await input.press('Escape');await form.waitFor({state:'detached'});
+   }
+ }
+ assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
+
+test('table layout problems reach the editor as their own message, not as an invalid script',async()=>app(async({run})=>{
+ const error=(cells,bind=true)=>run(`(async()=>{cancelGesture();datasets=normalizeDatasets({boats:{name:'Boats',columns:[{key:'name',name:'Name',type:'string'}],rows:[['Aurora'],['Borealis']]}});
+   items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='spreadsheet').items[0]),uid:'s',x:80,y:120,state:{cols:6,rows:6,cells:${JSON.stringify(cells)}},inputValues:${bind?"{data:{datasetId:'boats'}}":'{}'}}];
+   render();const g=await ensureEditorComponentGraph();return g.get(items[0]).error||'';})()`);
+ assert.equal(await error({E1:'=INPUT("data",A1:A3)'}),'');
+ assert.match(await error({E1:'=INPUT("data",A1:A3)',A2:'5'}),/A2 lies in the table range/);
+ assert.match(await error({A2:'=INPUT("data",A1:A3)'}),/must lie outside table ranges/);
+ assert.match(await error({A1:'Hall',A2:'1',A3:'x',C1:'=OUTPUT(A1:A3,"t")'},false),/column Hall mixes types/);
+}));
+
+test('a double-click on empty canvas leaves the wiring mode; on an object it stays',async()=>app(async({page,run})=>{
+ await run(`(async()=>{cancelGesture();items=[{...clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==='numberControl').items[0]),uid:'n',x:200,y:200}];
+   setTool('select');selection=[];render();await ensureEditorComponentGraph();setComponentWiringMode(true);})()`);
+ assert.equal(await run('componentWiring.enabled'),true);
+ const box=await page.locator('#canvas').boundingBox(),it=await run('items[0]');
+ await page.mouse.dblclick(box.x+it.x+it.w/2,box.y+it.y+it.h/2);await run('smartHitSettled');
+ assert.equal(await run('componentWiring.enabled'),true,'a double-click on an object keeps wiring');
+ await page.mouse.dblclick(box.x+700,box.y+600);
+ await page.waitForFunction(()=>__test.run('componentWiring.enabled')===false);
+}));

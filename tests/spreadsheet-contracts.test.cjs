@@ -9,22 +9,24 @@ const sheet=(cells,cols=6,rows=6)=>({cols,rows,cells});
 
 test('new spreadsheets start with an empty editable grid and no formula ports',()=>{
   const def=source('spreadsheet'),state=def.initState();
-  assert.deepEqual(plain(state.cells),{});assert.equal(state.source,'Cells');
+  assert.deepEqual(plain(state.cells),{});assert.equal(state.source,undefined);
   assert.deepEqual(plain(def.inputs(state)),{});assert.deepEqual(plain(def.outputs(state)),{});
   assert.deepEqual(plain(def.compute({},state)),{});assert.deepEqual(plain(def._sheet(state,{})),{});
   assert.ok(def.handles(state,552,168,def.initStyle()).filter(h=>h.kind==='text').every(h=>h.value===''));
-  assert.deepEqual(plain(def.inputs({...state,source:'Dataset'})),{data:{type:'table'},startRow:{type:'number',default:0}},'an empty grid can bind data without deleting sample formulas');
+  const linked=def.tableRanges(state,{kind:'input',name:'data',range:'A1:C3',start:'INPUT("startRow")',access:0}).state;
+  assert.deepEqual(plain(def.inputs(linked)),{data:{type:'table'},startRow:{type:'number',default:0}},'an empty grid can bind data without deleting sample formulas');
 });
 
-test('dataset configuration can discard a formula whose output type becomes ambiguous without cell overlap',()=>{
-  const def=source('spreadsheet'),previous={...def.initState(),dataColumns:2,dataRows:3,cells:{D1:'=OUTPUT(A2,"result")'}},before=JSON.stringify(previous);
+test('table range configuration preserves authored cells and rejects ambiguous outputs until repaired',()=>{
+  const def=source('spreadsheet'),previous={...def.initState(),cells:{D1:'=OUTPUT(A2,"result")'}},before=JSON.stringify(previous);
+  const change={kind:'input',name:'data',range:'A1:B4',start:'0',access:0};
   assert.deepEqual(plain(def.outputs(previous)),{result:{type:'number'}});
-  const next={...previous,source:'Dataset'};assert.throws(()=>def.outputs(next),/ambiguous/);
-  const proposal=def.configure(next,previous);assert.match(proposal.confirm,/Discard all cell contents, formulas and cell formatting\?/);
-  assert.deepEqual(plain(proposal.state.cells),{});assert.deepEqual(plain(def.outputs(proposal.state)),{});
-  assert.equal(JSON.stringify(previous),before,'configuration proposes a replacement without mutating the authored sheet');
+  assert.throws(()=>def.tableRanges(previous,change),/ambiguous/);
+  assert.equal(JSON.stringify(previous),before,'configuration never discards existing formulas');
   const typed={...previous,cells:{D1:'=OUTPUT(A2,"result","number")'}};
-  assert.equal(def.configure({...typed,source:'Dataset'},typed),null,'an explicit output type lets the authored formula coexist with the dataset');
+  const proposal=def.tableRanges(typed,change);
+  assert.equal(proposal.state.cells.D1,typed.cells.D1);
+  assert.deepEqual(plain(def.outputs(proposal.state)),{result:{type:'number'}});
 });
 
 test('spreadsheet publishes each OUTPUT argument independently of its containing expression',()=>{

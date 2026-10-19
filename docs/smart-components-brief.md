@@ -125,7 +125,7 @@ These boundaries describe the feature branch, including feedback, text passing, 
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
   Component API v2 is explicit and separate from document format 5. There is no state-migration
   or automatic definition-upgrade contract.
-- **State is small.** Scripts are limited to 50,000 characters; state to 4,000 serialized JSON
+- **State is small.** Scripts are limited to 64,000 characters; state to 4,000 serialized JSON
   characters. Invalid state updates are rejected. Bulk data lives in the document dataset pool.
 - **No nested smart children.** A library entry can preserve several connected items, but a
   smart shape cannot return nested smart shapes, tables, or asset-referencing images as children.
@@ -1348,31 +1348,35 @@ Trigger connects to Dataset's reload input.
 
 **Dataset spreadsheets** support two distinct authoring workflows:
 
-- **Grid source: Dataset** adds table `data` and zero-based numeric `startRow` inputs. A configured
-  top-left rectangle displays dataset headers and rows read-only by default; the remaining cells hold editable
-  values and formulas. References to dataset cells use their actual scalar values. Row/column edits
-  cannot move or delete the reserved data area. Formatting, column widths, copying cell text, and
-  formula reference picking still work there. Source changes flow through in the editor and HTML.
-- Selecting Dataset or expanding the displayed rectangle checks for nonempty cell overlap and
-  formula declarations that become invalid, including reserved `data`/`startRow` input conflicts
-  and ambiguous output types that clearing the cells can resolve. A
-  confirmation offers to discard all cell contents, formulas, and cell formatting, retaining grid
-  size, column widths, and settings. Declining restores the previous draft configuration; accepting
-  stages the clear until Edit Save, as one undoable change. Edit Cancel keeps the original
-  sheet. Formulas outside the linked rectangle are retained without a prompt when their port
-  declarations remain valid.
+- `INPUT("data",A1:C6[,start][,access])` declares a named table input and maps it into a header/body
+  rectangle anywhere on the sheet. The declaration belongs outside the rectangle, which needs a
+  header row and at least one data row. Several independent, nonoverlapping rectangles may consume
+  different datasets. Remaining cells retain authored values and formulas. `start` is zero-based,
+  defaults to 0, and may be a literal, cell expression, or `INPUT("startRow")`. Access `0`/omitted
+  is read-only, `1` permits editor writeback, and `2` also permits HTML reader writeback.
+- **Edit… → Table connections** offers a form for input/output name, range, starting record,
+  access, and output column types. Add/Update/Remove writes the same cell formulas through the
+  optional `tableRanges` authoring hook; it allocates a free declaration cell and rejects conflicts.
+  The enclosing Save commits one undoable change, while Cancel keeps the original sheet. Formula
+  syntax remains available directly, and there is no duplicate configuration model to keep in sync.
+- Invalid, out-of-bounds, self-containing, occupied, or overlapping declarations report errors
+  while keeping authored cells editable. They do not silently publish partial results. Insert/delete
+  operations before or after linked areas update references; operations that change a linked area's
+  mapped rows/columns are rejected. Authors resize the mapping explicitly in its declaration.
+  Formatting, copying, and reference picking remain available. The same mappings run offline in HTML.
 - `DATA("port",row,"column",type?)`, `COLUMN("port","column")`, and `ROWS("port")` declare named
   table inputs and read the complete selected table, including rows outside the visible area.
-  Dataset row positions start at zero and follow the current filtered/sorted order. DATA defaults
-  to numeric values, with explicit string/Boolean types available. COLUMN supplies a range to
-  aggregate functions. These functions also work in Cells mode and can read multiple datasets.
+  Dataset row positions start at zero and follow the current filtered/sorted order; columns match
+  by key or display name. INPUT/DATA scalar types accept `0`/omitted for number, `1` number,
+  `2` string, `3` Boolean, or type names. COLUMN supplies a range to aggregate functions. These
+  functions work independently of displayed INPUT rectangles and can read multiple datasets.
   `OUTPUT(value,"name",type)` gives runtime-dependent dataset cell references a stable scalar port
   type, checked against the actual result. Schema reloads do not silently change output types.
 - **Copy dataset to editable cells** in Edit copies the selected or connected table, or a file
   imported through the existing CSV/TSV/JSON preview. Connected tables capture their published live
   snapshot when Edit opens, including stored and derived results. This is a one-time copy, not
   continuous recording. It replaces the sheet grid, disconnects inputs
-  removed by the new state, and switches to Cells mode. Save applies the staged copy as one undoable
+  removed by the new state, and removes the former formula declarations. Save applies the staged copy as one undoable
   change; Cancel discards it. Copied text remains literal even when it starts with `=` or resembles
   a number or Boolean. Authors can then change values and add formulas. The source remains unchanged.
 - Editable copies must fit the existing bounded grid and 4,000-character state budget. Oversized
@@ -1437,9 +1441,10 @@ contract, rather than inferring them from a table port or component name.
   **Allow source updates in HTML export** (`allowReaderUpdates`, default false) is independent of file
   import/reload, capture, and bound-cell permissions. File import remains an owner convenience; dedicated
   providers can follow the future HTTP work.
-- **Edit dataset cells** (`editDataset`, default false) makes existing source rows editable in the
-  Spreadsheet's dataset area. **Allow reader edits** (`allowReaderEdit`, default false) separately
-  enables those edits in HTML. A live, unique Dataset owner is required. Headers, absent rows,
+- Spreadsheet INPUT access `1` makes existing source rows editable in that linked rectangle;
+  access `2` also permits HTML edits through per-handle `datasetCell.reader:true`. Access `0` or
+  omitted remains read-only. Dataset editor retains its separate record-edit and reader-edit settings.
+  A live, unique Dataset owner is required. Headers, absent rows,
   ownerless tables, and aggregate/derived results stay read-only.
   Filters and sorts preserve source row identity, so editing a reordered view updates the intended
   record. Typed validation applies at commit. Strings remain literal, including a leading `=`;
@@ -1479,12 +1484,15 @@ linked cells. An A1 reference is positional: a sort, page change, or source repl
 which record occupies A2. Formula cells next to that area do not become record-attached calculated
 fields. Dataset editor cells contain typed literal data, never spreadsheet formulas.
 
-**Spreadsheet table output** publishes a configured cell rectangle as a `table` output. Authors
-explicitly define the result columns and their scalar types; the rectangle contains body rows, with
-column names supplied by this schema. Only evaluated values are published. Blank cells become null;
-formula errors, incompatible types, or invalid ranges reject the result rather than publishing
-partial/error-text data. Existing scalar OUTPUT ports remain available, with `table` reserved only
-when this feature is enabled. A Dataset can materialize that result via Replace/Append or Live mode,
+**Spreadsheet table output** publishes a cell rectangle through `OUTPUT(range,"name"[,type,type,...])`,
+one named `table` port per declaration; multiple outputs are supported. Every range includes a header
+row and at least one data row. Headers may be calculated and linked headers preserve source schema
+where possible. Types are inferred, or provided per column as `0` auto, `1` number, `2` string,
+`3` Boolean, or type names; a comma-separated type string is also accepted. Result keys must be
+unique. Ranges follow permitted structure edits. Declaration cells remain blank in calculations,
+with INPUT/OUTPUT markers shown only while editing. Only evaluated values are published. Blank cells
+become null; formula errors or incompatible types
+reject the result rather than publishing partial/error-text data. A Dataset can materialize that result via Replace/Append or Live mode,
 and charts, downloads, and other consumers can read it directly. Formulas and formatting remain on
 the Spreadsheet, including when its result is stored elsewhere.
 
@@ -1502,7 +1510,8 @@ manual source actions. Editor writes are undoable; HTML changes stay local to th
 
 Tab 24, **Live dataset editor**, demonstrates independent source and working records, typed editing,
 and refresh overwriting edits. Tab 25, **Spreadsheet result tables**, keeps formulas beside a linked
-rectangle and publishes their values into a separate editable Dataset with downloads. Both work in
+rectangle and publishes their values into a separate editable Dataset with downloads. A second
+**Source_readings** output exposes the source rectangle independently. Both examples work in
 the editor and offline HTML.
 
 Tab 26, **Views and stored results**, demonstrates the distinctions on one source: an original
@@ -1574,6 +1583,21 @@ extensions, not missing acceptance requirements. Shared buses and multiple drive
 General routed events belong to stage 4, Run/Preview and reader result-saving policy to stage 5,
 and HTTP/MQTT providers and writes to stage 6. Reader changes remain session-local under the
 current policy; closing this stage does not introduce an HTML-to-editor round trip.
+
+### Spreadsheet formula integration — 2026-10-19
+
+PR #12 adds multiple formula-defined dataset areas and named table outputs. **Edit → Table
+connections** creates and edits these declarations without requiring formula syntax; all changes
+remain staged until Save. Invalid ranges remain repairable and report their declaration error
+before stale connection errors. Output schemas retain source keys and types, including all-null
+columns; conflicting keys are rejected with an actionable message. Structural edits cannot cut
+through linked areas and silently retarget formulas. Expanding inline editors preserve reference
+picking and respect rotated viewport bounds. The 26-tab workspace and offline HTML use the updated
+scripts and formula model.
+
+Final integration validation: **929/929 Chromium tests passed**; **927 WebKit tests passed with
+2 intentional Chromium-CDP touch skips**, and no failures. These are full runs on the final
+implementation, including authoring, repair, persistence, example interactions, and offline export.
 
 ### Definition identity and updates
 

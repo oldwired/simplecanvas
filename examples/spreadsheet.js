@@ -1,17 +1,8 @@
-// Editable formula grid; optional live dataset area and typed dataset formula ports.
+// Editable formula grid; dataset ranges (INPUT with a range) and typed dataset formula ports.
 ({
   apiVersion:2,
   _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},
   tablePresentation:'full',
-  settings:{source:{type:'string',default:'Cells',options:['Cells','Dataset'],label:'Grid source'},
-    dataRows:{type:'number',default:5,min:1,max:99,step:1,label:'Dataset rows shown'},
-    dataColumns:{type:'number',default:3,min:1,max:26,step:1,label:'Dataset columns shown'},
-    editDataset:{type:'boolean',default:false,label:'Edit dataset cells'},
-    allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'},
-    tableOutput:{type:'boolean',default:false,label:'Publish table output'},
-    tableRange:{type:'string',default:'A2:C4',label:'Result cells'},
-    tableColumns:{type:'string',default:'column1:number\ncolumn2:number\ncolumn3:number',format:'lines',label:'Result columns (name:type)'},
-    tableName:{type:'string',default:'Spreadsheet results',label:'Result table name'}},
   _COLS:'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   _key(c,r){return this._COLS[c]+(r+1);},
   _dims(state){
@@ -21,49 +12,161 @@
     return {cols,rows,weights};
   },
   _fits(cols,rows){return cols<=26&&rows<=99&&cols*rows+1+cols<=128;},
-  _region(state,dims=this._dims(state)){
-    const n=(v,f,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:f;
-    return state.source==='Dataset'?{cols:Math.min(dims.cols,n(state.dataColumns,3,26)),rows:Math.min(dims.rows,n(state.dataRows,5,99)+1)}:{cols:0,rows:0};
+  // =INPUT("name",A1:C6[,start][,access]) in a cell outside the range declares a table
+  // input and shows it there: the first row holds the column names, the rows below the records from start
+  // (0-based). Access 1 writes cells back to a Dataset-owned table, 2 also in HTML, 0 (default) reads. Sheets saved with
+  // the former Grid source: Dataset settings keep that area at A1 (input data, startRow).
+  _rc:new WeakMap(),
+  _regionInfo(state){
+    if(this._rc.has(state))return this._rc.get(state);
+    const dims=this._dims(state),list=[],problems=[];
+    if(state.source==='Dataset'){
+      const n=(v,f,max)=>Number.isInteger(v)&&v>=1&&v<=max?v:f;
+      list.push({cell:null,port:'data',c1:0,r1:0,c2:Math.min(dims.cols,n(state.dataColumns,3,26))-1,r2:Math.min(dims.rows,n(state.dataRows,5,99)+1)-1,
+        start:{k:'fn',name:'INPUT',args:[{k:'str',v:'startRow'}]},edit:state.editDataset===true,reader:state.allowReaderEdit===true});
+    }
+    for(const [k,src] of Object.entries(state.cells||{})){
+      if(typeof src!=='string'||!/^=\s*INPUT\s*\(/i.test(src))continue;
+      // Parse against the largest sheet first so an out-of-bounds declaration remains recognizable.
+      let n;try{n=this._parse(src.slice(1),{cols:26,rows:99});}catch{
+        if(/:/.test(src.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'/g,'')))problems.push('Table INPUT in '+k+': invalid formula');
+        continue;
+      }
+      if(n.k!=='fn'||n.name!=='INPUT')continue;
+      const a=n.args,port=a[0]?.k==='str'?a[0].v.trim():null;
+      if(a[1]?.k!=='range'&&a[1]?.k!=='error'&&a.length<=2)continue;
+      if(!port||a[1]?.k!=='range'||a.length>4){problems.push('Table INPUT in '+k+': use INPUT("name",A1:C6[,start][,access]) with a valid range');continue;}
+      const mode=!a[3]?0:a[3].k==='num'&&[0,1,2].includes(a[3].v)?a[3].v:-1;   // 0 read only, 1 edit, 2 edit also in HTML
+      list.push({cell:k,port:this._port(port),c1:a[1].c1,r1:a[1].r1,c2:a[1].c2,r2:a[1].r2,start:a[2]||null,mode,edit:mode>=1,reader:mode===2});
+    }
+    const invalid=new Set(),fail=(g,message)=>{invalid.add(g);problems.push('Table INPUT in '+(g.cell||'A1')+': '+message);};
+    for(const g of list){
+      if(g.mode<0)fail(g,'the fourth argument must be 0 (read only), 1 (edit) or 2 (edit, also in HTML)');
+      if(g.c2>=dims.cols||g.r2>=dims.rows||g.r2<=g.r1)fail(g,'the range needs a header row and record rows inside the grid');
+      if(g.cell&&list.some(o=>this._COLS.indexOf(g.cell[0])>=o.c1&&this._COLS.indexOf(g.cell[0])<=o.c2&&+g.cell.slice(1)-1>=o.r1&&+g.cell.slice(1)-1<=o.r2))fail(g,'the formula must lie outside table ranges');
+      if(list.some(o=>o!==g&&o.c1<=g.c2&&g.c1<=o.c2&&o.r1<=g.r2&&g.r1<=o.r2))fail(g,'table ranges overlap');
+      for(let r=g.r1;r<=Math.min(g.r2,dims.rows-1);r++)for(let c=g.c1;c<=Math.min(g.c2,dims.cols-1);c++){
+        const k=this._key(c,r);if(g.cell&&(state.cells||{})[k])fail(g,k+' lies in the table range; move the range or clear the cell');
+      }
+    }
+    const info={regions:list.filter(g=>!invalid.has(g)),problems};
+    this._rc.set(state,info);return info;
   },
-  _reserved(state,c,r){const q=this._region(state);return c>=0&&r>=0&&c<q.cols&&r<q.rows;},
-  configure(state,previous){
-    if(state.source!=='Dataset'||['source','dataRows','dataColumns'].every(k=>state[k]===previous[k]))return null;
-    let conflict=Object.entries(state.cells||{}).some(([k,v])=>v!==''&&/^[A-Z][1-9]\d?$/.test(k)&&this._reserved(state,this._COLS.indexOf(k[0]),+k.slice(1)-1));
-    const cleared={...state,cells:{},formats:{},aligns:{}};
-    try{this.inputs(state);this.outputs(state);}catch{try{this.inputs(cleared);this.outputs(cleared);conflict=true;}catch{}}
-    return conflict?{state:cleared,confirm:'The dataset area overlaps existing cells or conflicts with formulas. Discard all cell contents, formulas and cell formatting? Grid size is kept. Save applies this change; Cancel in Edit keeps the original sheet.'}:null;
+  _regions(state){return this._regionInfo(state).regions;},
+  // A cell that only declares a table (INPUT(name,range,...) or OUTPUT(range,...)) stays blank; in edit
+  // mode it shows a grey INPUT/OUTPUT marker.
+  _tableCell(src){
+    if(typeof src!=='string'||!/^=\s*(INPUT|OUTPUT)\s*\(/i.test(src)||!src.includes(':'))return '';
+    let n;try{n=this._parse(src.slice(1),{cols:26,rows:99});}catch{return '';}
+    return n.k==='fn'&&(n.name==='INPUT'&&n.args[1]?.k==='range'||n.name==='OUTPUT'&&n.args[0]?.k==='range')?n.name:'';
   },
-  _tableSpec(state,dims=this._dims(state)){
-    if(state.tableOutput!==true)return null;
-    const get=key=>state[key]??this.settings[key].default,range=get('tableRange'),name=get('tableName'),raw=get('tableColumns');
-    const m=typeof range==='string'&&/^([A-Z])([1-9]\d?)(?:\s*:\s*([A-Z])([1-9]\d?))?$/.exec(range.trim().toUpperCase());
-    if(!m)throw new Error('Result cells must be a cell or range such as A2:C4');
-    const c1=this._COLS.indexOf(m[1]),r1=+m[2]-1,c2=this._COLS.indexOf(m[3]||m[1]),r2=+(m[4]||m[2])-1;
-    if(c2<c1||r2<r1||c2>=dims.cols||r2>=dims.rows)throw new Error('Result cells must fit the grid in top-left to bottom-right order');
-    if(typeof name!=='string'||!name.trim()||name.length>120)throw new Error('Result table name needs 1–120 characters');
-    if(typeof raw!=='string')throw new Error('Result columns need one name:type per line');
-    const keys=new Set(),columns=raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
-      const at=line.lastIndexOf(':'),key=line.slice(0,at).trim(),type=line.slice(at+1).trim().toLowerCase();
-      if(at<1||!key||key.length>100||['__proto__','prototype','constructor'].includes(key)||keys.has(key)||!['number','string','boolean'].includes(type))throw new Error('Result columns need unique names and number, string or boolean types');
-      keys.add(key);return {key,name:key,type};
-    });
-    if(columns.length!==c2-c1+1)throw new Error('Result columns must match the width of Result cells');
-    return {name:name.trim(),columns,c1,r1,c2,r2,range:this._key(c1,r1)+':'+this._key(c2,r2)};
+  _expression(n){
+    if(!n)return '0';
+    if(n.k==='str')return '"'+n.v.replace(/"/g,'""')+'"';
+    if(n.k==='num')return String(n.v);
+    if(n.k==='bool')return n.v?'TRUE':'FALSE';
+    if(n.k==='ref')return this._key(n.c,n.r);
+    if(n.k==='range')return this._key(n.c1,n.r1)+':'+this._key(n.c2,n.r2);
+    if(n.k==='error')return n.e;
+    if(n.k==='fn')return n.name+'('+n.args.map(a=>this._expression(a)).join(',')+')';
+    if(n.k==='neg')return '-('+this._expression(n.a)+')';
+    return '('+this._expression(n.a)+(n.op||n.k)+this._expression(n.b)+')';
   },
-  _resultTable(run,spec){
-    const rows=[];
-    for(let r=spec.r1;r<=spec.r2;r++){
+  // The authoring dialog edits these same declarations; formulas remain the stored source of truth.
+  tableRanges(state,change=null){
+    const dims=this._dims(state),entries=[];
+    for(const [cell,src] of Object.entries(state.cells||{})){
+      if(typeof src!=='string'||!/^=\s*(INPUT|OUTPUT)\s*\(/i.test(src)||!src.includes(':'))continue;
+      let n;try{n=this._parse(src.slice(1),{cols:26,rows:99});}catch{continue;}
+      if(n.k!=='fn'||!['INPUT','OUTPUT'].includes(n.name))continue;
+      const input=n.name==='INPUT',a=n.args,range=a[input?1:0],name=a[input?0:1];
+      if(range?.k!=='range'||name?.k!=='str')continue;
+      const types=!input&&a.length===3&&a[2].k==='str'&&/[,;]/.test(a[2].v)?a[2].v:a.slice(2).map(x=>x.k==='str'?x.v:this._expression(x)).join(',');
+      entries.push({cell,kind:input?'input':'output',name:name.v,range:this._expression(range),start:input?this._expression(a[2]):'0',
+        access:input&&a[3]?.k==='num'&&[0,1,2].includes(a[3].v)?a[3].v:0,types:input?'':types});
+    }
+    if(!change)return {cols:dims.cols,rows:dims.rows,entries,state};
+    if(!change||typeof change!=='object')throw new Error('Choose a table range to edit');
+    const old=change.cell?entries.find(e=>e.cell===change.cell):null;
+    if(change.cell&&!old)throw new Error('That declaration has changed; reopen Table connections');
+    const cells={...(state.cells||{})};if(old)delete cells[old.cell];
+    if(!change.remove){
+      if(!['input','output'].includes(change.kind)||typeof change.name!=='string'||!change.name.trim()||change.name.trim().length>120)throw new Error('Give the table port a name (1–120 characters)');
+      let range;try{range=this._parse('SUM('+String(change.range||'')+')',dims).args[0];}catch{}
+      if(range?.k!=='range'||range.r2<=range.r1)throw new Error('Choose a range inside the grid with a header row and at least one record row');
+      const input=change.kind==='input',access=Number(change.access||0);
+      if(input&&![0,1,2].includes(access))throw new Error('Choose read only, edit, or edit also in HTML');
+      let start={k:'num',v:0};if(input)try{start=this._parse(String(change.start||'0'),dims);}catch{throw new Error('Starting row must be a number, cell reference, or formula expression');}
+      const typeText=String(change.types||'').trim(),types=typeText?typeText.split(/[,;]/).map(v=>v.trim()):[];
+      if(!input&&(types.length>range.c2-range.c1+1||types.some(v=>!['0','1','2','3','number','string','boolean'].includes(v))))throw new Error('Use at most one type per column: 0 automatic, 1 number, 2 string, 3 boolean');
+      const quote=v=>'"'+v.replace(/"/g,'""')+'"',formula='='+(input?'INPUT('+quote(change.name.trim())+','+this._expression(range)+','+this._expression(start)+','+access:
+        'OUTPUT('+this._expression(range)+','+quote(change.name.trim())+(types.length?','+types.map(v=>/^\d$/.test(v)?v:quote(v)).join(','):''))+')';
+      const regions=this._regions({...state,cells}),free=k=>{
+        const c=this._COLS.indexOf(k[0]),r=+k.slice(1)-1;
+        return !cells[k]&&!regions.some(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)&&!(c>=range.c1&&c<=range.c2&&r>=range.r1&&r<=range.r2);
+      };
+      let cell=old&&free(old.cell)?old.cell:null;
+      for(let r=0;!cell&&r<dims.rows;r++)for(let c=0;!cell&&c<dims.cols;c++){const k=this._key(c,r);if(free(k))cell=k;}
+      if(!cell)throw new Error('No empty cell is available for the declaration outside the linked area; add a row or column first');
+      cells[cell]=formula;
+    }
+    const next={...state,cells},ports=this._ports(next);
+    if(ports.problems.length)throw new Error(ports.problems[0]);
+    this.outputs(next);
+    if(JSON.stringify(next).length>3900)throw new Error('The spreadsheet has reached its editable storage limit');
+    return this.tableRanges(next);
+  },
+  _regionAt(state,c,r){return this._regions(state).find(g=>c>=g.c1&&c<=g.c2&&r>=g.r1&&r<=g.r2)||null;},
+  _reserved(state,c,r){return !!this._regionAt(state,c,r);},
+  // OUTPUT(A1:C4,"name"[,type,type,...]): the range's first row names the columns (as shown, so also a
+  // dataset header or a formula), the rows below are the records. Names and types are read when the sheet
+  // computes; optional type codes per column (0 automatic, 1 number, 2 string, 3 boolean) fix types.
+  _rangeTable(n,ctx,at){
+    const a=n.args,t=a[0],fail=m=>{throw new Error('Table output in '+at+': '+m);};
+    const cols=t.c2-t.c1+1;
+    if(a.length<2||a.length>2+cols||a[1].k!=='str'||!a[1].v.trim()||a[1].v.length>120)fail('use OUTPUT(A1:C4,"name"[,type per column])');
+    if(t.r2<=t.r1)fail('the range needs a header row and record rows');
+    const list=a.length===3&&a[2].k==='str'&&/[,;]/.test(a[2].v)?a[2].v.split(/[,;]/).map(v=>({k:'str',v})):a.slice(2);
+    if(list.length>cols)fail('give at most one type per column');
+    const types=Array.from({length:cols},(_,i)=>this._typeArg(list[i]));
+    if(types.includes(null))fail('types are 0 (automatic), 1 (number), 2 (string) or 3 (boolean)');
+    return {name:a[1].v.trim(),types,at,c1:t.c1,r1:t.r1,c2:t.c2,r2:t.r2,range:this._key(t.c1,t.r1)+':'+this._key(t.c2,t.r2)};
+  },
+  _resultTable(run,spec,state={},tables={}){
+    const fail=m=>{throw new Error('Table output in '+spec.at+': '+m);},keys=new Set(),columns=[],rows=[];
+    for(let c=spec.c1;c<=spec.c2;c++){
+      const k=this._key(c,spec.r1),x=run.cell(c,spec.r1);
+      if(x?.e)throw new Error('Table output in '+k+': '+x.e);
+      const name=x?String(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):x.v).trim():'';
+      // a dataset header cell keeps its column's key and name, so a mirrored table keeps its schema
+      const g=this._regionAt(state,c,spec.r1),src=g&&g.r1===spec.r1&&tables[g.port]?.columns?.[c-g.c1];
+      const key=src?src.key:name;
+      if(!name||name.length>100||!key||key.length>100||['__proto__','prototype','constructor'].includes(key))fail(k+' needs a valid column name and key');
+      if(keys.has(key))fail(k+' repeats column key "'+key+'"; use a separate header row with unique names');
+      keys.add(key);columns.push({key,name:src?src.name:name,type:spec.types[c-spec.c1]||src?.type||null});
+    }
+    for(let r=spec.r1+1;r<=spec.r2;r++){
       const row=[];
       for(let c=spec.c1;c<=spec.c2;c++){
-        const x=run.cell(c,r),type=spec.columns[c-spec.c1].type,key=this._key(c,r);
+        const x=run.cell(c,r),key=this._key(c,r);
         if(x?.e)throw new Error('Table output in '+key+': '+x.e);
-        const value=!x?null:x.t!==undefined?x.t:x.b!==undefined?x.b:x.v;
-        if(value!==null&&(typeof value!==type||type==='number'&&(!Number.isFinite(value)||Number.isInteger(value)&&!Number.isSafeInteger(value))||type==='string'&&value.length>2000))throw new Error('Table output in '+key+': expected '+type+' within dataset limits');
+        const value=!x?null:x.t!==undefined?x.t:x.b!==undefined?x.b:x.v,type=columns[c-spec.c1].type;
+        if(type&&value!==null&&typeof value!==type)throw new Error('Table output in '+key+': expected '+type+' within dataset limits');   // given types: report the source cell first
         row.push(value);
       }
       rows.push(row);
     }
-    const table={name:spec.name,columns:spec.columns,rows};
+    columns.forEach((col,i)=>{
+      if(!col.type){
+        const found=[...new Set(rows.map(row=>row[i]).filter(v=>v!==null).map(v=>typeof v))];
+        if(found.length!==1)fail('column '+col.key+(found.length?' mixes types':' has no values')+'; give its type after the name, e.g. OUTPUT(A1:B4,"t",2,1) (1 number, 2 string, 3 boolean)');
+        col.type=found[0];
+      }
+      rows.forEach((row,r)=>{const value=row[i],type=col.type;
+        if(value!==null&&(typeof value!==type||type==='number'&&(!Number.isFinite(value)||Number.isInteger(value)&&!Number.isSafeInteger(value))||type==='string'&&value.length>2000))
+          throw new Error('Table output in '+this._key(spec.c1+i,spec.r1+1+r)+': expected '+type+' within dataset limits');});
+    });
+    const table={name:spec.name,columns,rows};
     if(JSON.stringify(table).length>500000)throw new Error('Table output exceeds the dataset storage limit');
     return {table};
   },
@@ -79,7 +182,8 @@
     if(this._fits(cols+1,rows+1)){cols++;rows++;}
     else if(this._fits(cols,rows+1))rows++;
     else if(this._fits(cols+1,rows))cols++;
-    const next={...state,source:'Cells',cols,rows,cells};
+    const next={...state,cols,rows,cells};
+    for(const key of ['source','dataRows','dataColumns','editDataset','allowReaderEdit'])delete next[key];
     for(const key of ['formats','aligns','weights'])delete next[key];
     if(JSON.stringify(next).length>3900)throw new Error('Dataset text exceeds the editable grid storage limit (4,000 characters). Filter it or use a live dataset instead.');
     const old=this._dims(state),L=this._layout(w,h,old);
@@ -161,12 +265,18 @@
     for(const k of ['a','b'])this._walk(node[k],fn);
     if(node.args)for(const x of node.args)this._walk(x,fn);
   },
+  // A type argument: 0 automatic (''), 1 number, 2 string, 3 boolean, or the type's name; null if invalid.
+  _typeArg(n){
+    if(!n)return '';
+    if(n.k==='num')return ['','number','string','boolean'][n.v]??null;
+    const t=n.k==='str'?n.v.trim().toLowerCase():'';
+    return ['number','string','boolean'].includes(t)?t:null;
+  },
   _inputType(node){
     const a=node.args;
     if(!a.length||a.length>2||a[0].k!=='str')return null;
-    if(a.length===1)return 'number';
-    const t=a[1].k==='str'?a[1].v.trim().toLowerCase():'';
-    return ['number','boolean','string'].includes(t)?t:null;
+    const t=this._typeArg(a[1]);
+    return t===''?'number':t;
   },
   _dataCall(node){
     const a=node.args,f=node.name;
@@ -174,19 +284,18 @@
     if(f==='ROWS')return a.length===1?{port:this._port(a[0].v)}:null;
     const key=a[f==='DATA'?2:1];
     if(!key||key.k!=='str'||(f==='DATA'?(a.length<3||a.length>4):a.length!==2))return null;
-    const type=a[3]?(a[3].k==='str'?a[3].v.trim().toLowerCase():''):'number';
-    return ['number','string','boolean'].includes(type)?{port:this._port(a[0].v),key:key.v,type}:null;
+    const type=this._typeArg(a[3]);
+    return type===null?null:{port:this._port(a[0].v),key:key.v,type:type||'number'};
   },
   _outputType(node,ctx){
     const a=node.args;if(a.length<2||a.length>3||a[1].k!=='str')return null;
-    if(a.length===2)return this._typeOf(a[0],ctx);
-    const type=a[2].k==='str'?a[2].v.trim().toLowerCase():'';
-    return ['number','string','boolean'].includes(type)?type:null;
+    const type=this._typeArg(a[2]);
+    return type===''?this._typeOf(a[0],ctx):type;
   },
   _analysis(state){
-    const dims=this._dims(state),region=this._region(state,dims),cells={...(state.cells||{})};
-    for(let r=0;r<region.rows;r++)for(let c=0;c<region.cols;c++)delete cells[this._key(c,r)];
-    return {state,cells,dims,region,trees:new Map(),types:new Map(),typeBusy:new Set(),nodeTypes:new WeakMap(),inputCells:new Map(),inputBusy:new Set(),inputNodes:new WeakMap()};
+    const dims=this._dims(state),cells={...(state.cells||{})};
+    for(const g of this._regions(state))for(let r=g.r1;r<=g.r2;r++)for(let c=g.c1;c<=g.c2;c++)delete cells[this._key(c,r)];
+    return {state,cells,dims,trees:new Map(),types:new Map(),typeBusy:new Set(),nodeTypes:new WeakMap(),inputCells:new Map(),inputBusy:new Set(),inputNodes:new WeakMap()};
   },
   _tree(k,ctx){
     if(ctx.trees.has(k))return ctx.trees.get(k);
@@ -249,10 +358,10 @@
             for(let r=t.r1;r<=t.r2;r++)for(let c=c1;c<=c2;c++)types.push(this._cellType(this._key(c,r),ctx));
             return this._joinTypes(types);
           }
-          if(f==='INPUT')return this._inputType(node)||'error';
+          if(f==='INPUT')return a[1]?.k==='range'?'string':this._inputType(node)||'error';
           if(f==='DATA')return this._dataCall(node)?.type||'error';
           if(f==='COLUMN')return 'mixed';
-          if(f==='OUTPUT')return this._outputType(node,ctx)||'error';
+          if(f==='OUTPUT')return a[0]?.k==='range'?'string':this._outputType(node,ctx)||'error';
           if(f==='IF'){
             if(a.length<2||a.length>3)return 'error';
             const condition=this._staticValue(a[0],ctx);
@@ -272,7 +381,7 @@
   _cellType(k,ctx){
     if(ctx.types.has(k))return ctx.types.get(k);
     const src=ctx.cells[k];let type;
-    if(this._reserved(ctx.state,this._COLS.indexOf(k[0]),+k.slice(1)-1))return +k.slice(1)===1?'string':'mixed';
+    const g=this._regionAt(ctx.state,this._COLS.indexOf(k[0]),+k.slice(1)-1);if(g)return +k.slice(1)-1===g.r1?'string':'mixed';
     if(typeof src!=='string'||src==='')type='number';
     else if(src[0]==="'")type='string';
     else if(src[0]!=='=')type=this._bool(src)!==null?'boolean':Number.isFinite(Number(src.trim()))&&src.trim()!==''?'number':'string';
@@ -283,13 +392,16 @@
     ctx.types.set(k,type);return type;
   },
   _ports(state){
-    const ctx=this._analysis(state),{cells,dims}=ctx,ins=[],outs=[];
+    const ctx=this._analysis(state),{cells,dims}=ctx,ins=[],outs=[],problems=this._regionInfo(state).problems.slice();
     const add=(port,type,cell)=>{
       const prior=ins.find(x=>x.port===port);
       if(prior&&prior.type!==type)throw new Error('Input '+port+' has conflicting '+prior.type+' and '+type+' types');
       if(!prior)ins.push({port,type,cell});
     };
-    if(state.source==='Dataset'){add('data','table','grid');add('startRow','number','grid');}
+    const regions=this._regions(state);
+    for(const g of regions){
+      if(!g.cell){add('data','table','grid');add('startRow','number','grid');}else add(g.port,'table',g.cell);
+    }
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
       const cell=this._key(c,r),src=cells[cell];
       if(typeof src!=='string'||src[0]!=='=')continue;
@@ -297,10 +409,16 @@
       this._walk(tree,n=>{
         if(n.k!=='fn')return;
         if(n.name==='INPUT'){
+          if(n!==tree&&(n.args[1]?.k==='range'||n.args[1]?.k==='error'&&src.includes(':')))problems.push('Table INPUT in '+cell+': the declaration must be the complete cell formula');
           const type=this._inputType(n);if(type)add(this._port(n.args[0].v),type,cell);
         }
         const data=this._dataCall(n);if(data)add(data.port,'table',cell);
-        if(n.name==='OUTPUT'){
+        if(n.name==='OUTPUT'&&n.args[0]?.k==='range'){
+          const port=this._port(n.args[1]?.k==='str'&&n.args[1].v.trim()?n.args[1].v:'table');let table=null;
+          try{table=this._rangeTable(n,ctx,cell);}catch(err){problems.push(err.message);}
+          if(outs.some(o=>o.port===port))problems.push('Output '+port+' is declared twice');
+          else outs.push({port,type:'table',cell,table});
+        }else if(n.name==='OUTPUT'){
           const type=this._outputType(n,ctx);
           if(type){const port=this._port(n.args[1].v),prior=outs.find(o=>o.port===port);
             if(prior&&prior.type!==type)throw new Error('Output '+port+' has conflicting types');
@@ -309,15 +427,11 @@
         }
       });
     }
-    const table=this._tableSpec(state,dims);
-    if(table){
-      if(outs.some(o=>o.port==='table'))throw new Error('Output table is reserved while Publish table output is enabled');
-      outs.push({port:'table',type:'table',cell:table.range,table});
-    }
     if(ins.length>32||outs.length>32)throw new Error('Spreadsheet supports at most 32 inputs and 32 outputs');
-    return {ins,outs};
+    return {ins,outs,problems};
   },
   inputs(state){const m={};for(const x of this._ports(state).ins)m[x.port]={type:x.type,...(x.type==='table'?{}:{default:x.type==='boolean'?false:x.type==='string'?'':0})};return m;},
+  configurationError(state){return this._ports(state).problems[0]||null;},
   outputs(state){const m={};for(const o of this._ports(state).outs){
     if(o.type==='mixed')throw new Error('Output '+o.port+' in '+o.cell+': result type is ambiguous; use OUTPUT(expression,\"port\",\"number\"|\"string\"|\"boolean\") or one consistent value type');
     m[o.port]={type:o.type==='error'?'number':o.type};
@@ -330,15 +444,19 @@
       const k=this._key(c,r);
       if(memo[k])return memo[k];
       if(busy[k])return {e:'#CYCLE!'};
-      if(c<ctx.region.cols&&r<ctx.region.rows){
-        const table=tables.data,start=inputs?.startRow??0;
+      const g=this._regionAt(state,c,r);
+      if(g){
+        const table=tables[g.port];
         if(!table)return {e:'#N/A'};
+        let start=0;
+        if(g.start){busy[k]=true;try{start=val(g.start);}catch(err){start=NaN;}busy[k]=false;}
         if(!Number.isInteger(start)||start<0)return {e:'#VALUE!'};
-        const value=r===0?table.columns[c]?.name:table.rows[start+r-1]?.[c];
+        const value=r===g.r1?table.columns[c-g.c1]?.name:table.rows[start+r-g.r1-1]?.[c-g.c1];
         return value==null?null:wrap(value);
       }
       const src=cells[k];
       if(typeof src!=='string'||src==='')return null;
+      if(this._tableCell(src))return this._regionInfo(state).problems.some(p=>p.startsWith('Table INPUT in '+k+':'))?{e:'#VALUE!'}:null;
       let res;
       if(src[0]==="'")res={t:src.slice(1)};
       else if(src[0]!=='='){
@@ -362,7 +480,7 @@
     const tryVal=a=>{try{return {v:val(a)};}catch(err){return {e:err&&err.e||'#ERROR!'};}};
     const isRange=a=>a.k==='range'||a.k==='fn'&&a.name==='COLUMN';
     const dataFor=n=>{const call=this._dataCall(n);if(!call)throw {e:'#VALUE!'};const table=tables[call.port];if(!table)throw {e:'#N/A'};return {call,table};};
-    const columnFor=n=>{const {call,table}=dataFor(n),index=table.columns.findIndex(c=>c.key===call.key);if(index<0)throw {e:'#N/A'};return {call,table,index};};
+    const columnFor=n=>{const {call,table}=dataFor(n);let index=table.columns.findIndex(c=>c.key===call.key);if(index<0)index=table.columns.findIndex(c=>c.name===call.key);if(index<0)throw {e:'#N/A'};return {call,table,index};};
     const cellsIn=a=>{
       if(a.k!=='range'){const {table,index}=columnFor(a);return table.rows.map(row=>row[index]==null?null:wrap(row[index]));}
       const out=[];for(let r=a.r1;r<=a.r2;r++)for(let c=a.c1;c<=a.c2;c++)out.push(cell(c,r));return out;
@@ -466,13 +584,15 @@
             if(a.length<2||a.length>3)throw {e:'#VALUE!'};
             return toBool(val(a[0]))?val(a[1]):a.length===3?val(a[2]):false;
           }
+          if(f==='INPUT'&&a[1]?.k==='range'){const t=a[0]?.k==='str'&&tables[this._port(a[0].v)];if(!t)throw {e:'#N/A'};return t.name||this._port(a[0].v);}
           if(f==='INPUT'){
             const type=this._inputType(n);if(!type)throw {e:'#VALUE!'};
             const v=inputs?inputs[this._port(a[0].v)]:undefined;
             if(typeof v!==type||type==='number'&&!Number.isFinite(v))throw {e:'#N/A'};
             return v;
           }
-          if(f==='OUTPUT'){const type=this._outputType(n,ctx);if(!type)throw {e:'#VALUE!'};const value=val(a[0]);if(a.length===3&&typeof value!==type)throw {e:'#VALUE!'};return value;}
+          if(f==='OUTPUT'&&a[0]?.k==='range')return a[1]?.k==='str'?a[1].v.trim():'#VALUE!';
+          if(f==='OUTPUT'){const type=this._outputType(n,ctx);if(!type)throw {e:'#VALUE!'};const value=val(a[0]);if(this._typeArg(a[2])&&typeof value!==type)throw {e:'#VALUE!'};return value;}
           throw {e:'#NAME?'};
         }
       }
@@ -487,13 +607,14 @@
   },
 
   initState(){
-    return {source:'Cells',dataRows:5,dataColumns:3,editDataset:false,allowReaderEdit:false,tableOutput:false,tableRange:'A2:C4',tableColumns:'column1:number\ncolumn2:number\ncolumn3:number',tableName:'Spreadsheet results',cols:6,rows:6,cells:{}};
+    return {cols:6,rows:6,cells:{}};
   },
   initStyle(){return {w:552,h:168,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#1f2937',size:1};},
   compute(inputs,state,context={}){
-    const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={};
-    for(const o of this._ports(state).outs){
-      if(o.table){out.table=this._resultTable(run,o.table);continue;}
+    const run=this._evaluator(state,inputs,undefined,context.tables||{}),out={},ports=this._ports(state);
+    if(ports.problems.length)throw new Error(ports.problems[0]);
+    for(const o of ports.outs){
+      if(o.table){out[o.port]=this._resultTable(run,o.table,state,context.tables||{});continue;}
       if(o.type==='mixed')throw new Error('Output '+o.port+' in '+o.cell+': result type is ambiguous; use OUTPUT(expression,\"port\",\"number\"|\"string\"|\"boolean\") or one consistent value type');
       let value;
       try{value=run.value(o.expression);}catch(err){throw new Error('Output '+o.port+' in '+o.cell+': '+(err&&err.e||'#ERROR!'));}
@@ -529,7 +650,7 @@
     ['Text',{CONCAT:['text1','text2'],LEN:['text'],UPPER:['text'],LOWER:['text'],LEFT:['text','count'],RIGHT:['text','count'],
       MID:['text','start','count']}],
     ['Ports',{INPUT:['"name"'],OUTPUT:['value','"Name"']}],
-    ['Datasets',{DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
+    ['Datasets',{INTABLE:['"data"','A1:C6','INPUT("startRow")','0'],DATA:['"data"','0','"column"'],COLUMN:['"data"','"column"'],ROWS:['"data"']}],
   ],
   _cellFormat(state,k){const f=(state.formats||{})[k];return this._FORMATS.some(([c])=>c&&c===f)?f:'';},
   _cellAlign(state,k){const a=(state.aligns||{})[k];return ['left','center','right'].includes(a)?a:'';},
@@ -542,7 +663,7 @@
     else if(raw)first=this._bool(raw)!==null||Number.isFinite(Number(raw))?raw:'"'+raw.replace(/"/g,'""')+'"';
     const filled=first!==null&&args.length?1:0;
     if(filled)args[0]=first;
-    const head='='+name+'(',text=head+args.join(',')+')';
+    const head='='+(name==='INTABLE'?'INPUT':name)+'(',text=head+args.join(',')+')';
     if(filled<args.length){
       let at=head.length;for(let i=0;i<filled;i++)at+=args[i].length+1;
       const ph=args[filled],q=ph[0]==='"';
@@ -553,28 +674,28 @@
   contextMenu(state,x,y,w,h){
     const dims=this._dims(state),t=this._target(x,y,w,h,dims);
     if(!t)return [];
-    const region=this._region(state,dims),items=[],addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
+    const items=[],addCol=this._fits(dims.cols+1,dims.rows),addRow=this._fits(dims.cols,dims.rows+1);
     if(t.col!==undefined){
-      items.push({id:'cins'+t.col,label:'Insert 1 column left',disabled:!addCol||t.col<region.cols},
-        {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol||t.col+1<region.cols},
-        {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1||t.col<region.cols});
+      items.push({id:'cins'+t.col,label:'Insert 1 column left',disabled:!addCol||this._structureBlocked(state,'c',t.col,1)},
+        {id:'cins'+(t.col+1),label:'Insert 1 column right',disabled:!addCol||this._structureBlocked(state,'c',t.col+1,1)},
+        {id:'cdel'+t.col,label:'Delete column',disabled:dims.cols<=1||this._structureBlocked(state,'c',t.col,-1)});
     }
     if(t.col!==undefined&&t.row===undefined)
       items.push({separator:true},{id:'colw'+t.col,label:'Column width\u2026',edit:{handle:'cw'+t.col}},
         {id:'cwreset'+t.col,label:'Reset column width',disabled:dims.weights[t.col]===1});
     if(t.col!==undefined&&t.row!==undefined)items.push({separator:true});
     if(t.row!==undefined){
-      items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow||t.row<region.rows},
-        {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow||t.row+1<region.rows},
-        {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1||t.row<region.rows});
+      items.push({id:'rins'+t.row,label:'Insert 1 row above',disabled:!addRow||this._structureBlocked(state,'r',t.row,1)},
+        {id:'rins'+(t.row+1),label:'Insert 1 row below',disabled:!addRow||this._structureBlocked(state,'r',t.row+1,1)},
+        {id:'rdel'+t.row,label:'Delete row',disabled:dims.rows<=1||this._structureBlocked(state,'r',t.row,-1)});
     }
     if(t.col!==undefined&&t.row!==undefined){
       const cell=this._key(t.col,t.row),src=(state.cells||{})[cell]||'';
       items.push({separator:true},{label:'Insert function',disabled:this._reserved(state,t.col,t.row),items:this._FN_GROUPS.map(([group,fns])=>({label:group,
         items:Object.entries(fns).map(([name,args])=>{const ins=this._fnInsert(src,name);
-          return {id:'fn:'+name+':'+cell,label:name+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
+          return {id:'fn:'+name+':'+cell,label:(name==='INTABLE'?'INPUT':name)+'('+args.join(', ')+')',edit:{handle:cell,select:ins.select}};})}))});
       const fc=this._cellFormat(state,cell),al=this._cellAlign(state,cell),tick=on=>on?'  \u2713':'';
-      items.push({label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
+      items.push({separator:true},{label:'Number format',items:this._FORMATS.map(([code,name],i)=>({id:'nf'+i+':'+cell,
         label:name+(code?'  '+this._fmtCode(code.endsWith('%')?.1235:1234.5678,code):'')+tick(code===fc)}))},
         {label:'Alignment',items:this._ALIGNS.map(([a,name])=>({id:'al:'+(a||'default')+':'+cell,label:name+tick(a===al)}))});
     }
@@ -601,19 +722,21 @@
   },
   _fmt(v){return this._number(v);},
   _draw(state,style,w,h,editing,inputs,errorNote,tables={}){
-    const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),region=this._region(state,dims);
-    let ports={ins:[],outs:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}
+    const dims=this._dims(state),L=this._layout(w,h,dims),items=[],sheet=this._sheet(state,inputs,tables),regions=this._regions(state);
+    let ports={ins:[],outs:[],problems:[]};try{ports=this._ports(state);}catch(err){errorNote=errorNote||err.message;}
+    errorNote=errorNote||ports.problems[0]||'';
     const ink=style.color||'#64748b',textInk=style.textColor||'#1f2937',grid='#cbd5e1';
     const family=['sans','serif','mono','cursive'].includes(style.fontFamily)?style.fontFamily:'sans';
     const cap=size=>Math.max(6,Math.round(Math.min(style.fontSize||L.px,size)));
     const label=(text,x,y,tw,th,align,color,bold,size)=>({type:'text',x,y,w:tw,h:th,text:String(text),align:align||'center',
       fontFamily:family,fontSize:size?cap(size):this._cellPx(style,L),textColor:color||textInk,color:color||textInk,strokeOn:false,fill:false});
     items.push({type:'rect',x:0,y:0,w,h,color:ink,size:1,strokeOn:false,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff'});
-    if(region.cols&&region.rows)items.push({type:'rect',x:0,y:0,w:L.xs[region.cols-1]+L.ws[region.cols-1],h:L.rh,fill:true,fillColor:'#e2e8f0',strokeOn:false});
+    for(const g of regions)if(g.c2<dims.cols&&g.r1<dims.rows)items.push({type:'rect',x:L.xs[g.c1],y:g.r1*L.rh,w:L.xs[g.c2]+L.ws[g.c2]-L.xs[g.c1],h:L.rh,fill:true,fillColor:'#e2e8f0',strokeOn:false});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
-      const x=sheet[this._key(c,r)];
+      const k=this._key(c,r),x=sheet[k],mark=editing&&!x&&this._tableCell((state.cells||{})[k]);
+      if(mark)items.push({...label(mark,L.xs[c],r*L.rh,L.ws[c],L.rh,'left','#94a3b8'),editorOnly:true});
       if(!x)continue;
-      const k=this._key(c,r),fc=this._cellFormat(state,k);
+      const fc=this._cellFormat(state,k);
       const text=x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):this._fmtCode(x.v,fc));
       const align=this._cellAlign(state,k)||(x.v!==undefined?'right':x.b!==undefined?'center':'left');
       items.push(label(text,L.xs[c],r*L.rh,L.ws[c],L.rh,align,x.e?'#b91c1c':textInk));
@@ -633,7 +756,7 @@
       for(let r=0;r<dims.rows;r++)head(r+1,-L.hgap-L.headW,r*L.rh,L.headW,L.rh);
       const tag=x=>x.port+' ('+x.cell+(x.type==='number'?'':', '+(x.type==='boolean'?'bool':x.type))+')';
       const groups=errorNote?[{words:errorNote.split(/\s+/),comma:false}]:[ports.ins.length?['In:',...ports.ins.map(tag)]:null,ports.outs.length?['Out:',...ports.outs.map(tag)]:null].filter(Boolean).map(words=>({words,comma:true}));
-      if(state.source==='Dataset'&&tables.data)groups.unshift({words:('Dataset: '+(tables.data.name||'data')+' · '+(state.editDataset===true&&tables.data.editable===true?'edit shared records':state.editDataset===true&&!tables.data.owner?'read-only · no Dataset owner':'read-only')).split(/\s+/),comma:false});
+      for(const g of regions.slice().reverse()){const t=tables[g.port];if(t)groups.unshift({words:('Table '+(t.name||g.port)+' ('+(g.cell||'A1')+'): '+(g.edit&&t.editable===true?'edit shared records':g.edit&&!t.owner?'read-only · no Dataset owner':'read-only')).split(/\s+/),comma:false});}
       const npx=Math.min(12,L.px),lineH=Math.ceil(npx*1.35),perLine=Math.max(8,Math.floor((w-12)/(npx*.62)));   // conservative glyph width
       const lines=[];
       for(const {words,comma} of groups){
@@ -657,19 +780,20 @@
   },
   handles(state,w,h,style={},io={}){
     const dims=this._dims(state),L=this._layout(w,h,dims),hs=[],sheet=this._sheet(state,io.inputs||{},io.tables?.inputs||{});
-    const fontSize=this._cellPx(style,L),table=io.tables?.inputs?.data,start=io.inputs?.startRow??0;
+    const fontSize=this._cellPx(style,L),run=this._evaluator(state,io.inputs||{},undefined,io.tables?.inputs||{});
     for(let r=0;r<dims.rows;r++)for(let c=0;c<dims.cols;c++){
-      const k=this._key(c,r),reserved=this._reserved(state,c,r),x=sheet[k],index=start+r-1;
-      const column=table?.columns?.[c],rowId=table?.rowIds?.[index];
-      const bound=reserved&&r>0&&state.editDataset===true&&table?.editable===true&&typeof table.datasetId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(table.datasetId)&&!['__proto__','prototype','constructor'].includes(table.datasetId)&&
+      const k=this._key(c,r),g=this._regionAt(state,c,r),reserved=!!g,x=sheet[k],table=g&&io.tables?.inputs?.[g.port];
+      let start=0;if(g?.start)try{start=run.value(g.start);}catch{start=NaN;}
+      const index=g?start+r-g.r1-1:-1,column=table?.columns?.[c-(g?g.c1:0)],rowId=table?.rowIds?.[index];
+      const bound=reserved&&r>g.r1&&g.edit&&table?.editable===true&&typeof table.datasetId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(table.datasetId)&&!['__proto__','prototype','constructor'].includes(table.datasetId)&&
         Number.isInteger(start)&&start>=0&&Array.isArray(table.rows?.[index])&&typeof rowId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(rowId)&&
         typeof column?.key==='string'&&['number','string','boolean'].includes(column.type)&&Number.isSafeInteger(table.revision)&&table.revision>=0;
       const value=reserved?(x?x.e||(x.t!==undefined?x.t:x.b!==undefined?(x.b?'TRUE':'FALSE'):String(x.v)):''):(state.cells||{})[k]||'';
       hs.push({id:k,x:L.xs[c]+L.ws[c]/2,y:(r+.5)*L.rh,kind:'text',value,
         label:bound?('Dataset '+(table.name||'data')+' · row '+index+' · '+(column.name||column.key)).slice(0,100):'Cell '+k,
-        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:'data',datasetId:table.datasetId,rowId,column:column.key,revision:table.revision}}:{}),
+        ...(reserved?{readOnly:!bound}:{}),...(bound?{datasetCell:{input:g.port,datasetId:table.datasetId,rowId,column:column.key,revision:table.revision,...(g.reader?{reader:true}:{})}}:{}),
         inline:{x:L.xs[c],y:r*L.rh,w:L.ws[c],h:L.rh,fontSize,mode:'edit',navigation:'horizontal',references:!bound,
-          ...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{})},ref:k,editorOnly:!bound||state.allowReaderEdit!==true});
+          ...(this._cellAlign(state,k)?{align:this._cellAlign(state,k)}:{})},ref:k,editorOnly:!bound||!g.reader});
     }
     for(let c=0;c<dims.cols;c++)hs.push({id:'cw'+c,x:L.xs[c]+L.ws[c]/2,y:-L.hgap-L.headH/2,kind:'number',
       value:Math.round(L.ws[c]),min:8,max:2000,step:1,editorOnly:true});
@@ -682,9 +806,15 @@
     const t=this._target(x,y,w,h,dims);
     return t?'headers':null;
   },
+  _structureBlocked(state,axis,at,delta){
+    return this._regions(state).some(g=>{
+      const lo=axis==='c'?g.c1:g.r1,hi=axis==='c'?g.c2:g.r2;
+      return at<=hi&&(delta<0?at>=lo:!g.cell||at>lo);
+    });
+  },
   _restructure(state,axis,at,delta){
-    const dims=this._dims(state),region=this._region(state,dims),cells={};
-    if(at<(axis==='c'?region.cols:region.rows))return state;
+    if(this._structureBlocked(state,axis,at,delta))return state;
+    const dims=this._dims(state),cells={};
     const move=i=>delta>0?(i>=at?i+1:i):(i===at?null:i>at?i-1:i);
     const parse=k=>{const m=/^([A-Z])(\d+)$/.exec(k);return m?{c:this._COLS.indexOf(m[1]),r:+m[2]-1}:null;};
     const shiftRef=(col,row)=>{
@@ -736,10 +866,9 @@
     const dims=this._dims(state),op=/^([cr])(ins|del)(\d+)$/.exec(handle);
     if(op){
       const axis=op[1],add=op[2]==='ins',i=+op[3],count=axis==='c'?dims.cols:dims.rows;
-      const region=this._region(state,dims);
-      if(i<(axis==='c'?region.cols:region.rows)||i>(add?count:count-1) || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
+      if(i>(add?count:count-1) || (!add && count<=1) || (add && !this._fits(dims.cols+(axis==='c'),dims.rows+(axis==='r'))))return {state};
       const next=this._restructure(state,axis,i,add?1:-1);
-      if(JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
+      if(next===state||JSON.stringify(next).length>3900)return {state};   // keep within the 4,000-character state limit
       const L=this._layout(w,h,dims),colPx=add?L.ws[Math.max(0,i-1)]:L.ws[i];
       return {state:next,size:axis==='c'?{w:w+(add?colPx:-colPx)}:{h:h+(add?L.rh:-L.rh)}};
     }
