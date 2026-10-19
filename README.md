@@ -192,10 +192,10 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Number to text |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Text to number, Number to text, Text compose, Text transform, Text replace, Text selector |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 77 entries, including 68 connected API v2 components. Every smart-shape
+The catalog includes 82 entries, including 73 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -286,7 +286,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore twenty-seven connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore twenty-eight connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -319,6 +319,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Spreadsheet result tables | Publish calculated cells as a table and store an independently editable result. |
 | Views and stored results | Compare edits through a filtered/sorted view with edits to a stored copy of aggregate results. |
 | Text matching and extraction | Compare strings without case sensitivity, validate a full pattern, and extract a capture or Unicode range. |
+| Text processing and formatting | Clean and parse an amount, format and compose its label, choose an invalid-input fallback, and replace literal or regex matches. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -382,11 +383,36 @@ component error. Evaluation uses the same bounded Worker calls as other componen
 HTML exports. **Show indicators** controls the optional output readouts. Tab 27, **Text matching
 and extraction**, connects both components to editable inputs and status/text displays.
 
-**Number to text** converts its numeric **Value** input into a string **Text** output, ready to
-connect to Text label, Memo, or the text-processing components. It preserves the number's full
-available precision rather than rounding it like a display. Conversion uses a decimal point,
-exponential notation for very small or large values, and `0` for negative zero. **Show indicators**
-controls the optional status indicator. It also works in offline HTML exports.
+**Text to number** converts **Text** into numeric **Value** and Boolean **Valid**. It accepts a
+complete decimal number, optionally with an exponent, using the selected decimal point or comma.
+Whitespace is trimmed by default. Empty text, grouping separators, hexadecimal, trailing junk,
+and non-finite results produce Value `0` and Valid off; connect Valid to a Text selector when you
+want a friendly fallback message. `12abc` never silently becomes `12`.
+
+**Number to text** converts numeric **Value** into string **Text**. **Full precision**, the default,
+uses the number's complete JavaScript representation: decimal point, exponential notation where
+needed, and `0` for negative zero. **Fixed decimals** enables **Decimal places** (0–20),
+**Minimum integer digits** (1–20, padding with leading zeros), and **Decimal separator** (point or
+comma). These three settings apply only in fixed mode. Rounding changes the resulting text,
+leaving the original numeric signal intact; a result rounded to zero has no minus sign.
+
+**Text compose** joins two to eight strings with a **Separator**, or fills a **Template** with
+`{a}`, `{b}`, and the other enabled input names. For example, `Total: {a} €` can use a formatted
+number. Write `{{` or `}}` for literal braces; unknown placeholders or malformed braces show an error.
+This combines scalar strings; splitting/joining lists or tables remains later work.
+
+**Text transform** trims whitespace or converts text to lowercase or uppercase. It publishes
+the transformed **Text**, its Unicode-code-point **Length**, and Boolean **Empty**.
+**Text replace** replaces the first or all occurrences of literal text or a raw regex pattern,
+with optional case insensitivity. Its outputs are **Text** and replacement **Count**. Literal
+replacement treats dollar signs literally; regex replacement uses JavaScript's `$1` for the first
+capture (`$0` stays literal). This is regex syntax; Text extract's numeric capture selector remains
+zero-based. An empty literal search leaves the text unchanged.
+**Text selector** chooses **A** when Boolean **Select** is off, and **B** when it is on.
+
+These components follow the usual **Show indicators** setting and work in offline HTML exports.
+Tab 28, **Text processing and formatting**, connects all five additions and fixed number formatting
+to editable inputs, a validity-driven fallback, and ordinary Text labels.
 
 **Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
 library. Place Dataset, select it, and open **Edit…**. Its **Owned dataset** section selects or creates

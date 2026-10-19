@@ -1777,11 +1777,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 77 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 82 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 68 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 73 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1865,10 +1865,36 @@ The built-in catalog includes 68 API v2 components, with editable sources in `ex
   errors. The shared Worker deadline bounds regex execution in the editor and offline HTML.
   Both have optional `showIndicators` readouts. Tab 27 demonstrates the connected workflow.
 - [Number to text](examples/number-to-text.js): numeric `value` input (default 0) and string `text`
-  output. Converts finite numbers with `String(value)`, preserving their available precision
-  without display rounding. The result is locale-independent, uses a decimal point and JavaScript's
-  exponential notation when needed, and converts negative zero to `"0"`. Boolean `showIndicators`
-  defaults true and controls the optional status indicator. The same conversion runs in offline HTML.
+  output. Setting `format` defaults to `full precision`, using `String(value)` with a decimal point,
+  exponential notation when needed, and `"0"` for negative zero. `fixed decimals` enables `decimals`
+  (0–20, default 2), `minimumIntegerDigits` (1–20, default 1), and `decimalSeparator` (`.` or `,`,
+  default `.`). These three settings apply only in fixed mode. Leading zeros pad the integer part;
+  a rounded zero never retains a negative sign. The source numeric value is unchanged.
+- [Text to number](examples/text-to-number.js): string `text` input, numeric `value` and Boolean
+  `valid` outputs. `decimalSeparator` selects `.` (default) or `,`; `trimWhitespace` defaults true.
+  Parsing accepts only a complete signed decimal/exponent representation, without grouping,
+  hexadecimal, or trailing junk. Empty, malformed, or non-finite input returns `value:0, valid:false`.
+- [Text compose](examples/text-compose.js): string `a` through `h`, selected by `inputCount`
+  (2–8, default 2), produce string `text`. `mode:join` (default) declares string `separator`;
+  `mode:template` declares string `template` (default `{a}{b}`). Templates substitute enabled names
+  such as `{a}`; `{{` and `}}` escape braces. Unknown names and malformed braces are errors.
+  This operates on scalar strings, not lists or tables.
+- [Text transform](examples/text-transform.js): string `text` and control `operation` (`trim`,
+  `lowercase`, `uppercase`) produce string `text`, code-point `length`, and Boolean `empty`.
+  Length counts the transformed result, including any expansion caused by case conversion.
+- [Text replace](examples/text-replace.js): string `text`, `search`, and `replacement` produce
+  string `text` and numeric `count`. Settings choose `mode` (`literal` or `regex`), `occurrence`
+  (`all` or `first`), and `caseSensitive` (default true). Literal replacement preserves dollar
+  signs and an empty search is a no-op. Regex uses a raw pattern and native Unicode matching,
+  with optional `i` and `g`; replacement references follow JavaScript: `$1` is the first capture,
+  `$0` stays literal, and named captures are supported. This regex syntax is separate from Text
+  extract's zero-based numeric `group` selector. Zero-width matches follow native Unicode
+  advancement. Invalid patterns are errors.
+- [Text selector](examples/text-selector.js): string `a`/`b` and Boolean control `select` produce
+  string `text`; false chooses A and true chooses B. Combine with Text to number's `valid`
+  output to replace invalid amounts with a message.
+  These six components expose optional `showIndicators` readouts and work in offline HTML.
+  Tab 28 demonstrates parsing, formatting, composition, selection, and literal/regex replacement.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with

@@ -4,6 +4,18 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
 const sources={
+  "demo-28-amount": "text-input.js",
+  "demo-28-trim": "text-transform.js",
+  "demo-28-parse": "text-to-number.js",
+  "demo-28-format": "number-to-text.js",
+  "demo-28-compose": "text-compose.js",
+  "demo-28-select": "text-selector.js",
+  "demo-28-result": "text-label.js",
+  "demo-28-valid": "status-indicator.js",
+  "demo-28-message": "text-input.js",
+  "demo-28-literal": "text-replace.js",
+  "demo-28-regex": "text-replace.js",
+  "demo-28-replaced": "text-label.js",
   "demo-27-message": "text-input.js",
   "demo-27-expected": "text-input.js",
   "demo-27-same": "text-compare.js",

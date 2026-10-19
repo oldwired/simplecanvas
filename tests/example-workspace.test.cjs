@@ -47,7 +47,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===27 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===28 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -71,7 +71,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all twenty-seven tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all twenty-eight tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -86,7 +86,7 @@ test('shipped workspace imports all twenty-seven tabs with valid local bindings 
     }
     return result;
   })()`);
-  assert.equal(checked.length,27);
+  assert.equal(checked.length,28);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -189,14 +189,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has twenty-seven working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has twenty-eight working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),27);
-    for(let tab=1;tab<=27;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),28);
+    for(let tab=1;tab<=28;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -636,6 +636,68 @@ test('text operations demo updates matches and captures without network access i
     await readerText(page,27,'same-result','ON');await readerText(page,27,'valid-result','OFF');
     await readerText(page,27,'captured-label','1234');await readerText(page,27,'ranged-label','🌍');
     await readerText(page,27,'capture-found','ON');await readerText(page,27,'range-found','ON');
+    assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+
+test('text processing demo formats parsed amounts, selects a fallback, and replaces strings in the editor',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,28);
+  assert.deepEqual(await outputs(run,28,'trim'),{text:'12,50',length:5,empty:false});
+  assert.deepEqual(await outputs(run,28,'parse'),{value:12.5,valid:true});
+  assert.equal((await outputs(run,28,'format')).text,'012,50');
+  assert.equal((await outputs(run,28,'result')).value,'Total: 012,50 €');
+  assert.deepEqual(await outputs(run,28,'literal'),{text:'ITEM-1042 / ITEM-7',count:2});
+  assert.deepEqual(await outputs(run,28,'regex'),{text:'#1042 / #7',count:2});
+  const enter=async(id,value)=>{
+    await editorHandle(page,run,28,id,'entry');const field=page.locator('#smartTextValue');
+    const before=await page.locator('[data-smart-inline-input]').getAttribute('data-submissions');
+    await field.fill(value);await field.press('Enter');
+    await page.waitForFunction(before=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>Number(before||0),before);
+    await run('smartHitSettled');await field.press('Escape');await field.waitFor({state:'detached'});
+  };
+  await enter('amount','7,5');
+  assert.equal((await outputs(run,28,'result')).value,'Total: 007,50 €');
+  await enter('amount','12abc');
+  assert.deepEqual(await outputs(run,28,'parse'),{value:0,valid:false});
+  assert.equal((await outputs(run,28,'result')).value,'Enter a valid amount');
+  await enter('amount',' -0,004 ');
+  assert.equal((await outputs(run,28,'parse')).value,-0.004);
+  assert.equal((await outputs(run,28,'result')).value,'Total: 000,00 €');
+  await enter('amount',' 2,75e1 ');
+  assert.equal((await outputs(run,28,'result')).value,'Total: 027,50 €');
+  await enter('message','ORDER-5 / order-6');
+  assert.deepEqual(await outputs(run,28,'literal'),{text:'ITEM-5 / ITEM-6',count:2});
+  assert.deepEqual(await outputs(run,28,'regex'),{text:'#5 / #6',count:2});
+  await enter('message','nothing here');
+  assert.deepEqual(await outputs(run,28,'literal'),{text:'nothing here',count:0});
+  assert.deepEqual(await outputs(run,28,'regex'),{text:'nothing here',count:0});
+}));
+
+test('text processing demo retains parsing, formatting, selection, and replacement in offline HTML',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  const enter=async(id,value)=>{
+    await readerHandle(page,28,id,'entry');const form=page.locator('[data-smart-inline-input]'),field=form.locator('#smartTextValue');
+    await field.waitFor({state:'visible'});const before=Number(await form.getAttribute('data-submissions')||0);
+    await field.fill(value);await field.press('Enter');
+    await page.waitForFunction(({form,before})=>Number(form.dataset.submissions)>before,{form:await form.elementHandle(),before});
+    await field.press('Escape');await field.waitFor({state:'detached'});
+  };
+  try{
+    await page.goto(pathToFileURL(readerPath).href);await readerTab(page,28);
+    await readerText(page,28,'result','Total: 012,50 €');await readerText(page,28,'valid','ON');
+    await readerText(page,28,'replaced','#1042 / #7');
+    await enter('amount','7,5');await readerText(page,28,'result','Total: 007,50 €');
+    await enter('amount','12abc');await readerText(page,28,'result','Enter a valid amount');await readerText(page,28,'valid','OFF');
+    await enter('amount',' -0,004 ');await readerText(page,28,'result','Total: 000,00 €');await readerText(page,28,'valid','ON');
+    await enter('amount',' 2,75e1 ');await readerText(page,28,'result','Total: 027,50 €');
+    await enter('message','ORDER-5 / order-6');await readerText(page,28,'replaced','#5 / #6');
+    await enter('message','nothing here');await readerText(page,28,'replaced','nothing here');
+    await page.reload();await readerTab(page,28);
+    await readerText(page,28,'result','Total: 012,50 €');await readerText(page,28,'replaced','#1042 / #7');
+    assert.equal(await page.locator('.tab-panel').nth(27).locator('[data-component-error]').count(),0);
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
   }finally{await context.close();}
 });

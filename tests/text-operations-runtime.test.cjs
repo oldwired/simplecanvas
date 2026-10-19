@@ -211,7 +211,7 @@ test('connected text operations respond to inline entry and work in a downloaded
 // acceptance, so the next pointer press necessarily arrives while it is pending.
 // No timing delay or modified component/runtime is needed to reproduce the race.
 async function submitThenImmediatelyClick(page,point){
-  const observed=await page.evaluate(({x,y})=>{
+  const observed=await page.evaluate(({x,y,repaint})=>{
     const input=document.querySelector('#smartTextValue'),form=input.closest('form'),target=document.elementFromPoint(x,y);
     input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
     const pending=input.readOnly;
@@ -219,10 +219,18 @@ async function submitThenImmediatelyClick(page,point){
     target.dispatchEvent(new PointerEvent('pointerdown',{...pointer,buttons:1}));
     target.dispatchEvent(new PointerEvent('pointerup',{...pointer,buttons:0}));
     target.dispatchEvent(new MouseEvent('click',{...pointer,buttons:0}));
-    return {pending,keptUntilAccepted:form.isConnected};
+    // Model the reader's normal SVG repaint deterministically, while the actual
+    // Worker acceptance is pending. The component host and its geometry survive.
+    if(repaint==='host'){
+      const host=target.closest('[data-smart-index]'),replacement=host.cloneNode(true);
+      replacement.dataset.replayedDown='0';replacement.addEventListener('pointerdown',()=>replacement.dataset.replayedDown=String(Number(replacement.dataset.replayedDown)+1));
+      host.replaceWith(replacement);
+    }else if(repaint && target.closest('[data-smart-index]')!==target)target.replaceWith(target.cloneNode(true));
+    return {pending,keptUntilAccepted:form.isConnected,detached:!target.isConnected};
   },point);
   assert.equal(observed.pending,true,'the next click occurs during an actual pending acceptance');
   assert.equal(observed.keptUntilAccepted,true,'an outside click must not cancel an initiated Enter submission');
+  if(point.repaint)assert.equal(observed.detached,true,'the SVG child was replaced before queued replay');
 }
 
 test('clicking another text control while Enter is pending preserves the submission in editor and offline HTML',async()=>app(async({page,run,context})=>{
@@ -243,11 +251,15 @@ test('clicking another text control while Enter is pending preserves the submiss
   },handle);
   const firstPoint=await point(0,firstHandle),secondPoint=await point(1,secondHandle);
   await reader.mouse.click(firstPoint.x,firstPoint.y);const field=reader.locator('#smartTextValue');await field.waitFor();await field.fill('kept in reader');
-  await submitThenImmediatelyClick(reader,secondPoint);
+  await submitThenImmediatelyClick(reader,{...secondPoint,repaint:true});
   await readerText(reader,2,'kept in reader');
   await reader.waitForFunction(()=>document.querySelector('#smartTextValue')?.getAttribute('aria-label')==='Second');
   await field.fill('second reader entry');await field.press('Enter');await readerText(reader,3,'second reader entry');
   await field.press('Escape');await field.waitFor({state:'detached'});
+  await reader.mouse.click(firstPoint.x,firstPoint.y);await field.waitFor();await field.fill('kept after removal');
+  await submitThenImmediatelyClick(reader,{...secondPoint,repaint:'host'});
+  await readerText(reader,2,'kept after removal');await field.waitFor({state:'detached'});
+  assert.equal(await reader.locator('[data-smart-index="1"]').getAttribute('data-replayed-down'),'0','a removed component cannot redirect its queued click to a replacement');
   assert.deepEqual(await output(run,2),{value:'kept in editor'});assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
@@ -267,4 +279,70 @@ test('pathological regex is terminated in an isolated Worker while the main thre
   assert.equal(result.deadline,250);assert.ok(result.elapsed<5000,'the Worker deadline bounds evaluation');
   await seed(run,[{key:'textCompare',inputValues:{text:'safe',compare:'safe'}},{key:'textExtract',inputValues:{text:'A😀B',start:1,length:1}}]);
   assert.deepEqual(await output(run,0),{value:true});assert.deepEqual(await output(run,1),{text:'😀',found:true});
+}));
+
+test('text processing built-ins offer typed ports, configurable composition, and number formatting in Edit',async()=>app(async({page,run})=>{
+  const definitions=[['textToNumber','Text to number'],['textCompose','Text compose'],['textTransform','Text transform'],['textReplace','Text replace'],['textSelector','Text selector']];
+  for(const [index,[key,name]] of definitions.entries()){
+    if(await page.locator('#shapePicker').isHidden())await page.locator('#shapeLibBtn').click();
+    if(await page.locator('#libraryBrowser').isHidden())await page.locator('#browseShapesBtn').click();
+    await page.locator('#librarySearch').fill(name);
+    const tile=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place '+name,exact:true});
+    assert.ok(await tile.locator('img').evaluate(async img=>{await img.decode();return img.naturalWidth>0;}));
+    await tile.click();const box=await page.locator('#canvas').boundingBox();
+    await page.mouse.click(box.x+220+(index%3)*410,box.y+180+Math.floor(index/3)*280);await run('shapePlacementQueue');
+    assert.equal(await run(`items[${index}].componentName`),name);
+    assert.equal((await record(run,index)).error,null,key+' has usable fresh defaults');
+  }
+  const caps=await run('(async()=>Promise.all(items.map(item=>requestSmartCaps(item))))()');
+  assert.equal(caps[0].inputs.text.type,'string');assert.equal(caps[0].outputs.value.type,'number');assert.equal(caps[0].outputs.valid.type,'boolean');
+  assert.equal(caps[2].outputs.length.type,'number');assert.equal(caps[2].outputs.empty.type,'boolean');
+  assert.equal(caps[4].inputs.select.type,'boolean');assert.equal(caps[4].outputs.text.type,'string');
+  await inputDialog(page,run,1);
+  await page.locator('#component-setting-inputCount').fill('3');await page.locator('#component-setting-inputCount').press('Tab');
+  await page.getByLabel('c value',{exact:true}).waitFor();
+  await page.locator('#component-setting-mode').selectOption('template');await page.getByLabel('template value',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('separator value',{exact:true}).count(),0);
+  for(const [name,value] of [['a','Ada'],['b','7'],['c','°C'],['template','{{{a}}}: {b} {c}']])await page.getByLabel(name+' value',{exact:true}).fill(value);
+  await saveDialog(page);assert.deepEqual(await output(run,1),{text:'{Ada}: 7 °C'});
+  await seed(run,[{key:'numberToText',inputValues:{value:-2.8}}]);await inputDialog(page,run,0);
+  await page.locator('#component-setting-format').selectOption('fixed decimals');
+  for(const [key,value] of [['decimals','2'],['minimumIntegerDigits','3']]){
+    await page.locator('#component-setting-'+key).fill(value);await page.locator('#component-setting-'+key).press('Tab');
+  }
+  await page.locator('#component-setting-decimalSeparator').selectOption(',');await saveDialog(page);
+  assert.deepEqual(await output(run,0),{text:'-002,80'});
+}));
+
+test('text processing uses bounded outputs and recovers from invalid configurations in real Workers',async()=>app(async({run})=>{
+  await seed(run,[{key:'textToNumber'},{key:'textTransform'},{key:'textCompose'},{key:'textReplace'},{key:'textSelector'}]);
+  for(const [text,value,valid] of [['12.5',12.5,true],['12abc',0,false],['',0,false],['1e309',0,false],['-2e-3',-.002,true]]){
+    assert.deepEqual(await setInputs(run,0,{text}),{error:null,outputs:{value,valid}});
+  }
+  assert.deepEqual(await setInputs(run,1,{text:'  A😀  ',operation:'trim'}),{error:null,outputs:{text:'A😀',length:2,empty:false}});
+  assert.deepEqual(await setInputs(run,1,{text:'   ',operation:'trim'}),{error:null,outputs:{text:'',length:0,empty:true}});
+  let failed=await setInputs(run,2,{a:'x'.repeat(1500),b:'y'.repeat(1500),separator:''});
+  assert.match(failed.error,/2000|2,000|long|limit/i);assert.deepEqual(failed.outputs,{});
+  assert.deepEqual(await setInputs(run,2,{a:'a',b:'b',separator:' / '}),{error:null,outputs:{text:'a / b'}});
+  assert.deepEqual(await setInputs(run,3,{text:'a.b.a',search:'.',replacement:'$&'},{mode:'literal'}),{error:null,outputs:{text:'a$&b$&a',count:2}});
+  failed=await setInputs(run,3,{text:'a',search:'(',replacement:'x'},{mode:'regex'});
+  assert.match(failed.error,/regular expression|regex/i);assert.deepEqual(failed.outputs,{});
+  assert.deepEqual(await setInputs(run,3,{text:'a1 b22',search:'(\\w)(\\d+)',replacement:'$2:$1'}),{error:null,outputs:{text:'1:a 22:b',count:2}});
+  for(const select of [false,true])assert.deepEqual(await setInputs(run,4,{a:'<b>A</b>',b:'B😀',select}),{error:null,outputs:{text:select?'B😀':'<b>A</b>'}});
+}));
+
+test('regex replacement repairs a connected pattern in downloaded offline HTML without evaluating markup',async()=>app(async({page,run,context})=>{
+  await seed(run,[{key:'textInput',componentName:'Pattern',state:{values:['(\\d+)']}},
+    {key:'textReplace',componentName:'Markup replacement',state:{mode:'regex'},inputValues:{text:'a1 b22',replacement:'<em>$1</em>'},bindings:{search:{uid:'operation-0',port:'value'}}},
+    {key:'textLabel',componentName:'Literal result',w:420,bindings:{value:{uid:'operation-1',port:'text'}}}]);
+  assert.deepEqual(await output(run,1),{text:'a<em>1</em> b<em>22</em>',count:2});
+  const handle=await entryHandle(run,0),{reader,errors,requests}=await exported(page,run,context);
+  await readerText(reader,2,'a<em>1</em> b<em>22</em>');
+  assert.equal(await reader.locator('[data-smart-index="2"] em').count(),0);
+  await submitReader(reader,0,handle,'[');
+  await reader.waitForFunction(()=>document.querySelector('[data-smart-index="1"]')?.hasAttribute('data-component-error'));
+  await submitReader(reader,0,handle,'(22)');await readerText(reader,2,'a1 b<em>22</em>');
+  assert.equal(await reader.locator('[data-component-error]').count(),0);
+  await reader.reload();await readerText(reader,2,'a<em>1</em> b<em>22</em>');
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
