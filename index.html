@@ -206,6 +206,16 @@
   .shape-grid .shape-thumb{width:100%;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;justify-content:center}
   .shape-grid .shape-thumb img{width:100%;height:100%;object-fit:contain;display:block}
   .shape-thumb .preview-placeholder{font-size:22px;color:var(--muted)}
+  .shape-thumb{cursor:grab!important;touch-action:pan-y;-webkit-touch-callout:none}
+  .shape-thumb img{pointer-events:none;-webkit-user-drag:none}
+  body.library-dragging,body.library-dragging *{cursor:grabbing!important}
+  #libraryDragPreview{position:fixed;z-index:1000;pointer-events:none;width:164px;padding:9px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);opacity:.95}
+  #libraryDragPreview img{display:block;width:100%;height:74px;object-fit:contain;margin-bottom:6px}
+  #libraryDragPreview strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #libraryDragPreview small{display:block;margin-top:4px;font-size:11px;color:var(--muted)}
+  #libraryDragPreview.valid{border-color:var(--accent)}
+  #libraryDragPreview.valid small{color:var(--accent)}
+  #canvas.library-drop-target{outline:2px solid var(--accent);outline-offset:-2px}
   .shape-library-actions[hidden]{display:none}
   .shape-name{display:block;font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .shape-grid:not(.managing) .shape-name{text-align:center;line-height:16px}
@@ -716,7 +726,7 @@
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><circle cx="8.5" cy="9.8" r="1.5" stroke="currentColor" stroke-width="1.5"/><path d="m4.5 17 4.2-3.8 2.8 2.4L15.5 11l4 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="menu-wrap" id="shapeLibWrap">
-      <button class="btn" data-tool="shape" id="shapeLibBtn" title="Shape library — pick a saved shape, then click to place" aria-haspopup="true" aria-expanded="false" aria-controls="shapePicker">
+      <button class="btn" data-tool="shape" id="shapeLibBtn" title="Shape library — drag a shape onto the canvas, or click to place" aria-haspopup="true" aria-expanded="false" aria-controls="shapePicker">
         <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h16M4 15h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 6h3M10.5 12h3M10.5 18h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="menu shape-picker" id="shapePicker" hidden>
@@ -1274,6 +1284,7 @@
   let shapePlacementEpoch = 0;
   let shapePlacementQueue = Promise.resolve();
   let shapePlacementOwner = false;
+  let libraryDrag=null,suppressLibraryDragClick=false;
   const shapePlacementRequests = new Set();
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   // ---------- group "enter" edit mode ----------
@@ -8359,13 +8370,13 @@ self.onmessage = function(e){
     if(!(ui.tool==='shape' && ui.pendingShape) && !hasPendingShapePlacement())return false;
     shapePlacementEpoch++;ui.pendingShape=null;setTool('select');render();return true;
   }
-  // Ordinary shapes remain synchronous. Smart placements initialize in click order before opening
-  // a history entry, so cancellation cannot add a late shape to another document or transaction.
+  // Ordinary shapes remain synchronous unless an earlier placement is still initializing.
+  // Accepted placements commit in order, each with its own history entry and document guard.
   function placeShapeAt(tpl, x, y){
     if(!features.shapeLibrary) return;
     if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
     const list=clone(tpl.items),name=tpl.name;
-    if(!list.some(it=>it.type==='smart')){try{commitShapePlacement(list,name,x,y,tpl.datasets);}catch(error){toast(error.message);}return;}
+    if(!list.some(it=>it.type==='smart') && !hasPendingShapePlacement()){try{commitShapePlacement(list,name,x,y,tpl.datasets);}catch(error){toast(error.message);}return;}
     const p={epoch:shapePlacementEpoch,tab:activeTabId,items};
     shapePlacementRequests.add(p);
     shapePlacementQueue=shapePlacementQueue.then(async()=>{
@@ -8583,9 +8594,10 @@ self.onmessage = function(e){
   // Drop whatever interaction is mid-flight (a stroke being drawn, a polygon being clicked out, a
   // drag/resize/rotate...) together with its pending history transaction, so that swapping the
   // document out from under it can never commit a stale snapshot.
-  function cancelGesture(){
+  function cancelGesture({preserveShapePlacements=false}={}){
+    cancelLibraryDrag();
     cancelComponentWireGesture(true);
-    shapePlacementEpoch++;
+    if(!preserveShapePlacements)shapePlacementEpoch++;
     cancelSmartGestures();editingSmartIdx=null;
     unbakeAfterGesture();   // never leave a group in the mid-gesture encoding
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
@@ -11568,6 +11580,7 @@ self.onmessage = function(e){
 
   // ---------- toolbar wiring ----------
   function setTool(t){
+    if(!shapePlacementOwner)cancelLibraryDrag();
     if(t!=='select' && componentWiring.enabled){cancelComponentWireGesture(true);componentWiring.enabled=false;}
     if(t==='shape' && !features.shapeLibrary) return;
     if(t!==ui.tool){lastInsert=null;insertHover=null;if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
@@ -11582,7 +11595,8 @@ self.onmessage = function(e){
     if(t!=='select'){ selection=[]; marquee=null; editingGroupId=null; }   // nothing selected, no group being browsed either
     if(t!=='eraser') cursorPt=null;
     if(t!=='table') setTablePicker(false);
-    if(t!=='shape') setShapePicker(false);
+    // A queued placement may finish after the user has reopened the library for the next shape.
+    if(t!=='shape' && !shapePlacementOwner) setShapePicker(false);
     const isText = (t==='text' || t==='table');
     const isSelect = (t==='select');
     const canFill = FILLABLE(t);                     // fill only makes sense for these (a text box is a rect with words in it)
@@ -11754,7 +11768,7 @@ self.onmessage = function(e){
     for(const entry of entries){
       const card=document.createElement('div');card.className='shape-entry'+(librarySelectedEntry===entry?' selected':'');card.dataset.entryId=entry.id;
       const button=document.createElement('button');button.type='button';button.className='shape-thumb';button.title='Place '+entry.name;button.setAttribute('aria-label',button.title);
-      registerShapePreview(entry,button);button.addEventListener('click',()=>armShapeForPlacement(entry));
+      registerShapePreview(entry,button);bindLibraryPlacementButton(button,entry);
       const name=document.createElement('span');name.className='shape-name';name.textContent=entry.name;name.title=entry.name;
       const origin=document.createElement('span');origin.className='library-origin';origin.textContent=builtInShapeEntries.has(entry)?'Built-in':'My shapes';
       const pin=document.createElement('button');pin.type='button';pin.className='library-entry-pin';pin.innerHTML=LIBRARY_PIN_ICON;
@@ -12020,13 +12034,14 @@ self.onmessage = function(e){
     syncShapeLibraryEntries(true);
     updateLibraryStorageUI();
     shapeLibBtn.classList.toggle('dirty', shapeLibraryDirty);
-    shapeLibBtn.title = 'Shape library' + (shapeLibraryDirty ? ' — unexported changes' : ' — pick a shape to place');
+    shapeLibBtn.title = 'Shape library' + (shapeLibraryDirty ? ' — unexported changes' : ' — drag a shape onto the canvas, or click to place');
     document.getElementById('exportLibraryBtn').disabled = !shapeLibrary;
     if(!shapePicker.hidden) renderShapeLibrary();
   }
 
   function setShapePicker(open){
     if(open && !features.shapeLibrary) return;
+    if(open || libraryDrag && !libraryDrag.active)cancelLibraryDrag();
     if(open) closeOtherPopovers(setShapePicker);
     shapePicker.hidden = !open;
     shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -20039,7 +20054,7 @@ self.onmessage = function(e){
     if(!thumbnail && tpl.items.some(it=>it.type==='smart'))missingSmartPreviews.add(tpl);
     else missingSmartPreviews.delete(tpl);
     if(thumbnail){
-      const img=document.createElement('img');img.alt='';img.src=thumbnail.png;b.appendChild(img);
+      const img=document.createElement('img');img.alt='';img.draggable=false;img.src=thumbnail.png;b.appendChild(img);
       img.onerror=()=>{
         if(tpl.thumbnail?.png!==thumbnail.png || tpl.thumbnail?.source!==thumbnail.source) return;
         delete tpl.thumbnail;
@@ -20063,7 +20078,7 @@ self.onmessage = function(e){
     b.type = 'button'; b.className = 'shape-thumb'; b.title = 'Place '+tpl.name;
     b.setAttribute('aria-label', 'Place '+tpl.name);
     registerShapePreview(tpl,b);
-    b.addEventListener('click', ()=>armShapeForPlacement(tpl));
+    bindLibraryPlacementButton(b,tpl);
     const label = document.createElement('span');
     label.className = 'shape-name'; label.textContent = tpl.name; label.title = tpl.name;
     if(tpl.source){
@@ -20213,6 +20228,112 @@ self.onmessage = function(e){
     r.onerror = ()=>{ if(request===shapeLibraryImportSeq) toast('Could not read that file'); };
     r.readAsText(file);
   }
+
+  // Pointer dragging shares the same placement path as click-to-place. No document or script
+  // is touched until a valid drop; the floating card reuses only the already-approved thumbnail.
+  function libraryDragCurrent(d){
+    return features.shapeLibrary && d.tab===activeTabId && d.scene===items && d.epoch===shapePlacementEpoch &&
+      activeLibraryShape(d.entry) && d.entry.items===d.definition &&
+      (shapePreviewVersions.get(d.definition)||0)===d.version &&
+      (d.active || d.button.isConnected && !shapePicker.hidden);
+  }
+  function libraryDropPoint(event){
+    const box=canvas.getBoundingClientRect(),hit=document.elementFromPoint(event.clientX,event.clientY);
+    if(event.clientX<box.left || event.clientX>=box.right || event.clientY<box.top || event.clientY>=box.bottom)return null;
+    if(hit!==canvas && !hit?.closest('#componentWiringOverlay'))return null;
+    return pos(event);
+  }
+  function cancelLibraryDrag(suppress=false){
+    const d=libraryDrag;if(!d)return;
+    libraryDrag=null;clearTimeout(d.hold);
+    if(d.active || suppress)suppressLibraryDragClick=true;
+    d.preview?.remove();document.body.classList.remove('library-dragging');canvas.classList.remove('library-drop-target');
+    try{if(document.body.hasPointerCapture(d.pointerId))document.body.releasePointerCapture(d.pointerId);}catch(_){}
+  }
+  function updateLibraryDrag(d,event){
+    d.last={clientX:event.clientX,clientY:event.clientY};
+    const valid=!!libraryDropPoint(event);
+    d.preview.classList.toggle('valid',valid);canvas.classList.toggle('library-drop-target',valid);
+    d.preview.querySelector('small').textContent=valid?'Release to place · Esc to cancel':'Move onto the canvas';
+    const box=d.preview.getBoundingClientRect();
+    d.preview.style.left=Math.max(4,Math.min(event.clientX+18,window.innerWidth-box.width-4))+'px';
+    d.preview.style.top=Math.max(4,Math.min(event.clientY+18,window.innerHeight-box.height-4))+'px';
+  }
+  function startLibraryDrag(d,event){
+    if(libraryDrag!==d || !libraryDragCurrent(d)){cancelLibraryDrag();return;}
+    clearTimeout(d.hold);d.active=true;
+    const preview=document.createElement('div');preview.id='libraryDragPreview';preview.setAttribute('aria-hidden','true');
+    const source=d.button.querySelector('img');
+    if(source){const image=document.createElement('img');image.alt='';image.src=source.src;preview.append(image);}
+    const label=document.createElement('strong');label.textContent=d.entry.name;
+    preview.append(label,document.createElement('small'));d.preview=preview;
+    document.body.append(preview);document.body.classList.add('library-dragging');
+    // Capture on a stable surface: the source button is hidden with the picker and may be rerendered.
+    try{document.body.setPointerCapture(d.pointerId);}catch(_){}
+    setShapePicker(false);updateLibraryDrag(d,event);
+  }
+  function bindLibraryPlacementButton(button,entry){
+    button.draggable=false;
+    button.addEventListener('dragstart',event=>event.preventDefault());
+    button.addEventListener('click',()=>armShapeForPlacement(entry));
+    button.addEventListener('pointerdown',event=>{
+      if(!appStarted || !features.shapeLibrary || isSecondaryPress(event) || event.isPrimary===false || !activeLibraryShape(entry))return;
+      const d={entry,button,pointerId:event.pointerId,pointerType:event.pointerType,tab:activeTabId,scene:items,
+        epoch:shapePlacementEpoch,definition:entry.items,version:shapePreviewVersions.get(entry.items)||0,
+        x:event.clientX,y:event.clientY,last:{clientX:event.clientX,clientY:event.clientY},active:false};
+      libraryDrag=d;
+      // A quick vertical swipe remains ordinary library scrolling. Hold first to drag with a finger.
+      if(event.pointerType==='touch')d.hold=setTimeout(()=>startLibraryDrag(d,d.last),350);
+    });
+  }
+  window.addEventListener('pointerdown',event=>{
+    suppressLibraryDragClick=false;
+    if(libraryDrag && event.pointerId!==libraryDrag.pointerId){
+      const active=libraryDrag.active;cancelLibraryDrag();
+      if(active){event.preventDefault();event.stopImmediatePropagation();}
+    }
+  },true);
+  window.addEventListener('pointermove',event=>{
+    const d=libraryDrag;if(!d || event.pointerId!==d.pointerId)return;
+    if(d.pointerType!=='touch' && event.buttons===0){cancelLibraryDrag();return;}
+    if(!libraryDragCurrent(d)){cancelLibraryDrag();return;}
+    d.last={clientX:event.clientX,clientY:event.clientY};
+    if(!d.active){
+      if(Math.hypot(event.clientX-d.x,event.clientY-d.y)<7)return;
+      if(d.pointerType==='touch'){cancelLibraryDrag(true);return;}
+      startLibraryDrag(d,event);
+    }
+    if(libraryDrag!==d)return;
+    event.preventDefault();event.stopImmediatePropagation();updateLibraryDrag(d,event);
+  },true);
+  window.addEventListener('pointerup',event=>{
+    const d=libraryDrag;if(!d || event.pointerId!==d.pointerId)return;
+    if(!d.active){cancelLibraryDrag();return;}
+    event.preventDefault();event.stopImmediatePropagation();
+    const point=libraryDragCurrent(d) && libraryDropPoint(event);
+    cancelLibraryDrag();
+    if(!point)return;
+    cancelGesture({preserveShapePlacements:true});ui.pendingShape=null;setTool('select');
+    void placeShapeAt(d.entry,point.x,point.y);
+  },true);
+  window.addEventListener('pointercancel',event=>{
+    if(libraryDrag?.pointerId!==event.pointerId)return;
+    const active=libraryDrag.active;cancelLibraryDrag();
+    if(active)event.stopImmediatePropagation();
+  },true);
+  document.body.addEventListener('lostpointercapture',event=>{if(event.target===document.body && libraryDrag?.active && libraryDrag.pointerId===event.pointerId)cancelLibraryDrag();});
+  window.addEventListener('click',event=>{
+    if(suppressLibraryDragClick && event.detail!==0){suppressLibraryDragClick=false;event.preventDefault();event.stopImmediatePropagation();}
+  },true);
+  window.addEventListener('keydown',event=>{
+    if(libraryDrag && event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();cancelLibraryDrag(true);}
+  },true);
+  window.addEventListener('blur',()=>cancelLibraryDrag());
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelLibraryDrag();});
+  window.addEventListener('contextmenu',event=>{if(libraryDrag?.pointerType==='touch')event.preventDefault();},true);
+  // Once held, prevent the native touch scroll from taking over the drag. Before the hold,
+  // touch-action:pan-y and unblocked touchmoves keep both library surfaces scrollable.
+  window.addEventListener('touchmove',event=>{if(libraryDrag?.active && libraryDrag.pointerType==='touch')event.preventDefault();},{capture:true,passive:false});
 
   function armShapeForPlacement(tpl){
     if(!features.shapeLibrary || !activeLibraryShape(tpl)) return;

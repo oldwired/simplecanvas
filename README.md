@@ -199,7 +199,12 @@ display size does not guarantee physical dimensions.
 ## Shape libraries and smart shapes
 
 The shape library is optional. The small toolbar popup remains a quick picker for your
-**Working collection** of pinned shortcuts. Click a shape, then click the canvas to place it.
+**Working collection** of pinned shortcuts. Drag a thumbnail onto the canvas, or click a shape
+and then click the canvas to place it. Both methods work in the Working collection and the full
+library browser, including grouped shapes and smart components. A drag shows a floating preview
+and closes the popup; release on the canvas to place the shape centered there. Escape or releasing
+outside the canvas cancels without changing the drawing. Each placement is one Undo step.
+On touchscreens, press and hold a thumbnail before dragging; a quick swipe still scrolls the library.
 Open the expanded library browser with the **Browse** icon: search by name or
 keywords, choose a category, and use the **Source** filter for **Built-in** or **My shapes**.
 **Collapse library** closes the expanded browser and leaves the quick picker available.

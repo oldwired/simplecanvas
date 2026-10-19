@@ -142,6 +142,12 @@ collisions, preserved categories and attribution, inert smart previews, independ
 group placements, unresolved external connections, invalid-file rejection, and feature guards.
 Exporting one shape leaves the library's unexported-change status intact.
 
+`tests/library-drag.test.cjs` covers thumbnail dragging from the Working collection and full
+library browser, release coordinates, grouped ordinary shapes and connected smart components,
+fresh initialization and wiring identities, one-step Undo/Redo, and cancellation without running
+scripts or changing the drawing. Click-to-place and keyboard placement remain available. Chromium
+touch-event coverage checks hold-to-drag placement and quick swipes for scrolling in both views.
+
 `tests/library-persistence.test.cjs` checks automatic IndexedDB storage of personal definitions,
 scripts, inert previews, categories, built-in overrides, and Working collection pins across reloads.
 It covers restored-library precedence over hosted starters, URL-path isolation, fixed/disabled
