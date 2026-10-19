@@ -37,7 +37,9 @@ formatting, composition, selection, and replacement to editable inputs. A native
 milestone adds JSON extract/build/edit, Date parse/format/difference, URL parameter, and Go to tab. Tabs 29–31
 cover JSON messages, date/time conversion, and URL-driven HTML with visible-character processing.
 Native `Intl.Segmenter` now supports visible-character extraction/counting, with explicit code-point
-options. These additions remain separate from later service calls and general events.
+options. A Page settings milestone adds a thirty-second tab and applies per-tab reader presentation
+after dependency settlement, before revealing the destination. These additions remain separate
+from later service calls and general events.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -296,12 +298,12 @@ only under Logic; data-backed charts and grids also appear under Displays.
 
 | Category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, numeric Constant, Trigger, Download table, Go to tab |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, numeric Constant, Trigger, Download table, Go to tab, Page settings |
 | Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches/distributors, registers, latches, counters, and pulse tools |
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric routing/storage, text/number conversion, Spreadsheet, Table aggregate, numeric displays, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, clocks, Stopwatch, Timer |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference, Page settings |
 | Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank, and categorized user shapes/icons |
 
@@ -324,7 +326,8 @@ Text compare, Text extract, and Number to text bring it to 77 entries / 68 API v
 Text to number, Text compose, Text transform, Text replace, and Text selector bring it to
 82 entries / 73 API v2 components. JSON extract, JSON build, Date parse, Date format, Date difference,
 URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
-current catalog to **90 entries / 81 API v2 components**.
+catalog to 90 entries / 81 API v2 components. Page settings brings the current catalog to
+**91 entries / 82 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -342,7 +345,7 @@ import; flat libraries remain valid, and unassigned entries appear under Uncateg
 Bundled defaults remain defaults when a built-in is pinned, exported, or restored. Explicit user
 overrides (including an empty array) take precedence. The catalog audit also normalizes search
 keywords and covers arithmetic verbs, regex aliases, Unicode segmentation, JSON serialization,
-dataset import/export, and URL navigation. All 90 entries have valid, nonempty default memberships.
+dataset import/export, and URL navigation. All 91 entries have valid, nonempty default memberships.
 All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
@@ -862,7 +865,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current thirty-one-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current thirty-two-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -1177,8 +1180,9 @@ is available only when smart-component authoring is enabled. Ports and links are
 while Wiring is on. It adds an editor overlay derived
 from identities, current port declarations, bindings, and dataset ownership. Ordinary drawing
 arrows keep their existing meaning. The overlay follows component geometry without adding drawing
-items or persisted wire paths; PNG, SVG, print, and HTML reader UI omit it. Saved connections still
-execute in exported HTML.
+items or persisted wire paths; PNG, SVG, and print omit it. HTML hides wiring by default; the
+later Page settings milestone adds an optional read-only reader layer using the same conventions.
+Saved connections execute in exported HTML independently of wiring visibility.
 
 The first visual vocabulary separates two relationships without relying on color alone:
 
@@ -1800,7 +1804,7 @@ instance names, and offline HTML runtime. No external dependency or network requ
   unavailable, calculations report an explicit error with the Code points alternative, while
   previews avoid slicing clusters and Memo labels its fallback count as UTF-16 units.
 
-The demo workspace now contains **31 tabs**. Tab 29, **JSON messages**, builds typed
+The native-data milestone expanded the workspace to **31 tabs**. Tab 29, **JSON messages**, builds typed
 messages, changes amount 10 through a connected JSON edit replacement while preserving name/active,
 and extracts typed and nested fields. Tab 30, **Dates and timezones**, connects strict parsing, timezone formatting,
 and elapsed-duration outputs, including a 23-hour interval across a daylight-saving transition.
@@ -1823,6 +1827,55 @@ invalid-input recovery, and the standalone HTML example. Bundled source/port par
 **Deferred:** advanced Math functions and coordinate conversions, further Intl locale-aware
 formatting/comparison/natural sorting, and list/table-producing Split/join. JSON messages remain
 strings; this milestone does not introduce object/list signal types or determine collection semantics.
+
+### Page settings: implemented milestone
+
+Page settings adds one declarative controller for an exported drawing's surrounding interface.
+Its four properties can be authored as literal inputs in **Edit…** or driven through ordinary
+connections:
+
+| Input | Type and default | Reader effect |
+| --- | --- | --- |
+| `title` | String, empty | Set the browser/window title; empty uses the original export title. |
+| `showTabs` | Boolean, true | Show or hide the tab bar, including overflow navigation. |
+| `showWiring` | Boolean, false | Show or hide a read-only view of ports and connections. |
+| `showSimulationControls` | Boolean, true | Show or hide Pause/Step/Resume; execution continues according to its existing state. |
+
+The graph evaluates dependencies before these properties are applied. This is **apply before
+showing**, not an out-of-order compute call: a URL parameter or Text compose feeding the title
+must settle first. The destination drawing is revealed only after its settings are applied.
+Connected changes remain live while the tab is active. Each activation starts from the export's
+defaults; a previous tab's title or hidden controls never become the next tab's defaults. Empty
+title, missing controller, or unavailable controller inputs use the safe reader defaults.
+
+There is at most one Page settings controller per drawing. Authoring prevents a second placement
+or copy, and duplicate controllers arriving through import are reported as errors rather than
+choosing a winner. Its host capability is narrowly limited to these presentation properties;
+scripts do not gain DOM access. The editor retains normal tabs, simulation controls, and its own
+Wiring mode. The controller has an editor-only block for selection and configuration, while the
+HTML reader hides the block itself.
+
+Reader wiring uses the same data/control port sides, flow directions, scalar/table type markers,
+and distinct Dataset association treatment as the editor, with no drag-to-connect editing.
+This makes a teaching/debugging view possible without granting reader authoring access. Hiding
+the simulation panel is purely presentational and does not pause or reset the simulation.
+Authors who hide the tab bar should provide their own Go to tab buttons.
+
+The catalog now contains **91 entries / 82 API v2 components**. Tab 32, **Page settings**, connects
+an editable title and three visibility toggles, demonstrates a numeric flow, and includes **Open
+Basics** as navigation that remains available with the tab bar hidden. Basics has no controller,
+so it restores the reader defaults. The editable JSON and exported HTML contain the same example.
+
+Validation passes in Chromium and WebKit for singleton authoring, persistence, settings applied
+before reveal, live title/visibility changes, invalid-input fallback, navigation, and read-only
+wiring. The broader contract pass reports **357 passing checks**. The new authoring and reader
+runtime suites, existing tab-overflow checks, and standalone demo checks pass in both engines.
+The full Chromium workspace suite passes all 26 tests. The reader pass also fixed a shared
+tab-bar ResizeObserver feedback loop when settings hide or show navigation.
+
+**Deferred:** page background, an initial view/zoom policy (fit drawing versus actual size), and
+initial keyboard focus for search/data-entry pages. These are potential Page settings extensions;
+this milestone does not implement them or start general events or external service integration.
 
 ### Definition identity and updates
 
@@ -1880,6 +1933,10 @@ authoring controls hidden. Initial visual wiring is now a stage 3 milestone; thi
 its discovery and controls while retaining Edit as an alternative. If read, write, or read/write
 markers are added, first define explicit access metadata and account for per-instance editing and
 reader permissions. The existing neutral Dataset association does not promise any of those rights.
+Page settings is already implemented as a focused reader addition: title, tab bar, read-only wiring,
+and simulation-control visibility apply before tab reveal. Possible extensions remain page
+background, initial fit/zoom, and initial keyboard focus; these do not replace Run/Preview or the
+results-saving policy.
 
 Decide how preview state is retained or discarded on return to authoring before implementing
 the mode, and make that choice visible. Distinguish this editor behavior from reader persistence:

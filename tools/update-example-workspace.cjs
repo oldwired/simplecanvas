@@ -4,6 +4,14 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
 const sources={
+  "demo-32-navigate": "go-to-tab.js",
+  "demo-32-gauge": "gauge.js",
+  "demo-32-source": "number-control.js",
+  "demo-32-settings": "page-settings.js",
+  "demo-32-simulation": "toggle.js",
+  "demo-32-wiring": "toggle.js",
+  "demo-32-tabs": "toggle.js",
+  "demo-32-title": "text-input.js",
   "demo-29-edit": "json-edit.js",
   "demo-31-parameters": "json-build.js",
   "demo-29-received-name": "url-parameter.js",

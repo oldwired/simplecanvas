@@ -76,7 +76,8 @@ authoring, and working saved connections, copies, deployed-library placements, a
 
 `tests/component-wiring-contracts.test.cjs` and `tests/component-wiring-runtime.test.cjs` cover
 visual wiring's typed flow/Dataset distinction and its use of existing bindings: bidirectional
-drag gestures, incompatible types, replacement/disconnection with Undo, and editor-only overlays.
+drag gestures, incompatible types, replacement/disconnection with Undo, and omission of the
+authoring overlay from exports. Page settings separately enables an optional read-only reader layer.
 They also check explicit data/control roles and side overrides, rotated four-sided port banks,
 LED matrix column placement, and self-feedback paths that stay outside the component.
 
@@ -339,7 +340,7 @@ notice, and the shared 2,000,000-character snapshot budget.
 Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
 Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
 
-`tests/example-workspace.test.cjs` validates all thirty-one shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all thirty-two shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
 and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner
@@ -408,7 +409,20 @@ Dataset editing and calculated table checks:
 - `tab-navigation-contracts.test.cjs` and `tab-navigation-runtime.test.cjs` cover declared
   host actions, target validation, sampled pulses, initially high/revisited trigger priming,
   button navigation and invisible automatic navigation above another clickable control.
-- The workspace suite covers all 31 tabs; tabs 29–31 demonstrate the new workflows and
-  navigate with parameters from the final tab to the JSON example.
+- The workspace suite covers all 32 tabs; tabs 29–31 demonstrate the native-data workflows and
+  navigate with parameters from tab 31 to the JSON example. Tab 32 covers live reader Page settings,
+  navigation with hidden tabs, and restoration of defaults on another tab.
 
 Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for Chromium.
+
+## Page settings and reader presentation
+
+- `page-settings-contracts.test.cjs` covers the four typed inputs, validated capability mapping,
+  literal defaults, bounded titles, and an authoring-only block including error states.
+- `page-settings-authoring.test.cjs` checks built-in placement, one-controller-per-tab rules,
+  duplicate import handling, persistence, inspector controls, and independent editor chrome.
+- `page-settings-runtime.test.cjs` exercises dependency settlement before tab reveal, live reader
+  title/visibility changes, default fallback and reset between tabs, and read-only typed wiring.
+- The workspace suite covers tab 32 in both the editable workspace and standalone HTML: submit
+  a title, toggle wiring, use normal controls beneath the overlay, hide tabs/simulation controls,
+  navigate to Basics, return to retained settings, and reload the saved snapshot.

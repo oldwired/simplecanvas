@@ -47,7 +47,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===31 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(count=>__test.run('tabs.length==='+count+' && tabs[0].name.startsWith("1")'),workspace.tabs.length);
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -71,7 +71,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all thirty-one tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all thirty-two tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -86,7 +86,7 @@ test('shipped workspace imports all thirty-one tabs with valid local bindings an
     }
     return result;
   })()`);
-  assert.equal(checked.length,31);
+  assert.equal(checked.length,workspace.tabs.length);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -189,14 +189,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has thirty-one working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has thirty-two working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),31);
-    for(let tab=1;tab<=31;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),workspace.tabs.length);
+    for(let tab=1;tab<=workspace.tabs.length;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -747,6 +747,58 @@ test('native tools demo opens by URL and passes JSON parameters to the destinati
     assert.match(await readerHost(page,29,'edit').textContent(),/"amount":42/);
     assert.equal(new URL(page.url()).searchParams.get('via'),'SimpleCanvas');
     await readerTab(page,30);await readerText(page,30,'hours','23');await readerText(page,30,'format','2026-03-30 00:00:00');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  }finally{await context.close();}
+});
+
+
+test('page settings demo imports live inputs while keeping the editor controls available',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,32);
+  const settings=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
+  assert.deepEqual(settings.inputs,{title:'SimpleCanvas · Page settings',showTabs:true,showWiring:false,showSimulationControls:true});
+  assert.deepEqual(settings.outputs,{});
+  await editorHandle(page,run,32,'tabs','toggle');await editorHandle(page,run,32,'simulation','toggle');
+  const changed=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
+  assert.equal(changed.inputs.showTabs,false);assert.equal(changed.inputs.showSimulationControls,false);
+  assert.equal(await page.locator('#tabbar').isVisible(),true,'reader settings do not hide editor navigation');
+  assert.equal(await page.locator('#componentSimulation').isVisible(),true,'reader settings do not hide editor simulation controls');
+}));
+
+test('page settings demo updates reader chrome and restores defaults through its navigation button',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  const shown=async(selector,value)=>page.waitForFunction(({selector,value})=>{
+    const el=document.querySelector(selector);return !!el && (getComputedStyle(el).display!=='none' && getComputedStyle(el).visibility!=='hidden')===value;
+  },{selector,value});
+  try{
+    await page.goto(pathToFileURL(readerPath).href+'?page=31');
+    await page.waitForFunction(()=>document.title==='SimpleCanvas · Page settings');
+    await readerTab(page,32);
+    const settings=readerHost(page,32,'settings');
+    assert.equal(await settings.locator('text,rect').count(),0,'the settings block is authoring-only');
+    await shown('.tabbar',true);await shown('[aria-label="Signal simulation"]',true);
+    assert.equal(await page.locator('[data-reader-wiring]').count(),0);
+    await readerHandle(page,32,'title','entry');const field=page.locator('#smartTextValue');
+    await field.fill('My interactive page');await field.press('Enter');
+    await page.waitForFunction(()=>document.title==='My interactive page');
+    await field.press('Escape');await field.waitFor({state:'detached'});
+    await readerHandle(page,32,'wiring','toggle');
+    await page.waitForFunction(()=>document.querySelectorAll('[data-reader-wiring] [data-wire-edge]').length===5);
+    assert.equal(await page.locator('[data-reader-wiring]').getAttribute('pointer-events'),'none');
+    await readerHandle(page,32,'source','plus');await readerText(page,32,'gauge','51%');
+    await readerHandle(page,32,'simulation','toggle');await shown('[aria-label="Signal simulation"]',false);
+    await readerHandle(page,32,'tabs','toggle');await shown('.tabbar',false);
+    const item=itemFor(32,'navigate'),host=readerHost(page,32,'navigate');
+    const point=await host.evaluate((host,p)=>{const result=new DOMPoint(p.x,p.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:result.x,y:result.y};},{x:item.w/2,y:59*Math.min(item.w/240,item.h/120)});
+    await page.mouse.click(point.x,point.y);
+    await page.waitForFunction(()=>document.querySelectorAll('.tab-select')[0].classList.contains('active') && document.title==='Sketch');
+    await shown('.tabbar',true);await shown('[aria-label="Signal simulation"]',true);
+    assert.equal(await page.locator('.tab-panel').first().locator('[data-reader-wiring]').count(),0);
+    await readerTab(page,32);await page.waitForFunction(()=>document.title==='My interactive page');
+    await shown('.tabbar',false);await shown('[aria-label="Signal simulation"]',false);
+    await page.reload();await readerTab(page,32);
+    await page.waitForFunction(()=>document.title==='SimpleCanvas · Page settings');
+    await shown('.tabbar',true);await shown('[aria-label="Signal simulation"]',true);
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

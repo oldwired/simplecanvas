@@ -191,16 +191,16 @@ related controls, operations, and displays together; Data covers tables and stru
 
 | Category | Examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, Constant, Trigger, Download table, Go to tab |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, Constant, Trigger, Download table, Go to tab, Page settings |
 | Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches, registers, latches, counters, and pulse tools |
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric selectors/registers, text/number conversion, Spreadsheet, Table aggregate, Gauge, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference, Page settings |
 | Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 90 entries, including 81 connected API v2 components. Every smart-shape
+The catalog includes 91 entries, including 82 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -293,7 +293,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore thirty-one connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore thirty-two connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -330,6 +330,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | JSON messages | Build a typed JSON message, replace selected values while preserving other fields, and extract typed or nested values. |
 | Date and time | Parse explicit dates/timestamps, format the same instant in different timezones, and calculate elapsed duration. |
 | URL inputs and visible characters | Read a name from the reader URL, compare visible-character/code-point processing, and use a button to open another tab. |
+| Page settings | Set the browser title, hide or show navigation and simulation controls, and inspect read-only wiring in the HTML reader. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -486,7 +487,7 @@ SVG or library thumbnails. Connected storage components can deliberately retain 
 
 A reader URL can also select its opening tab: `drawing.html?page=1&name=Anna` opens the second
 tab. Tab indexes are zero-based; a missing, invalid, or out-of-range `page` opens the first tab.
-Clicking tabs in the tab bar does not rewrite the URL. To try the demo's final tab, open
+Clicking tabs in the tab bar does not rewrite the URL. To try the URL demo, open
 [URL inputs and navigation](examples/smart-components-workspace.html?page=30&name=Anna&target=28).
 **Go to tab** changes tabs and can pass parameters to the destination. Set **Page** to a zero-based
 tab index, then click its **Go** button or connect a false-to-true pulse to **Go**. Connect **JSON
@@ -506,13 +507,31 @@ not a component-navigation interface.
 A signal already high on opening or revisiting a tab establishes a baseline rather than immediately
 navigating away. Turn off **Show button** for a signal-only component: the HTML reader hides its
 button, while the editor retains an outline/caption for selection and configuration. The action
-stays within the current document; it cannot open an arbitrary URL. The final demo tab reads an
+stays within the current document; it cannot open an arbitrary URL. Demo tab 31 reads an
 optional `target` parameter and includes a jump to the JSON example.
 
 Parameters JSON is limited to 2,000 UTF-16 units. The resulting query is bounded to 16,000 units
 and 128 parameter pairs; each selected value still fits the usual 2,000-unit string limit. These JSON, date/time, and URL tools work offline in the
 editor and exported HTML and add no dependencies or network requests. Advanced mathematical
 functions and further locale-aware formatting/comparison remain planned extensions.
+
+**Page settings** controls an exported tab's browser/window title, tab-bar visibility, read-only
+wiring visibility, and simulation-control visibility. Place at most one per drawing and configure
+its four inputs in **Edit…**, or connect Text input, URL parameter, Toggle, and other components.
+The title defaults to the export's original title when empty; the tab bar and simulation controls
+start visible, and wiring starts hidden. The host resolves the destination's dependencies and applies
+these settings before revealing the tab, then follows connected changes. Each tab starts from the
+reader defaults, so leaving a tab cannot carry its hidden controls or title into another tab.
+Unavailable settings fall back to those defaults. In the editor, the Page settings block stays visible
+for configuration, and your normal authoring controls remain available; the block itself is hidden
+in the HTML reader. Reader wiring shows typed, directed flows and distinct Dataset links without
+allowing connection edits. Hiding simulation controls only hides the panel; it does not pause the graph.
+
+Try [tab 32 · Page settings](examples/smart-components-workspace.html?page=31): submit a new title,
+change the visibility toggles, and use **Open Basics** even while the tab bar is hidden. Basics has no
+Page settings component and restores the reader defaults. When hiding the tab bar in your own
+application, provide Go to tab buttons for navigation. Page background, initial fit/zoom, and initial
+keyboard focus are planned extensions.
 
 **Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
 library. Place Dataset, select it, and open **Edit…**. Its **Owned dataset** section selects or creates
@@ -801,7 +820,7 @@ Data inputs sit on the left and data outputs on the right; control inputs sit on
 outputs below. A script declares which ports are controls and can override a port's side when
 the component benefits from a different arrangement. Boolean signals are not automatically
 controls: a logic gate's operands and result remain data on the left and right. Placement does
-not restrict connections; a matching data output can drive a control input. Ports and links
+not restrict connections; a matching data output can drive a control input. In the editor, ports and links
 are visible only while **Wiring** is on.
 
 Drag between an input and a compatible output to connect them. Types must match exactly;
@@ -811,8 +830,9 @@ use **Disconnect** or **Delete** to remove it; **Escape** cancels a drag. An own
 setting remains in Edit rather than becoming a connectable port. Scalar feedback connections
 use the existing simulation rules.
 
-Links follow their components and are an editor overlay, not drawing objects. They stay out of
-PNG, SVG, print, and HTML reader views; the saved bindings still work in those documents.
+Links follow their components and are an overlay, not drawing objects. They stay out of PNG,
+SVG, and print. HTML hides them by default; **Page settings · Show wiring** enables a read-only
+reader view of the same connections. The saved bindings execute independently of visibility.
 **Edit…** opens the component inspector for its name, settings, literal values, and connections.
 Its fixed header identifies the component type (for example, **URL parameter**) independently
 of the editable instance name, so renamed components remain recognizable.

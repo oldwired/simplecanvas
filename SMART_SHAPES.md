@@ -755,6 +755,30 @@ transient inputs, not saved component state. Reload initializes from the current
 This read capability does not authorize a component to navigate or rewrite a URL; only the
 separately declared, validated host navigation action can perform those updates.
 
+An API v2 component may declare `pageSettings` to control the current HTML reader tab's
+presentation through typed input values:
+
+```js
+pageSettings:{title:'title', showTabs:'showTabs', showWiring:'showWiring',
+  showSimulationControls:'showSimulationControls'}
+```
+
+The four property names are fixed; their values identify four distinct declared inputs. Title
+must map to a String input, and visibility properties to Boolean inputs. These inputs cannot
+be optional or accept unknown values. The controller must have `compute` and no outputs,
+`publish`, `transition`, dataset ownership, or data actions. A drawing may have at most one
+controller; duplicates are graph errors. A persisted `pageSettings:true` item marker helps the
+editor prevent duplicate placement, but only a validated script capability grants host effects.
+
+The reader resolves the destination graph, applies settings, and then reveals the drawing.
+Live input changes update the current tab. No controller or an unavailable/invalid controller
+restores defaults: the export's original title, visible tab bar and simulation controls, and
+hidden wiring. An empty or whitespace-only title uses the original title; titles are bounded
+by the standard 2,000-UTF-16-unit string limit. Settings never affect the editor's authoring
+controls. Mark the controller's drawing children `editorOnly:true` to omit its block from
+exports. The built-in does so while retaining labelled connection endpoints in reader wiring.
+The host changes only these presentation properties; this capability grants no DOM access.
+
 The optional API v2 `transition(inputs, state, memory, {now, historical, runtimeId})` hook adds explicit stateful,
 timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
 instance state; `memory` is a transient JSON object, isolated per instance and never saved or
@@ -955,11 +979,12 @@ snapshots, not arriving-row events. The Dataset marker expresses a shared-record
 it does not infer read/write permissions from the port or component name. Explicit access
 metadata is deferred. These link styles do not change runtime evaluation or mutation rules.
 
-Wiring is an editor-only overlay derived from component identities, current ports, bindings,
-and table ownership. It is not saved as drawing geometry and does not appear in PNG, SVG,
-print, or HTML reader UI. Semantic bindings and table references continue to serialize and
-execute normally. Optional descriptor roles and side overrides control placement; no script
-hook or manual port coordinates are needed for this first editor.
+Wiring is an overlay derived from component identities, current ports, bindings, and table
+ownership. It is not saved as drawing geometry and does not appear in PNG, SVG, or print. The
+HTML reader hides it by default; **Page settings · Show wiring** exposes a read-only view with
+the same port and link conventions. Semantic bindings and table references serialize and execute
+independently of visibility. Optional descriptor roles and side overrides control placement; no
+script hook or manual port coordinates are needed for this first editor.
 
 Source and literal edits refresh **Output preview** and any graph or validation error after a
 short debounce. Pending or unavailable results replace stale output values. The latest edit wins,
@@ -1855,11 +1880,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 90 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 91 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 81 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 82 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -2047,6 +2072,18 @@ The built-in catalog includes 81 API v2 components, with editable sources in `ex
   to 16,000 UTF-16 units and 128 pairs; selected values retain the 2,000-unit string-port bound.
   These eight additions expose optional `showIndicators`, use native engines without dependencies,
   and work in offline HTML. Demo tabs 29–31 cover JSON, date/time, URL input, and segmentation.
+- [Page settings](examples/page-settings.js): string `title` (default empty) and Boolean control
+  inputs `showTabs` (true), `showWiring` (false), and `showSimulationControls` (true), with no outputs.
+  Its declared `pageSettings` capability maps these input IDs to the four host-owned presentation
+  properties. At most one component may declare this capability per drawing; duplicate imported
+  controllers are errors. The host settles dependencies, applies the resolved settings, then reveals
+  the destination tab. Later connected changes update the reader presentation. Empty titles use the
+  original export title; absent or unavailable settings use the reader defaults, without inheriting
+  values from the previous tab. All drawing children are editor-only: the block remains selectable
+  in authoring and disappears in HTML. Settings do not hide editor controls. Reader wiring is
+  read-only and distinguishes typed/directed signal flows from Dataset associations; hiding the
+  simulation panel does not pause execution. Demo tab 32 connects a title input and three toggles,
+  with a Go to tab button that remains usable when navigation is hidden.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with
