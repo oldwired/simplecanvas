@@ -154,6 +154,18 @@ Pause/Resume, independent instances, restoration without replay, and literal ren
 Number input entry happens in place, with Enter/Submit keeping focus and Escape/outside-click
 discarding drafts. Appearance settings control optional submission state, counts, names, and hints;
 errors remain visible when those details are hidden.
+`tests/text-operations-contracts.test.cjs` covers all comparison modes, whole-input regex semantics,
+zero-based Unicode ranges and capture groups, empty/unmatched results, validation limits, and
+literal rendering. It verifies that capability discovery and drawing never compile user-supplied patterns,
+and Number to text preserves finite numeric values without display rounding or locale formatting.
+`tests/text-operations-runtime.test.cjs` exercises library placement, mode-specific Edit inputs,
+real Worker computations, independent instances, error recovery, and inline controls in downloaded
+offline HTML, including Number input → Number to text → Text label. Clicking another control while Enter is pending must preserve the submitted value
+in both hosts. A pathological regex verifies Worker termination while unrelated components and
+the main thread remain responsive.
+The Text matching and extraction tab in `tests/example-workspace.test.cjs` exercises connected
+case-insensitive comparisons, whole-input regex validation, capture selection, Unicode range
+extraction, edited values, and no-match recovery in both the editor and offline reader.
 `tests/components-inputs.test.cjs` covers readable choices for repeated source names and live
 unsaved output/error feedback for bindings and typed literals. It checks Save/Cancel isolation,
 late replies, dynamic port changes, and pure inspection of a stateful selector without stepping it.
@@ -224,7 +236,7 @@ Run it with `node --test tests/catalog-extensions.test.cjs`, or prefix with
 The browser-independent `tests/numeric-extensions.test.cjs`, `tests/routing-components.test.cjs`,
 and `tests/signal-generators.test.cjs` exercise arithmetic boundaries, all routing positions,
 reset/re-prime semantics, and pulse scheduling with controlled time. The library suites also
-verify that all 65 API v2 catalog definitions match their editable source files. Captioned components
+verify that all 68 API v2 catalog definitions match their editable source files. Captioned components
 retain their instance names in canvas, SVG, and offline HTML; Spreadsheet deliberately uses its
 whole box for the cell grid and is excluded from the caption check.
 
@@ -319,7 +331,7 @@ notice, and the shared 2,000,000-character snapshot budget.
 Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
 Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
 
-`tests/example-workspace.test.cjs` validates all twenty-six shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all twenty-seven shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
 and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner

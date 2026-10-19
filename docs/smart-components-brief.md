@@ -30,6 +30,8 @@ capture, editing, and several views of one shared dataset. A twenty-third tab se
 from owned data with explicit Replace/Append pulses. The twenty-fourth tab demonstrates Live dataset
 editing; the twenty-fifth separates an authored formula grid from its stored result table. The
 twenty-sixth compares editable filtered/sorted views, read-only aggregates, and independently stored results.
+A text-operations milestone before stage 4 adds Text compare, Text extract, Number to text, and a
+twenty-seventh tab demonstrating native regex matching and extraction with editable inputs.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -195,6 +197,7 @@ Share runtime helpers between editor and export throughout.
 | 2F. Feedback and sequential logic — implemented on branch | Bounded settling, simultaneous transition rounds, practical counter feedback, gate-built and dedicated latches, clocked registers, and sequencing examples | Self-reset, stop-at-zero, reset-and-latched-stop, NOR/NAND latches, shared-edge storage, and ring/Johnson/4017-style sequences work in the editor and offline HTML; non-settling loops fail visibly. |
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
 | 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
+| 3T. Text operations — implemented on branch | Text compare and Text extract with native regex, optional case insensitivity, and Unicode range extraction; Number to text conversion | Connected text/status displays respond in the editor and offline HTML; errors and Worker deadlines remain visible and bounded. |
 | 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, and declared row-capture pulses; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, or captures one sampled row. Page refresh, restoration, retries, and Undo do not replay actions. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
@@ -286,7 +289,7 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 | Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Number to text |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -303,7 +306,9 @@ catalog to **63 entries**, including **54 API v2 components**. Stage 3 adds Data
 Data table, and Data bar chart, initially bringing the catalog to 67 entries / 58 API v2 components.
 Table sort, Table aggregate, and Download table bring the catalog to 70 entries / 61 API v2 components.
 Dropdown and Text lookup bring it to 72 entries / 63 API v2 components. Spreadsheet brings it to
-73 entries / 64 API v2 components; Capture row brings the current catalog to **74 entries / 65 API v2 components**. The additional Countdown timer source
+73 entries / 64 API v2 components; Capture row brings it to 74 entries / 65 API v2 components.
+Text compare, Text extract, and Number to text bring the current catalog to **77 entries / 68 API v2 components**.
+The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
 API v1 behavior. Minimal is the circle starter and Blank is intentionally
@@ -836,7 +841,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current twenty-six-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current twenty-seven-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -942,7 +947,8 @@ pulse connected through the existing graph.
   step buttons, and dialog-based direct entry.
 - **Submit-mode inline editing** keeps focus after Enter/Submit for repeated entries. Tab submits
   and follows normal focus movement. Escape or clicking outside discards an unsubmitted draft and
-  exits. The simulation continues while typing,
+  exits. An outside click during an in-flight Enter submission waits for acceptance before moving
+  to the next control, in both editor and HTML. The simulation continues while typing,
   with an existing user pause respected. Tab changes and stale gestures close the field. Optional
   Show submission state and Show hints settings start off on both input controls; validation errors
   remain visible.
@@ -1598,6 +1604,42 @@ scripts and formula model.
 Final integration validation: **929/929 Chromium tests passed**; **927 WebKit tests passed with
 2 intentional Chromium-CDP touch skips**, and no failures. These are full runs on the final
 implementation, including authoring, repair, persistence, example interactions, and offline export.
+
+### Text operations: implemented milestone before stage 4
+
+Text compare, Text extract, and Number to text add scalar string processing and conversion to the
+built-in catalog. They reuse existing string ports, the native JavaScript regex engine, and the same sandboxed
+Worker execution budget in the editor and exported HTML. No dependency, embedded engine, host
+network access, or new event model is introduced.
+
+- **Text compare:** string `text` and `compare` inputs, a selectable `operation` input, and Boolean
+  `value` output. Operations are equals, not equals, starts with, ends with, contains, and matches
+  regex. Ordinary operations use string comparisons. Regex validates the entire input, including
+  trailing newlines. The **Case-sensitive matching** setting defaults on.
+- **Text extract:** string `text` input and string `text` / Boolean `found` outputs. **Range**
+  accepts zero-based `start` plus `length`, both nonnegative integers up to 2,000. Positions count
+  Unicode code points, preserving surrogate pairs; they do not combine grapheme clusters.
+  The end clips to the text length. A start beyond the end is not found; a valid empty range is
+  found. **Regex match** returns the first match; **Regex capture** selects a parenthesized capture,
+  with group 0 meaning the first capture. Both accept a connected string `pattern` and optional
+  case insensitivity; capture mode also accepts numeric `group`.
+- Patterns are raw strings without `/…/` delimiters. Regex always uses Unicode mode (`u`) and
+  optionally case-insensitive mode (`i`); arbitrary flags and all-match tables are deferred.
+  A missing match or unmatched optional capture produces empty text with `found:false`.
+  Invalid syntax, invalid range values, and an out-of-range capture on a matched pattern produce
+  a component error. Expensive regex evaluation is subject to the existing Worker deadline.
+- Both components expose their instance names and optional **Show indicators** output readouts; hiding
+  indicators does not suppress errors. Inputs and outputs retain the existing typed connections.
+- **Number to text:** finite numeric `value` input (default 0) and string `text` output, converted
+  using `String(value)`. Output preserves the number's available precision without display rounding.
+  It is locale-independent: decimal point, exponential notation where JavaScript uses it, and
+  `"0"` for negative zero. The instance name and optional **Show indicators** status follow the
+  same component conventions. Conversion works in the editor and offline HTML.
+
+Tab 27, **Text matching and extraction**, provides two editable Text inputs, case-insensitive
+comparison, whole-input regex validation, a zero-based capture, and a Unicode range. Their results
+feed ordinary Status indicators and Text labels. The same examples and edits work in the offline
+HTML reader. This is a focused addition after the stage 3 closeout; general events remain stage 4.
 
 ### Definition identity and updates
 

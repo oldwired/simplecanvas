@@ -4,6 +4,18 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
 const sources={
+  "demo-27-message": "text-input.js",
+  "demo-27-expected": "text-input.js",
+  "demo-27-same": "text-compare.js",
+  "demo-27-valid": "text-compare.js",
+  "demo-27-capture": "text-extract.js",
+  "demo-27-range": "text-extract.js",
+  "demo-27-same-result": "status-indicator.js",
+  "demo-27-valid-result": "status-indicator.js",
+  "demo-27-captured-label": "text-label.js",
+  "demo-27-ranged-label": "text-label.js",
+  "demo-27-capture-found": "status-indicator.js",
+  "demo-27-range-found": "status-indicator.js",
   "demo-26-source": "data-source.js",
   "demo-26-filter": "table-filter.js",
   "demo-26-sort": "table-sort.js",

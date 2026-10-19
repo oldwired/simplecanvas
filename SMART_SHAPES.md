@@ -1777,11 +1777,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 74 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 77 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 65 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 68 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1848,6 +1848,27 @@ The built-in catalog includes 65 API v2 components, with editable sources in `ex
   connected dataset; the optional arrow hides the manual control for display-only use.
 - [Text lookup](examples/text-lookup.js): reverse mapping from text to the first matching row's
   index/key, plus Found. It accepts the same list/dataset sources with case and whitespace options.
+- [Text compare](examples/text-compare.js): string `text`/`compare` inputs and Boolean `value`
+  output. String `operation` selects `equals`, `not equals`, `starts with`, `ends with`, `contains`,
+  or `matches regex`; the last validates the full input, including trailing newlines. Setting
+  `caseSensitive` defaults true. Plain comparisons use ordinary string operations, not regex.
+- [Text extract](examples/text-extract.js): string `text` input and string `text` / Boolean `found`
+  outputs. Setting `mode` selects `range`, `regex match`, or `regex capture`. Range declares numeric
+  `start` and `length`, nonnegative integers up to 2,000, counting Unicode code points from zero
+  rather than UTF-16 units or grapheme clusters. It clips at the end; a start beyond the end is
+  not found, while a valid zero-length range is found. Regex modes declare string `pattern` and
+  search for the first match; capture mode also declares numeric `group`, where 0 selects the
+  first parenthesized capture. Unmatched optional groups return empty text with `found:false`;
+  a group outside the matched pattern's captures is an error. `caseSensitive` defaults true.
+  Both components accept raw patterns without `/…/` delimiters and use native `RegExp` with `u`
+  plus optional `i`. No-match results are ordinary values; invalid patterns produce component
+  errors. The shared Worker deadline bounds regex execution in the editor and offline HTML.
+  Both have optional `showIndicators` readouts. Tab 27 demonstrates the connected workflow.
+- [Number to text](examples/number-to-text.js): numeric `value` input (default 0) and string `text`
+  output. Converts finite numbers with `String(value)`, preserving their available precision
+  without display rounding. The result is locale-independent, uses a decimal point and JavaScript's
+  exponential notation when needed, and converts negative zero to `"0"`. Boolean `showIndicators`
+  defaults true and controls the optional status indicator. The same conversion runs in offline HTML.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with

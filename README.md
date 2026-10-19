@@ -192,10 +192,10 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 | Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Number to text |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
 
-The catalog includes 74 entries, including 65 connected API v2 components. Every smart-shape
+The catalog includes 77 entries, including 68 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -286,7 +286,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore twenty-six connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore twenty-seven connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -318,6 +318,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Live dataset editor | Edit a working copy, then refresh its source to overwrite those edits. |
 | Spreadsheet result tables | Publish calculated cells as a table and store an independently editable result. |
 | Views and stored results | Compare edits through a filtered/sorted view with edits to a stored copy of aggregate results. |
+| Text matching and extraction | Compare strings without case sensitivity, validate a full pattern, and extract a capture or Unicode range. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -361,6 +362,31 @@ content area. Enable Text label's normal stroke controls to add an outline using
 color, thickness, and line style. In **Edit…**, enable **Show submission state** or **Show hints** for the input
 controls, **Show counts** or **Show hints** for Memo, and **Show name** or **Show hints** for Text
 label. These optional details start hidden; errors and rejected-update notices remain visible.
+
+**Text compare** accepts two strings, **Text** and **Compare**, and publishes a Boolean **Value**.
+Choose Equals, Not equals, Starts with, Ends with, Contains, or Matches regex; turn off **Case-sensitive
+matching** to ignore case. Matches regex validates the entire input, including any final newline.
+
+**Text extract** publishes **Text** and Boolean **Found**. **Range** takes a zero-based **Start**
+and **Length**; positions count Unicode code points, so a single emoji such as 🚀 stays intact.
+A combining mark or multi-code-point emoji still occupies multiple positions. The end is clipped
+to the available text; a start beyond the end gives empty text and Found off. A valid zero-length
+range gives empty text and Found on. **Regex match** extracts the first match anywhere in the
+text; **Regex capture** extracts a selected group, with **Capture 0** meaning the first parenthesized
+group. For example, `Order-(\d+)` extracts `1042` from `Order-1042 🚀`.
+
+Enter regex patterns directly, without surrounding `/…/`. Regex uses JavaScript's built-in engine
+with Unicode matching and optional case insensitivity; there is no external dependency or network
+request. No match gives Found off and empty text; an invalid pattern or capture selection shows a
+component error. Evaluation uses the same bounded Worker calls as other components, including in
+HTML exports. **Show indicators** controls the optional output readouts. Tab 27, **Text matching
+and extraction**, connects both components to editable inputs and status/text displays.
+
+**Number to text** converts its numeric **Value** input into a string **Text** output, ready to
+connect to Text label, Memo, or the text-processing components. It preserves the number's full
+available precision rather than rounding it like a display. Conversion uses a decimal point,
+exponential notation for very small or large values, and `0` for negative zero. **Show indicators**
+controls the optional status indicator. It also works in offline HTML exports.
 
 **Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
 library. Place Dataset, select it, and open **Edit…**. Its **Owned dataset** section selects or creates
