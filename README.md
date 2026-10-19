@@ -19,7 +19,7 @@ app with all optional features disabled and the page title **Really SimpleCanvas
 
 1. Open the demo or download `index.html` and open it in a browser.
 2. Choose a drawing tool, then drag on the canvas to draw. Use **Select** to move or edit objects.
-3. Use **File → Save sketch…** to download an editable JSON file. **Add tab** starts another drawing;
+3. Use **File → Export sketch…** to download an editable JSON file. **Add sketch** starts another drawing;
    **Save workspace…** downloads all open tabs.
 
 The app automatically saves drawings in this browser. See [Save and reopen](#save-and-reopen)
@@ -71,7 +71,8 @@ own editing shortcuts.
 
 | Shortcut | Action |
 | --- | --- |
-| Ctrl/Cmd+S / Ctrl/Cmd+O | Save / open the active sketch |
+| Ctrl/Cmd+S / Ctrl/Cmd+O | Save / open the workspace; export / import the current sketch when workspace mode is disabled |
+| N / Shift+N | Add sketch / New workspace (when workspace mode is enabled) |
 | Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z | Undo / redo (Ctrl/Cmd+Y also redoes) |
 | Ctrl/Cmd+C / Ctrl/Cmd+V | Copy / paste |
 | Ctrl/Cmd+D | Duplicate selection |
@@ -95,12 +96,28 @@ and connections. A workspace contains all open sketch tabs; it excludes the libr
 category organization. The library is saved separately in this browser. **Export library…** makes
 a portable backup of it.
 
+The File menu groups actions into **Workspace** and **Current sketch**. Exports live under the
+scope they capture: **Workspace → Export HTML** includes every tab, while **Current sketch**
+contains JSON, PNG, SVG, and HTML exports of the active drawing, plus Print.
+
 | File action | Scope |
 | --- | --- |
-| **Save sketch…** | Downloads the active sketch as JSON, including its images |
+| **New workspace…** | Replaces all tabs with one blank **Sketch 1**, with an option to save the current workspace first |
+| **Add sketch** | Adds a blank sketch to the current workspace |
+| **Export sketch…** | Downloads the active sketch as JSON, including its images |
 | **Save workspace…** | Downloads all open tabs as one JSON file |
-| **Open sketch…** | Replaces the active sketch; when given a workspace file, lets you choose one sketch |
+| **Import sketch…** | Replaces the active sketch; when given a workspace file, lets you choose one sketch |
 | **Open workspace…** | Replaces all open tabs; a single-sketch file becomes one tab |
+| **Workspace → Export HTML** | Exports all tabs as an interactive HTML file |
+| **Current sketch → Export HTML** | Exports only the active sketch as an interactive HTML file |
+| **Clear current sketch** | Empties only the active sketch, keeps its tab name, and supports Undo |
+
+When the workspace contains work, **New workspace…** offers **Save & start new**, **Start new**,
+and **Cancel**. The save option starts a workspace JSON download before replacing the tabs; your
+browser controls where the file is saved and whether the download completes. Starting a new
+workspace discards the old tabs and their Undo histories. It keeps your shape library, categories,
+and pinned Working collection. Use **Clear current sketch** when you want an undoable reset of
+just the current drawing.
 
 Closing a tab deletes its contents from the workspace; save a file first if you want to keep it.
 The app asks before closing a tab that contains objects.
@@ -122,10 +139,11 @@ offers **Retry** and **Export library…**. Export also provides a backup if bro
 margins. Both capture a static reading of live smart shapes. PNG exports use 2× resolution;
 SVG preserves vector geometry.
 
-**Export HTML** creates a self-contained copy of all working tabs at the current canvas size,
+**Workspace → Export HTML** creates a self-contained copy of all working tabs at the current canvas size,
 with live smart-shape controls. Images are embedded in the file, and each tab retains its own
-content and group rotations, including changes that could not be saved automatically. When
-workspace controls are disabled, HTML export includes only the active sketch.
+content and group rotations, including changes that could not be saved automatically.
+**Current sketch → Export HTML** exports only the active sketch with the same live controls.
+When workspace controls are disabled, only current-sketch exports are shown.
 
 ### Interactive HTML
 
@@ -796,7 +814,7 @@ To build a small data workflow from a blank canvas:
    reloading the HTML itself restores the exported snapshot.
 
 For a smaller starting point, open [the control-and-gauge sketch](examples/connected-components.json)
-with **File → Open sketch…**. **Export HTML** keeps its connection working offline.
+with **File → Import sketch…**. **Export HTML** keeps its connection working offline.
 
 To build your own pair, place **Number control** and **Gauge** from the built-in library.
 Enable **Wiring**, then drag Number control's **value** output to Gauge's **value** input;
@@ -1194,7 +1212,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 
 | Feature | Effect when `false` |
 | --- | --- |
-| `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
+| `workspace` | Hides tabs and the Workspace menu group. Open/save shortcuts import/export the active sketch; its HTML export stays available. Previously saved tabs are preserved and return when enabled again. |
 | `shapeLibrary` | Hides the entire library and skips its starter file and browser storage. Objects in existing drawings still render and remain editable. |
 | `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
@@ -1224,7 +1242,7 @@ settings. Deployment settings stay separate from saved sketches and workspaces.
 
 The storage-failure warning still offers a workspace recovery download when workspace controls are
 disabled, so existing tabs and unsaved changes can always be recovered. Opening a workspace through
-**Open sketch…** still lets users choose a single sketch from that file.
+**Import sketch…** still lets users choose a single sketch from that file.
 
 ### GitHub Pages
 

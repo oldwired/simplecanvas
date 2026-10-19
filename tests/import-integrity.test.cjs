@@ -40,28 +40,28 @@ test('a sketch file finishing after a tab switch cannot replace the newly active
   await run(`importProject(new File([${JSON.stringify(JSON.stringify(incoming))}],'incoming.json',{type:'application/json'}))`);
   await run(`activateTab(${JSON.stringify(second)})`);const before=await snapshot(run);
   await page.evaluate(()=>window.__releaseReads.shift()());
-  await page.waitForFunction(()=>/active tab changed|Sketch opened/.test(document.querySelector('#toast').textContent));
+  await page.waitForFunction(()=>/active tab changed|Sketch imported/.test(document.querySelector('#toast').textContent));
   assert.deepEqual(await snapshot(run),before,'neither tab content, history, nor persistence changes');
   assert.deepEqual(dialogs,[],'a cancelled import never asks to replace the unrelated tab');
 }));
 
-test('choosing a workspace sketch after switching tabs cancels the original Open sketch request',async()=>app(async({page,run,dialogs})=>{
+test('choosing a workspace sketch after switching tabs cancels the original Import sketch request',async()=>app(async({page,run,dialogs})=>{
   const {second}=await twoTabs(run);
   const workspace={app:'SimpleCanvasWorkspace',version:4,tabs:[{name:'Imported sketch',items:incoming.items,assets:{}}],activeIndex:0};
   await run(`importProject(new File([${JSON.stringify(JSON.stringify(workspace))}],'workspace.json',{type:'application/json'}))`);
   await page.locator('#tabPickerDialog').waitFor({state:'visible'});
   await run(`activateTab(${JSON.stringify(second)})`);const before=await snapshot(run);
   await page.locator('#tabPickerList button').click();
-  await page.waitForFunction(()=>/active tab changed|Sketch opened/.test(document.querySelector('#toast').textContent));
+  await page.waitForFunction(()=>/active tab changed|Sketch imported/.test(document.querySelector('#toast').textContent));
   assert.deepEqual(await snapshot(run),before);assert.deepEqual(dialogs,[]);
 }));
 
-test('Open sketch keeps the target selected before the native picker and normal opens remain undoable',async()=>app(async({page,run,dialogs})=>{
+test('Import sketch keeps the target selected before the native picker and normal opens remain undoable',async()=>app(async({page,run,dialogs})=>{
   const {first,second}=await twoTabs(run);
   const chooser=page.waitForEvent('filechooser');await run("MENU_ACTIONS.open()");const fileChooser=await chooser;
   await run(`activateTab(${JSON.stringify(second)})`);const before=await snapshot(run);
   await fileChooser.setFiles({name:'incoming.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(incoming))});
-  await page.waitForFunction(()=>/active tab changed|Sketch opened/.test(document.querySelector('#toast').textContent));
+  await page.waitForFunction(()=>/active tab changed|Sketch imported/.test(document.querySelector('#toast').textContent));
   assert.deepEqual(await snapshot(run),before);assert.deepEqual(dialogs,[]);
   await run(`activateTab(${JSON.stringify(first)});importProject(new File([${JSON.stringify(JSON.stringify(incoming))}],'incoming.json'))`);
   await page.waitForFunction(()=>__test.run("items[0]?.uid==='incoming'"));

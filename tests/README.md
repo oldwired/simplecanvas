@@ -108,6 +108,20 @@ events; anchoring, snapped angles, and vector scale keep their strict numerical 
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.
 
+`tests/new-workspace.test.cjs` checks the Workspace and Current sketch menu groups,
+keyboard navigation on a small screen, and **New workspace…** confirmation. Cancel preserves tabs
+and history; **Save & start new** produces a complete workspace JSON download, including an active
+text draft, before resetting to one blank **Sketch 1**. Download setup failures leave the dialog
+and workspace available for retry. Reset checks cover fresh histories, browser-storage write
+ordering and recovery, stale workspace-import cancellation, and preservation of personal library
+entries and Working collection pins across reload. **Clear current sketch** stays limited to the
+active tab and supports Undo. Confirmation pauses simulation; Cancel restores its prior pause state.
+Creation shortcuts respect typing, key repeats, and workspace settings. Open/save shortcuts and
+HTML-export checks distinguish workspace scope from the current sketch, including
+when workspace mode is disabled. Disabled workspace controls cannot reset the preserved tabs.
+Automated download checks validate the emitted file; the browser still controls whether a real
+user's download finishes.
+
 `tests/tabbar-overflow.test.cjs` covers tab scrolling controls and edge fades, responsive overflow,
 full names in All tabs, keyboard navigation and focus after tab changes, and active-tab visibility.
 It exercises the editor and actual offline HTML downloads, including live-component activation.
@@ -255,7 +269,7 @@ unknown Boolean logic, and gate-built memory through the real sandbox.
 `tests/feedback-controls.test.cjs` checks the editor and exported Pause/Step/Resume controls.
 `tests/feedback-review.test.cjs` checks compact retained wiring keys, stored outputs through Z
 in the graph, Edit preview and offline reader, and per-tab Pause/time across Undo/Redo.
-`tests/import-integrity.test.cjs` checks Open sketch ownership across asynchronous file/picker
+`tests/import-integrity.test.cjs` checks Import sketch ownership across asynchronous file/picker
 steps and tab switches, plus bounded geometry that cannot overflow during import rounding.
 `tests/sandbox-lifecycle.test.cjs` checks that returned hooks cannot leave timer, microtask, or
 async work running indefinitely, including in standalone HTML, and that realm reuse stays bounded.

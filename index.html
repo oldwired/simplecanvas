@@ -81,7 +81,10 @@
     box-shadow:var(--shadow);
     display:flex;flex-direction:column;gap:1px;
   }
-  .menu[hidden]{display:none}
+  .menu[hidden],.menu-group[hidden]{display:none}
+  #menu{min-width:240px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 80px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+  .menu-heading{padding:6px 9px 4px;color:var(--muted);font-size:11px;font-weight:650}
+  #menu>.menu-sep{flex-shrink:0}
   .menu button{
     display:flex;align-items:center;gap:9px;
     width:100%;padding:8px 9px;border:none;border-radius:8px;
@@ -231,6 +234,10 @@
   .library-dialog input{box-sizing:border-box;width:100%;font:inherit;padding:9px;border:1px solid var(--line);border-radius:7px}
   .library-dialog textarea{box-sizing:border-box;width:100%;font:12px ui-monospace,monospace;padding:9px;border:1px solid var(--line);border-radius:7px;resize:vertical}
   .library-dialog code{font:12px ui-monospace,monospace}
+  #newWorkspaceDialog{width:520px;touch-action:pan-y}
+  #newWorkspaceDialog .library-dialog-actions{flex-wrap:wrap}
+  #newWorkspaceDialog .workspace-note{color:var(--muted);font-size:12px}
+  #newWorkspaceError:empty{display:none}
   #smartObjectDialog{width:960px;max-width:calc(100vw - 32px);height:min(820px,calc(100dvh - 32px));max-height:calc(100dvh - 32px);padding:20px;overflow:hidden}
   #smartObjectDialogForm{height:100%;min-height:0;display:flex;flex-direction:column;gap:12px}
   #smartObjectDialogTitle{flex:none;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -580,53 +587,65 @@
 <header class="toolbar">
   <input type="file" id="projectInput" accept="application/json,.json" style="display:none">
   <div class="menu-wrap">
-    <button class="btn" id="menuBtn" title="File &amp; canvas actions" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">
+    <button class="btn" id="menuBtn" title="Workspace, sketch &amp; export actions" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
     <div class="menu" id="menu" role="menu" hidden>
-      <button data-act="save" role="menuitem" title="Save the active sketch tab">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v5h6V3M7 21v-6h10v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        Save sketch… <span class="sc">⌘S</span>
-      </button>
-      <button data-act="open" role="menuitem" title="Open a sketch in the active tab">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        Open sketch… <span class="sc">⌘O</span>
-      </button>
+      <div class="menu-group" role="group" aria-labelledby="workspaceMenuHeading" data-menu-group="workspace">
+        <div class="menu-heading" id="workspaceMenuHeading">Workspace</div>
+        <button data-act="newWorkspace" role="menuitem" aria-keyshortcuts="Shift+N" title="Start with one blank sketch; keep your shape library">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M18 2v8M14 6h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          New workspace… <span class="sc" aria-hidden="true">Shift+N</span>
+        </button>
+        <button data-act="openWorkspace" role="menuitem" title="Replace all sketch tabs; keep the current shape library">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          Open workspace… <span class="sc" aria-hidden="true">⌘O</span>
+        </button>
+        <button data-act="saveWorkspace" role="menuitem" title="Save all sketch tabs; export your shape library separately">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v5h6V3M7 21v-6h10v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          Save workspace… <span class="sc" aria-hidden="true">⌘S</span>
+        </button>
+        <button data-act="newTab" role="menuitem" aria-keyshortcuts="N">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Add sketch <span class="sc" aria-hidden="true">N</span>
+        </button>
+        <button data-act="html" role="menuitem" title="Export all workspace tabs as interactive HTML">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Export HTML
+        </button>
+      </div>
       <div class="menu-sep" role="separator"></div>
-      <button data-act="saveWorkspace" role="menuitem" title="Save all sketch tabs; export your shape library separately">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v5h6V3M7 21v-6h10v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        Save workspace…
-      </button>
-      <button data-act="openWorkspace" role="menuitem" title="Replace all sketch tabs; keep the current shape library">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        Open workspace…
-      </button>
-      <button data-act="newTab" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        Add tab
-      </button>
-      <div class="menu-sep" role="separator"></div>
-      <button data-act="png" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Export PNG
-      </button>
-      <button data-act="svg" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M4 17c2-9 5-9 8 0s6 9 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="1.6" fill="currentColor"/></svg>
-        Export SVG
-      </button>
-      <button data-act="html" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Export HTML
-      </button>
-      <button data-act="print" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1M6 14h12v7H6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Print
-      </button>
-      <div class="menu-sep" role="separator"></div>
-      <button data-act="clear" class="danger" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Clear canvas
-      </button>
+      <div class="menu-group" role="group" aria-labelledby="sketchMenuHeading" data-menu-group="sketch">
+        <div class="menu-heading" id="sketchMenuHeading">Current sketch</div>
+        <button data-act="open" role="menuitem" title="Import a sketch file, replacing the current sketch">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 10h18l-2 8a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L3 10Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          Import sketch… <span class="sc" aria-hidden="true" hidden>⌘O</span>
+        </button>
+        <button data-act="save" role="menuitem" title="Export the current sketch as an editable JSON file">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v5h6V3M7 21v-6h10v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          Export sketch… <span class="sc" aria-hidden="true" hidden>⌘S</span>
+        </button>
+        <button data-act="png" role="menuitem" title="Export the current sketch as a PNG image">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Export PNG
+        </button>
+        <button data-act="svg" role="menuitem" title="Export the current sketch as an SVG image">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 17c2-9 5-9 8 0s6 9 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="1.6" fill="currentColor"/></svg>
+          Export SVG
+        </button>
+        <button data-act="htmlSketch" role="menuitem" title="Export only the current sketch as interactive HTML">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Export HTML
+        </button>
+        <button data-act="print" role="menuitem" title="Print the current sketch">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1M6 14h12v7H6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Print
+        </button>
+        <button data-act="clear" class="danger" role="menuitem">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Clear current sketch
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1025,9 +1044,20 @@
     <div class="library-dialog-actions"><button type="button" id="iconDialogCancel">Close</button></div>
   </form>
 </dialog>
+<dialog class="library-dialog" id="newWorkspaceDialog" aria-labelledby="newWorkspaceTitle" aria-describedby="newWorkspaceMessage">
+  <h2 id="newWorkspaceTitle">Start a new workspace?</h2>
+  <p id="newWorkspaceMessage"></p>
+  <p class="workspace-note">Your shape library and Working collection stay available. Save &amp; start new downloads the current workspace before starting fresh.</p>
+  <p class="dialog-error" id="newWorkspaceError" role="alert"></p>
+  <div class="library-dialog-actions">
+    <button type="button" id="newWorkspaceCancel" autofocus>Cancel</button>
+    <button type="button" id="newWorkspaceStart">Start new</button>
+    <button type="button" id="newWorkspaceSave" class="primary">Save &amp; start new</button>
+  </div>
+</dialog>
 <dialog class="library-dialog" id="tabPickerDialog" aria-labelledby="tabPickerTitle">
-  <h2 id="tabPickerTitle">Open sketch from workspace</h2>
-  <p>This file contains several sketches — pick one to open.</p>
+  <h2 id="tabPickerTitle">Import sketch from workspace</h2>
+  <p>This file contains several sketches — pick one to import.</p>
   <div class="tab-picker-list" id="tabPickerList"></div>
   <div class="library-dialog-actions"><button type="button" id="tabPickerCancel">Cancel</button></div>
 </dialog>
@@ -1183,6 +1213,8 @@
   // ---------- tabs (multiple independent documents) ----------
   let tabs = [];                 // [{id, name}, ...] — mirrors the tabbar UI and the TABS_KEY localStorage entry
   let activeTabId = null;
+  let workspaceGeneration = 0;   // invalidate file pickers/readers when the whole workspace is replaced
+  let workspaceReadSeq = 0;
   const tabDocuments = new Map(); // complete working documents, independent of whether autosave succeeds
   const unsavedTabs = new Set();
   const retiredDocKeys = new Set(); // delete only after the replacement tab list is durable
@@ -3555,7 +3587,7 @@ self.onmessage = function(e){
   }
   let editorComponentEvaluation=null,editorTimeline=null,editorTimelineScene=null,editorTimelineTab=null,componentTimelineTimer=null;
   const editorTimelines=new Map();
-  function editorTimelinePaused(){return document.hidden || editorTimeline?.pausedByUser || !!document.getElementById('componentBindingsDialog')?.open || !!document.querySelector('dialog[data-smart-number-input][open],dialog[data-smart-text-input][open],dialog[data-component-data-action][open]');}
+  function editorTimelinePaused(){return document.hidden || editorTimeline?.pausedByUser || !!document.getElementById('componentBindingsDialog')?.open || !!document.getElementById('newWorkspaceDialog')?.open || !!document.querySelector('dialog[data-smart-number-input][open],dialog[data-smart-text-input][open],dialog[data-component-data-action][open]');}
   function syncEditorTimeline(){
     if(editorTimelineScene!==items || editorTimelineTab!==activeTabId){
       if(editorTimeline)pauseComponentTimeline(editorTimeline);
@@ -8601,13 +8633,14 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function clearAll(){
+    if(textInput.style.display==='block')commitText();
     if(!items.length){shapePlacementEpoch++;return;}
-    if(!confirm('Erase everything on the canvas?')) return;
+    if(!confirm('Clear the current sketch? This can be undone.')) return;
     cancelGesture();
     beginHistory();
     items = []; selection=[]; current=null;
     commitHistory(); render();
-    toast('Canvas cleared');
+    toast('Current sketch cleared');
   }
   function deleteSelected(){
     if(componentWiring.enabled && componentWiring.selected){void disconnectComponentWire();return;}
@@ -9570,8 +9603,8 @@ self.onmessage = function(e){
     const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+    try{a.href = url; a.download = filename; a.click();}
+    finally{URL.revokeObjectURL(url);}
   }
 
   function updateButtons(){
@@ -11322,13 +11355,14 @@ self.onmessage = function(e){
   // (click to switch, without renaming or closing). Smart shapes retain their scripted controls.
   // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
   // Pass its own items/assets through serialization without modifying the active document's state.
-  // With workspace controls disabled, only the active sketch is exported. cssW/cssH are shared.
-  async function exportHtml(){
+  // Current-sketch export (also used when workspace controls are disabled) includes only the active tab. cssW/cssH are shared.
+  async function exportHtml({currentSketch=false}={}){
+    const targetTabId=activeTabId;
     if(textInput.style.display==='block') commitText();
     cancelSmartGestures(true);
     await smartHitSettled;await shapePlacementQueue;
     rememberActiveTab();
-    const exportTabs=features.workspace ? tabs : tabs.filter(t=>t.id===activeTabId);
+    const exportTabs=features.workspace && !currentSketch ? tabs : tabs.filter(t=>t.id===targetTabId);
     const tabData = await Promise.all(exportTabs.map(async t=>{
       const doc = tabDocument(t.id),scene=clone(doc.items);
       const data=datasetsUsedBy(scene,doc.datasets);
@@ -11388,7 +11422,7 @@ self.onmessage = function(e){
       datasets: datasetsUsedBy(items,datasets)
     };
     downloadJSON('sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json', data);
-    toast('Sketch saved to file');
+    toast('Sketch exported to file');
   }
   // Export working memory, including changes that could not be auto-saved.
   function exportWorkspace({recovery=false}={}){
@@ -11409,7 +11443,7 @@ self.onmessage = function(e){
   }
   // Reads either file shape (a single sketch, or a whole workspace) into one normalized list of
   // {name, items, assets, ui} entries — shared by "Open Workspace…" (replaces every open tab) and
-  // "Open sketch…" (replaces the active tab), which differ only in what they DO with this list, not in how
+  // "Import sketch…" (replaces the active tab), which differ only in what they DO with this list, not in how
   // a file is parsed. `ui` is left null for a plain single-sketch entry (that file shape never has
   // one), so load()'s own existing "select vs pen" fallback applies exactly as it already does today.
   function parseFileAsTabs(data){
@@ -11433,8 +11467,11 @@ self.onmessage = function(e){
   // whole current set of open tabs (a picked single-sketch file becomes the one resulting tab).
   function openWorkspaceFile(file){
     if(!features.workspace) return;
+    const generation=workspaceGeneration,request=++workspaceReadSeq;
+    const current=()=>generation===workspaceGeneration && request===workspaceReadSeq && !newWorkspaceDialog.open;
     const r = new FileReader();
     r.onload = ()=>{
+      if(!current())return;
       let data;
       try { data = JSON.parse(r.result); }
       catch(e){ toast('Not a valid sketch file'); return; }
@@ -11449,9 +11486,11 @@ self.onmessage = function(e){
       if(hasExistingContent && !confirm('Replace all ' + tabs.length + ' open tab' + (tabs.length===1?'':'s') + ' with this file?')) return;
 
       cancelGesture();
+      workspaceGeneration++;
       for(const t of tabs) retiredDocKeys.add(docKey(t.id));
       tabDocuments.clear();
       unsavedTabs.clear();
+      editorTimelines.clear();
 
       const newTabs = parsed.entries.map(nt=>{
         const id = newTabId();   // always mint fresh ids -- never trust ids from the file
@@ -11466,16 +11505,16 @@ self.onmessage = function(e){
       saveTabList();
       toast(newTabs.length>1 ? ('Workspace opened (' + newTabs.length + ' tabs)') : 'Sketch opened');
     };
-    r.onerror = ()=>toast('Could not read that file');
+    r.onerror = ()=>{if(current())toast('Could not read that file');};
     r.readAsText(file);
   }
-  // "Open sketch…" — operates on the active tab only, exactly like before the multi-tab feature
+  // "Import sketch…" — operates on the active tab only, exactly like before the multi-tab feature
   // existed: undoable (via beginHistory/commitHistory), confirms only if the active tab has content.
   // If accidentally given a WORKSPACE file (several sketches) instead, offers a small picker dialog
   // to choose which one to open, rather than a flat rejection.
   function sketchImportTargetCurrent(tabId){
     if(activeTabId===tabId && tabs.some(tab=>tab.id===tabId)) return true;
-    toast('Opening cancelled because the active tab changed');
+    toast('Import cancelled because the active tab changed');
     return false;
   }
   function importProject(file, targetTabId=activeTabId){
@@ -11515,7 +11554,7 @@ self.onmessage = function(e){
   // creates or removes a tab (an empty active tab needs no confirm — nothing to lose).
   function applySketchToActiveTab(newItems, newAssets, targetTabId=activeTabId, newDatasets={}){
     if(!sketchImportTargetCurrent(targetTabId)) return;
-    if(items.length && !confirm('Replace the current sketch with the opened file?')) return;
+    if(items.length && !confirm('Replace the current sketch with the imported file?')) return;
     if(!sketchImportTargetCurrent(targetTabId)) return;
     let adopted;try{adopted=adoptDatasetAssets(newItems,newDatasets,[]);}catch(error){toast(error.message);return;}
     cancelGesture();
@@ -11524,7 +11563,7 @@ self.onmessage = function(e){
     selection = [];
     commitHistory();
     render();
-    toast('Sketch opened');
+    toast('Sketch imported');
   }
 
   // ---------- toolbar wiring ----------
@@ -11947,7 +11986,7 @@ self.onmessage = function(e){
   }
 
   // Small picker dialog: lets the user choose one sketch out of a workspace file's several, when
-  // "Open sketch…" (which only ever targets the active tab) is accidentally given one.
+  // "Import sketch…" (which only ever targets the active tab) is accidentally given one.
   const tabPickerDialog = document.getElementById('tabPickerDialog');
   let tabPickerQuestion = null;
   function finishTabPicker(value){
@@ -20495,11 +20534,12 @@ self.onmessage = function(e){
   const menuBtn = document.getElementById('menuBtn');
   const menu = document.getElementById('menu');
   let pendingFileAction = null;   // 'open' | 'openWorkspace' -- which menu action opened the file picker
-  let pendingFileTabId = null;
+  let pendingFileTabId = null,pendingFileWorkspaceGeneration=null;
   function chooseProjectFile(action){
-    pendingFileAction=action;pendingFileTabId=activeTabId;projectInput.click();
+    pendingFileAction=action;pendingFileTabId=activeTabId;pendingFileWorkspaceGeneration=workspaceGeneration;projectInput.click();
   }
   const MENU_ACTIONS = {
+    newWorkspace: openNewWorkspace,
     save: exportProject,
     open: ()=>chooseProjectFile('open'),
     saveWorkspace: exportWorkspace,
@@ -20507,17 +20547,20 @@ self.onmessage = function(e){
     newTab: newTab,
     png: savePng,
     svg: saveSvg,
-    html: exportHtml,
+    html: ()=>{if(features.workspace)return exportHtml();},
+    htmlSketch: ()=>exportHtml({currentSketch:true}),
     print: openPrintDialog,
     clear: clearAll,
   };
-  function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled):not([hidden])')]; }
+  function menuItems(){ return [...menu.querySelectorAll('button[data-act]:not(:disabled):not([hidden])')].filter(button=>!button.closest('.menu-group[hidden]')); }
+  function fitMainMenu(){menu.style.maxHeight=Math.max(80,window.innerHeight-menu.getBoundingClientRect().top-12)+'px';}
+  window.addEventListener('resize',()=>{if(!menu.hidden)fitMainMenu();});
   function setMenu(open){
     if(open) closeOtherPopovers(setMenu);
     menu.hidden = !open;
     menuBtn.classList.toggle('active', open);
     menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if(open) menuItems()[0].focus();
+    if(open){fitMainMenu();menuItems()[0].focus();}
   }
   menuBtn.addEventListener('click', e=>{ e.stopPropagation(); setMenu(menu.hidden); });
   menuBtn.addEventListener('keydown', e=>{
@@ -20546,9 +20589,9 @@ self.onmessage = function(e){
   document.addEventListener('click', e=>{ if(!menu.hidden && !menu.contains(e.target) && e.target!==menuBtn) setMenu(false); });
   projectInput.addEventListener('change', e=>{
     const file = e.target.files[0]; e.target.value = '';
-    const action=pendingFileAction,targetTabId=pendingFileTabId??activeTabId;
-    pendingFileAction=null;pendingFileTabId=null;
-    if(!file) return;
+    const action=pendingFileAction,targetTabId=pendingFileTabId??activeTabId,generation=pendingFileWorkspaceGeneration;
+    pendingFileAction=null;pendingFileTabId=null;pendingFileWorkspaceGeneration=null;
+    if(!file || (generation!==null && generation!==workspaceGeneration)) return;
     if(action === 'openWorkspace') openWorkspaceFile(file);
     else importProject(file,targetTabId);
   });
@@ -20630,9 +20673,15 @@ self.onmessage = function(e){
     if(mod && e.key.toLowerCase()==='c'){ copySelection(); return; }            // paste is handled by the paste event
     if(mod && e.key.toLowerCase()==='d'){ e.preventDefault(); duplicateSelection(); return; }
     if(mod && e.key.toLowerCase()==='g'){ e.preventDefault(); e.shiftKey?ungroupSelection():groupSelection(); return; }
-    if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); exportProject(); return; }
-    if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); chooseProjectFile('open'); return; }
+    if(mod && e.key.toLowerCase()==='s'){ e.preventDefault(); features.workspace?exportWorkspace():exportProject(); return; }
+    if(mod && e.key.toLowerCase()==='o'){ e.preventDefault(); chooseProjectFile(features.workspace?'openWorkspace':'open'); return; }
     if(mod) return;
+    if(features.workspace && !e.altKey && !e.isComposing && e.key.toLowerCase()==='n'){
+      if(document.querySelector('dialog[open]') || (isControlTarget(e.target) && e.target.tagName!=='BUTTON'))return;
+      e.preventDefault();
+      if(!e.repeat){if(e.shiftKey)void openNewWorkspace();else newTab();}
+      return;
+    }
     if(e.key==='Delete' || e.key==='Backspace'){
       e.preventDefault();
       // Keep Delete/Backspace in point editing even after removal clears the active anchor:
@@ -20984,6 +21033,66 @@ self.onmessage = function(e){
     saveTabList();
   }
 
+  const newWorkspaceDialog=document.getElementById('newWorkspaceDialog');
+  const newWorkspaceError=document.getElementById('newWorkspaceError');
+  let newWorkspaceOpening=false;
+  function workspaceHasWork(){
+    return tabs.length!==1 || tabs[0].name!=='Sketch 1' || tabs.some(tab=>{
+      const doc=tabDocument(tab.id);
+      return doc.items.length || Object.keys(doc.assets).length || Object.keys(doc.datasets).length || doc.undoStack.length || doc.redoStack.length;
+    });
+  }
+  function startNewWorkspace(){
+    if(!features.workspace)return;
+    cancelGesture();workspaceGeneration++;
+    for(const tab of tabs)retiredDocKeys.add(docKey(tab.id));
+    tabDocuments.clear();unsavedTabs.clear();editorTimelines.clear();
+    const id=newTabId();
+    tabs=[{id,name:'Sketch 1'}];
+    tabDocuments.set(id,makeDocument());unsavedTabs.add(id);
+    enterTab(id);
+    // Persist the blank document and new index before removing the retired documents.
+    // Failed storage writes leave these changes pending and keep the recovery warning visible.
+    saveTabList();
+    toast('New workspace started');
+  }
+  async function openNewWorkspace(){
+    if(!features.workspace || newWorkspaceOpening || newWorkspaceDialog.open)return;
+    newWorkspaceOpening=true;
+    const generation=workspaceGeneration;
+    try{
+      if(textInput.style.display==='block')commitText();
+      cancelSmartGestures(true);
+      await smartHitSettled;await shapePlacementQueue;
+      if(generation!==workspaceGeneration)return;
+      rememberActiveTab();
+      if(!workspaceHasWork()){startNewWorkspace();return;}
+      newWorkspaceError.textContent='';
+      document.getElementById('newWorkspaceMessage').textContent='This replaces '+(tabs.length===1?'the current tab':'all '+tabs.length+' tabs')+' with one blank sketch. This cannot be undone.';
+      newWorkspaceDialog.showModal();
+      render();
+      document.getElementById('newWorkspaceCancel').focus();
+    }catch(error){toast('Could not start a new workspace: '+error.message);}
+    finally{newWorkspaceOpening=false;}
+  }
+  function confirmNewWorkspace(withSave){
+    if(!newWorkspaceDialog.open || !features.workspace)return;
+    newWorkspaceError.textContent='';
+    try{
+      // Start the download synchronously; a serialization/download setup failure must keep the work.
+      // Browser download completion (and any subsequent Save dialog) is controlled by the browser.
+      if(withSave)exportWorkspace();
+      startNewWorkspace();
+      newWorkspaceDialog.close();
+    }catch(error){newWorkspaceError.textContent='Could not start a new workspace: '+error.message;}
+  }
+  document.getElementById('newWorkspaceCancel').addEventListener('click',()=>newWorkspaceDialog.close());
+  document.getElementById('newWorkspaceStart').addEventListener('click',()=>confirmNewWorkspace(false));
+  document.getElementById('newWorkspaceSave').addEventListener('click',()=>confirmNewWorkspace(true));
+  newWorkspaceDialog.addEventListener('close',()=>{render();menuBtn.focus();});
+  newWorkspaceDialog.addEventListener('click',event=>event.stopPropagation());
+  newWorkspaceDialog.addEventListener('keydown',event=>event.stopPropagation());
+
   function newTab(){
     if(!features.workspace) return;
     if(textInput.style.display==='block') commitText();
@@ -21080,9 +21189,14 @@ self.onmessage = function(e){
   const appReady=(async()=>{
     // The body starts inert so delayed settings cannot expose usable, disabled features.
     await loadSettings();
-    for(const button of menu.querySelectorAll('[data-act="newTab"],[data-act="openWorkspace"],[data-act="saveWorkspace"]')){
+    for(const button of menu.querySelectorAll('[data-act="newWorkspace"],[data-act="newTab"],[data-act="openWorkspace"],[data-act="saveWorkspace"],[data-act="html"]')){
       button.hidden=button.disabled=!features.workspace;
     }
+    for(const hint of menu.querySelectorAll('[data-act="open"] .sc,[data-act="save"] .sc'))hint.hidden=features.workspace;
+    for(const [action,key] of [[features.workspace?'openWorkspace':'open','O'],[features.workspace?'saveWorkspace':'save','S']]){
+      menu.querySelector('[data-act="'+action+'"]').setAttribute('aria-keyshortcuts',(isMac?'Meta':'Control')+'+'+key);
+    }
+    for(const group of menu.querySelectorAll('.menu-group'))group.hidden=!group.querySelector('button:not([hidden])');
     let previous=null;
     for(const child of menu.children){
       if(child.hidden) continue;

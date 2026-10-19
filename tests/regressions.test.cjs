@@ -2717,7 +2717,7 @@ test('the Really Simple deployment loads its own title and disables all optional
   assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
   assert.equal(await run('performance.getEntriesByType("resource").some(e=>e.name.endsWith("shapes-library.json"))'),false);
   await page.locator('#menuBtn').click();
-  for(const action of ['newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
+  for(const action of ['newWorkspace','newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
   await page.keyboard.press('Escape');await page.locator('[data-tool="rect"]').click();
   const canvas=await page.locator('#canvas').boundingBox();
   await page.mouse.move(canvas.x+100,canvas.y+100);await page.mouse.down();
@@ -2736,7 +2736,7 @@ test('workspace settings preserve saved tabs, restrict exports to the active ske
   assert.equal(await run('features.workspace'),false);
   assert.equal(await page.locator('#tabbar').isHidden(),true);
   await page.locator('#menuBtn').click();
-  for(const action of ['newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
+  for(const action of ['newWorkspace','newTab','openWorkspace','saveWorkspace'])assert.equal(await page.locator(`[data-act="${action}"]`).isVisible(),false);
   await page.keyboard.press('Home');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');
   assert.equal(await page.locator('[data-act="png"]').evaluate(el=>el===document.activeElement),true,'menu navigation skips disabled workspace actions');
   await page.keyboard.press('Escape');
@@ -2890,7 +2890,7 @@ test('the standalone local HTML opens with defaults and no HTTP settings depende
     await page.goto(require('node:url').pathToFileURL(path.join(__dirname,'..','index.html')).href);
     await page.waitForFunction(()=>!document.body.inert);
     assert.equal(await page.locator('#settingsWarning').isVisible(),false);
-    await page.locator('#menuBtn').click();await page.getByRole('menuitem',{name:'Add tab',exact:true}).click();
+    await page.locator('#menuBtn').click();await page.getByRole('menuitem',{name:'Add sketch',exact:true}).click();
     assert.equal(await page.locator('#tabbar .tab').count(),2);
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
   }finally{await context.close();}
