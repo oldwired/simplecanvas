@@ -2910,9 +2910,9 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   const expectedWorking=JSON.parse(demoLibrary).workingCollection;
   const canonical={Clock:'builtin:clock:1',Chart:'builtin:chart:1','Live clock':'builtin:liveClock:1',Stopwatch:'builtin:stopwatch:1',Ruler:'builtin:ruler:1'};
   const expectedCategories={
-    'builtin:clock:1':['Tools & time','Displays'],'builtin:chart:1':['Displays'],
+    'builtin:clock:1':['Tools & time','Displays'],'builtin:chart:1':['Displays','Numbers'],
     'builtin:liveClock:1':['Tools & time','Displays'],'builtin:stopwatch:1':['Tools & time','Displays'],
-    'builtin:ruler:1':['Workshop','Tools & time']
+    'builtin:ruler:1':['Workshop','Tools & time','Drawing']
   };
   const inspectDemo=()=>run(`({
     working:shapeLibrary.workingCollection,

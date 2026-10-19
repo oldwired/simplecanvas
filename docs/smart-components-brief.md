@@ -33,7 +33,11 @@ twenty-sixth compares editable filtered/sorted views, read-only aggregates, and 
 A text-operations milestone before stage 4 adds Text compare, Text extract, Text to number,
 Number to text, Text compose, Text transform, Text replace, and Text selector. The twenty-seventh
 tab demonstrates native regex matching and extraction; the twenty-eighth connects parsing,
-formatting, composition, selection, and replacement to editable inputs.
+formatting, composition, selection, and replacement to editable inputs. A native-data-tools
+milestone adds JSON extract/build/edit, Date parse/format/difference, URL parameter, and Go to tab. Tabs 29–31
+cover JSON messages, date/time conversion, and URL-driven HTML with visible-character processing.
+Native `Intl.Segmenter` now supports visible-character extraction/counting, with explicit code-point
+options. These additions remain separate from later service calls and general events.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -121,8 +125,8 @@ These boundaries describe the feature branch, including feedback, text passing, 
   events remain future work. Combinational table cycles are rejected; a Dataset owner can explicitly
   apply a transformed view of its own records through a Replace or Append pulse.
 - **Actions are explicit and bounded.** Validated host actions support file import/reload, table
-  downloads, row capture, and source-table updates. General routed events, document navigation,
-  and service calls remain future work. Scripts cannot fetch data directly.
+  downloads, row capture, source-table updates, and explicit internal Go to tab requests.
+  General routed events and service calls remain future work. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
@@ -200,7 +204,8 @@ Share runtime helpers between editor and export throughout.
 | 2T. Text passing — implemented on branch | Text and numeric entry with accepted-submission pulses, literal text displays, and a triggered Memo | Repeated identical entries append once each, queued entries retain their values, bounded memo actions work in editor and offline HTML, and restoration never replays submissions. |
 | 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
 | 3T. Text operations — implemented on branch | Native regex comparison/extraction; strict Text to number; formatted Number to text; Text compose, transform, replace, and selector | Connected text/status displays respond in the editor and offline HTML; invalid numeric input has an explicit validity output; errors and Worker deadlines remain visible and bounded. |
-| 4. Events and local outputs — narrow data actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, and declared row-capture pulses; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, or captures one sampled row. Page refresh, restoration, retries, and Undo do not replay actions. |
+| 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
+| 4. Events and local outputs — narrow local actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, declared row-capture pulses, and internal Go to tab actions; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, captures one sampled row, or explicitly selects an internal tab. Page refresh, restoration, retries, and Undo do not replay actions. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -285,14 +290,20 @@ removes its memberships, preserving shapes, pins, and other categories. Empty ca
 registered; entries with no category tags appear under **Uncategorized**. Separate **Keywords**
 support search. Canvas **groups** continue to mean objects selected and transformed together.
 
-| Default category | Built-in examples |
+Bundled defaults use multiple memberships by purpose: **Numbers** and **Text** group scalar
+tools, while **Data** covers tables and structured data. Numeric arithmetic is no longer filed
+only under Logic; data-backed charts and grids also appear under Displays.
+
+| Category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Toggle, numeric Constant, Trigger |
-| Logic | AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-state buffer, Compare, numeric Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean Selector, Stepped switch, Stepped distributor, and Shift register |
-| Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Text to number, Number to text, Text compose, Text transform, Text replace, Text selector |
-| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank, and categorized user shapes/icons |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, numeric Constant, Trigger, Download table, Go to tab |
+| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches/distributors, registers, latches, counters, and pulse tools |
+| Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric routing/storage, text/number conversion, Spreadsheet, Table aggregate, numeric displays, and charts |
+| Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
+| Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, clocks, Stopwatch, Timer |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
 Selectors, four stepped switches, two Shift registers, Clamp, Range mapper, Number function,
@@ -310,8 +321,10 @@ Table sort, Table aggregate, and Download table bring the catalog to 70 entries 
 Dropdown and Text lookup bring it to 72 entries / 63 API v2 components. Spreadsheet brings it to
 73 entries / 64 API v2 components; Capture row brings it to 74 entries / 65 API v2 components.
 Text compare, Text extract, and Number to text bring it to 77 entries / 68 API v2 components.
-Text to number, Text compose, Text transform, Text replace, and Text selector bring the current
-catalog to **82 entries / 73 API v2 components**.
+Text to number, Text compose, Text transform, Text replace, and Text selector bring it to
+82 entries / 73 API v2 components. JSON extract, JSON build, Date parse, Date format, Date difference,
+URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
+current catalog to **90 entries / 81 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -326,6 +339,10 @@ Format 2 stores category memberships in each entry's `categoryTags` string array
 `categories` registry that retains empty categories, and `builtinCategoryTags` organization
 overrides. Existing `tags` remain search Keywords. Legacy single `category` fields migrate on
 import; flat libraries remain valid, and unassigned entries appear under Uncategorized.
+Bundled defaults remain defaults when a built-in is pinned, exported, or restored. Explicit user
+overrides (including an empty array) take precedence. The catalog audit also normalizes search
+keywords and covers arithmetic verbs, regex aliases, Unicode segmentation, JSON serialization,
+dataset import/export, and URL navigation. All 90 entries have valid, nonempty default memberships.
 All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
@@ -845,7 +862,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current twenty-eight-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current thirty-one-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -902,6 +919,8 @@ for stage 3. The milestone above covers the agreed practical feedback and storag
 | Scope / oscilloscope | Define timestamped channels, trigger and pause, bounded history, unavailable values, and missed samples. |
 | FFT / spectrogram display | Define sample rate, windows, overlap, scales, bounded histories, startup, gaps, and processing limits. |
 | Audio components — even later | Define streams versus scalar controls, playback/device ownership, latency, channel formats, and saved assets. |
+| Advanced mathematical components | Expand native Math-based trigonometry, powers/roots/logarithms, and polar/Cartesian conversions; define units, domains, and invalid-result behavior. |
+| Locale-aware formatting and comparison | Extend native Intl-based currency/unit/percentage formatting, language-sensitive comparison, and natural sorting; define locale settings, ordering, and output contracts. Basic Number to text and deterministic date/time formatting are already implemented. |
 | Text split/join producing lists or tables | Agree the collection schema, element types, bounds, and signal-flow contract before introducing collection-valued ports. Scalar Text compose is already implemented and does not decide this model. |
 
 These floating-point improvements and signal instruments are explicitly deferred. A useful order
@@ -978,7 +997,8 @@ pulse connected through the existing graph.
   for the stored text. Show counts and Show hints start off; rejected-update notices and input
   errors always remain visible.
 - **Bounds** remain explicit: strings use at most 2,000 UTF-16 code units and state at most 4,000
-  serialized JSON characters. Memo defaults to 100 lines and 2,000 characters. Rejected updates
+  serialized JSON characters. Memo defaults to 100 lines and 2,000 UTF-16 units. Its optional
+  character count measures visible characters separately from this storage limit. Rejected updates
   preserve the old buffer atomically and show a notice; lowering limits never truncates existing
   content. Long buffers show their latest wrapped lines while retaining the complete output.
 
@@ -1213,6 +1233,10 @@ Pending or unavailable results replace stale output values. Preview is bounded,
 pure inspection of a temporary proposal: it does not run transitions, consume edges, advance
 timed state, or mutate the drawing. Save validates and commits; Cancel discards the proposal.
 This does not add the future document-wide Run/Preview mode.
+
+The Edit inspector's fixed header shows a read-only component type separately from the editable
+instance name. Exact built-in scripts use their canonical catalog name even after an instance is
+renamed. A unique custom-library match uses its entry name; other scripts show **Custom component**.
 
 An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
 and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.
@@ -1626,7 +1650,8 @@ network access, or new event model is introduced.
   trailing newlines. The **Case-sensitive matching** setting defaults on.
 - **Text extract:** string `text` input and string `text` / Boolean `found` outputs. **Range**
   accepts zero-based `start` plus `length`, both nonnegative integers up to 2,000. Positions count
-  Unicode code points, preserving surrogate pairs; they do not combine grapheme clusters.
+  visible characters by default through native `Intl.Segmenter`, preserving combined emoji,
+  flags, and accented letters. **Range units** can explicitly select Unicode code points instead.
   The end clips to the text length. A start beyond the end is not found; a valid empty range is
   found. **Regex match** returns the first match; **Regex capture** selects a parenthesized capture,
   with group 0 meaning the first capture. Both accept a connected string `pattern` and optional
@@ -1653,7 +1678,8 @@ network access, or new event model is introduced.
   substitutes `{a}` and other enabled input names in `template`; `{{` and `}}` escape braces.
   Unknown placeholders or malformed braces produce an error.
 - **Text transform:** string `text` and selectable `operation` (`trim`, `lowercase`, `uppercase`)
-  produce transformed `text`, Unicode-code-point `length`, and Boolean `empty`.
+  produce transformed `text`, numeric `length`, and Boolean `empty`. **Character counting**
+  selects visible characters (default) or Unicode code points after transformation.
 - **Text replace:** string `text`, `search`, and `replacement` produce `text` and replacement
   `count`. Settings select literal/regex matching, first/all occurrences, and case sensitivity.
   Literal replacements treat dollar signs literally; an empty literal search leaves text unchanged.
@@ -1679,6 +1705,125 @@ element typing, limits, and flow contract. Scalar Text compose only combines str
 introduce collection-valued signals. These are focused additions after the stage 3 closeout;
 general events remain stage 4.
 
+### Native JSON, date/time, URL inputs, tab navigation, and text segmentation: implemented milestone
+
+This focused addition follows the text-operations milestone without starting general routed events
+or external HTTP/MQTT access. Eight new API v2 built-ins use native JSON, Date, Intl, URL parsing,
+and a narrowly declared host action for internal tab navigation.
+They keep the existing typed scalar graph, synchronous Worker budgets, optional **Show indicators**,
+instance names, and offline HTML runtime. No external dependency or network request is needed.
+
+- **JSON extract** accepts `text` and `pointer`. Empty Pointer selects the root; `/items/0/name`
+  selects the first item's name. JSON Pointer escapes `~` as `~0` and `/` as `~1`. **Result type**
+  selects string, number, boolean, or JSON; the last serializes a JSON value into a string signal.
+  Output `value` has the chosen scalar type. `found` reports existence, and `valid` additionally
+  requires a type match. Wrong-type values give Found true/Valid false; invalid JSON/pointers or
+  missing fields give both false. Invalid values use `''`, `0`, or `false` without coercion.
+- **JSON build** configures 1–8 unique field names and types as one `name:type` per line. Ports
+  display the configured field names while connection IDs remain `field0` onward in that order.
+  A same-slot, same-type rename preserves wiring. Moving/removing lines changes the fields in
+  those slots; type changes can invalidate connections, so these edits require a wiring review.
+  Renaming also changes the emitted JSON key; downstream JSON paths or URL parameter readers
+  that name that key need updating even though the input wire remains intact.
+  String, number, and Boolean fields keep their types; a `json`
+  field takes a string and parses a nested JSON value. Outputs are serialized `text` and `valid`.
+  Malformed nested JSON gives empty text/Valid false. Non-finite parsed numbers are invalid in
+  all three JSON components; oversized serialized output is an error, never a truncated message. Existing
+  string limits apply, so these tools handle bounded scalar messages, not a new bulk-data model.
+- **JSON edit** accepts an original JSON string on `text`, plus 1–8 typed replacement inputs
+  declared as `pointer:type` lines in **Edits** (default `/name:string`). Each field's input label
+  is its JSON Pointer; stable IDs remain `field0` onward in declaration order. It uses the same
+  path escaping and zero-based array rules as JSON extract. A `json` field parses a nested value;
+  `:json` by itself replaces the root. Other parsed fields remain unchanged, but serialization
+  normalizes original whitespace and numeric spelling.
+  Every path must already exist. Missing paths or malformed source/nested JSON produce empty
+  text/Valid false, with no partial result. Duplicate/overlapping paths, invalid declarations,
+  and incompatible field types are configuration errors. All paths are checked before edits;
+  ancestor/descendant targets cannot silently depend on declaration order. Output is bounded to
+  2,000 UTF-16 units, with oversize reported as an error. A same-slot, same-type path change keeps
+  its connection; reordering/removal/type changes require the same wiring review as JSON build.
+- **Date parse** accepts strict ISO dates at midnight UTC or timestamps with an explicit `Z`/
+  UTC offset, producing `timestamp` in Unix milliseconds and `valid`. Ambiguous local forms,
+  implicit timezones, and invalid calendar dates are rejected instead of guessed or rolled over.
+  Invalid values produce timestamp 0/Valid false, distinguishing them from a valid epoch.
+- **Date format** takes `timestamp` and `timezone` (default UTC), publishing `text` and `valid`.
+  Settings choose ISO (UTC), date, time, or date and time. Non-ISO outputs use Gregorian
+  `YYYY-MM-DD` and 24-hour `HH:mm:ss` in the chosen IANA zone; ISO output stays UTC. Invalid dates
+  or zones give empty text/Valid false. Locale-specific display formats remain deferred.
+- **Date difference** takes `start`, `end`, and a selectable `unit` of milliseconds, seconds,
+  minutes, hours, or days, publishing signed `value` and `valid`. It measures elapsed `(end-start)`;
+  a day is exactly 24 hours, not a count of local calendar boundaries. Invalid timestamps give
+  value 0/Valid false. All date tools respect the native Date timestamp range.
+- **URL parameter** reads the host's runtime query environment through an explicit
+  `queryParameters:true` capability. Its `key` (default `name`), zero-based `index` (default 0),
+  and `fallback` inputs produce decoded `value`, Boolean `found`, and matching `count`. Duplicate
+  keys retain URL order; a missing occurrence uses fallback, while a present empty value stays
+  empty and Found true. Normal URL decoding applies, including plus as space. The component
+  enforces 16,000 UTF-16 units and 128 query pairs; a selected value still fits 2,000 UTF-16 units.
+- Query capability exposes only a bounded, read-only query string in `compute`/`transition`
+  context, without path, fragment, DOM, or network access. Editor and reader initialize from their
+  own URL when opened, then update this environment through accepted Go to tab requests. Query
+  values are transient in the query source and are not baked into the HTML's initial frozen SVG
+  or library thumbnails; those snapshots use an empty query. Connected storage components may
+  deliberately retain received values. Reload initializes from the current URL again.
+- Plain and smart HTML readers accept `?page=N` as a zero-based opening-tab index. Missing,
+  invalid, or out-of-range values open the first tab. Tab clicks do not rewrite the URL.
+  For example, `drawing.html?page=1&name=Anna` opens the second tab and supplies the name to
+  any URL parameter instance configured for `name`. This initial selection is independent of
+  subsequent Go to tab requests.
+- **Go to tab** declares numeric `page` (default 0), string `parameters` (default `{}`), Boolean
+  `go` (default false), and no outputs. Its on-component button or a false-to-true Go pulse requests
+  `goToTab`, a host-owned action that samples the target and parameters, then dispatches after
+  graph settlement. The editor follows current workspace order and a reader follows exported order.
+- Parameters are a JSON object of string, finite-number, Boolean, or null values. Scalars replace
+  matching query keys; null removes a key. Nested values are rejected. `page` is reserved and set
+  from the numeric target. Unrelated query parameters and the URL fragment are preserved. JSON
+  fits the 2,000-UTF-16-unit input bound; the resulting query fits 16,000 units and 128 pairs.
+  JSON build can supply Parameters through an ordinary string connection.
+- The host validates target and parameters before changing anything, then uses `history.replaceState`
+  without reloading or adding a history entry. An invalid target/parameters or a browser-denied URL
+  update reports an error and preserves the current tab and runtime query. An accepted update
+  re-evaluates query-aware components on the destination, including same-tab updates; revisited
+  tabs observe the new parameters. The current tab is a no-op only if its query is also unchanged.
+  Ordinary tab-bar clicks do not rewrite the URL, and browser Back/Forward is not the navigation API.
+- Initially high Go, including when revisiting a tab, establishes a baseline and cannot immediately
+  bounce to another tab. **Show button** defaults on; turning it off hides reader visuals/handles
+  for signal-only use while an editor-only outline/caption remains available for selection and
+  configuration. Actions stay within the current document; arbitrary URLs and direct script
+  access to navigation/history remain unavailable.
+- **Visible characters:** Text extract Range and Text transform Length now default to native
+  grapheme segmentation. Both offer an explicit Code points option. Family emoji, flags, and
+  combining accents therefore count and extract as visible units by default. Regex retains its
+  native Unicode semantics, including code-point matching. Text previews/captions and Label/Memo
+  wrapping preserve grapheme boundaries; Memo's optional count measures visible characters.
+  Text input/Memo storage and all string-port limits still count UTF-16 units. If Segmenter is
+  unavailable, calculations report an explicit error with the Code points alternative, while
+  previews avoid slicing clusters and Memo labels its fallback count as UTF-16 units.
+
+The demo workspace now contains **31 tabs**. Tab 29, **JSON messages**, builds typed
+messages, changes amount 10 through a connected JSON edit replacement while preserving name/active,
+and extracts typed and nested fields. Tab 30, **Dates and timezones**, connects strict parsing, timezone formatting,
+and elapsed-duration outputs, including a 23-hour interval across a daylight-saving transition.
+Tab 31, **URL inputs and navigation**, accepts a name and zero-based target from
+`?page=30&name=Anna&target=28`, compares visible-character and code-point lengths (3 versus 11
+for `👩‍👩‍👧‍👦🇩🇪é`), and provides a Go button wired to JSON build to pass `name` and `via` to the JSON tab,
+where separate URL parameter readers and labels display both received values. The JSON workspace
+remains the editable source; the exported HTML uses the same components and its own URL inputs.
+
+Validation for this milestone covers 313 passing Node contract tests, plus focused Chromium and
+WebKit checks for editor/HTML parity, all 31 demo tabs, native data tools, text segmentation,
+navigation and query updates, library previews, dataset actions, and feedback controls. The
+closeout fixed query-cache invalidation during Pause/Step and isolated library thumbnails from
+the editor's query values; the final navigation/query and Pause/Step checks pass in both engines.
+The JSON edit follow-up adds 12 contract tests (24 passing across the three JSON components).
+Its integration checks pass in Chromium and WebKit: seven native-data runtime tests and four
+demo checks per engine, including all 31 tabs, editable path labels, stable wiring, persistence,
+invalid-input recovery, and the standalone HTML example. Bundled source/port parity also passes.
+
+**Deferred:** advanced Math functions and coordinate conversions, further Intl locale-aware
+formatting/comparison/natural sorting, and list/table-producing Split/join. JSON messages remain
+strings; this milestone does not introduce object/list signal types or determine collection semantics.
+
 ### Definition identity and updates
 
 Stage 1 retains snapshot semantics: inline scripts carry API versions and ports without a
@@ -1690,13 +1835,16 @@ versions, and source fingerprints. Each exported document must retain the exact 
 it uses. Library changes should become explicit upgrades with compatible state migrations;
 they must not silently change existing drawings. Source fingerprints identify content, not trust.
 
-## Events and local actions — narrow stage 4 data actions implemented
+## Events and local actions — narrow stage 4 local actions implemented
 
 The implemented Download table control provides a narrow local action from an explicit click.
 Dataset additionally declares a bounded reload trigger for a file chosen in the current session,
 explicit Replace/Append actions for an incoming table, and Capture row declares an append action
 for sampled scalar fields driven by a Boolean edge. Bound dataset cell edits use
-the same host command service. These do not introduce general script effects; routed events and
+the same host command service. Go to tab additionally supports explicit internal tab selection
+through a button or primed rising edge, with bounded scalar query-parameter updates. It does not
+expose arbitrary URL navigation. These do not
+introduce general script effects; routed events and
 other actions remain proposed. An event needs a declared name/payload and a receiving
 contract, such as `onEvent(name, payload, state, io)`. The receiver returns a validated state
 transition and optional further events or action requests. Bound propagation depth and work per
@@ -2022,10 +2170,10 @@ handling are tested separately from broker delivery.
    policies are explicit. Visual wiring distinguishes typed flows from Dataset associations and
    edits the existing bindings; access-permission metadata remains deferred. Coordinated current-record controls and record-wise calculated columns
    remain follow-ups.
-3. **Stage 4 — narrow data actions established:** Explicit host controls download current table
+3. **Stage 4 — narrow local actions established:** Explicit host controls download current table
    results, reload triggers reread a session-selected file, and capture triggers append sampled rows
-   under the rules above. Record controls and Live source synchronization share the same bounded
-   mutation service. Define a supported revision for general event/action envelopes, receiving hooks, dispatch
+   under the rules above. Go to tab selects internal tabs and passes bounded scalar query parameters.
+   Record controls and Live source synchronization share the same bounded mutation service. Define a supported revision for general event/action envelopes, receiving hooks, dispatch
    identity, and propagation limits before adding routed events or further action types.
 4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.

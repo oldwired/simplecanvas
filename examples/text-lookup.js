@@ -51,9 +51,16 @@
     }
     return entries;
   },
+  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.
+  _graphemes(value){
+    const text=String(value);
+    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'
+      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)
+      :text?[text]:[];
+  },
   _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){
     const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;
-    const chars=Array.from(String(value).replace(/\s+/g,' '));let text='',used=0;
+    const chars=this._graphemes(String(value).replace(/\s+/g,' '));let text='',used=0;
     for(let i=0;i<chars.length;i++){
       const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;
       if((used+next+remaining)*size>w){text+='…';break;}
@@ -63,7 +70,7 @@
   },
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
-    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
+    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
     const size=Math.min(13,w/Math.max(1,units(label)),h/1.35);
     return {type:'text',x:0,y:0,w,h,text:label,plainText:true,align:'left',font:'600 '+Math.max(1,size)+'px sans-serif',color:style.textColor||'#334155',strokeOn:false};
   },

@@ -47,7 +47,7 @@ const itemFor=(tab,id)=>workspace.tabs[tab-1].items.find(item=>item.uid===uid(ta
 async function importExample(page,run){
   await run('pendingFileAction="openWorkspace"');
   await page.locator('#projectInput').setInputFiles(workspacePath);
-  await page.waitForFunction(()=>__test.run('tabs.length===28 && tabs[0].name.startsWith("1")'));
+  await page.waitForFunction(()=>__test.run('tabs.length===31 && tabs[0].name.startsWith("1")'));
   assert.deepEqual(await run('tabs.map(tab=>tab.name)'),workspace.tabs.map(tab=>tab.name));
 }
 async function activate(run,tab){
@@ -71,7 +71,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all twenty-eight tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all thirty-one tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -86,7 +86,7 @@ test('shipped workspace imports all twenty-eight tabs with valid local bindings 
     }
     return result;
   })()`);
-  assert.equal(checked.length,28);
+  assert.equal(checked.length,31);
   for(const [index,tab] of checked.entries()){
     assert.match(tab.name,new RegExp('^'+(index+1)+'\\b'));
     assert.ok(tab.count>=3,tab.name+' contains a connected example');
@@ -189,14 +189,14 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has twenty-eight working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has thirty-one working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   try{
-    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),28);
-    for(let tab=1;tab<=28;tab++){
+    await page.goto(pathToFileURL(readerPath).href);assert.equal(await page.locator('.tab-select').count(),31);
+    for(let tab=1;tab<=31;tab++){
       await readerTab(page,tab);
       assert.equal(await page.locator('.tab-panel').nth(tab-1).locator('[data-component-error]').count(),0,'tab '+tab+' starts without unavailable components');
     }
@@ -699,5 +699,54 @@ test('text processing demo retains parsing, formatting, selection, and replaceme
     await readerText(page,28,'result','Total: 012,50 €');await readerText(page,28,'replaced','#1042 / #7');
     assert.equal(await page.locator('.tab-panel').nth(27).locator('[data-component-error]').count(),0);
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('native tools demo imports typed JSON, date/time, URL navigation, and both character modes',async()=>app(async({page,run})=>{
+  await importExample(page,run);await activate(run,29);
+  assert.deepEqual(JSON.parse((await outputs(run,29,'build')).text),{name:'Anna',amount:10,active:true});
+  const edited=await outputs(run,29,'edit');
+  assert.deepEqual(JSON.parse(edited.text),{name:'Anna',amount:42,active:true});
+  assert.equal(edited.valid,true);
+  assert.deepEqual(await outputs(run,29,'extract-name'),{value:'Anna',found:true,valid:true});
+  assert.deepEqual(await outputs(run,29,'extract-amount'),{value:42,found:true,valid:true});
+  assert.deepEqual(await outputs(run,29,'nested-name'),{value:'Ada',found:true,valid:true});
+  assert.equal((await outputs(run,29,'received-name-label')).value,'(no name parameter)');
+  assert.equal((await outputs(run,29,'received-via-label')).value,'(no via parameter)');
+  await activate(run,30);
+  assert.deepEqual(await outputs(run,30,'hours'),{value:23,valid:true});
+  assert.deepEqual(await outputs(run,30,'days'),{value:23/24,valid:true});
+  assert.deepEqual(await outputs(run,30,'format'),{text:'2026-03-30 00:00:00',valid:true});
+  await activate(run,31);
+  assert.equal((await outputs(run,31,'welcome')).value,'Welcome, Guest!');
+  assert.equal((await outputs(run,31,'visible')).length,3);
+  assert.equal((await outputs(run,31,'codepoints')).length,11);
+  assert.deepEqual(JSON.parse((await outputs(run,31,'parameters')).text),{name:'Guest',via:'SimpleCanvas'});
+}));
+
+test('native tools demo opens by URL and passes JSON parameters to the destination offline',async()=>{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  try{
+    await page.goto(pathToFileURL(readerPath).href+'?page=30&name=Anna&target=28');
+    assert.ok(await page.locator('.tab-select').nth(30).evaluate(el=>el.classList.contains('active')));
+    await readerTab(page,31);await readerText(page,31,'welcome','Welcome, Anna!');
+    assert.match(await readerHost(page,31,'visible').textContent(),/Length: 3/);
+    assert.match(await readerHost(page,31,'codepoints').textContent(),/Length: 11/);
+    const item=itemFor(31,'navigate'),host=readerHost(page,31,'navigate');
+    const point=await host.evaluate((host,p)=>{const result=new DOMPoint(p.x,p.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:result.x,y:result.y};},{x:item.w/2,y:59*Math.min(item.w/240,item.h/120)});
+    await page.mouse.click(point.x,point.y);
+    await page.waitForFunction(()=>document.querySelectorAll('.tab-select')[28].classList.contains('active'));
+    await readerText(page,29,'received-name','Anna');
+    await readerText(page,29,'received-name-label','Anna');
+    await readerText(page,29,'received-via','SimpleCanvas');
+    await readerText(page,29,'received-via-label','SimpleCanvas');
+    await readerText(page,29,'extract-name','Anna');
+    await readerText(page,29,'extract-amount','42');
+    assert.match(await readerHost(page,29,'build').textContent(),/"amount":10/);
+    assert.match(await readerHost(page,29,'edit').textContent(),/"amount":42/);
+    assert.equal(new URL(page.url()).searchParams.get('via'),'SimpleCanvas');
+    await readerTab(page,30);await readerText(page,30,'hours','23');await readerText(page,30,'format','2026-03-30 00:00:00');
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });

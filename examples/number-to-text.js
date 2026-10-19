@@ -21,9 +21,16 @@
     if(state.decimalSeparator===',')text=text.replace('.',',');
     return {text};
   },
+  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.
+  _graphemes(value){
+    const text=String(value);
+    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'
+      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)
+      :text?[text]:[];
+  },
   _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){
     const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;
-    const chars=Array.from(String(value).replace(/\s+/g,' '));let text='',used=0;
+    const chars=this._graphemes(String(value).replace(/\s+/g,' '));let text='',used=0;
     for(let i=0;i<chars.length;i++){
       const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;
       if((used+next+remaining)*size>w){text+='…';break;}

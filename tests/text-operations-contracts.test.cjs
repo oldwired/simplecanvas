@@ -74,12 +74,12 @@ test('regex comparison requires the entire input, including trailing line termin
   for(const pattern of ['[','(','\\','a)|(?:b'])assert.throws(()=>compare('ab',pattern,'matches regex'),/Invalid regular expression/,'validate raw pattern before full-match wrapping');
 });
 
-test('range extraction uses Unicode code points and has predictable boundary behavior',()=>{
+test('range extraction has predictable zero-based boundaries in code-point mode',()=>{
   for(const [text,start,length,expected] of [
     ['A😀BC',1,1,{text:'😀',found:true}],['A😀BC',2,2,{text:'BC',found:true}],['A😀BC',1,2000,{text:'😀BC',found:true}],
     ['abc',3,1,{text:'',found:true}],['abc',4,1,{text:'',found:false}],['abc',1,0,{text:'',found:true}],
     ['',0,1,{text:'',found:true}],['',1,0,{text:'',found:false}],['a\u0301',1,1,{text:'\u0301',found:true}]
-  ])assert.deepEqual(extract(text,{start,length}),expected,JSON.stringify([text,start,length]));
+  ])assert.deepEqual(extract(text,{start,length},{characterMode:'code points'}),expected,JSON.stringify([text,start,length]));
   for(const key of ['start','length'])for(const value of [-1,.5,NaN,Infinity,2001,'1',null])assert.throws(()=>extract('abc',{[key]:value}),/whole number from 0 to 2000/);
 });
 

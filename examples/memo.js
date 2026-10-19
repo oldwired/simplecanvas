@@ -6,7 +6,7 @@
     showCounts:{type:'boolean',default:false,label:'Show counts'},
     showHints:{type:'boolean',default:false,label:'Show hints'},
     maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},
-    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum characters'}
+    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}
   },
   inputs:{content:{type:'string',default:''},line:{type:'string',default:''},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false}},
   outputs:{text:{type:'string'},lineCount:{type:'number'}},
@@ -58,18 +58,25 @@
     else if(!edit && next.notice===reduced)next.notice='';
     return {state:next,memory:observed,nextWakeAt:null};
   },
+  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.
+  _graphemes(value){
+    const text=String(value);
+    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'
+      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)
+      :text?[text]:[];
+  },
   _caption(name,fallback,w,h,style){
     const label=(typeof name==='string'?name:'').trim().replace(/\s+/g,' ')||fallback;
-    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
+    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);
     const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);
     let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];
     if(size<Math.min(12,base)){
       size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;
       for(let row=0;row<2 && rest;row++){
-        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}
+        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}
         if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));
         rest=rest.slice(line.length).trim();
-        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}
+        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}
         lines.push(line);
       }
     }
@@ -79,7 +86,7 @@
     const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;
     const room=Math.max(1,width)/size,rows=[];
     for(const block of text.replace(/\t/g,'    ').split('\n')){
-      let chars=Array.from(block);
+      let chars=this._graphemes(block);
       if(!chars.length)rows.push('');
       while(chars.length){
         let length=0,used=0,space=0;
@@ -107,7 +114,8 @@
     if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,width,view.lineHeight,size,'#94a3b8'));
     else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,width,view.lineHeight,size)));
     if(footer){
-      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+stored.text.length+' / '+stored.maxLength+' characters':'';
+      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';
+      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';
       const hint=stored.showHints && view.hidden?'Showing latest text':'';
       const status=notice || [counts,hint].filter(Boolean).join(' · ');
       if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),

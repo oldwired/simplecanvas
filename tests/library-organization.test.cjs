@@ -231,6 +231,36 @@ test('built-ins can belong to several categories without becoming personal copie
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the stored preview and built-in identity survive without new script consent');
 }));
 
+test('bundled category memberships are discoverable, copyable defaults while imported personal memberships take precedence',async()=>app(async({page,run})=>{
+  const defaults={Gauge:['Displays','Numbers'],'Text input':['Controls','Text'],Spreadsheet:['Data','Controls','Numbers']};
+  await browse(page);await page.locator('#libraryCollection').selectOption('builtin');
+  for(const [name,memberships] of Object.entries(defaults)){
+    assert.deepEqual(await run(`effectiveLibraryCategories(builtInShapeLibrary.find(entry=>entry.name===${JSON.stringify(name)}))`),memberships);
+    await page.locator('#librarySearch').fill(name);
+    for(const category of memberships){
+      await filterCategory(page,category);
+      assert.equal(await page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place '+name,exact:true}).count(),1,
+        name+' is found in its bundled '+category+' category');
+    }
+  }
+  const imported=await run(`(()=>{
+    const entry=builtInShapeLibrary.find(entry=>entry.name==='Gauge');
+    const load=(categoryTags,overrides)=>normalizeShapeLibrary({version:2,shapes:[{...clone(entry),categoryTags}],
+      ...(overrides===undefined?{}:{builtinCategoryTags:{[entry.id]:overrides}})});
+    const unchanged=load(entry.categoryTags),uncategorized=load([]),custom=load(['Lab','Displays']),explicitEmpty=load(entry.categoryTags,[]);
+    return {unchanged:unchanged.builtinCategoryTags,
+      canonical:[unchanged,uncategorized,custom,explicitEmpty].every(lib=>builtInShapeEntries.has(lib.shapes[0])),
+      uncategorized:libraryEntryCategories(uncategorized.shapes[0],uncategorized),
+      custom:libraryEntryCategories(custom.shapes[0],custom),
+      explicitEmpty:libraryEntryCategories(explicitEmpty.shapes[0],explicitEmpty)};
+  })()`);
+  assert.deepEqual(imported,{unchanged:{},canonical:true,uncategorized:[],custom:['Lab','Displays'],explicitEmpty:[]},
+    'canonical snapshots retain defaults, imported changes stay personal, and an explicit empty override wins');
+  await run(`copyLibraryEntry(builtInShapeLibrary.find(entry=>entry.name==='Gauge'))`);
+  assert.deepEqual(await run('librarySelectedEntry.categoryTags'),defaults.Gauge,'a personal copy starts with all effective memberships');
+  assert.equal(await run('builtInShapeEntries.has(librarySelectedEntry)'),false);
+}));
+
 test('fixed libraries retain source and category browsing while hiding organization actions',async()=>app(async({page})=>{
   await page.locator('#shapeLibBtn').click();assert.equal(await page.locator('#manageShapesBtn').isVisible(),false);
   await browse(page);assert.equal(await page.locator('#libraryActionsBtn').isVisible(),false);

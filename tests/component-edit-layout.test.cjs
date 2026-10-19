@@ -60,7 +60,7 @@ async function save(page){
 async function layout(page){
   return page.locator('#componentBindingsDialog').evaluate(dialog=>{
     const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
-    const controls=['componentBindingsTitle','componentBindingsCancel','componentBindingsSave'].map(id=>{
+    const controls=['componentBindingsTitle','componentTypeName','componentBindingsCancel','componentBindingsSave'].map(id=>{
       const el=document.getElementById(id),r=rect(el),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
       return {id,...r,visible:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,reachable:el===hit||el.contains(hit)};
     });
@@ -120,8 +120,10 @@ test('separate configuration and input sections preserve draft sources, literals
   await builtins(run,[{key:'constant',componentName:'External number',state:{value:42}},
     {key:'steppedSelectorNumber',componentName:'Original selector',inputValues:{in0:10,in1:20,in2:30,in3:40,pulse:false,reset:false}}]);
   const original=await snapshot(run);await openEdit(page,run,1);
+  assert.equal(await page.locator('#componentTypeName').textContent(),'Stepped switch (number)');
   const name=page.locator('#componentBindingsDialog').getByLabel('Name',{exact:true}),channels=page.getByLabel('Channels',{exact:true});
   await name.fill('Edited selector');
+  assert.equal(await page.locator('#componentTypeName').textContent(),'Stepped switch (number)','instance renaming preserves the component type');
   await page.getByLabel('in0 (number)',{exact:true}).selectOption({label:'External number · value'});
   await page.getByLabel('in1 value',{exact:true}).fill('73');
   await channels.fill('5');await channels.dispatchEvent('change');
@@ -134,6 +136,7 @@ test('separate configuration and input sections preserve draft sources, literals
   await page.locator('#componentBindingsCancel').click();
   assert.deepEqual(await snapshot(run),original,'Cancel drops changes across all sections');
   await openEdit(page,run,1);
+  assert.equal(await page.locator('#componentTypeName').textContent(),'Stepped switch (number)');
   assert.equal(await name.inputValue(),'Original selector');assert.equal(await channels.inputValue(),'4');
   await name.fill('Saved selector');
   await page.getByLabel('in0 (number)',{exact:true}).selectOption({label:'External number · value'});

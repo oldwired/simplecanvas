@@ -186,16 +186,21 @@ Open the expanded library browser with the **Browse** icon: search by name or
 keywords, choose a category, and use the **Source** filter for **Built-in** or **My shapes**.
 **Collapse library** closes the expanded browser and leaves the quick picker available.
 
-| Default category | Examples |
-| --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Toggle, Constant, Trigger |
-| Logic | Boolean gates, Tri-state buffer, Compare, Inverter (×−1), Math, Clamp, Range mapper, Number function, numeric/Boolean selectors, stepped switches, and shift registers |
-| Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Data bar chart, Download table, Text lookup, Text compare, Text extract, Text to number, Number to text, Text compose, Text transform, Text replace, Text selector |
-| Drawing | Rectangle, Ellipse, Arrow, Arc, Minimal, Blank |
+Built-ins can appear in several categories according to their purpose. Numbers and Text bring
+related controls, operations, and displays together; Data covers tables and structured data.
 
-The catalog includes 82 entries, including 73 connected API v2 components. Every smart-shape
+| Category | Examples |
+| --- | --- |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, Constant, Trigger, Download table, Go to tab |
+| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches, registers, latches, counters, and pulse tools |
+| Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric selectors/registers, text/number conversion, Spreadsheet, Table aggregate, Gauge, and charts |
+| Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
+| Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
+| Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
+
+The catalog includes 90 entries, including 81 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -230,6 +235,8 @@ An entry's **Edit categories…** dialog also offers **New category…** while c
 Removing a category removes that membership, while preserving shapes, pins, and other categories.
 Empty categories remain available; entries with no memberships appear under **Uncategorized**.
 Search **Keywords** are separate from category membership.
+Built-in category assignments start from the bundled defaults; your own assignments, including
+removing every category, take precedence and survive reloads and exports.
 
 **Export library…** downloads a self-contained `shapes-library.json`, including the working
 collection, every entry in My shapes, category organization, and the definitions they need.
@@ -286,7 +293,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore twenty-eight connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore thirty-one connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -320,6 +327,9 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Views and stored results | Compare edits through a filtered/sorted view with edits to a stored copy of aggregate results. |
 | Text matching and extraction | Compare strings without case sensitivity, validate a full pattern, and extract a capture or Unicode range. |
 | Text processing and formatting | Clean and parse an amount, format and compose its label, choose an invalid-input fallback, and replace literal or regex matches. |
+| JSON messages | Build a typed JSON message, replace selected values while preserving other fields, and extract typed or nested values. |
+| Date and time | Parse explicit dates/timestamps, format the same instant in different timezones, and calculate elapsed duration. |
+| URL inputs and visible characters | Read a name from the reader URL, compare visible-character/code-point processing, and use a button to open another tab. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -356,7 +366,7 @@ already high when the drawing starts establishes a baseline without erasing the 
 **Content**; Append adds **Line** as a new line; Clear empties it. If several triggers rise together,
 Clear wins over Set, then Append. Outputs are the complete **Text** and **Line count**. An empty memo
 has zero lines; appending an empty line creates one blank line. Limits default to 100 lines and
-2,000 characters; a rejected update leaves the previous contents intact and shows a notice. A long
+2,000 UTF-16 units; a rejected update leaves the previous contents intact and shows a notice. A long
 memo displays its latest lines while its output retains the full text. Text label and Memo display
 incoming text literally. Text label starts as plain text without a frame; Memo uses a compact
 content area. Enable Text label's normal stroke controls to add an outline using the selected
@@ -369,8 +379,9 @@ Choose Equals, Not equals, Starts with, Ends with, Contains, or Matches regex; t
 matching** to ignore case. Matches regex validates the entire input, including any final newline.
 
 **Text extract** publishes **Text** and Boolean **Found**. **Range** takes a zero-based **Start**
-and **Length**; positions count Unicode code points, so a single emoji such as 🚀 stays intact.
-A combining mark or multi-code-point emoji still occupies multiple positions. The end is clipped
+and **Length**. **Range units** defaults to **Visible characters**, keeping combined emoji such as
+👩‍👩‍👧‍👦, flags, and letters with combining accents together. Choose **Code points** for individual
+Unicode code points instead. Both modes are zero-based. The end is clipped
 to the available text; a start beyond the end gives empty text and Found off. A valid zero-length
 range gives empty text and Found on. **Regex match** extracts the first match anywhere in the
 text; **Regex capture** extracts a selected group, with **Capture 0** meaning the first parenthesized
@@ -402,7 +413,8 @@ number. Write `{{` or `}}` for literal braces; unknown placeholders or malformed
 This combines scalar strings; splitting/joining lists or tables remains later work.
 
 **Text transform** trims whitespace or converts text to lowercase or uppercase. It publishes
-the transformed **Text**, its Unicode-code-point **Length**, and Boolean **Empty**.
+the transformed **Text**, its **Length**, and Boolean **Empty**. **Character counting** defaults
+to **Visible characters**; choose **Code points** when that is the unit your connections need.
 **Text replace** replaces the first or all occurrences of literal text or a raw regex pattern,
 with optional case insensitivity. Its outputs are **Text** and replacement **Count**. Literal
 replacement treats dollar signs literally; regex replacement uses JavaScript's `$1` for the first
@@ -413,6 +425,94 @@ zero-based. An empty literal search leaves the text unchanged.
 These components follow the usual **Show indicators** setting and work in offline HTML exports.
 Tab 28, **Text processing and formatting**, connects all five additions and fixed number formatting
 to editable inputs, a validity-driven fallback, and ordinary Text labels.
+
+Text previews, Text label, and Memo also keep visible characters together when wrapping or clipping;
+Memo's optional character count uses the same segmentation. This uses native `Intl.Segmenter`.
+In a browser without it, range extraction/counting in visible-character mode reports an error with
+the option to select Code points. Regex retains JavaScript's Unicode matching rules. Text input,
+Memo, and string-port capacity limits still count UTF-16 units, independently of visible length.
+
+**JSON extract** reads one value from **Text** using a **Pointer**. For example, `/items/0/name`
+selects the first item's name; an empty pointer selects the root. In a key, use `~1` for `/` and
+`~0` for `~`. Choose a **Result type** of String, Number, Boolean, or JSON; JSON returns serialized
+text, including for objects and arrays. **Found** distinguishes an existing field from a missing
+one, while **Valid** also requires the selected type. A wrong type gives Found on and Valid off;
+invalid JSON or a pointer that does not resolve gives both off. Invalid results use empty text,
+`0`, or `false` according to the output type; no automatic coercion is performed.
+
+**JSON build** assembles an object from one to eight named, typed inputs. In **Edit…**, enter one
+field per line, such as `name:string`, `amount:number`, or `active:boolean`. Use `details:json`
+to include parsed JSON as a nested value. Input labels show the configured field names. Their
+connection IDs remain **field0**, **field1**, and so on in line order, so renaming a field without
+moving it or changing its type preserves its connections. Reordering or removing lines changes
+which fields those slots represent; review the wiring after those edits or a type change.
+Renaming changes the emitted JSON key, so update downstream JSON paths or parameter readers
+that refer to its old name.
+Outputs are serialized **Text** and Boolean **Valid**. Invalid nested JSON returns
+empty text and Valid off; oversized output reports an error instead of truncating the message.
+
+**JSON edit** changes selected values in an incoming JSON string while preserving the other
+parsed fields. Configure one to eight `pointer:type` lines, such as `/name:string`,
+`/score:number`, or `/items/0/active:boolean`, and connect the replacement values to their
+path-labelled inputs. Types are String, Number, Boolean, or `json` for a parsed nested value.
+The **Text** input is the original message; outputs are the changed **Text** and **Valid**.
+Every path must already exist: a missing path, malformed input JSON, or invalid nested JSON
+returns empty text and Valid off, without a partial result. Paths must be distinct and cannot
+overlap (for example `/customer` and `/customer/name`). Use `:json` by itself to replace the root.
+Input IDs remain `field0`, `field1`, and so on, so a same-slot, same-type path change keeps its
+wire; review wiring after reordering, removal, or type changes. Changes are serialized with
+`JSON.stringify`, so original whitespace/number spelling is not retained. Oversized output is
+an error instead of a truncated message. Demo tab 29 changes amount 10 to the current replacement
+amount while leaving the original name and active flag intact.
+
+**Date parse** converts an ISO date such as `2026-10-19` to midnight UTC, or a timestamp such as
+`2026-10-19T14:30:00+02:00` to Unix milliseconds. A timestamp must include `Z` or an explicit UTC
+offset. Invalid dates produce **Timestamp** `0` and **Valid** off; ambiguous local date formats
+are not guessed. **Date format** takes that timestamp plus a **Timezone** such as `Europe/Berlin`
+(default `UTC`). Choose Date, Time, Date and time, or ISO (UTC). Date/time output uses Gregorian
+`YYYY-MM-DD` and 24-hour `HH:mm:ss`; ISO always represents UTC. **Date difference** subtracts
+**Start** from **End** and outputs signed **Value** in milliseconds, seconds, minutes, hours, or
+days. A day is exactly 24 hours, not a count of calendar dates crossed. All three have **Valid** outputs.
+
+**URL parameter** lets an exported HTML take inputs from its own URL. Set **Key** to `name` and
+connect **Value** to a Text label; opening `drawing.html?name=Anna` then displays Anna. **Index**
+selects a zero-based occurrence when a key repeats, and **Count** reports the number of matches.
+Missing occurrences use **Fallback** with **Found** off; a present empty value stays empty with
+Found on. Values are decoded using normal URL query rules (`+` means a space). Use separate
+instances for different keys, or connect the value to Text to number, JSON extract, or Date parse.
+The editor and HTML reader initially read their own URL query. A Go to tab action can then update
+that query and immediately refresh connected URL parameters. The query source does not save values into its own state or bake them into the HTML's initial
+SVG or library thumbnails. Connected storage components can deliberately retain received values.
+
+A reader URL can also select its opening tab: `drawing.html?page=1&name=Anna` opens the second
+tab. Tab indexes are zero-based; a missing, invalid, or out-of-range `page` opens the first tab.
+Clicking tabs in the tab bar does not rewrite the URL. To try the demo's final tab, open
+[URL inputs and navigation](examples/smart-components-workspace.html?page=30&name=Anna&target=28).
+**Go to tab** changes tabs and can pass parameters to the destination. Set **Page** to a zero-based
+tab index, then click its **Go** button or connect a false-to-true pulse to **Go**. Connect **JSON
+build · text** to **Parameters**, or enter an object such as `{"name":"Anna","count":3}` directly.
+Parameters defaults to `{}`. String, number, and Boolean values replace matching query keys;
+`null` removes a key. Other query parameters and the URL fragment are preserved. Nested objects
+and arrays are rejected, and `page` is reserved: the host sets it from **Page**.
+
+The editor uses current tab order; an HTML reader uses exported tab order. The host validates the
+target, JSON, and size limits before changing anything. It then replaces the current URL without
+reloading or adding a browser history entry, and updates URL parameter components on the target
+tab. A same-tab request can update parameters too; it is a no-op only if the query is also unchanged.
+Other tabs see the updated parameters when revisited. If the browser refuses the URL update, the
+action reports an error and leaves the current tab and parameters intact. Browser Back/Forward is
+not a component-navigation interface.
+
+A signal already high on opening or revisiting a tab establishes a baseline rather than immediately
+navigating away. Turn off **Show button** for a signal-only component: the HTML reader hides its
+button, while the editor retains an outline/caption for selection and configuration. The action
+stays within the current document; it cannot open an arbitrary URL. The final demo tab reads an
+optional `target` parameter and includes a jump to the JSON example.
+
+Parameters JSON is limited to 2,000 UTF-16 units. The resulting query is bounded to 16,000 units
+and 128 parameter pairs; each selected value still fits the usual 2,000-unit string limit. These JSON, date/time, and URL tools work offline in the
+editor and exported HTML and add no dependencies or network requests. Advanced mathematical
+functions and further locale-aware formatting/comparison remain planned extensions.
 
 **Embedded data** adds Dataset, Table filter, Dataset editor, and Data bar chart to the built-in
 library. Place Dataset, select it, and open **Edit…**. Its **Owned dataset** section selects or creates
@@ -529,7 +629,7 @@ serialized characters; dataset mode uses all selected rows within the existing d
 Switching sources preserves the editable list. The nineteenth tab, **Choices and text lookup**,
 shows a manual list plus a shared dataset driving automatic selection and reverse lookup.
 
-**Spreadsheet** is a small formula sheet in the library's **Controls** category. New sheets start
+**Spreadsheet** is a small formula sheet in the library's **Data**, **Controls**, and **Numbers** categories. New sheets start
 with an empty 6×6 grid. Double-click it in the editor, then click a cell to edit a value or formula.
 Enter saves and finishes; Tab/Shift+Tab saves and moves right/left; clicking away saves; Escape discards the draft. While entering a formula,
 click or drag over cells to insert references. Right-click a cell or header for insertion/deletion,
@@ -714,6 +814,8 @@ use the existing simulation rules.
 Links follow their components and are an editor overlay, not drawing objects. They stay out of
 PNG, SVG, print, and HTML reader views; the saved bindings still work in those documents.
 **Edit…** opens the component inspector for its name, settings, literal values, and connections.
+Its fixed header identifies the component type (for example, **URL parameter**) independently
+of the editable instance name, so renamed components remain recognizable.
 The dialog groups configuration, data inputs, control inputs, and the output preview so that
 mode switches and connections are easier to distinguish. Its body scrolls independently of
 **Save** and **Cancel**, and fields stack on narrow screens.

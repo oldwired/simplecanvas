@@ -339,7 +339,7 @@ notice, and the shared 2,000,000-character snapshot budget.
 Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
 Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
 
-`tests/example-workspace.test.cjs` validates all twenty-eight shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all thirty-one shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
 and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner
@@ -388,3 +388,27 @@ Dataset editing and calculated table checks:
   restored baselines, exact snapshots, failure recovery, chains/cycles, and paused stepping.
 - `tests/dataset-live-browser.test.cjs` checks destination-edit persistence, Undo, actual same-data
   file reload through a Spreadsheet result, and reader refresh/permission behavior.
+
+
+## Native JSON/date, URL navigation, and visible-character text
+
+- `json-components-contracts.test.cjs` and `date-time-contracts.test.cjs` cover typed JSON
+  Pointer extraction/building/editing, invalid values, ISO timestamps, daylight-saving boundaries,
+  elapsed durations, and safe previews. `native-data-runtime.test.cjs` verifies library
+  placement, dynamic Edit controls, real Worker execution and connected offline-reader edits.
+  JSON edit checks cover existing nested paths, stable labelled field ports, atomic invalid results,
+  overlapping paths, preserved fields, and editor/offline export parity.
+- `text-segmentation-contracts.test.cjs` covers grapheme/code-point modes, emoji/combining
+  characters, wrapping and bounded previews. `url-text-runtime.test.cjs` checks both modes
+  through live editor and exported HTML connections.
+- `url-parameter-contracts.test.cjs` covers decoding, repeats, empty/missing parameters,
+  bounds and navigation merge rules. `url-text-runtime.test.cjs` exercises page deep links,
+  query isolation from the authoring URL, JSON-build parameter passing, URL rewriting,
+  same-tab changes and revisited tabs, including `file:` exports without network requests.
+- `tab-navigation-contracts.test.cjs` and `tab-navigation-runtime.test.cjs` cover declared
+  host actions, target validation, sampled pulses, initially high/revisited trigger priming,
+  button navigation and invisible automatic navigation above another clickable control.
+- The workspace suite covers all 31 tabs; tabs 29–31 demonstrate the new workflows and
+  navigate with parameters from the final tab to the JSON example.
+
+Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for Chromium.

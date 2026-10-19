@@ -14,7 +14,7 @@ function compute(name,input={},settings={}){
   return result;
 }
 const compose=(input,settings={})=>compute('text-compose',input,settings);
-const transform=(text,operation='trim')=>compute('text-transform',{text,operation});
+const transform=(text,operation='trim',settings={})=>compute('text-transform',{text,operation},settings);
 const replace=(text,search,replacement,settings={})=>compute('text-replace',{text,search,replacement},settings);
 
 test('new text processors expose typed primitive ports and healthy defaults',()=>{
@@ -59,13 +59,14 @@ test('Text compose templates support bounded literal substitutions, repeated inp
   assert.throws(()=>compose({}, {mode:'eval'}),/composition mode/);
 });
 
-test('Text transform trims or changes case and measures the resulting Unicode code points',()=>{
+test('Text transform trims or changes case and measures the resulting visible characters',()=>{
   assert.deepEqual(transform('  😀A\n'),{text:'😀A',length:2,empty:false});
   assert.deepEqual(transform(' \t\n\u00a0'),{text:'',length:0,empty:true});
   assert.deepEqual(transform('  ABC  ','lowercase'),{text:'  abc  ',length:7,empty:false});
   assert.deepEqual(transform('Straße','uppercase'),{text:'STRASSE',length:7,empty:false});
-  assert.deepEqual(transform('İ','lowercase'),{text:'i\u0307',length:2,empty:false});
-  assert.deepEqual(transform('a\u0301'),{text:'a\u0301',length:2,empty:false},'length counts code points, not grapheme clusters');
+  assert.deepEqual(transform('İ','lowercase'),{text:'i\u0307',length:1,empty:false});
+  assert.deepEqual(transform('a\u0301'),{text:'a\u0301',length:1,empty:false},'default length counts visible characters');
+  assert.deepEqual(transform('a\u0301','trim',{characterMode:'code points'}),{text:'a\u0301',length:2,empty:false});
   assert.deepEqual(transform('ß'.repeat(1000),'uppercase'),{text:'SS'.repeat(1000),length:2000,empty:false});
   assert.throws(()=>transform('ß'.repeat(1001),'uppercase'),/Output exceeds 2000/);
   assert.throws(()=>transform('İ'.repeat(1001),'lowercase'),/Output exceeds 2000/);

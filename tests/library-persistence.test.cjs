@@ -122,6 +122,25 @@ test('a local HTML file restores an imported library and its working collection 
   assert.equal(seedRequests(),0);
 },{local:true}));
 
+test('pinned built-ins retain factory category defaults across reload while explicit empty memberships survive page closure',async()=>app(async({page,run,open})=>{
+  await ready(page);
+  await run(`const gauge=builtInShapeLibrary.find(entry=>entry.name==='Gauge');pinLibraryEntry(gauge);`);
+  await saved(page);
+  const expected=await snapshot(run);
+  assert.deepEqual(expected.library.builtinCategoryTags,{},'pinning does not create a personal membership override');
+  assert.deepEqual(await run(`effectiveLibraryCategories(builtInShapeLibrary.find(entry=>entry.name==='Gauge'))`),['Displays','Numbers']);
+  await page.reload();await run('appStarted');
+  assert.deepEqual(await snapshot(run),expected,'restoring canonical entries must not freeze bundled defaults into overrides');
+  await run(`setLibraryEntryCategories(builtInShapeLibrary.find(entry=>entry.name==='Gauge'),[])`);
+  await saved(page);
+  assert.deepEqual((await savedRecord(page)).library.builtinCategoryTags,{'builtin:gauge:1':[]});
+  await page.close();const reopened=await open();
+  assert.deepEqual(await reopened.run(`effectiveLibraryCategories(builtInShapeLibrary.find(entry=>entry.name==='Gauge'))`),[],
+    'an intentionally uncategorized built-in must not regain its bundled memberships');
+  assert.deepEqual(await reopened.run('shapeLibrary.builtinCategoryTags'),{'builtin:gauge:1':[]});
+  assert.ok((await snapshot(reopened.run)).canonicalPins.every(Boolean));
+}));
+
 test('edited smart source and its regenerated preview restore without executing scripts',async()=>app(async({page,run,open})=>{
   await importLibrary(page,smartLibrary());
   await page.locator('#libraryDialog').waitFor({state:'visible'});

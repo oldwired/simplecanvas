@@ -35,6 +35,11 @@ test('port presentation metadata validates explicit roles and sides without chan
   }
   for(const role of ['',null,1,'signal','trigger'])assert.throws(()=>normalize({value:{type:'boolean',role}}),/role/i);
   for(const side of ['',null,1,'up','centre'])assert.throws(()=>normalize({value:{type:'boolean',side}}),/side/i);
+  for(const direction of ['input','output']){
+    assert.deepEqual(plain(normalize({field0:{type:'string',label:'  Customer name  '}},direction)),
+      {field0:{type:'string',label:'Customer name'}},'labels are separate from stable port keys');
+    for(const label of ['', '  ',null,12,'x'.repeat(101)])assert.throws(()=>normalize({field0:{type:'string',label}},direction),/label/i);
+  }
 });
 
 test('data and control roles affect presentation only and do not restrict same-type wiring',()=>{

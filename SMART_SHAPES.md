@@ -438,7 +438,9 @@ dataActions(state){return {reload:{type:'reloadDataset', input:'data', trigger:'
 ```
 
 At most eight named declarations are allowed; each name follows port-name rules. The supported types
-are `reloadDataset`, `replaceTable`, `appendTable`, `syncTable`, and `appendRow`; `input` must name a table input.
+are `reloadDataset`, `replaceTable`, `appendTable`, `syncTable`, `appendRow`, and `goToTab`.
+Table actions require a table `input`; `goToTab` requires a numeric `input` naming the target tab
+index and can name a string `parameters` input containing a JSON object, as described below.
 Pulse actions name a Boolean `trigger`; `syncTable` instead declares a Boolean `enabled`. Reload has no additional fields; table-copy actions additionally
 name their `source` table input; row capture declares the mapping below. Other fields are rejected.
 This is not a generic script-effects envelope.
@@ -556,6 +558,46 @@ Every completed click or drag creates one undo step only if its final validated 
 from the state at the start of the gesture (compared via `JSON.stringify`). A drag that returns
 to its starting value does not create a no-op undo entry.
 
+### Host-owned tab navigation
+
+API v2 can declare an internal tab action alongside existing data-action metadata:
+
+```js
+inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},
+  go:{role:'control',type:'boolean',default:false}},
+dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},
+// A separately declared action handle enables a direct on-component button:
+// {id:'go',kind:'action',x:w/2,y:h/2,
+//  action:{type:'goToTab',input:'page',parameters:'parameters'}}
+```
+
+A false → true trigger samples the numeric target and parameters and dispatches only after the
+graph settles. The target must be a nonnegative integer within the current tab list. The editor
+uses current workspace order; the reader uses exported order (a single-tab export has only index 0).
+The button acts on an explicit release through the same host checks. Opening or revisiting a tab
+with Go already high establishes its baseline, preventing immediate bounce.
+
+`parameters` names a string input containing at most 2,000 UTF-16 units of JSON object text.
+String, finite-number, and Boolean values replace matching URL query keys; null deletes a key.
+Nested objects/arrays are rejected. The host reserves `page` and sets it from the numeric target;
+parameters cannot override it. Other query keys and the existing fragment are preserved. The
+resulting query must fit 16,000 UTF-16 units and 128 pairs. Ordinary string outputs, including
+selected URL parameter values, retain their 2,000-unit limit.
+
+The host validates target, parameter shape, and bounds before applying the action, then uses
+`history.replaceState` to update the current URL without reloading or adding a history entry.
+A denied URL update reports an error and leaves the current tab and query unchanged. Successful
+navigation updates the runtime query environment and re-evaluates query-aware components on the
+destination; inactive tabs read the updated query when revisited. A same-tab action can therefore
+change parameters and recompute; it is a no-op only when its query is also unchanged.
+
+Neither hook computation nor a script can directly access navigation, history, or the DOM.
+`goToTab` stays within the current document and cannot open arbitrary URLs. Query access through
+`queryParameters:true` remains read-only; this separate host action owns all permitted updates.
+The opening-tab `?page=N` query selects the initial reader tab. Ordinary tab-bar clicks do not
+rewrite the URL, and browser Back/Forward or third-party history changes are not a component
+navigation contract.
+
 ### `contextMenu(state, lx, ly, w, h, style)` (optional)
 
 In editor edit mode, a right-click (Control+click on a Mac) on the shape asks this hook for a
@@ -611,6 +653,12 @@ serialized characters; the bounded derived-table output exception is described b
 supports at most 128 connected components.
 Saved bindings and literal-input maps are each limited to 16,000 serialized characters;
 the input dialog rejects changes that would exceed the save/load contract.
+
+Input and output descriptors may declare an optional `label` (1–100 characters) for presentation
+in Edit, wiring labels/tooltips, connection choices, and library port details. The object key
+remains the port ID used by scripts, saved bindings, and literal values. For example,
+`field0:{type:'string',label:'Customer name'}` can be relabelled without changing its connections.
+Labels are literal text; an omitted label displays the port ID.
 
 Input and output descriptors may also declare `role:'data'` (the default) or `role:'control'`
 for Wiring layout. Data inputs appear on the left and outputs on the right; control inputs
@@ -689,6 +737,23 @@ discards superseded results. Size, style, and presentation refreshes do not reco
 `refreshMs` remains a drawing refresh; connected clock outputs require an explicit transition.
 The built-in Live clock samples wall time in `transition` and publishes that snapshot through
 pure `compute`, keeping its hands, readout, and connected outputs synchronized.
+
+A component may declare top-level `queryParameters:true` to receive the host page's current
+runtime query string in `context.query` during `compute` and `transition`, including a leading
+`?` when present. The runtime initializes this value from its own `location.search` on opening
+and updates it through accepted `goToTab` actions. Query updates re-evaluate declared consumers,
+including on same-tab navigation and when an inactive tab is revisited. The value contains neither
+the path nor fragment and exposes no host DOM or network access. Components without the capability
+do not receive this field. Editor and reader use their own environment independently. Library
+previews and HTML's initial frozen SVG use an empty query, so editor URL values are not baked
+into the exported drawing.
+
+The host retains at most 16,001 UTF-16 units of an opening query as a bounded oversize sentinel;
+the built-in URL parameter rejects more than 16,000 units or 128 decoded pairs. Custom query
+consumers must also validate bounds before producing ordinary typed outputs. Query values are
+transient inputs, not saved component state. Reload initializes from the current URL again.
+This read capability does not authorize a component to navigate or rewrite a URL; only the
+separately declared, validated host navigation action can perform those updates.
 
 The optional API v2 `transition(inputs, state, memory, {now, historical, runtimeId})` hook adds explicit stateful,
 timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
@@ -865,7 +930,11 @@ world-position qualifiers such as `#1 (left)` and `#2 (right)` in the picker. Th
 hints only: instance names and the saved `{uid, port}` binding remain unchanged.
 
 The Edit dialog groups the instance name and configuration separately from data inputs, control
-inputs, and the proposed output preview. Input roles come from the declared `role` metadata;
+inputs, and the proposed output preview. Its fixed header identifies the component separately
+from the editable instance name: an exact built-in script match uses the canonical library name;
+otherwise an unambiguous matching single-component library entry supplies its name. Unrecognized
+or ambiguous scripts show **Custom component**. This display does not create a library dependency.
+Input roles come from the declared `role` metadata;
 Boolean values are not automatically controls. The scrollable body keeps **Save** and **Cancel**
 available, with fields stacked on narrow screens. This presentation does not change port names,
 binding identity, or the paused draft-preview contract.
@@ -1499,6 +1568,12 @@ even though it renders fine on canvas.
 
 ## HTML export behavior
 
+Multi-tab readers accept `?page=N` to select the opening tab, using a zero-based index. Missing,
+invalid, or out-of-range values open the first tab. This applies to plain and smart exports;
+clicking another tab does not change the URL. Additional parameters remain available to declared
+query consumers, for example `drawing.html?page=1&name=Anna`. Query input is read locally and
+works for an exported file opened from disk as well as a hosted HTML document.
+
 An HTML export is one offline file containing the drawing, scripts, saved state, sandbox, and runtime.
 Scripted controls work directly, without double-clicking to enter edit mode. Ordinary shapes and
 smart-shape containers stay fixed by default. There is no unrestricted resizing.
@@ -1667,6 +1742,9 @@ An entry's `categoryTags` string array stores its category memberships; legacy s
 values migrate on import. Top-level `categories` records named tags, including empty categories,
 and `builtinCategoryTags` stores organization overrides for built-in entries. Existing `tags`
 remain search keywords, labelled **Keywords** in the UI. `workingCollection` records pinned entry IDs.
+Built-in definitions supply their own `categoryTags` defaults, including multiple memberships.
+An explicit `builtinCategoryTags` entry takes precedence, including an empty array. Restoring or
+exporting unchanged defaults does not turn them into a personal override.
 Library-entry IDs are separate from the UIDs of canvas items and component bindings. Renaming
 or categorizing an entry therefore does not change a placed component's connections.
 Older flat `{shapes:[...]}` libraries remain readable and initially include every imported
@@ -1777,11 +1855,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 82 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 90 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 73 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 81 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1830,7 +1908,7 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   at most 64 pending entries, also limited by serialized state size; rejected entries leave it intact.
   Submissions made while paused wait for Step/Resume. Restoring, copying, and reopening preserve
   the latest accepted value without replaying stored submission actions. Text settings are
-  `maxLength` (1–2,000; default 2,000), `required` (default false), and `placeholder` (single line,
+  `maxLength` (1–2,000 UTF-16 units; default 2,000), `required` (default false), and `placeholder` (single line,
   at most 120 characters). Whitespace-only entries fail Required. Numeric settings are `min`, `max`,
   and positive `step` (defaults 0, 100, 1); entries must be finite, inside the inclusive bounds, and
   on the step grid anchored at `min`. These inputs reject invalid entries instead of snapping them.
@@ -1854,8 +1932,9 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   `caseSensitive` defaults true. Plain comparisons use ordinary string operations, not regex.
 - [Text extract](examples/text-extract.js): string `text` input and string `text` / Boolean `found`
   outputs. Setting `mode` selects `range`, `regex match`, or `regex capture`. Range declares numeric
-  `start` and `length`, nonnegative integers up to 2,000, counting Unicode code points from zero
-  rather than UTF-16 units or grapheme clusters. It clips at the end; a start beyond the end is
+  `start` and `length`, nonnegative integers up to 2,000. Setting `characterMode` selects
+  `visible characters` (default; grapheme clusters via native `Intl.Segmenter`) or `code points`.
+  Both index from zero. It clips at the end; a start beyond the end is
   not found, while a valid zero-length range is found. Regex modes declare string `pattern` and
   search for the first match; capture mode also declares numeric `group`, where 0 selects the
   first parenthesized capture. Unmatched optional groups return empty text with `found:false`;
@@ -1864,6 +1943,11 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   plus optional `i`. No-match results are ordinary values; invalid patterns produce component
   errors. The shared Worker deadline bounds regex execution in the editor and offline HTML.
   Both have optional `showIndicators` readouts. Tab 27 demonstrates the connected workflow.
+  Range extraction and Text transform require native `Intl.Segmenter` for visible-character
+  calculations. Without it, they report an explicit error advising code-point mode; they never
+  silently change indexing units. Regex keeps native Unicode code-point matching in either mode.
+  Text-component preview clipping/captions and Text label/Memo wrapping preserve whole grapheme
+  clusters. These presentation rules do not change the 2,000-UTF-16-unit string limit or saved state.
 - [Number to text](examples/number-to-text.js): numeric `value` input (default 0) and string `text`
   output. Setting `format` defaults to `full precision`, using `String(value)` with a decimal point,
   exponential notation when needed, and `"0"` for negative zero. `fixed decimals` enables `decimals`
@@ -1880,8 +1964,9 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   such as `{a}`; `{{` and `}}` escape braces. Unknown names and malformed braces are errors.
   This operates on scalar strings, not lists or tables.
 - [Text transform](examples/text-transform.js): string `text` and control `operation` (`trim`,
-  `lowercase`, `uppercase`) produce string `text`, code-point `length`, and Boolean `empty`.
-  Length counts the transformed result, including any expansion caused by case conversion.
+  `lowercase`, `uppercase`) produce string `text`, numeric `length`, and Boolean `empty`.
+  Setting `characterMode` selects `visible characters` (default) or `code points`. Length counts
+  the transformed result, including any expansion caused by case conversion.
 - [Text replace](examples/text-replace.js): string `text`, `search`, and `replacement` produce
   string `text` and numeric `count`. Settings choose `mode` (`literal` or `regex`), `occurrence`
   (`all` or `first`), and `caseSensitive` (default true). Literal replacement preserves dollar
@@ -1895,6 +1980,73 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   output to replace invalid amounts with a message.
   These six components expose optional `showIndicators` readouts and work in offline HTML.
   Tab 28 demonstrates parsing, formatting, composition, selection, and literal/regex replacement.
+- [JSON extract](examples/json-extract.js): string `text` and control `pointer` inputs (defaults
+  `{}` and empty). Setting `resultType` is `string` (default), `number`, `boolean`, or `JSON`;
+  `value` has the selected scalar type, with `JSON` using a string. Boolean `found` reports an
+  existing value and `valid` additionally checks its type. JSON Pointer uses empty for the root,
+  `/items/0` for the first array element, and `~0`/`~1` to escape `~`/`/` in keys. Only own properties
+  are read. Missing values, invalid JSON, invalid pointers, and non-finite parsed numbers return
+  `found:false,valid:false`. A type mismatch returns `found:true,valid:false`. Invalid results use
+  `''`, `0`, or `false` according to the output type. `JSON` mode serializes objects, arrays, null,
+  and other JSON values without adding an object-valued port.
+- [JSON build](examples/json-build.js): `fields` is a multiline string setting with one
+  `name:string|number|boolean|json` declaration per line. There are 1–8 unique field names, each
+  1–100 characters. Dynamic input ports `field0`… follow declaration order and carry each field
+  name as their display `label`. Renaming a field in the same slot with the same type preserves
+  its connection ID; moving/removing lines changes the fields represented by those slots, and a
+  type change can make existing connections incompatible. Review wiring after these schema edits.
+  A rename changes the emitted JSON key; downstream paths and parameter readers must use its new name.
+  `json` fields use string ports and parse nested JSON. Outputs are string `text` and Boolean `valid`. Invalid
+  nested JSON or non-finite parsed numbers produce empty text with `valid:false`. Invalid
+  configuration/types and serialized output over 2,000 UTF-16 units produce errors. Object keys
+  and string values are escaped through native `JSON.stringify`, not template substitution.
+- [JSON edit](examples/json-edit.js): string `text` is the original JSON message. The multiline
+  `fields` setting contains 1–8 `pointer:string|number|boolean|json` declarations; default
+  `/name:string`. Dynamic inputs `field0`… carry their JSON Pointer paths as display labels and
+  use typed replacement values (`json` is a string port parsed as JSON). Each pointer must
+  already resolve to an own property or canonical zero-based array index. Escapes match JSON
+  extract (`~0` for `~`, `~1` for `/`); `:json` alone replaces the root. Duplicate or overlapping
+  paths, malformed declarations, and incompatible input types are configuration errors.
+  All paths are checked before replacements. Missing paths, malformed source/nested JSON,
+  and non-finite parsed numbers return `text:'',valid:false`; no partial result is published.
+  Other parsed fields remain unchanged, while native `JSON.stringify` normalizes formatting.
+  Outputs are string `text` and Boolean `valid`; output exceeding 2,000 UTF-16 units is an error.
+  Same-slot, same-type path changes retain connection IDs. Reordering/removing declarations or
+  changing types requires reviewing the wiring, just as for JSON build.
+- [Date parse](examples/date-parse.js): string `text` produces numeric `timestamp` (Unix
+  milliseconds) and Boolean `valid`. Accepts ISO dates at midnight UTC or timestamps with `T`
+  and an explicit `Z`/`±HH:mm` offset; seconds are optional and fractional seconds have 1–3 digits.
+  Calendar rollovers, leap seconds, implicit local time, whitespace, and locale-specific forms
+  are rejected. An invalid value returns `timestamp:0,valid:false`.
+- [Date format](examples/date-format.js): numeric `timestamp` (default 0) and string control
+  `timezone` (default `UTC`) produce string `text` and Boolean `valid`. Setting `format` selects
+  `ISO (UTC)`, `date`, `time`, or `date and time` (default). ISO uses UTC; the other formats use
+  Gregorian date parts and Latin digits in the selected IANA timezone, rendering `YYYY-MM-DD`
+  and/or 24-hour `HH:mm:ss`. Years outside 0000–9999 use signed six-digit ISO year notation.
+  Invalid dates or timezones return empty text with `valid:false`.
+- [Date difference](examples/date-difference.js): numeric `start` and `end` Unix milliseconds,
+  plus string control `unit` (`milliseconds`, `seconds`, `minutes`, `hours`, `days`; default
+  `seconds`) produce signed numeric `value` and Boolean `valid`. Computes `(end-start)/unit`;
+  days are fixed 86,400,000-ms durations, not local calendar-day boundaries. Invalid timestamps
+  return `value:0,valid:false`. Date tools use the native Date range ±8,640,000,000,000,000 ms.
+- [Go to tab](examples/go-to-tab.js): numeric `page` (default 0), string `parameters` (JSON object,
+  default `{}`), and Boolean control `go` (default false), with no outputs. A Go button or primed
+  rising edge requests the host-owned `goToTab` action. Parameters merge scalar query values or
+  delete keys with null; `page` is reserved for the target index. Query-aware components refresh
+  after successful navigation, including parameter updates on the same tab. `showButton` defaults
+  true; false hides reader visuals/handles while an editor-only outline/caption remains selectable.
+  The Go input still works. `showIndicators` optionally shows the zero-based target. Invalid targets,
+  parameters, or URL updates produce a host notice without navigating. Editor and reader use their
+  respective tab order, with no arbitrary URL access.
+- [URL parameter](examples/url-parameter.js): opts into `queryParameters:true`. String control
+  `key` (default `name`), numeric control `index` (0–127, default 0), and string `fallback`
+  (default empty) produce string `value`, Boolean `found`, and numeric `count`. Native
+  `URLSearchParams` decodes the host's runtime query; matching duplicate keys preserve URL order.
+  `count` is the number of matches and `index` chooses one. A missing occurrence returns fallback
+  with `found:false`; a present empty value returns `''` with `found:true`. Query size is bounded
+  to 16,000 UTF-16 units and 128 pairs; selected values retain the 2,000-unit string-port bound.
+  These eight additions expose optional `showIndicators`, use native engines without dependencies,
+  and work in offline HTML. Demo tabs 29–31 cover JSON, date/time, URL input, and segmentation.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with
@@ -1908,11 +2060,13 @@ The built-in catalog includes 73 API v2 components, with editable sources in `ex
   Set replaces the buffer; Append inserts a separating newline only after an existing logical line;
   Clear produces empty text and zero lines. Appending an empty string creates a blank line, so empty
   `text` may have `lineCount:1`. CRLF and lone CR normalize to LF. `maxLines` is 1–1,000 (default 100)
-  and `maxLength` is 1–2,000 (default 2,000). Updates exceeding either limit or the 4,000-character
+  and `maxLength` is 1–2,000 UTF-16 units (default 2,000). Updates exceeding either limit or the 4,000-character
   serialized-state budget retain the complete previous buffer and show a notice. Lowering a limit
   never truncates stored content. The preview shows the latest wrapped lines, and the full string
   remains available from `text`. The compact text area uses the available height; optional Boolean
-  `showCounts` and `showHints` (both false) add line/character counts and empty/truncated-text guidance.
+  `showCounts` and `showHints` (both false) add line/visible-character counts and empty/truncated-text
+  guidance. The character count uses grapheme segmentation, separately from the storage limit;
+  an older browser without `Intl.Segmenter` explicitly labels a UTF-16-unit count instead.
   Rejected-update notices and input errors stay visible when those options are off.
 - [Seven-segment display](examples/seven-segment-display.js): authoring Input mode selects
   `number` (default) or `segments`. Number mode requires integer `value` in 0–9; segments mode
