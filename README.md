@@ -105,6 +105,11 @@ a portable backup of it.
 Closing a tab deletes its contents from the workspace; save a file first if you want to keep it.
 The app asks before closing a tab that contains objects.
 
+When tabs overflow, arrow buttons scroll the bar and faded edges indicate hidden tabs.
+**All tabs** lists their full names and lets you jump directly to a drawing. With a tab focused,
+**Left/Right** switches tabs and **Home/End** selects the first/last tab. The active tab is brought
+into view when selected. These controls also work in exported HTML and hide when all tabs fit.
+
 Working drawings stay in memory when browser storage is full or unavailable. A persistent warning
 offers **Save workspace…** if automatic saving fails; save the file before leaving the page.
 Library changes are saved separately in this browser, including the Working collection and

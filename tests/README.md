@@ -107,6 +107,10 @@ events; anchoring, snapped angles, and vector scale keep their strict numerical 
 Toolbar checks cover table and mixed-selection font edits, Undo/Redo and file persistence;
 exclusive popovers; custom-color panel cleanup; and file-menu keyboard focus and accessibility state.
 
+`tests/tabbar-overflow.test.cjs` covers tab scrolling controls and edge fades, responsive overflow,
+full names in All tabs, keyboard navigation and focus after tab changes, and active-tab visibility.
+It exercises the editor and actual offline HTML downloads, including live-component activation.
+
 Library browser regressions in `tests/library-browser.test.cjs` exercise direct placement from the
 expanded catalog, inert browsing, pin membership and format 2 export/import, legacy libraries,
 metadata edits, preserved built-in snapshots, and authoring-disabled placements. They build the

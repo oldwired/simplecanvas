@@ -48,27 +48,6 @@
   #arrangeSep{margin-left:9px}
   .sep.row-edge{display:none}   /* set by tidySeps(): a separator with nothing beside it on its row */
 
-  /* ---------- Tab bar ---------- */
-  .tabbar{
-    flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:4px 6px;
-    background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto;
-  }
-  .tabbar[hidden]{display:none}
-  .tabbar-scroll{display:flex;align-items:center;gap:2px;overflow-x:auto;flex:1 1 auto;min-width:0}
-  .tab{display:flex;align-items:center;gap:0;border-radius:8px;padding:2px}
-  .tab-select{
-    -webkit-appearance:none;appearance:none;border:1px solid transparent;background:transparent;
-    height:28px;padding:0 4px 0 8px;border-radius:6px;font-size:14px;font-weight:550;color:var(--ink);
-    cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;
-  }
-  .tab-select:hover{background:#f3f4f6}
-  .tab-select.active{background:var(--accent-soft);color:var(--accent)}
-  .tab-close{
-    -webkit-appearance:none;appearance:none;border:none;background:transparent;
-    width:24px;height:24px;margin-right:2px;border-radius:5px;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;
-  }
-  .tab-close:hover{background:#fef2f2;color:var(--danger)}
-
   .btn{
     -webkit-appearance:none;appearance:none;
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
@@ -543,6 +522,57 @@
     .wrap{box-shadow:none;border-radius:0;background:#fff}
   }
 </style>
+<!-- Shared with standalone HTML exports. Keep the tab bar usable without canvas styles. -->
+<style id="workspaceTabStyles">
+  .tabbar{
+    position:relative;z-index:8;flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:4px 6px;
+    min-width:0;box-sizing:border-box;background:var(--panel,#fff);border-bottom:1px solid var(--line,#e5e7eb);
+  }
+  .tabbar[hidden],.tabbar [hidden]{display:none !important}
+  .tabbar-viewport{position:relative;flex:1 1 auto;min-width:0;overflow:hidden}
+  .tabbar-scroll{display:flex;align-items:center;gap:2px;overflow-x:auto;min-width:0;touch-action:pan-x}
+  .tabbar-viewport:before,.tabbar-viewport:after{content:'';position:absolute;z-index:1;top:0;bottom:0;width:18px;pointer-events:none;opacity:0}
+  .tabbar-viewport:before{left:0;background:linear-gradient(to right,var(--panel,#fff),transparent)}
+  .tabbar-viewport:after{right:0;background:linear-gradient(to left,var(--panel,#fff),transparent)}
+  .tabbar-viewport.has-before:before,.tabbar-viewport.has-after:after{opacity:1}
+  .tab{display:flex;flex:0 0 auto;align-items:center;gap:0;border-radius:8px;padding:2px}
+  .tab-select{
+    -webkit-appearance:none;appearance:none;border:1px solid transparent;background:transparent;
+    height:28px;padding:0 4px 0 8px;border-radius:6px;font-size:14px;font-weight:550;color:var(--ink,#1f2937);
+    cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;
+  }
+  .tabbar-scroll>.tab-select{flex:0 0 auto;min-width:100px;padding:0 10px}
+  .tab-select:hover,.tab-scroll-prev:not(:disabled):hover,.tab-scroll-next:not(:disabled):hover,.tab-list-toggle:hover{background:#f3f4f6}
+  .tab-select.active{background:var(--accent-soft,#eef2ff);color:var(--accent,#6366f1)}
+  .tab-close{
+    -webkit-appearance:none;appearance:none;border:none;background:transparent;
+    width:24px;height:24px;margin-right:2px;border-radius:5px;font-size:20px;line-height:1;color:var(--muted,#6b7280);cursor:pointer;
+  }
+  .tab-close:hover{background:#fef2f2;color:var(--danger,#ef4444)}
+  .tab-scroll-prev,.tab-scroll-next,.tab-list-toggle{
+    flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+    appearance:none;border:1px solid transparent;border-radius:6px;height:32px;min-width:32px;padding:0 6px;
+    background:transparent;color:var(--ink,#1f2937);font:550 13px system-ui;cursor:pointer;touch-action:manipulation;
+  }
+  .tab-scroll-prev:disabled,.tab-scroll-next:disabled{opacity:.3;cursor:default}
+  .tabbar svg{width:18px;height:18px;flex:none}
+  .tabbar button:focus-visible{outline:2px solid var(--accent,#6366f1);outline-offset:-2px}
+  .tab-list-toggle[aria-expanded=true]{background:var(--accent-soft,#eef2ff);color:var(--accent,#6366f1)}
+  .tab-list-menu{
+    position:absolute;top:calc(100% + 4px);right:6px;width:340px;max-width:calc(100vw - 12px);
+    box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:4px;
+    background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);border-radius:8px;box-shadow:0 8px 24px #10203026;
+  }
+  .tab-list-item{
+    display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px;border:0;border-radius:5px;background:transparent;
+    color:var(--ink,#1f2937);font:14px/1.4 system-ui;text-align:left;overflow-wrap:anywhere;cursor:pointer;
+  }
+  .tab-list-item:before{content:'';flex:none;width:16px}
+  .tab-list-item[aria-checked=true]:before{content:'\2713'}
+  .tab-list-item[aria-checked=true]{color:var(--accent,#6366f1);background:var(--accent-soft,#eef2ff)}
+  .tab-list-item:hover{background:#f3f4f6}
+  @media(max-width:400px){.tab-list-toggle>span{display:none}}
+</style>
 </head>
 <body inert>
 
@@ -860,8 +890,8 @@
 
 </header>
 
-<div class="tabbar" id="tabbar" role="tablist" aria-label="Open sketches" hidden>
-  <div class="tabbar-scroll" id="tabbarScroll"></div>
+<div class="tabbar" id="tabbar" hidden>
+  <div class="tabbar-scroll" id="tabbarScroll" role="tablist" aria-label="Open sketches"></div>
 </div>
 
 <div class="stage">
@@ -10880,6 +10910,128 @@ self.onmessage = function(e){
     return `(${htmlSmartRuntime.toString().replace('/* shared smart runtime */',()=>source)})(${data});`.replace(/<\/script/gi,'<\\/script');
   }
 
+  // Self-contained so the editor and offline export share overflow and keyboard behavior.
+  // Activation goes through the actual tab button, including the reader's smart-runtime listener.
+  function setupWorkspaceTabBar(bar){
+    const strip=bar.querySelector('.tabbar-scroll');
+    const viewport=document.createElement('div');viewport.className='tabbar-viewport';
+    strip.before(viewport);viewport.append(strip);
+    const button=(className,label,path)=>{
+      const node=document.createElement('button');node.type='button';node.className=className;
+      node.title=label;node.setAttribute('aria-label',label);
+      node.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="'+path+'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      return node;
+    };
+    const prev=button('tab-scroll-prev','Scroll tabs left','m14 6-6 6 6 6');
+    const next=button('tab-scroll-next','Scroll tabs right','m10 6 6 6-6 6');
+    const toggle=button('tab-list-toggle','All tabs','M4 6h16M4 12h9M4 18h9m3-3 3 3 3-3');
+    const label=document.createElement('span');label.textContent='All tabs';toggle.prepend(label);
+    toggle.setAttribute('aria-haspopup','menu');toggle.setAttribute('aria-expanded','false');
+    const menu=document.createElement('div');menu.className='tab-list-menu';menu.hidden=true;
+    menu.id=(bar.id||'workspaceTabs')+'Menu';toggle.setAttribute('aria-controls',menu.id);
+    menu.setAttribute('role','menu');menu.setAttribute('aria-label','All tabs');
+    bar.prepend(prev);bar.append(next,toggle,menu);
+    const tabButtons=()=>Array.from(strip.querySelectorAll('.tab-select'));
+    const activeButton=()=>strip.querySelector('.tab-select.active');
+    const focus=node=>node?.focus({preventScroll:true});
+    function closeMenu(restoreFocus=false){
+      menu.hidden=true;toggle.setAttribute('aria-expanded','false');
+      if(restoreFocus)focus(toggle.hidden?activeButton():toggle);
+    }
+    function updateEdges(){
+      const before=strip.scrollLeft>1,after=strip.scrollWidth-strip.clientWidth-strip.scrollLeft>1;
+      prev.disabled=!before;next.disabled=!after;
+      viewport.classList.toggle('has-before',before);
+      viewport.classList.toggle('has-after',after);
+    }
+    function reveal(node=activeButton()){
+      if(!node || bar.hidden)return;
+      const tab=node.closest('.tab')||node,rect=tab.getBoundingClientRect(),view=strip.getBoundingClientRect();
+      // Only move the strip; scrollIntoView would also move the exported drawing's page.
+      let left=strip.scrollLeft;
+      if(rect.left<view.left)left-=view.left-rect.left;
+      else if(rect.right>view.right)left+=rect.right-view.right;
+      // Cancel an arrow's in-flight smooth scroll even if this tab is already visible.
+      // Otherwise that animation can carry the newly selected tab out of view again.
+      strip.scrollTo({left,behavior:'instant'});
+      updateEdges();
+    }
+    function fillMenu(){
+      const focused=menu.contains(document.activeElement)?document.activeElement.dataset.tabId:null;
+      menu.replaceChildren();
+      for(const tab of tabButtons()){
+        const item=document.createElement('button');item.type='button';item.className='tab-list-item';
+        item.dataset.tabId=tab.dataset.tabId;item.textContent=tab.textContent;item.tabIndex=-1;
+        item.setAttribute('role','menuitemradio');item.setAttribute('aria-checked',String(tab.classList.contains('active')));
+        item.addEventListener('click',()=>{closeMenu();tab.click();focus(activeButton());reveal();});
+        menu.append(item);
+        if(item.dataset.tabId===focused)focus(item);
+      }
+      menu.style.maxHeight=Math.max(60,window.innerHeight-bar.getBoundingClientRect().bottom-12)+'px';
+    }
+    function refresh(showActive=false){
+      const buttons=tabButtons();
+      for(const tab of buttons){
+        const selected=tab.classList.contains('active');
+        tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;
+      }
+      // Measure against the full bar, not the space left by the controls themselves;
+      // otherwise controls can keep a previously overflowing strip permanently cramped.
+      const style=getComputedStyle(bar),gap=parseFloat(getComputedStyle(strip).columnGap)||0;
+      const width=Array.from(strip.children).reduce((sum,node)=>sum+node.getBoundingClientRect().width,0)+Math.max(0,strip.children.length-1)*gap;
+      const available=bar.clientWidth-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0);
+      const overflow=!bar.hidden && width>available+1;
+      const controlsFocused=[prev,next,toggle].includes(document.activeElement)||menu.contains(document.activeElement);
+      prev.hidden=next.hidden=toggle.hidden=!overflow;bar.dataset.overflow=String(overflow);
+      if(!overflow){closeMenu();strip.scrollLeft=0;if(controlsFocused)focus(activeButton());}
+      else if(!menu.hidden)fillMenu();
+      if(showActive)reveal();
+      updateEdges();
+    }
+    function openMenu(){
+      fillMenu();menu.hidden=false;toggle.setAttribute('aria-expanded','true');
+      const selected=menu.querySelector('[aria-checked="true"]')||menu.firstElementChild;
+      focus(selected);selected?.scrollIntoView({block:'nearest'});
+    }
+    function scroll(direction){
+      strip.scrollBy({left:direction*Math.max(120,strip.clientWidth*.8),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+    }
+    prev.addEventListener('click',()=>scroll(-1));next.addEventListener('click',()=>scroll(1));
+    strip.addEventListener('scroll',updateEdges,{passive:true});
+    strip.addEventListener('click',event=>{if(event.target.closest('.tab-select')){closeMenu();refresh(true);}});
+    strip.addEventListener('keydown',event=>{
+      if(!event.target.matches('.tab-select') || event.ctrlKey || event.metaKey || event.altKey)return;
+      const buttons=tabButtons(),index=buttons.indexOf(event.target);let target;
+      if(event.key==='ArrowLeft')target=buttons[(index+buttons.length-1)%buttons.length];
+      else if(event.key==='ArrowRight')target=buttons[(index+1)%buttons.length];
+      else if(event.key==='Home')target=buttons[0];
+      else if(event.key==='End')target=buttons[buttons.length-1];
+      if(target){event.preventDefault();event.stopPropagation();target.click();focus(activeButton());reveal();}
+    });
+    toggle.addEventListener('click',()=>menu.hidden?openMenu():closeMenu(true));
+    toggle.addEventListener('keydown',event=>{
+      if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();event.stopPropagation();openMenu();}
+      else if(event.key==='Escape'&&!menu.hidden){event.preventDefault();event.stopPropagation();closeMenu(true);}
+    });
+    menu.addEventListener('keydown',event=>{
+      event.stopPropagation();
+      const entries=Array.from(menu.children),index=entries.indexOf(document.activeElement);let target;
+      if(event.key==='ArrowDown')target=entries[(index+1)%entries.length];
+      else if(event.key==='ArrowUp')target=entries[(index+entries.length-1)%entries.length];
+      else if(event.key==='Home')target=entries[0];
+      else if(event.key==='End')target=entries[entries.length-1];
+      else if(event.key==='Escape'){event.preventDefault();closeMenu(true);}
+      else if(event.key==='Tab')closeMenu(true);
+      if(target){event.preventDefault();focus(target);target.scrollIntoView({block:'nearest'});}
+    });
+    document.addEventListener('pointerdown',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!toggle.contains(event.target))closeMenu();});
+    document.addEventListener('focusin',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!toggle.contains(event.target))closeMenu();});
+    new ResizeObserver(()=>refresh(true)).observe(bar);
+    window.addEventListener('resize',()=>refresh(true));
+    refresh(true);
+    return {refresh};
+  }
+
   // With workspace controls enabled, exports every tab, each as its own full-canvas
   // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
   // (click to switch, without renaming or closing). Smart shapes retain their scripted controls.
@@ -10906,14 +11058,10 @@ self.onmessage = function(e){
       // A single sketch needs no tab bar. Its SVG also provides the no-JavaScript fallback.
       html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${tabData[0].svg}</body></html>`;
     } else {
-      const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-      .tabbar{display:flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border-bottom:1px solid #e5e7eb;overflow-x:auto}
-      .tab-select{appearance:none;border:1px solid transparent;background:transparent;height:28px;padding:0 10px;border-radius:6px;font-size:14px;font-weight:550;color:#1f2937;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:100px;max-width:140px;flex-shrink:0}
-      .tab-select:hover{background:#f3f4f6}
-      .tab-select.active{background:#eef2ff;color:#6366f1}`;
-      const bar = `<div class="tabbar">${tabData.map((t,i)=>
-        `<button type="button" class="tab-select${i===0?' active':''}" data-tab-id="${escXml(t.id)}">${escXml(t.name)}</button>`
-      ).join('')}</div>`;
+      const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}\n${document.getElementById('workspaceTabStyles').textContent}`;
+      const bar = `<div class="tabbar"><div class="tabbar-scroll" role="tablist" aria-label="Open sketches">${tabData.map((t,i)=>
+        `<button type="button" role="tab" aria-selected="${i===0}" tabindex="${i===0?0:-1}" class="tab-select${i===0?' active':''}" data-tab-id="${escXml(t.id)}" title="${escXml(t.name)}">${escXml(t.name)}</button>`
+      ).join('')}</div></div>`;
       const panels = tabData.map((t,i)=>
         `<div class="tab-panel" data-tab-id="${escXml(t.id)}"${i===0?'':' style="display:none"'}>${t.svg}</div>`
       ).join('');
@@ -10923,8 +11071,8 @@ self.onmessage = function(e){
           document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display = (p.dataset.tabId===id ? '' : 'none'); });
           document.querySelectorAll('.tab-select').forEach(function(b){ b.classList.toggle('active', b===btn); });
         });
-      });`;
-      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
+      });\n(${setupWorkspaceTabBar.toString()})(document.querySelector('.tabbar'));`;
+      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
     }
     if(tabData.some(t=>t.items.some(it=>it.type==='smart'))){
       const data=tabData.map(t=>({id:t.id,datasets:t.datasets,shapes:t.items.flatMap((item,index)=>item.type==='smart'?[{index,item}]:[])}));
@@ -19001,6 +19149,7 @@ self.onmessage = function(e){
   // ---------- tabs (multiple independent documents) ----------
   const tabbar = document.getElementById('tabbar');
   const tabbarScroll = document.getElementById('tabbarScroll');
+  const workspaceTabBar = setupWorkspaceTabBar(tabbar);
 
   function saveTabList(){
     tabListDirty = true;
@@ -19117,25 +19266,29 @@ self.onmessage = function(e){
   }
 
   function renderTabs(){
+    const restoreFocus=!!document.activeElement?.closest('.tab');
     tabbar.hidden = !features.workspace || tabs.length < 2;
     tabbarScroll.innerHTML = '';
     for(const tab of tabs){
       const row = document.createElement('div');
-      row.className = 'tab'; row.setAttribute('role','tab'); row.dataset.tabId = tab.id;
-      row.setAttribute('aria-selected', tab.id===activeTabId ? 'true' : 'false');
+      row.className = 'tab'; row.setAttribute('role','presentation'); row.dataset.tabId = tab.id;
       const selectBtn = document.createElement('button');
       selectBtn.type = 'button'; selectBtn.className = 'tab-select' + (tab.id===activeTabId ? ' active' : '');
+      selectBtn.dataset.tabId=tab.id;
       selectBtn.textContent = tab.name; selectBtn.title = tab.name;
       selectBtn.addEventListener('click', ()=>activateTab(tab.id));
       selectBtn.addEventListener('dblclick', ()=>renameTab(tab.id));
       const closeBtn = document.createElement('button');
       closeBtn.type = 'button'; closeBtn.className = 'tab-close';
       closeBtn.setAttribute('aria-label', 'Close '+tab.name+' tab');
+      closeBtn.tabIndex=tab.id===activeTabId?0:-1;
       closeBtn.textContent = '×';
       closeBtn.addEventListener('click', e=>{ e.stopPropagation(); closeTab(tab.id); });
       row.append(selectBtn, closeBtn);
       tabbarScroll.appendChild(row);
     }
+    workspaceTabBar.refresh(true);
+    if(restoreFocus&&!tabbar.hidden)tabbarScroll.querySelector('.tab-select.active')?.focus({preventScroll:true});
     resize();   // the tab bar's own height may have changed (shown/hidden, wrapped, grew/shrank) — re-measure the stage
   }
 
