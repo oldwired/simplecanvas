@@ -94,7 +94,7 @@ test('offline exported buttons navigate and report invalid targets without leavi
   const invalid=await openReader(page,run,context);
   await invalid.reader.waitForFunction(()=>document.querySelector('[data-smart-index="0"]').textContent.includes('Go to tab 42'));
   await readerClick(invalid.reader,0,120,59);
-  await invalid.reader.waitForFunction(()=>document.querySelector('[data-data-action-error]')?.textContent.includes('Choose a tab index from 0 to 1'));
+  await invalid.reader.waitForFunction(()=>document.querySelector('[data-component-event-error]')?.textContent.includes('Choose a tab index from 0 to 1'));
   assert.equal(await invalid.reader.locator('.tab-select.active').getAttribute('data-tab-id'),'nav-a');
   assert.deepEqual(invalid.errors,[]);assert.deepEqual(invalid.requests,[]);
 }));

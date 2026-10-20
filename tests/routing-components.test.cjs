@@ -50,7 +50,7 @@ for(const type of ['number','boolean']){
       assert.deepEqual(plain(component.settings),{channels:{type:'number',default:4,min:2,max:16,step:1,label:'Channels'}});
       for(const channels of [2,4,16]){
         const state={...component.initState(),channels,configuredChannels:channels},inputPorts=component.inputs(state),outputPorts=component.outputs(state);
-        assert.equal(Object.keys(inputPorts).length,isDistributor?3:channels+2);
+        assert.equal(Object.keys(inputPorts).length,isDistributor?3:channels+3);
         assert.equal(Object.keys(outputPorts).length,isDistributor?channels+1:2);
         for(let i=0;i<channels;i++){
           const port=isDistributor?outputPorts['out'+i]:inputPorts['in'+i];

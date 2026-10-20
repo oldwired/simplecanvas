@@ -20,8 +20,9 @@ Stage 4 adds typed submissions from Text/Number input and Memo event receivers a
 existing signals, with shared origins to recombine related branches. Event wiring now exposes
 reception modes, recent activity, and captured payloads. Dropdown and scalar selectors support
 explicit occurrences, and signal/event adapters and completion notifications extend the workflow.
-Shared host-action dispatch, the remaining stage 5
-reader workflow, and stage 6 integrations remain proposals.
+Shared host-action dispatch and workspace execution are delivered as the current stage 4 increment,
+with final verification and stage closeout pending. The remaining stage 5 reader workflow and stage 6 integrations
+remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -223,7 +224,7 @@ Share runtime helpers between editor and export throughout.
 | 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
 | 3T. Text operations — implemented on branch | Native regex comparison/extraction; strict Text to number; formatted Number to text; Text compose, transform, replace, and selector | Connected text/status displays respond in the editor and offline HTML; invalid numeric input has an explicit validity output; errors and Worker deadlines remain visible and bounded. |
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
-| 4. Events and local outputs — event workflow implemented; shared actions proposed | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes enabled reception, activity, and the latest payload. Existing signals and narrow host actions remain available. | Repeated equal submissions stay distinct; related branches recombine once. Selected data events forward deliberately; current-value refreshes do not invent events. Completion and adapter behavior respects simulation lifecycle, with no restoration replay. Editor/HTML state and connections roundtrip. Shared host-action dispatch remains open. |
+| 4. Events and local outputs — workspace/action increment pending closeout | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes enabled reception, activity, and the latest payload. Existing signals and narrow host actions remain available. | Repeated equal submissions stay distinct; related branches recombine once. Selected data events forward deliberately; current-value refreshes do not invent events. Completion and adapter behavior respects simulation lifecycle, with no restoration replay. Editor/HTML state and connections roundtrip. Workspace-aware host-action dispatch and lifecycle acceptance remain in progress. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -314,13 +315,13 @@ only under Logic; data-backed charts and grids also appear under Displays.
 
 | Category | Built-in examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, numeric Constant, Trigger, Download table, Go to tab, Page settings |
-| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches/distributors, registers, latches, counters, and pulse tools |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, numeric Constant, Trigger, Download table, Go to tab, Sketch settings, Workspace settings |
+| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches/distributors, registers, latches, counters, pulse tools, Publish, Receive |
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric routing/storage, text/number conversion, Spreadsheet, Table aggregate, numeric displays, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, clocks, Stopwatch, Timer |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Page settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -343,7 +344,8 @@ Text to number, Text compose, Text transform, Text replace, and Text selector br
 82 entries / 73 API v2 components. JSON extract, JSON build, Date parse, Date format, Date difference,
 URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
 catalog to 90 entries / 81 API v2 components. Page settings brings it to 91 entries / 82 API v2
-components. Signal → event and Event → pulse bring the current catalog to **93 entries / 84 API v2 components**.
+components. Signal → event and Event → pulse brought it to 93 entries / 84 API v2 components.
+Workspace settings, Publish and Receive bring the current catalog to **96 entries / 87 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -361,7 +363,7 @@ import; flat libraries remain valid, and unassigned entries appear under Uncateg
 Bundled defaults remain defaults when a built-in is pinned, exported, or restored. Explicit user
 overrides (including an empty array) take precedence. The catalog audit also normalizes search
 keywords and covers arithmetic verbs, regex aliases, Unicode segmentation, JSON serialization,
-dataset import/export, and URL navigation. All 93 entries have valid, nonempty default memberships.
+dataset import/export, and URL navigation. All current entries have valid, nonempty default memberships.
 All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
@@ -1892,6 +1894,10 @@ strings; this milestone does not introduce object/list signal types or determine
 
 ### Page settings: implemented milestone
 
+This records the original milestone and its validation. The current component is **Sketch
+settings**: each presentation property explicitly inherits Workspace settings or overrides it.
+The accepted workspace contract below supersedes this milestone's per-tab default policy.
+
 Page settings adds one declarative controller for an exported drawing's surrounding interface.
 Its four properties can be authored as literal inputs in **Edit…** or driven through ordinary
 connections:
@@ -1950,7 +1956,7 @@ versions, and source fingerprints. Each exported document must retain the exact 
 it uses. Library changes should become explicit upgrades with compatible state migrations;
 they must not silently change existing drawings. Source fingerprints identify content, not trust.
 
-## Events and local actions — event workflow implemented; shared actions remain open
+## Events and local actions — implementation in progress; closeout pending
 
 Events complement the existing value graph. A value describes the current signal; an event
 records one accepted occurrence with its payload. Repeating the same submission twice produces
@@ -1992,8 +1998,8 @@ events. Related arrivals are combined, and other inputs provide their current va
 and template remain parameters.
 Live clock's plain time value updates the composition without appending to a downstream Memo.
 Arithmetic uses A; Date difference uses End. Dropdown and scalar selectors use the selection
-contracts below. JSON build, dataset-dependent text lookup, and table operations still need
-their own event contracts.
+contracts below. JSON build uses explicit Emit/Reprocess with value-only fields.
+Dataset-dependent text lookup and table operations still need their own event contracts.
 
 ### One submission, one origin
 
@@ -2048,8 +2054,10 @@ atomically. Stored state and ordinary value feedback keep their established simu
 Accepted user events work while simulation is paused; signal-origin Reprocess follows signal
 Pause/Step behavior. Existing Boolean submission queues retain their timing. No event queue is
 persisted: redraw, ordinary settling, Undo/Redo, reopening, copying, or restoring HTML never
-re-emits a submission. Undo restores stored outcomes. Stale tab/instance work is discarded; this
-contract does not permit external effects or network access.
+re-emits a submission. Undo restores stored outcomes. Work whose source instance or workspace was
+replaced is discarded; changing the visible sketch in Whole workspace mode does not invalidate
+accepted service work. Local host actions use the dispatcher described below; scripts cannot
+perform arbitrary effects or network access.
 
 **Tab 33 · Events and signals** compares a single hybrid Text→Memo connection with values-only
 Line plus a separate Submitted→Append pulse. Number input goes through Number to text before
@@ -2113,13 +2121,14 @@ Rejected completion delivery leaves all its event receivers unchanged and report
 It does not reverse the accepted count/timer transition or its already-observed signals.
 
 **Dataset action results** are dedicated scalar events emitted by the host after an accepted
-operation. Dataset exposes `loaded:number` with the resulting row count for import/reload, and
-`failed:string` with an error message. Capture row exposes `captured:number` with the appended
+operation. Dataset exposes `loaded:number` with the resulting row count for import/reload,
+`replaced:number` and `appended:number` for source updates, and `failed:string` with an error message.
+Capture row exposes `captured:number` with the appended
 row’s zero-based index, plus `failed:string`. The current table and row-count signals remain
 unchanged. Accepted replacements emit even when file contents are identical; cancellation,
 stale work, redraws, restoration, and ordinary record edits do not. Source Replace/Append and
-Live synchronization remain outside this narrow completion contract. These notifications do
-not add table/record event payloads or a general script effects API.
+Live synchronization report their accepted resulting row counts. These notifications do
+not add table/record event payloads or arbitrary script side effects.
 
 ### Event wiring feedback
 
@@ -2155,7 +2164,7 @@ new full-project release certification.
 
 ### Remaining stage 4 work and candidate components
 
-Stage 4 remains open for shared local action dispatch and a final closeout pass. Prefer
+Stage 4 remains open for final acceptance of shared local actions/workspace execution and a closeout pass. Prefer
 occurrences with captured data over automatic change events on every output. Dependency-based
 value invalidation and event routing remain separate: unchanged values may stop propagation,
 but equal event payloads must never collapse into one occurrence.
@@ -2164,12 +2173,106 @@ but equal event payloads must never collapse into one occurrence.
 | --- | --- | --- |
 | Dataset row selection and lookup | Accepted row identity or matched result | Define record/table identity and lifetime before structured events. |
 | Stepped distributors and joins of independent sources | Routed or combined payload | Define routing changes, suppression, and explicit waiting policy for unrelated origins. |
-| JSON build | One captured object string from several inputs | Define which changes request a new message and which only update its current fields. |
-| Navigation, downloads, and dataset commands | Command with captured parameters | Shared host action dispatcher, ownership, user activation, permissions, and at-most-once dispatch; no direct Worker side effects. |
+| JSON build | One captured object string from several inputs | Explicit Emit/Reprocess implemented; fields remain value-only parameters. Final acceptance remains. |
+| Navigation, downloads, and dataset commands | Command with captured parameters | Shared host action dispatcher implemented with ownership, user activation, permissions, and at-most-once dispatch; final acceptance remains. |
 
 Ordinary live value evaluation skips unchanged computations, while graph traversal and validation
 remain intact; this is not a scheduler rewrite. Shared host-action dispatch is its own increment.
 HTTP/MQTT remain stage 6; Run/Preview and reader result saving remain stage 5.
+
+### Accepted workspace execution and cross-sketch contract
+
+The delivered workspace increment separates execution ownership from the visible sketch. The default
+remains **Active sketch only**; **Whole workspace** runs the connected workspace while drawing only
+the visible sketch. Cross-sketch references are supported only in Whole workspace mode; inactive
+sources report unavailable rather than supplying a stale value or replaying an event.
+Execution mode and the initial sketch are startup configuration, not live control inputs.
+
+**Workspace settings** is a singleton per workspace. It defines default window title, tab-bar,
+wiring and simulation-control visibility, execution mode, initial sketch, and individual sketch-tab
+visibility. **Page settings** becomes **Sketch settings** with explicit Inherit/override behavior
+for those presentation defaults. Visibility is independent from execution: hidden tabs remain
+reachable through URL parameters and Go to tab. The editor keeps every sketch accessible and marks
+hidden tabs. The runtime resolves workspace defaults followed by visible-sketch overrides before
+revealing the sketch.
+
+Cross-sketch wiring is deliberate. **Publish** contains 1–16 named, typed endpoint rows, each with
+a local IN snap point. **Receive** must be placed explicitly; each of its 1–16 rows selects a
+published endpoint from another sketch in its Edit inspector and has a local OUT snap point.
+The picker excludes the receiver's own sketch; components there connect through ordinary local wiring.
+A Receive block may import selected rows from one or several publishers. Ordinary component
+source pickers remain local.
+One published endpoint may serve many receivers. These connectors preserve values, captured events, shared event origins and
+feedback semantics without adding a delay or an extra occurrence. The inspector identifies the
+source sketch/component and provides Go to source and Used by. Stable IDs identify connections;
+renaming and reordering cannot reconnect or break them. Each row has a stable ID separate from
+its name, type and description. The persisted reference is keyed by the receiver's local row ID
+and includes the source sketch ID, component ID and published port ID. Removing a published row
+breaks its references visibly; creating another row does not silently reconnect them.
+Changing a row's type keeps its identity and requires incompatible connections to be repaired.
+Rows are independent routes: a chain may leave one row and return through another without
+creating artificial feedback. An unavailable row does not block unrelated healthy rows.
+Live Dataset source tracking follows the selected table row; changes on another row do not
+refresh the Dataset or overwrite its edits.
+Boolean, number and text endpoints carry current values and events; table endpoints carry current
+table values without events. Event-only endpoints retain the bounded scalar/null payload contract.
+Publishing a filtered or aggregated table is a flow and does not replace shared Dataset links.
+
+Dataset owners offer **Show in workspace catalog**. Local pickers include their sketch's own
+datasets and opted-in datasets from other sketches; a remote selection refers to the same owned
+records, not a copied table. The switch controls discovery only: turning it off preserves existing
+references. Intermediate/local datasets therefore need not clutter other sketches' catalogs.
+
+The shared host action dispatcher captures each request's arguments once and reports completion
+or failure. Accepted service work belongs to its originating workspace/sketch/component, and
+switching the visible sketch only cancels unfinished UI interactions. Deleting that component,
+replacing the workspace, or explicit cancellation invalidates its pending work. Buttons, Boolean
+edges and command events are alternative request sources; ordinary evaluation never invents an
+action. Downloads retain browser user-activation handling. HTTP/MQTT remain stage 6.
+
+`event:'action'` on an existing Boolean action trigger accepts scalar/null occurrences alongside
+its rising-signal API. Boolean `false` is ignored; zero, empty text and null still request the
+action. Payloads do not replace parameters: the request samples the settled typed inputs.
+The host reports `loaded`, `replaced`, `appended`, `captured`, `arrived`, `prepared` and `failed`
+through the corresponding declared component outputs. An automatic download prepares content and
+offers an explicit Download button; `prepared` never claims that a file was saved. JSON build uses
+an explicit Emit/Reprocess command to capture its value-only fields, avoiding implicit submissions
+while the author edits separate values. Stage 4 remains pending its final verification/closeout.
+
+Lifecycle rules follow copying a group of components. Deleting a sketch breaks external references
+visibly. Duplicating a sketch assigns a new sketch ID and new component IDs, remaps its internal
+connections, gives owned datasets independent copies, and preserves references to external
+publishers/datasets. Existing consumers elsewhere remain attached to the original. The duplicate
+omits Workspace settings with an explanation, preserving the workspace's one settings owner.
+Copying a selected Publish/Receive pair likewise reconnects the copied receiver to the copied
+publisher; local and published endpoint IDs stay unchanged. A receiver copied by itself retains
+its explicitly selected external endpoints.
+Single-sketch export includes the sketch and its external references; import leaves missing
+references visibly unresolved without matching names. Whole-workspace transfer preserves or
+remaps included identities together. Workspace-wide transactions must undo as coherent changes
+even when several sketches are affected.
+
+The workspace contract above is implemented. Validation covers identity remapping, workspace
+history, action/failure bounds, execution ownership across navigation, and Dataset replacement
+across multiple sketch pools. The multi-endpoint extension passes 514 pure contract checks,
+16 workspace browser checks in each of Chromium and WebKit, and 59 event regressions in each
+engine. The main demo's 29 Chromium checks and both engines' built-in source/preview checks also pass.
+Independent-row tests cover reconvergence, genuine feedback faults, broken-import isolation,
+healthy feedback-state retention, Live Dataset source revisions, and large table previews.
+The separate demo has been exercised in the editor and offline reader and visually checked
+in all three sketches. This closes the workspace increment;
+the overall stage 4 closeout remains separate.
+
+The workspace runtime has its own small
+[editable example](../examples/workspace-runtime.json) and
+[offline reader](../examples/workspace-runtime.html), rather than adding more tabs to the
+component catalog. Hidden **Services** owns the shared clock, Dataset, row capture and message log;
+**Dashboard** publishes fruit submissions and quantity in one block, and receives UTC time and
+second ticks in another. Services captures the latest quantity when the submission event arrives.
+**Data editor** imports only the submission endpoint, edits the same
+records and receives the same submissions. Startup opens Dashboard, and the Data editor overrides
+the title while inheriting workspace presentation defaults. A private scratch Dataset demonstrates
+catalog opt-in. Regenerate the pair with `node tools/update-workspace-runtime-example.cjs`.
 
 ### Existing narrow host actions and future effect boundaries
 
@@ -2177,12 +2280,12 @@ Download table provides a host-owned CSV/JSON action from an explicit click. Dat
 bounded session-file reload trigger and explicit Replace/Append actions; Capture row appends
 sampled scalar fields on a Boolean edge. Bound dataset edits use the same mutation service.
 Go to tab supports an explicit button or primed rising edge with bounded scalar query-parameter
-updates. These narrow capabilities remain separate from the new component-state event contract.
+updates. Their declared command inputs also feed the shared dispatcher from accepted events.
 There is no general script-returned effect or arbitrary URL navigation in this milestone.
 
 The runtime validates each existing host action against the declared capability, current data,
-instance ownership, and its allowed origin. General event-driven host intents need their own
-contract and must not replay on redraw, recomputation, retry, Undo/Redo, or restoration. Browser
+instance ownership, and its allowed origin. Event-driven host intents capture their parameters
+once and must not replay on redraw, recomputation, retry, Undo/Redo, or restoration. Browser
 user-activation rules may require a host download control after asynchronous preparation.
 Stage 6 adds separately enabled host triggers for network reads and connection lifecycle; track
 their cause and revision so a derived recomputation cannot become another authorized request.
@@ -2202,7 +2305,7 @@ authoring controls hidden. Initial visual wiring is now a stage 3 milestone; thi
 its discovery and controls while retaining Edit as an alternative. If read, write, or read/write
 markers are added, first define explicit access metadata and account for per-instance editing and
 reader permissions. The existing neutral Dataset association does not promise any of those rights.
-Page settings is already implemented as a focused reader addition: title, tab bar, read-only wiring,
+Sketch settings is already implemented as a focused reader addition: title, tab bar, read-only wiring,
 and simulation-control visibility apply before tab reveal. Possible extensions remain page
 background, initial fit/zoom, and initial keyboard focus; these do not replace Run/Preview or the
 results-saving policy.
@@ -2496,13 +2599,14 @@ handling are tested separately from broker delivery.
    policies are explicit. Visual wiring distinguishes typed flows from Dataset associations and
    edits the existing bindings; access-permission metadata remains deferred. Coordinated current-record controls and record-wise calculated columns
    remain follow-ups.
-3. **Stage 4 — event workflow established; shared actions still open:** `eventApi:1` declares typed
+3. **Stage 4 — workspace increment delivered; closeout pending:** `eventApi:1` declares typed
    hybrid ports, unified bindings, captured occurrences, receiving hooks, scalar transformations,
    shared origins, Reprocess, and bounded atomic dispatch. Wiring feedback, selection events,
    signal/event adapters, and completion notifications extend the workflow while retaining existing
-   signal APIs. Downloads, reload/capture triggers, tab navigation, and dataset commands remain
-   narrow host actions. Define host-effect permissions, dispatch identity, and browser activation
-   rules before unifying actions; then perform the stage 4 closeout pass.
+   signal APIs. The shared dispatcher unifies declared downloads, reload/capture triggers, tab
+   navigation and dataset commands. Whole-workspace execution, explicit Publish/Receive endpoints,
+   settings inheritance and shared Dataset discovery extend their ownership across sketches.
+   The workspace lifecycle/browser acceptance is complete; run the overall stage 4 closeout pass next.
 4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,

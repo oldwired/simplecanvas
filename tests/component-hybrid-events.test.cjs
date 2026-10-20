@@ -223,6 +223,7 @@ test('Text compose accepts both text sources and keeps hybrid inputs through ins
   await dialog.getByRole('checkbox',{name:'Receive events for h',exact:true}).waitFor();
   for(const name of 'abcdefgh')assert.equal(await dialog.getByRole('checkbox',{name:'Receive events for '+name,exact:true}).isChecked(),true);
   await dialog.getByRole('button',{name:'Save',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await page.waitForFunction(()=>__test.run('componentDialogSession===null'));
   assert.deepEqual(await run('items[1].eventModes'),{});
   assert.equal((await outputs(run,2)).lineCount,3,'configuration changes do not emit');
   await submit(page,run,3,'Again',{enter:true});
@@ -231,6 +232,7 @@ test('Text compose accepts both text sources and keeps hybrid inputs through ins
   await run("selection=[1];openComponentBindings()");
   await dialog.getByRole('checkbox',{name:'Receive events for a',exact:true}).uncheck();
   await dialog.getByRole('button',{name:'Save',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await page.waitForFunction(()=>__test.run('componentDialogSession===null'));
   await submit(page,run,0,'Sampled',{enter:true});
   assert.equal((await outputs(run,2)).lineCount,4);
   await submit(page,run,3,'Final',{enter:true});

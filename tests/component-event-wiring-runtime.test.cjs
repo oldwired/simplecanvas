@@ -21,7 +21,7 @@ async function app(fn){
 async function seed(run,withSettings=false){
   await run(`cancelGesture();setComponentWiringMode(false);function builtin(key,uid,x,y,extra={}){const item=clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===key).items[0]);return {...item,uid,x,y,...extra};}
     items=[builtin('textInput','text',80,120),builtin('numberInput','number',80,380),builtin('memo','memo',720,180)];
-    ${withSettings?"items.push(builtin('pageSettings','settings',80,650,{inputValues:{showWiring:true,title:'Event demo'}}));":''}
+    ${withSettings?"items.push(builtin('pageSettings','settings',80,650,{state:{overrideTitle:true,overrideShowTabs:false,overrideShowWiring:true,overrideShowSimulationControls:false},inputValues:{showWiring:true,title:'Event demo'}}));":''}
     selection=[];undoStack=[];redoStack=[];historyBefore=null;render();save();`);
   await run('ensureEditorComponentGraph()');
 }
@@ -29,8 +29,8 @@ const port=(page,uid,name,direction,kind='flow')=>page.locator(`#componentWiring
 const edge=(page,kind,input)=>page.locator(`#componentWiringOverlay [data-wire-edge][data-target-uid="memo"][data-input="${input}"][data-kind="${kind}"]`);
 async function point(locator){await locator.waitFor({state:'visible'});return locator.evaluate(el=>{const r=el.querySelector('circle').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};});}
 async function drag(page,from,to){const a=await point(from),b=await point(to);await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();}
-async function wired(page,run){await run('setComponentWiringMode(true);ensureEditorComponentGraph()');await run('renderComponentWiring()');await port(page,'text','value','out').waitFor({state:'visible'});}
-async function settled(run){await run('smartHitSettled');await run('ensureEditorComponentGraph()');await run('renderComponentWiring()');}
+async function wired(page,run){await run('setComponentWiringMode(true)');await port(page,'text','value','out').waitFor({state:'visible'});}
+async function settled(run){await run('smartHitSettled');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');await run('renderComponentWiring()');}
 
 
 test('hybrid pins connect in either direction, reject incompatible values, and disconnect without removing the parallel trigger wire',async()=>app(async({page,run})=>{

@@ -1,0 +1,1116 @@
+{
+  "app": "SimpleCanvasWorkspace",
+  "version": 5,
+  "activeIndex": 1,
+  "tabs": [
+    {
+      "id": "runtime-services",
+      "name": "Services",
+      "items": [
+        {
+          "type": "text",
+          "uid": "runtime-services-title",
+          "text": "Services · shared processing",
+          "x": 40,
+          "y": 24,
+          "w": 1240,
+          "h": 44,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 28,
+          "font": "28px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "runtime-services-help",
+          "text": "Hidden from the reader’s tab bar, but still running. Go to tab and ?page=0 can open this sketch.",
+          "x": 40,
+          "y": 76,
+          "w": 1220,
+          "h": 48,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-settings",
+          "componentApi": 2,
+          "componentName": "Workspace defaults",
+          "x": 40,
+          "y": 146,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#f8fafc",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 330,
+          "h": 184,
+          "state": {
+            "executionMode": "whole workspace",
+            "initialSketchId": "runtime-dashboard",
+            "tabVisibility": [
+              {
+                "sketchId": "runtime-services",
+                "visible": false
+              },
+              {
+                "sketchId": "runtime-dashboard",
+                "visible": true
+              },
+              {
+                "sketchId": "runtime-editor",
+                "visible": true
+              }
+            ]
+          },
+          "script": "// One Workspace settings component supplies presentation defaults and startup configuration.\n// Execution mode and initial sketch are authoring settings, never live control inputs.\n({\n  apiVersion:2,\n  settings:{executionMode:{type:'string',default:'active sketch',options:['active sketch','whole workspace'],label:'Execution mode'}},\n  workspaceSettings:{title:'title',showTabs:'showTabs',showWiring:'showWiring',showSimulationControls:'showSimulationControls'},\n  initState(){return {executionMode:'active sketch',initialSketchId:'',tabVisibility:[]};},\n  initStyle(){return {w:330,h:184,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  _configuration(state){\n    if(!['active sketch','whole workspace'].includes(state.executionMode))throw new Error('Choose Active sketch only or Whole workspace');\n    if(typeof state.initialSketchId!=='string' || state.initialSketchId.length>100)throw new Error('Initial sketch must be a sketch ID of at most 100 characters');\n    const entries=state.tabVisibility;\n    if(!Array.isArray(entries) || entries.length>128)throw new Error('Tab visibility supports at most 128 sketches');\n    const ids=new Set(),ports=new Set();\n    for(const entry of entries){\n      if(!entry || typeof entry!=='object' || Array.isArray(entry) || Object.keys(entry).some(key=>!['sketchId','visible','input'].includes(key)) ||\n        typeof entry.sketchId!=='string' || !entry.sketchId || entry.sketchId.length>100 || ids.has(entry.sketchId) || typeof entry.visible!=='boolean' ||\n        entry.input!==undefined && (typeof entry.input!=='string' || entry.input!=='' && !/^tab[A-Za-z0-9_]{1,27}$/.test(entry.input)))throw new Error('Each tab visibility entry needs a unique sketch ID, Boolean visibility and optional control input');\n      ids.add(entry.sketchId);\n      if(entry.input){if(ports.has(entry.input))throw new Error('Tab visibility control inputs must be unique');ports.add(entry.input);}\n    }\n    if(ports.size>28)throw new Error('At most 28 sketch tabs can have live visibility inputs');\n    return entries;\n  },\n  inputs(state){\n    const ports={title:{type:'string',default:'',label:'Default window title'},\n      showTabs:{role:'control',type:'boolean',default:true,label:'Show tab bar'},\n      showWiring:{role:'control',type:'boolean',default:false,label:'Show wiring'},\n      showSimulationControls:{role:'control',type:'boolean',default:true,label:'Show simulation controls'}};\n    for(const entry of this._configuration(state))if(entry.input)ports[entry.input]={role:'control',type:'boolean',default:entry.visible,label:'Show sketch tab'};\n    return ports;\n  },\n  outputs:{},\n  compute(inputs,state){\n    const ports=this.inputs(state);\n    if(typeof inputs.title!=='string' || inputs.title.length>2000)throw new Error('Window title must be text of at most 2000 characters');\n    for(const [key,port] of Object.entries(ports))if(port.type==='boolean' && typeof inputs[key]!=='boolean')throw new Error(port.label+' must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false,editorOnly:true};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/330,h/184),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Workspace settings';\n    const text=(value,y,size=11,color=style.textColor||'#334155',weight=400)=>this._text(value,pad,y*scale,w-pad*2,18*scale,size*scale,style,color,weight);\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#f8fafc',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash,editorOnly:true},text(name,12,13,style.textColor||'#334155',600)];\n    if(io.error)children.push(text(io.error,44,11,'#92400e'),text('Application defaults apply',68,11,'#64748b'));\n    else{\n      const inputs={title:'',showTabs:true,showWiring:false,showSimulationControls:true,...io.inputs};\n      children.push(text('Title: '+(inputs.title||'Workspace name'),42,12),text('Tab bar: '+(inputs.showTabs?'shown':'hidden')+' · Wiring: '+(inputs.showWiring?'shown':'hidden'),66),\n        text('Simulation controls: '+(inputs.showSimulationControls?'shown':'hidden'),88),text(state.executionMode==='whole workspace'?'Execution: Whole workspace':'Execution: Active sketch only',110));\n    }\n    children.push(text('Defaults apply across all sketches',138,10,'#64748b'),text('Authoring only · one per workspace',158,10,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "title": "Fruit stock · Workspace example",
+            "showTabs": true,
+            "showWiring": false,
+            "showSimulationControls": true
+          },
+          "workspaceSettings": true
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-clock",
+          "componentApi": 2,
+          "componentName": "UTC clock",
+          "x": 444,
+          "y": 146,
+          "color": "#64748b",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 190,
+          "h": 260,
+          "state": {
+            "time": "00:00:00",
+            "second": false,
+            "minute": false,
+            "hour": false,
+            "halfDay": false,
+            "showIndicators": false
+          },
+          "script": "// Wall-clock readings and nominal 100 ms boundary pulses in a selected timezone.\n// Reopening, changing timezone, and missed/adjusted clock time re-prime without replaying ticks.\n// The host schedules transitions; compute and image exports use the last settled snapshot.\n({\n  apiVersion:2,\n  wakePolicy:'latest',\n  inputs:{timezone:{role:'control',type:'string',default:'local'}},\n  outputs:{second:{role:'control',type:'boolean'},minute:{role:'control',type:'boolean'},hour:{role:'control',type:'boolean'},halfDay:{role:'control',type:'boolean'},time:{type:'string'}},\n  initState(){return {time:'00:00:00',second:false,minute:false,hour:false,halfDay:false,showIndicators:true};},\n  initStyle(){return {w:220,h:300,strokeOn:false,fontSize:16};},\n  _formatter(timezone){\n    if(typeof timezone!=='string' || !timezone.trim() || timezone.length>128)throw new Error('Timezone must be local or a valid timezone name, such as Europe/Berlin');\n    const zone=timezone.trim();\n    try{return new Intl.DateTimeFormat('en-GB',{...(zone.toLowerCase()==='local'?{}:{timeZone:zone}),\n      hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',numberingSystem:'latn'});}\n    catch(_){throw new Error('Invalid timezone: use local, UTC, or a timezone name such as Europe/Berlin');}\n  },\n  _validate(state){\n    if(typeof state.time!=='string' || !/^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$/.test(state.time) ||\n       ['second','minute','hour','halfDay'].some(key=>typeof state[key]!=='boolean') || typeof state.showIndicators!=='boolean')throw new Error('Invalid Live clock state');\n  },\n  transition(inputs,state,memory,context){\n    const {now}=context;\n    this._validate(state);\n    if(!Number.isFinite(now) || now<0)throw new Error('Live clock requires a valid monotonic time');\n    const formatter=this._formatter(inputs.timezone),wall=Date.now();\n    if(!Number.isFinite(wall) || Math.abs(wall)>8640000000000000)throw new Error('Live clock requires a valid wall-clock time');\n    const parts=Object.fromEntries(formatter.formatToParts(new Date(wall)).map(part=>[part.type,part.value]));\n    const hour=Number(parts.hour)%24,minute=Number(parts.minute),second=Number(parts.second);\n    const time=[hour,minute,second].map(value=>String(value).padStart(2,'0')).join(':');\n    const zone=formatter.resolvedOptions().timeZone,epochSecond=Math.floor(wall/1000);\n    const fresh=memory==null || (typeof memory==='object' && !Array.isArray(memory) && Object.keys(memory).length===0);\n    if(!fresh && (typeof memory.zone!=='string' || !Number.isFinite(memory.wall) || !Number.isSafeInteger(memory.epochSecond) ||\n       memory.epochSecond!==Math.floor(memory.wall/1000) || !Number.isFinite(memory.now) || memory.now<0 ||\n       (memory.until!==null && (!Number.isFinite(memory.until) || memory.until<=memory.now))))throw new Error('Invalid Live clock scheduling memory');\n    // Replaying an earlier queued signal must not consume this wall-clock wake.\n    if(context.historical && !fresh && memory.zone===zone){\n      const nextWakeAt=memory.until===null?memory.now+1000-((memory.wall%1000+1000)%1000):memory.until;\n      return {state,memory,nextWakeAt};\n    }\n    // Active-document time pauses while hidden. A wall/active-time discontinuity resets observation,\n    // as does a backwards clock adjustment. Small scheduling jitter does not erase a normal tick.\n    const restart=fresh || memory.zone!==zone || wall<memory.wall || now<memory.now ||\n      Math.abs((wall-memory.wall)-(now-memory.now))>500;\n    let secondTick=false,minuteTick=false,hourTick=false,halfDayTick=false,until=null;\n    if(!restart){\n      if(memory.until!==null){\n        // An overdue high must fall before another rise; never turn missed ticks into a burst.\n        if(now<memory.until){\n          secondTick=state.second;minuteTick=state.minute;hourTick=state.hour;halfDayTick=state.halfDay;until=memory.until;\n        }\n      }else if(epochSecond===memory.epochSecond+1){\n        secondTick=true;minuteTick=second===0;hourTick=minuteTick && minute===0;halfDayTick=hourTick && hour%12===0;\n        until=now+100;\n      }\n    }\n    const nextWakeAt=until===null?now+1000-((wall%1000+1000)%1000):until;\n    if(!Number.isFinite(nextWakeAt) || nextWakeAt<=now)throw new Error('Live clock wake time is outside the numeric range');\n    return {state:{...state,time,second:secondTick,minute:minuteTick,hour:hourTick,halfDay:halfDayTick},\n      memory:{zone,wall,now,epochSecond,until},nextWakeAt};\n  },\n  publish(state){\n    this._validate(state);\n    return {second:state.second,minute:state.minute,hour:state.hour,halfDay:state.halfDay,time:state.time};\n  },\n  compute(inputs,state){\n    this._formatter(inputs.timezone);this._validate(state);\n    return {second:state.second,minute:state.minute,hour:state.hour,halfDay:state.halfDay,time:state.time};\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io={}){\n    const available=!io.error && /^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$/.test(io.outputs?.time);\n    const scale=Math.min(w/220,h/300),top=24*scale,d=Math.max(1,Math.min(w-16*scale,h-112*scale));\n    const cx=w/2,cy=top+d/2,r=d/2,thin=Math.max(1,(style.size||2)/2);\n    const text=(value,x,y,width,height,size)=>({type:'text',x,y,w:width,h:height,text:value,align:'center',\n      font:'600 '+Math.max(6,size*scale)+'px sans-serif',color:style.textColor||style.color,textColor:style.textColor||style.color,strokeOn:false,fill:false});\n    const items=[{...text('',0,0,w,22*scale,16),...this._caption(io.name,'Live clock',w,22*scale,{...style,fontSize:16*scale})},\n      {type:'ellipse',x:cx-r,y:top,w:d,h:d,color:style.color,size:thin,strokeOn:true,fill:style.fill,fillColor:style.fillColor}];\n    for(let i=0;i<12;i++){\n      const angle=i/12*Math.PI*2;\n      items.push({type:'line',x1:cx+Math.sin(angle)*r*.84,y1:cy-Math.cos(angle)*r*.84,\n        x2:cx+Math.sin(angle)*r*.95,y2:cy-Math.cos(angle)*r*.95,color:style.color,size:thin});\n    }\n    if(available){\n      const [hour,minute,second]=io.outputs.time.split(':').map(Number),minutes=minute+second/60,hours=hour%12+minutes/60;\n      for(const [value,total,length,size,color] of [[hours,12,.5,style.size||2,style.color],\n        [minutes,60,.72,style.size||2,style.color],[second,60,.82,thin,style.textColor||style.color]]){\n        const angle=value/total*Math.PI*2;\n        items.push({type:'line',x1:cx,y1:cy,x2:cx+Math.sin(angle)*r*length,y2:cy-Math.cos(angle)*r*length,color,size});\n      }\n    }\n    const timezone=typeof io.inputs?.timezone==='string'?io.inputs.timezone.trim():'local';\n    const zoneLabel=available?(timezone.toLowerCase()==='local'?'Local time':timezone):/timezone/i.test(io.error||'')?'Invalid timezone':'Clock unavailable';\n    items.push(text(available?io.outputs.time:'--:--:--',0,top+d+6*scale,w,22*scale,20),\n      {...text('',0,top+d+31*scale,w,16*scale,11),...this._caption(zoneLabel,'Local time',w,16*scale,{...style,fontSize:11*scale}),\n        ...(!available?{color:'#92400e',textColor:'#92400e'}:{})});\n    if(state.showIndicators!==false){\n      for(const [index,[key,label]] of [['second','1 s'],['minute','1 m'],['hour','1 h'],['halfDay','12 h']].entries()){\n        const x=w*(index+.5)/4,y=h-28*scale,radius=3*scale;\n        items.push({type:'ellipse',x:x-17*scale-radius,y:y-radius,w:radius*2,h:radius*2,fill:true,\n          fillColor:available?(io.outputs[key]?'#15803d':'#94a3b8'):'#fbbf24',strokeOn:false},\n          text(label,x-11*scale,y-8*scale,35*scale,16*scale,9));\n      }\n    }\n    if(editing && available){\n      items.push({type:'rect',x:0,y:h-17*scale,w,h:17*scale,fill:true,fillColor:'#e2e8f0',strokeOn:false,editorOnly:true},\n        {...text('Indicators: '+(state.showIndicators?'on':'off'),0,h-17*scale,w,17*scale,10),editorOnly:true});\n    }\n    return items;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,outputs:{}});},\n  handles(state,w,h){return [{id:'indicators',x:w/2,y:h-8.5*Math.min(w/220,h/300),kind:'click',editorOnly:true}];},\n  hitEdit(state,x,y,w,h){return x>=0 && x<=w && y>=h-17*Math.min(w/220,h/300) && y<=h?'indicators':null;},\n  dragEdit(state,handle){return {state:handle==='indicators'?{...state,showIndicators:!state.showIndicators}:state};}\n})\n",
+          "inputValues": {
+            "timezone": "UTC"
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-publish-time",
+          "componentApi": 2,
+          "componentName": "Publish time",
+          "x": 740,
+          "y": 146,
+          "color": "#818cf8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#eef2ff",
+          "strokeOn": true,
+          "textColor": "#3730a3",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 350,
+          "h": 150,
+          "state": {
+            "endpoints": [
+              {
+                "id": "value",
+                "name": "UTC time",
+                "type": "string",
+                "description": "The shared clock keeps advancing while Services is hidden."
+              },
+              {
+                "id": "tick",
+                "name": "Second tick",
+                "type": "boolean",
+                "description": "A short signal at each new second."
+              }
+            ]
+          },
+          "script": "// Publish several named, typed endpoints from this sketch.\n// Stable endpoint IDs preserve connections when labels or row order change.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{},\n  initState(){return {endpoints:[{id:'value',name:'Value',type:'string',description:''}]};},\n  initStyle(){return {w:320,h:100,fontSize:18,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',textColor:'#3730a3',size:1.5};},\n  _rows(state){\n    if(!state || !Array.isArray(state.endpoints) || state.endpoints.length<1 || state.endpoints.length>16)throw new Error('Configure 1–16 endpoints');\n    const ids=new Set();\n    for(const row of state.endpoints){\n      if(!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).some(key=>!['id','name','type','description'].includes(key)) ||\n        typeof row.id!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(row.id) || ['constructor','prototype','__proto__'].includes(row.id) || ids.has(row.id))throw new Error('Endpoint IDs must be unique stable identifiers');\n      if(typeof row.name!=='string' || !row.name.trim() || row.name.length>64)throw new Error('Endpoint name must contain 1–64 characters');\n      if(!['string','number','boolean','table','event'].includes(row.type))throw new Error('Choose a text, number, Boolean, table, or event endpoint');\n      if(typeof row.description!=='string' || row.description.length>200)throw new Error('Endpoint description must be text of at most 200 characters');\n      ids.add(row.id);\n    }\n    return state.endpoints;\n  },\n  _value(value,row){\n    if(row.type==='table'){\n      if(!value || typeof value!=='object' || Array.isArray(value) || typeof value.datasetId!=='string')throw new Error(row.name+' requires a table input');\n    }else if(typeof value!==row.type || row.type==='number' && !Number.isFinite(value) || row.type==='string' && value.length>2000)throw new Error(row.name+' must match its declared type');\n    return value;\n  },\n  _event(payload,row){\n    if(payload!==null && !['boolean','number','string'].includes(typeof payload) || typeof payload==='number' && !Number.isFinite(payload) || typeof payload==='string' && payload.length>2000)throw new Error('Unsupported event payload');\n    if(row.type!=='event' && typeof payload!==row.type)throw new Error('Event payload must match its declared type');\n  },\n  _text(value,x,y,w,h,size,color,weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    const limit=Math.max(1,Math.floor(w/(size*.7))),text=chars.length>limit?chars.slice(0,Math.max(0,limit-1)).join('')+'…':content;\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  workspaceEndpoint(state){return {direction:'publish',ports:Object.fromEntries(this._rows(state).map(row=>[row.id,{type:row.type}]))};},\n  outputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true})}]));},\n  eventOutputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'right'}]));},\n  inputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true,default:row.type==='string'?'':row.type==='number'?0:false})}]));},\n  eventInputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'left'}]));},\n  compute(inputs,state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,this._value(inputs[row.id],row)]));},\n  onEvent(name,payload,state){\n    const row=this._rows(state).find(row=>row.id===name);if(!row)throw new Error('Unknown published event input');\n    this._event(payload,row);return {state,events:[{port:row.id,payload}]};\n  },\n  children(state,style,w,h,editing,io={}){\n    const rows=this._rows(state),baseH=64+rows.length*36,scale=Math.min(w/320,h/baseH),pad=12*scale,color=style.textColor||'#3730a3';\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#eef2ff',strokeOn:style.strokeOn!==false,color:style.color||'#818cf8',size:style.size,dash:style.dash},\n      this._text((typeof io.name==='string'?io.name:'').trim()||'Publish',pad,10*scale,w-pad*2,20*scale,13*scale,color,600)];\n    rows.forEach((row,index)=>{\n      const y=(36+index*36)*scale,type=row.type==='string'?'text':row.type==='event'?'events':row.type;\n      children.push(this._text(row.name+' · '+type,pad,y,w-pad*2,18*scale,12*scale,color,600));\n      const detail=row.description||'→ Workspace';\n      children.push(this._text(detail,pad,y+18*scale,w-pad*2,14*scale,9*scale,'#64748b'));\n    });\n    if(io.error)children.push(this._text(io.error,pad,h-19*scale,w-pad*2,15*scale,9*scale,'#92400e'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "value": "",
+            "tick": false
+          },
+          "bindings": {
+            "value": {
+              "uid": "runtime-clock",
+              "port": "time"
+            },
+            "tick": {
+              "uid": "runtime-clock",
+              "port": "second"
+            }
+          },
+          "workspaceEndpoint": "publish"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-stock-owner",
+          "componentApi": 2,
+          "componentName": "Fruit stock · shared",
+          "x": 40,
+          "y": 390,
+          "color": "#94a3b8",
+          "size": 1,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 300,
+          "h": 150,
+          "state": {
+            "updateMode": "Manual",
+            "allowReaderImport": true,
+            "allowReaderColumnChanges": false,
+            "allowReaderUpdates": false
+          },
+          "script": "// Own one stored dataset. Commands, source pulses or Live source publications copy incoming rows.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{loaded:{type:'number'},replaced:{type:'number'},appended:{type:'number'},failed:{type:'string'}},\n  actionEvents:{\n    importDataset:{success:'loaded',failure:'failed'},\n    reloadDataset:{success:'loaded',failure:'failed'},\n    replaceTable:{success:'replaced',failure:'failed'},\n    appendTable:{success:'appended',failure:'failed'},\n    syncTable:{success:'replaced',failure:'failed'}\n  },\n  datasetOwner:'data',\n  settings:{updateMode:{type:'string',default:'Manual',options:['Manual','Live'],label:'Source update mode'},allowReaderImport:{type:'boolean',default:false,label:'Allow file import and reload'},allowReaderColumnChanges:{type:'boolean',default:false,label:'Allow column changes in HTML export'},allowReaderUpdates:{type:'boolean',default:false,label:'Allow source updates in HTML export'}},\n  inputs:{data:{type:'table'},source:{type:'table',optional:true},replace:{role:'control',type:'boolean',default:false,event:'action'},append:{role:'control',type:'boolean',default:false,event:'action'},reload:{role:'control',type:'boolean',default:false,event:'action'}},\n  dataActions(state){return {reload:{type:'reloadDataset',input:'data',trigger:'reload'},replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},append:{type:'appendTable',input:'data',source:'source',trigger:'append'},live:{type:'syncTable',input:'data',source:'source',enabled:state.updateMode==='Live'}};},\n  outputs:{data:{type:'table'},rowCount:{type:'number'}},\n  initState(){return {updateMode:'Manual',allowReaderImport:false,allowReaderColumnChanges:false,allowReaderUpdates:false};},\n  initStyle(){return {w:300,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!inputs.data || typeof inputs.data.datasetId!=='string' || !/^[A-Za-z0-9_-]{1,100}$/.test(inputs.data.datasetId) || Object.hasOwn(inputs.data,'rows') || !table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Choose an owned dataset in Edit');\n    return {data:inputs.data,rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/300,h/150),pad=12*scale,table=io.tables?.inputs?.data;\n    const available=!io.error && table && Number.isInteger(io.outputs?.rowCount),text=(v,x,y,ww,hh,size,color,weight)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Dataset',pad,pad,w-pad*2,22*scale,16,undefined,600)\n    ];\n    if(!available){children.push(text(io.error||'Choose an owned dataset in Edit',pad,h*.48,w-pad*2,22*scale,12,'#92400e'));return children;}\n    const count=io.outputs.rowCount,columnCount=table.columns.length;\n    children.push(text('Owns: '+(table.name||'Stored data'),pad,43*scale,w-pad*2,20*scale,13));\n    children.push(text(count+' '+(count===1?'row':'rows')+' · '+columnCount+' '+(columnCount===1?'column':'columns'),pad,72*scale,w-pad*2,25*scale,18,undefined,600));\n    if(state.allowReaderImport===true){\n      children.push({type:'rect',x:pad,y:h-40*scale,w:w-pad*2,h:28*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1});\n      children.push(text('Load data…',pad+10*scale,h-35*scale,w-pad*2-20*scale,20*scale,13,'#3730a3',600));\n    }else{\n      const incoming=io.tables?.inputs?.source;\n      children.push(text(incoming?(state.updateMode==='Live'?'Live: ':'Incoming: ')+incoming.rowCount+' rows':table.columns.map(column=>column.name).join(' · '),pad,h-30*scale,w-pad*2,18*scale,11,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.allowReaderImport===true?[{id:'loadData',kind:'action',x:w/2,y:h-26*Math.min(w/300,h/150),action:{type:'importDataset',input:'data'}}]:[];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/300,h/150);return state.allowReaderImport===true && x>=12*scale && x<=w-12*scale && y>=h-40*scale && y<=h-12*scale?'loadData':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "replace": false,
+            "append": false,
+            "reload": false,
+            "data": {
+              "datasetId": "workspace-stock"
+            }
+          },
+          "datasetShared": true,
+          "datasetOwner": "data"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-private-owner",
+          "componentApi": 2,
+          "componentName": "Private scratch · local",
+          "x": 400,
+          "y": 440,
+          "color": "#94a3b8",
+          "size": 1,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 300,
+          "h": 150,
+          "state": {
+            "updateMode": "Manual",
+            "allowReaderImport": false,
+            "allowReaderColumnChanges": false,
+            "allowReaderUpdates": false
+          },
+          "script": "// Own one stored dataset. Commands, source pulses or Live source publications copy incoming rows.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{loaded:{type:'number'},replaced:{type:'number'},appended:{type:'number'},failed:{type:'string'}},\n  actionEvents:{\n    importDataset:{success:'loaded',failure:'failed'},\n    reloadDataset:{success:'loaded',failure:'failed'},\n    replaceTable:{success:'replaced',failure:'failed'},\n    appendTable:{success:'appended',failure:'failed'},\n    syncTable:{success:'replaced',failure:'failed'}\n  },\n  datasetOwner:'data',\n  settings:{updateMode:{type:'string',default:'Manual',options:['Manual','Live'],label:'Source update mode'},allowReaderImport:{type:'boolean',default:false,label:'Allow file import and reload'},allowReaderColumnChanges:{type:'boolean',default:false,label:'Allow column changes in HTML export'},allowReaderUpdates:{type:'boolean',default:false,label:'Allow source updates in HTML export'}},\n  inputs:{data:{type:'table'},source:{type:'table',optional:true},replace:{role:'control',type:'boolean',default:false,event:'action'},append:{role:'control',type:'boolean',default:false,event:'action'},reload:{role:'control',type:'boolean',default:false,event:'action'}},\n  dataActions(state){return {reload:{type:'reloadDataset',input:'data',trigger:'reload'},replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},append:{type:'appendTable',input:'data',source:'source',trigger:'append'},live:{type:'syncTable',input:'data',source:'source',enabled:state.updateMode==='Live'}};},\n  outputs:{data:{type:'table'},rowCount:{type:'number'}},\n  initState(){return {updateMode:'Manual',allowReaderImport:false,allowReaderColumnChanges:false,allowReaderUpdates:false};},\n  initStyle(){return {w:300,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!inputs.data || typeof inputs.data.datasetId!=='string' || !/^[A-Za-z0-9_-]{1,100}$/.test(inputs.data.datasetId) || Object.hasOwn(inputs.data,'rows') || !table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Choose an owned dataset in Edit');\n    return {data:inputs.data,rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/300,h/150),pad=12*scale,table=io.tables?.inputs?.data;\n    const available=!io.error && table && Number.isInteger(io.outputs?.rowCount),text=(v,x,y,ww,hh,size,color,weight)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Dataset',pad,pad,w-pad*2,22*scale,16,undefined,600)\n    ];\n    if(!available){children.push(text(io.error||'Choose an owned dataset in Edit',pad,h*.48,w-pad*2,22*scale,12,'#92400e'));return children;}\n    const count=io.outputs.rowCount,columnCount=table.columns.length;\n    children.push(text('Owns: '+(table.name||'Stored data'),pad,43*scale,w-pad*2,20*scale,13));\n    children.push(text(count+' '+(count===1?'row':'rows')+' · '+columnCount+' '+(columnCount===1?'column':'columns'),pad,72*scale,w-pad*2,25*scale,18,undefined,600));\n    if(state.allowReaderImport===true){\n      children.push({type:'rect',x:pad,y:h-40*scale,w:w-pad*2,h:28*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1});\n      children.push(text('Load data…',pad+10*scale,h-35*scale,w-pad*2-20*scale,20*scale,13,'#3730a3',600));\n    }else{\n      const incoming=io.tables?.inputs?.source;\n      children.push(text(incoming?(state.updateMode==='Live'?'Live: ':'Incoming: ')+incoming.rowCount+' rows':table.columns.map(column=>column.name).join(' · '),pad,h-30*scale,w-pad*2,18*scale,11,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.allowReaderImport===true?[{id:'loadData',kind:'action',x:w/2,y:h-26*Math.min(w/300,h/150),action:{type:'importDataset',input:'data'}}]:[];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/300,h/150);return state.allowReaderImport===true && x>=12*scale && x<=w-12*scale && y>=h-40*scale && y<=h-12*scale?'loadData':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "replace": false,
+            "append": false,
+            "reload": false,
+            "data": {
+              "datasetId": "workspace-scratch"
+            }
+          },
+          "datasetShared": false,
+          "datasetOwner": "data"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-capture",
+          "componentApi": 2,
+          "componentName": "Capture submitted fruit",
+          "x": 900,
+          "y": 390,
+          "color": "#94a3b8",
+          "size": 1,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 320,
+          "h": 150,
+          "state": {
+            "fields": "fruit:string\nquantity:number",
+            "allowReaderCapture": true
+          },
+          "script": "// A Capture event or rising Capture signal appends one sampled row to a whole embedded dataset.\n// Fields are one columnKey:number|string|boolean entry per line. Unmapped columns stay empty.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{captured:{type:'number'},failed:{type:'string'}},\n  actionEvents:{appendRow:{success:'captured',failure:'failed'}},\n  settings:{\n    fields:{type:'string',format:'lines',default:'label:string\\nvalue:number\\nactive:boolean',label:'Fields (column:type)'},\n    allowReaderCapture:{type:'boolean',default:false,label:'Allow capture in HTML export'}\n  },\n  _fields(state){\n    if(typeof state.fields!=='string' || state.fields.length>2000)throw new Error('Fields must fit within 2,000 characters');\n    const lines=state.fields.split(/\\r?\\n/).map(line=>line.trim()).filter(Boolean),keys=new Set();\n    if(!lines.length || lines.length>24)throw new Error('Enter 1–24 fields, one column:type per line');\n    return lines.map((line,index)=>{\n      const at=line.lastIndexOf(':'),key=line.slice(0,at).trim(),type=line.slice(at+1).trim().toLowerCase();\n      if(at<1 || !key || key.length>100 || ['__proto__','prototype','constructor'].includes(key) || keys.has(key))throw new Error('Each field needs a unique dataset column key');\n      if(!['number','string','boolean'].includes(type))throw new Error('Field '+key+' must use number, string, or boolean');\n      keys.add(key);return {key,type,port:'field'+index};\n    });\n  },\n  inputs(state){\n    const ports={data:{type:'table'},capture:{role:'control',type:'boolean',default:false,event:'action'}};\n    for(const {port,type} of this._fields(state))ports[port]={type,default:type==='number'?0:type==='boolean'?false:''};\n    return ports;\n  },\n  dataActions(state){return {capture:{type:'appendRow',input:'data',trigger:'capture',fields:Object.fromEntries(this._fields(state).map(field=>[field.key,field.port]))}};},\n  outputs:{data:{type:'table'},rowCount:{type:'number'}},\n  initState(){return {fields:'label:string\\nvalue:number\\nactive:boolean',allowReaderCapture:false};},\n  initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!inputs.data || typeof inputs.data.datasetId!=='string' || inputs.data.datasetId.startsWith('~') || inputs.data.rows!==undefined ||\n      !table || !Array.isArray(table.columns) || !Array.isArray(table.rows) || table.rowCount!==table.rows.length)throw new Error('Connect a whole embedded dataset; filtered and derived tables cannot capture rows');\n    for(const {key,type,port} of this._fields(state)){\n      const column=table.columns.find(column=>column.key===key);\n      if(!column || column.type!==type)throw new Error('Field '+key+' needs a '+type+' dataset column');\n      const value=inputs[port];\n      if(typeof value!==type || type==='number' && (!Number.isFinite(value) || Number.isInteger(value) && !Number.isSafeInteger(value)) || type==='string' && value.length>2000)throw new Error('Invalid value for '+key);\n    }\n    return {data:inputs.data,rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const chars=Array.from(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=/[MWmw@#%]/.test(chars[i])||chars[i].codePointAt(0)>255?1.1:/[A-Z]/.test(chars[i])?.88:.72;\n      if((used+next+(i<chars.length-1?1.1:0))*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/320,h/150),pad=12*scale,table=io.tables?.inputs?.data;\n    const text=(v,y,size,color,weight)=>this._text(v,pad,y*scale,w-pad*2,24*scale,size*scale,style,color,weight);\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},\n      text(io.name?.trim()||'Capture row',12,16,undefined,600)];\n    if(io.error || !table || !Number.isInteger(io.outputs?.rowCount)){\n      children.push(text(io.error||'Choose a dataset and map its columns in Edit',60,12,'#92400e'));return children;\n    }\n    children.push(text(table.name,43,13),text(io.outputs.rowCount+' '+(io.outputs.rowCount===1?'row':'rows'),73,22,undefined,600),\n      text('Send Capture to add one row',116,11,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "capture": false,
+            "field0": "",
+            "field1": 0,
+            "data": {
+              "datasetId": "workspace-stock"
+            }
+          },
+          "bindings": {
+            "field0": {
+              "uid": "runtime-receive-message",
+              "port": "value"
+            },
+            "field1": {
+              "uid": "runtime-receive-message",
+              "port": "quantity"
+            }
+          },
+          "eventBindings": {
+            "capture": {
+              "uid": "runtime-receive-message",
+              "port": "value"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-receive-message",
+          "componentApi": 2,
+          "componentName": "Receive submissions",
+          "x": 40,
+          "y": 620,
+          "color": "#5eead4",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#f0fdfa",
+          "strokeOn": true,
+          "textColor": "#115e59",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 330,
+          "h": 160,
+          "state": {
+            "endpoints": [
+              {
+                "id": "value",
+                "name": "Fruit submitted",
+                "type": "string",
+                "description": "Each submission requests one captured row."
+              },
+              {
+                "id": "quantity",
+                "name": "Quantity",
+                "type": "number",
+                "description": "Sampled when a fruit is submitted."
+              }
+            ]
+          },
+          "script": "// Import explicitly chosen workspace endpoints as local outputs.\n// Stable endpoint IDs preserve connections when labels or row order change.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{},\n  initState(){return {endpoints:[{id:'value',name:'Value',type:'string',description:''}]};},\n  initStyle(){return {w:320,h:100,fontSize:18,fill:true,fillColor:'#f0fdfa',strokeOn:true,color:'#5eead4',textColor:'#115e59',size:1.5};},\n  _rows(state){\n    if(!state || !Array.isArray(state.endpoints) || state.endpoints.length<1 || state.endpoints.length>16)throw new Error('Configure 1–16 endpoints');\n    const ids=new Set();\n    for(const row of state.endpoints){\n      if(!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).some(key=>!['id','name','type','description'].includes(key)) ||\n        typeof row.id!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(row.id) || ['constructor','prototype','__proto__'].includes(row.id) || ids.has(row.id))throw new Error('Endpoint IDs must be unique stable identifiers');\n      if(typeof row.name!=='string' || !row.name.trim() || row.name.length>64)throw new Error('Endpoint name must contain 1–64 characters');\n      if(!['string','number','boolean','table','event'].includes(row.type))throw new Error('Choose a text, number, Boolean, table, or event endpoint');\n      if(typeof row.description!=='string' || row.description.length>200)throw new Error('Endpoint description must be text of at most 200 characters');\n      ids.add(row.id);\n    }\n    return state.endpoints;\n  },\n  _value(value,row){\n    if(row.type==='table'){\n      if(!value || typeof value!=='object' || Array.isArray(value) || typeof value.datasetId!=='string')throw new Error(row.name+' requires a table input');\n    }else if(typeof value!==row.type || row.type==='number' && !Number.isFinite(value) || row.type==='string' && value.length>2000)throw new Error(row.name+' must match its declared type');\n    return value;\n  },\n  _event(payload,row){\n    if(payload!==null && !['boolean','number','string'].includes(typeof payload) || typeof payload==='number' && !Number.isFinite(payload) || typeof payload==='string' && payload.length>2000)throw new Error('Unsupported event payload');\n    if(row.type!=='event' && typeof payload!==row.type)throw new Error('Event payload must match its declared type');\n  },\n  _text(value,x,y,w,h,size,color,weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    const limit=Math.max(1,Math.floor(w/(size*.7))),text=chars.length>limit?chars.slice(0,Math.max(0,limit-1)).join('')+'…':content;\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  workspaceEndpoint(state){return {direction:'receive',ports:Object.fromEntries(this._rows(state).map(row=>[row.id,{type:row.type}]))};},\n  outputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true})}]));},\n  eventOutputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'right'}]));},\n  inputs:{},\n  compute(inputs,state,context={}){\n    return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>{\n      const key='__remote_'+row.id,available=Object.hasOwn(inputs,key) || Object.hasOwn(context.workspaceEndpoint||{},row.id);\n      if(!available)throw new Error('Choose a published endpoint for '+row.name+' in Edit; Whole workspace mode is required');\n      return [row.id,this._value(Object.hasOwn(inputs,key)?inputs[key]:context.workspaceEndpoint[row.id],row)];\n    }));\n  },\n  onEvent(name,payload,state){\n    const row=this._rows(state).find(row=>'__remote_'+row.id===name);if(!row)throw new Error('Unknown remote event input');\n    this._event(payload,row);return {state,events:[{port:row.id,payload}]};\n  },\n  children(state,style,w,h,editing,io={}){\n    const rows=this._rows(state),baseH=64+rows.length*36,scale=Math.min(w/320,h/baseH),pad=12*scale,color=style.textColor||'#115e59';\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#f0fdfa',strokeOn:style.strokeOn!==false,color:style.color||'#5eead4',size:style.size,dash:style.dash},\n      this._text((typeof io.name==='string'?io.name:'').trim()||'Receive',pad,10*scale,w-pad*2,20*scale,13*scale,color,600)];\n    rows.forEach((row,index)=>{\n      const y=(36+index*36)*scale,type=row.type==='string'?'text':row.type==='event'?'events':row.type;\n      children.push(this._text(row.name+' · '+type,pad,y,w-pad*2,18*scale,12*scale,color,600));\n      const detail=io.workspaceSourceNames?.[row.id]||'Choose a published endpoint';\n      children.push(this._text(detail,pad,y+18*scale,w-pad*2,14*scale,9*scale,'#64748b'));\n    });\n    if(io.error)children.push(this._text(io.error,pad,h-19*scale,w-pad*2,15*scale,9*scale,'#92400e'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Published endpoint unavailable'});}\n})\n",
+          "inputValues": {},
+          "workspaceReceive": {
+            "value": {
+              "sketchId": "runtime-dashboard",
+              "componentUid": "runtime-publish-message",
+              "port": "value"
+            },
+            "quantity": {
+              "sketchId": "runtime-dashboard",
+              "componentUid": "runtime-publish-message",
+              "port": "quantity"
+            }
+          },
+          "workspaceEndpoint": "receive"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-service-log",
+          "componentApi": 2,
+          "componentName": "Service log",
+          "x": 400,
+          "y": 650,
+          "color": "#64748b",
+          "size": 2,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 440,
+          "h": 200,
+          "state": {
+            "text": "",
+            "lineCount": 0,
+            "notice": "",
+            "maxLines": 12,
+            "maxLength": 2000,
+            "showCounts": true,
+            "showHints": false,
+            "logMode": true,
+            "scrollOffset": -1
+          },
+          "script": "// Set replaces stored text; Append adds a line/block; Clear empties it.\n// Event receivers and rising-edge triggers share the same bounded operations.\n// Empty storage has zero lines. Appending an empty line makes one explicitly stored blank line.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{\n    showCounts:{type:'boolean',default:false,label:'Show counts'},\n    showHints:{type:'boolean',default:false,label:'Show hints'},\n    logMode:{type:'boolean',default:false,label:'Log mode'},\n    maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},\n    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}\n  },\n  inputs:{content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},\n    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}},\n  outputs:{text:{type:'string'},lineCount:{type:'number'}},\n  initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1};},\n  initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},\n  _fits(text){\n    // Reserve the longest status plus maximum configuration/count widths. JSON escapes count\n    // toward the host's 4000-character state budget, even when the visible string is shorter.\n    return JSON.stringify({text,lineCount:1000,notice:' '.repeat(160),maxLines:1000,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:8000}).length<=4000;\n  },\n  _state(state){\n    if(!Number.isInteger(state.maxLines) || state.maxLines<1 || state.maxLines>1000)throw new Error('Maximum lines must be an integer from 1 to 1000');\n    if(!Number.isInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000)throw new Error('Maximum characters must be an integer from 1 to 2000');\n    if(typeof state.text!=='string' || state.text.length>2000 || /\\r/.test(state.text) || !this._fits(state.text))throw new Error('Memo requires bounded, normalized stored text');\n    const count=state.text===''?0:state.text.split('\\n').length;\n    if(!Number.isInteger(state.lineCount) || state.lineCount<0 || state.lineCount>1000 ||\n      (state.lineCount!==count && !(state.text==='' && state.lineCount===1)))throw new Error('Memo line count must match its stored text');\n    if(typeof state.notice!=='string' || state.notice.length>160)throw new Error('Memo requires a bounded status message');\n    if(state.scrollOffset!==undefined && (!Number.isInteger(state.scrollOffset) || state.scrollOffset< -1 || state.scrollOffset>8000))throw new Error('Memo requires a bounded scroll position');\n    const stored={text:state.text,lineCount:state.lineCount,notice:state.notice,maxLines:state.maxLines,maxLength:state.maxLength,showCounts:state.showCounts===true,showHints:state.showHints===true,\n      logMode:state.logMode===true,scrollOffset:state.scrollOffset??-1};\n    if(JSON.stringify(stored).length>4000)throw new Error('Memo state exceeds its storage budget');\n    return stored;\n  },\n  _inputs(inputs){\n    for(const key of ['content','line'])if(typeof inputs[key]!=='string' || inputs[key].length>2000)throw new Error('Memo '+key+' requires a string of at most 2000 characters');\n    for(const key of ['set','append','clear'])if(typeof inputs[key]!=='boolean')throw new Error('Memo '+key+' trigger must be Boolean');\n    if(typeof inputs.showScrollbar!=='boolean')throw new Error('Show scrollbar must be Boolean');\n  },\n  publish(state){const stored=this._state(state);return {text:stored.text,lineCount:stored.lineCount};},\n  compute(inputs,state){this._inputs(inputs);return this.publish(state);},\n  _operate(state,operation,payload){\n    const next=this._state(state);\n    let text=next.text,lineCount=next.lineCount,removedLength=0;\n    if(operation==='clear'){text='';lineCount=0;}\n    else if(operation==='set'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Set text requires a string of at most 2000 characters');\n      text=payload.replace(/\\r\\n?/g,'\\n');lineCount=text===''?0:text.split('\\n').length;\n    }else if(operation==='append'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Append line requires a string of at most 2000 characters');\n      const line=payload.replace(/\\r\\n?/g,'\\n');\n      text=(lineCount>0?text+'\\n':'')+line;lineCount+=line.split('\\n').length;\n      if(next.logMode && lineCount>next.maxLines){\n        const kept=text.split('\\n').slice(-next.maxLines).join('\\n');\n        // The viewport is anchored in the expanded display text, so wrapped lines and\n        // tabs keep their reading position when earlier logical lines leave the log.\n        removedLength=text.slice(0,text.length-kept.length).replace(/\\t/g,'    ').length;\n        text=kept;lineCount=next.maxLines;\n      }\n    }else throw new Error('Unknown Memo operation');\n    if(lineCount>next.maxLines)next.notice='Line limit reached ('+next.maxLines+'). Previous text retained.';\n    else if(text.length>next.maxLength)next.notice='Character limit reached ('+next.maxLength+'). Previous text retained.';\n    else if(!this._fits(text))next.notice='Storage limit reached (escaped text). Previous text retained.';\n    else {\n      next.text=text;next.lineCount=lineCount;next.notice='';\n      if(operation!=='append')next.scrollOffset=-1;\n      else if(next.scrollOffset>=0)next.scrollOffset=Math.max(0,next.scrollOffset-removedLength);\n    }\n    return next;\n  },\n  onEvent(name,payload,state,io){return {state:this._operate(state,name==='content'?'set':name==='line'?'append':name,payload)};},\n  transition(inputs,state,memory){\n    this._inputs(inputs);\n    let next=this._state(state);\n    const observed={set:inputs.set,append:inputs.append,clear:inputs.clear};\n    const primed=memory && ['set','append','clear'].every(key=>typeof memory[key]==='boolean');\n    const rising=key=>primed && memory[key]===false && inputs[key];\n    const operation=rising('clear')?'clear':rising('set')?'set':rising('append')?'append':null;\n    if(operation)next=this._operate(next,operation,operation==='set'?inputs.content:inputs.line);\n    const reduced='Stored text exceeds the configured limit. Clear it or set shorter text.';\n    if(!operation && (next.lineCount>next.maxLines || next.text.length>next.maxLength))next.notice=reduced;\n    else if(!operation && next.notice===reduced)next.notice='';\n    return {state:next,memory:observed,nextWakeAt:null};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size,scrollOffset=-1){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[],offsets=[];\n    let base=0;\n    for(const block of text.replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block),consumed=0;\n      if(!chars.length){rows.push('');offsets.push(base);}\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        const row=chars.splice(0,length).join('');\n        rows.push(row);offsets.push(base+consumed);consumed+=row.length;\n      }\n      base+=block.length+1;\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),maxStart=Math.max(0,rows.length-limit);\n    let row=0;\n    while(row<maxStart && offsets[row+1]<=scrollOffset)row++;\n    const start=scrollOffset<0?maxStart:row;\n    return {lines:rows.slice(start,start+limit),offsets,lineHeight,hidden:maxStart>0,start,total:rows.length,limit,maxStart};\n  },\n  _layout(state,style,w,h,io={}){\n    const stored=this._state(state),scale=Math.min(1,w/360,h/280),pad=8*scale,header=18*scale;\n    const size=Math.max(5,Math.min(style.fontSize||16,h*.25)),width=Math.max(1,w-pad*2),bodyY=pad+header+4*scale;\n    const notice=stored.notice || (io.error?'Input unavailable; stored text retained':'');\n    const hintNeeded=stored.showHints && this._view(stored.text,width,Math.max(1,h-bodyY-pad),size).hidden;\n    const footer=notice?26*scale:stored.showCounts || hintNeeded?14*scale:0,bodyHeight=Math.max(1,h-bodyY-pad-footer);\n    let bodyWidth=width,view=this._view(stored.text,width,bodyHeight,size),scrollbar=null;\n    if(io.inputs?.showScrollbar===true && view.hidden){\n      const trackWidth=Math.min(12*scale,width*.2),gap=6*scale;\n      bodyWidth=Math.max(1,width-trackWidth-gap);\n      view=this._view(stored.text,bodyWidth,bodyHeight,size,stored.scrollOffset);\n      const thumbH=Math.min(bodyHeight,Math.max(20*scale,bodyHeight*view.limit/view.total));\n      scrollbar={x:w-pad-trackWidth,y:bodyY,w:trackWidth,h:bodyHeight,thumbH,\n        thumbY:bodyY+(bodyHeight-thumbH)*view.start/view.maxStart};\n    }\n    return {stored,scale,pad,header,size,width,bodyWidth,bodyY,bodyHeight,notice,footer,view,scrollbar};\n  },\n  children(state,style,w,h,editing,io={}){\n    const {stored,scale,pad,header,size,width,bodyWidth,bodyY,notice,footer,view,scrollbar}=this._layout(state,style,w,h,io);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {...text('',pad,pad,width,header,12*scale),...this._caption(io.name,'Memo',width,header,{...style,fontSize:12*scale})}\n    ];\n    if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,bodyWidth,view.lineHeight,size,'#94a3b8'));\n    else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,bodyWidth,view.lineHeight,size)));\n    if(scrollbar){\n      const bar=scrollbar;\n      children.push({type:'rect',x:bar.x,y:bar.y,w:bar.w,h:bar.h,fill:true,fillColor:'#e2e8f0',strokeOn:false},\n        {type:'rect',x:bar.x,y:bar.thumbY,w:bar.w,h:bar.thumbH,fill:true,fillColor:'#64748b',strokeOn:false});\n    }\n    if(footer){\n      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';\n      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';\n      const hint=stored.showHints && view.hidden?(view.start===view.maxStart?'Showing latest text':'Showing earlier text'):'';\n      const status=notice || [counts,hint].filter(Boolean).join(' · ');\n      if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),\n        ...this._caption(status,' ',width,footer,{...style,fontSize:10*scale,font:font(10*scale)})});\n    }\n    return children;\n  },\n  handles(state,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar?[{id:'scroll',x:scrollbar.x+scrollbar.w/2,y:scrollbar.thumbY+scrollbar.thumbH/2}]:[];\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar && x>=scrollbar.x && x<=scrollbar.x+scrollbar.w && y>=scrollbar.y && y<=scrollbar.y+scrollbar.h?'scroll':null;\n  },\n  dragEdit(state,handle,x,y,w,h,style={},io={}){\n    const {stored,view,scrollbar}=this._layout(state,style,w,h,io);\n    if(handle!=='scroll' || !scrollbar || !Number.isFinite(y))return {state:stored};\n    const travel=scrollbar.h-scrollbar.thumbH;\n    const row=travel>0?Math.round(Math.max(0,Math.min(1,(y-scrollbar.y-scrollbar.thumbH/2)/travel))*view.maxStart):view.maxStart;\n    return {state:{...stored,scrollOffset:row===view.maxStart?-1:view.offsets[row]}};\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "content": "",
+            "line": "",
+            "set": false,
+            "append": false,
+            "clear": false,
+            "showScrollbar": true
+          },
+          "bindings": {
+            "line": {
+              "uid": "runtime-receive-message",
+              "port": "value"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-service-home",
+          "componentApi": 2,
+          "componentName": "Open dashboard",
+          "x": 970,
+          "y": 630,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 240,
+          "h": 120,
+          "state": {
+            "showButton": true,
+            "showIndicators": false
+          },
+          "script": "// Ask the host to open a zero-based workspace tab, by released button, Go event or rising signal.\n// Computation never navigates. Loaded/high-at-activation signals only establish a baseline.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{arrived:{type:'number'},failed:{type:'string'}},\n  actionEvents:{goToTab:{success:'arrived',failure:'failed'}},\n  settings:{showButton:{type:'boolean',default:true,label:'Show button'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},\n  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}},\n  outputs:{},\n  dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},\n  initState(){return {showButton:true,showIndicators:true};},\n  initStyle(){return {w:240,h:120,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs){\n    if(!Number.isSafeInteger(inputs.page) || inputs.page<0)throw new Error('Tab index must be a whole number starting at 0');\n    if(typeof inputs.parameters!=='string' || inputs.parameters.length>2000)throw new Error('Parameters must be JSON text of at most 2000 characters');\n    if(typeof inputs.go!=='boolean')throw new Error('Go trigger must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/240,h/120),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Go to tab';\n    if(state.showButton===false)return [\n      {type:'rect',x:0,y:0,w,h,fill:false,strokeOn:true,color:'#cbd5e1',size:1,dash:'dash',editorOnly:true},\n      {...this._text(name+' · automatic',pad,pad,w-pad*2,19*scale,12*scale,style,'#64748b'),editorOnly:true}\n    ];\n    const available=!io.error && Number.isSafeInteger(io.inputs?.page) && io.inputs.page>=0;\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      this._text(name,pad,pad,w-pad*2,19*scale,13*scale,style,style.textColor||'#334155',600)];\n    if(!available){children.push(this._text(io.error||'Input unavailable',pad,46*scale,w-pad*2,26*scale,12*scale,style,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:39*scale,w:w-pad*2,h:40*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1},\n      this._text('Go to tab '+io.inputs.page+' →',pad+12*scale,49*scale,w-pad*2-24*scale,22*scale,15*scale,style,'#3730a3',600));\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:99*scale,w:8*scale,h:8*scale,fill:true,fillColor:io.inputs.go===true?'#15803d':'#94a3b8',strokeOn:false},\n        this._text('Go: '+String(io.inputs.go===true)+' · first tab is 0',pad+15*scale,94*scale,w-pad*2-15*scale,18*scale,10*scale,style,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.showButton===false?[]:[{id:'go',kind:'action',x:w/2,y:59*Math.min(w/240,h/120),action:{type:'goToTab',input:'page',parameters:'parameters'}}];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/240,h/120),pad=12*scale;return state.showButton!==false && x>=pad && x<=w-pad && y>=39*scale && y<=79*scale?'go':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "page": 1,
+            "parameters": "{}",
+            "go": false
+          }
+        },
+        {
+          "type": "text",
+          "uid": "runtime-services-catalog-help",
+          "text": "Fruit stock appears in the workspace catalog; scratch stays local. Each submission samples the fruit and quantity from two received endpoints.",
+          "x": 740,
+          "y": 550,
+          "w": 520,
+          "h": 72,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        }
+      ],
+      "datasets": {
+        "workspace-stock": {
+          "name": "Fruit stock",
+          "columns": [
+            {
+              "key": "fruit",
+              "name": "Fruit",
+              "type": "string"
+            },
+            {
+              "key": "quantity",
+              "name": "Quantity",
+              "type": "number"
+            }
+          ],
+          "rows": [
+            [
+              "Apples",
+              12
+            ],
+            [
+              "Oranges",
+              8
+            ]
+          ]
+        },
+        "workspace-scratch": {
+          "name": "Private scratch",
+          "columns": [
+            {
+              "key": "note",
+              "name": "Note",
+              "type": "string"
+            }
+          ],
+          "rows": [
+            [
+              "Only offered in Services"
+            ]
+          ]
+        }
+      },
+      "assets": {}
+    },
+    {
+      "id": "runtime-dashboard",
+      "name": "Dashboard",
+      "items": [
+        {
+          "type": "text",
+          "uid": "runtime-dashboard-title",
+          "text": "Dashboard",
+          "x": 40,
+          "y": 24,
+          "w": 1240,
+          "h": 44,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 28,
+          "font": "28px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "runtime-dashboard-help",
+          "text": "The clock, records and service log live on Services. Submit a message, switch sketches, then inspect its log.",
+          "x": 40,
+          "y": 76,
+          "w": 1220,
+          "h": 48,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-dashboard-clock",
+          "componentApi": 2,
+          "componentName": "Receive service time",
+          "x": 40,
+          "y": 146,
+          "color": "#5eead4",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#f0fdfa",
+          "strokeOn": true,
+          "textColor": "#115e59",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 320,
+          "h": 130,
+          "state": {
+            "endpoints": [
+              {
+                "id": "value",
+                "name": "UTC time",
+                "type": "string",
+                "description": "A live value from the hidden Services sketch."
+              },
+              {
+                "id": "tick",
+                "name": "Second tick",
+                "type": "boolean",
+                "description": "The clock’s short second pulse."
+              }
+            ]
+          },
+          "script": "// Import explicitly chosen workspace endpoints as local outputs.\n// Stable endpoint IDs preserve connections when labels or row order change.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{},\n  initState(){return {endpoints:[{id:'value',name:'Value',type:'string',description:''}]};},\n  initStyle(){return {w:320,h:100,fontSize:18,fill:true,fillColor:'#f0fdfa',strokeOn:true,color:'#5eead4',textColor:'#115e59',size:1.5};},\n  _rows(state){\n    if(!state || !Array.isArray(state.endpoints) || state.endpoints.length<1 || state.endpoints.length>16)throw new Error('Configure 1–16 endpoints');\n    const ids=new Set();\n    for(const row of state.endpoints){\n      if(!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).some(key=>!['id','name','type','description'].includes(key)) ||\n        typeof row.id!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(row.id) || ['constructor','prototype','__proto__'].includes(row.id) || ids.has(row.id))throw new Error('Endpoint IDs must be unique stable identifiers');\n      if(typeof row.name!=='string' || !row.name.trim() || row.name.length>64)throw new Error('Endpoint name must contain 1–64 characters');\n      if(!['string','number','boolean','table','event'].includes(row.type))throw new Error('Choose a text, number, Boolean, table, or event endpoint');\n      if(typeof row.description!=='string' || row.description.length>200)throw new Error('Endpoint description must be text of at most 200 characters');\n      ids.add(row.id);\n    }\n    return state.endpoints;\n  },\n  _value(value,row){\n    if(row.type==='table'){\n      if(!value || typeof value!=='object' || Array.isArray(value) || typeof value.datasetId!=='string')throw new Error(row.name+' requires a table input');\n    }else if(typeof value!==row.type || row.type==='number' && !Number.isFinite(value) || row.type==='string' && value.length>2000)throw new Error(row.name+' must match its declared type');\n    return value;\n  },\n  _event(payload,row){\n    if(payload!==null && !['boolean','number','string'].includes(typeof payload) || typeof payload==='number' && !Number.isFinite(payload) || typeof payload==='string' && payload.length>2000)throw new Error('Unsupported event payload');\n    if(row.type!=='event' && typeof payload!==row.type)throw new Error('Event payload must match its declared type');\n  },\n  _text(value,x,y,w,h,size,color,weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    const limit=Math.max(1,Math.floor(w/(size*.7))),text=chars.length>limit?chars.slice(0,Math.max(0,limit-1)).join('')+'…':content;\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  workspaceEndpoint(state){return {direction:'receive',ports:Object.fromEntries(this._rows(state).map(row=>[row.id,{type:row.type}]))};},\n  outputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true})}]));},\n  eventOutputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'right'}]));},\n  inputs:{},\n  compute(inputs,state,context={}){\n    return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>{\n      const key='__remote_'+row.id,available=Object.hasOwn(inputs,key) || Object.hasOwn(context.workspaceEndpoint||{},row.id);\n      if(!available)throw new Error('Choose a published endpoint for '+row.name+' in Edit; Whole workspace mode is required');\n      return [row.id,this._value(Object.hasOwn(inputs,key)?inputs[key]:context.workspaceEndpoint[row.id],row)];\n    }));\n  },\n  onEvent(name,payload,state){\n    const row=this._rows(state).find(row=>'__remote_'+row.id===name);if(!row)throw new Error('Unknown remote event input');\n    this._event(payload,row);return {state,events:[{port:row.id,payload}]};\n  },\n  children(state,style,w,h,editing,io={}){\n    const rows=this._rows(state),baseH=64+rows.length*36,scale=Math.min(w/320,h/baseH),pad=12*scale,color=style.textColor||'#115e59';\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#f0fdfa',strokeOn:style.strokeOn!==false,color:style.color||'#5eead4',size:style.size,dash:style.dash},\n      this._text((typeof io.name==='string'?io.name:'').trim()||'Receive',pad,10*scale,w-pad*2,20*scale,13*scale,color,600)];\n    rows.forEach((row,index)=>{\n      const y=(36+index*36)*scale,type=row.type==='string'?'text':row.type==='event'?'events':row.type;\n      children.push(this._text(row.name+' · '+type,pad,y,w-pad*2,18*scale,12*scale,color,600));\n      const detail=io.workspaceSourceNames?.[row.id]||'Choose a published endpoint';\n      children.push(this._text(detail,pad,y+18*scale,w-pad*2,14*scale,9*scale,'#64748b'));\n    });\n    if(io.error)children.push(this._text(io.error,pad,h-19*scale,w-pad*2,15*scale,9*scale,'#92400e'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Published endpoint unavailable'});}\n})\n",
+          "inputValues": {},
+          "workspaceReceive": {
+            "value": {
+              "sketchId": "runtime-services",
+              "componentUid": "runtime-publish-time",
+              "port": "value"
+            },
+            "tick": {
+              "sketchId": "runtime-services",
+              "componentUid": "runtime-publish-time",
+              "port": "tick"
+            }
+          },
+          "workspaceEndpoint": "receive"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-dashboard-time",
+          "componentApi": 2,
+          "componentName": "Current UTC time",
+          "x": 390,
+          "y": 146,
+          "color": "#64748b",
+          "size": 2,
+          "fill": false,
+          "fillColor": "#ffffff",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 28,
+          "font": "16px sans-serif",
+          "w": 330,
+          "h": 86,
+          "state": {
+            "showName": true,
+            "showHints": false
+          },
+          "script": "// A string display and pass-through. The canvas shows a wrapped preview; value stays complete.\n({\n  apiVersion:2,\n  settings:{showName:{type:'boolean',default:false,label:'Show name'},showHints:{type:'boolean',default:false,label:'Show hints'}},\n  inputs:{value:{type:'string',default:''}},\n  outputs:{value:{type:'string'}},\n  initState(){return {showName:false,showHints:false};},\n  initStyle(){return {w:280,h:64,fontSize:18,fill:false,fillColor:'#ffffff',strokeOn:false,color:'#64748b',textColor:'#334155',size:2};},\n  compute(inputs){\n    if(typeof inputs.value!=='string' || inputs.value.length>2000)throw new Error('Text label requires a string of at most 2000 characters');\n    return {value:inputs.value};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[];\n    for(const block of text.replace(/\\r\\n?/g,'\\n').replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block);\n      if(!chars.length)rows.push('');\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        rows.push(chars.splice(0,length).join(''));\n      }\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),hidden=rows.length>limit;\n    return {lines:rows.slice(0,limit),lineHeight,hidden};\n  },\n  children(state,style,w,h,editing,io={}){\n    const available=!io.error && typeof io.outputs?.value==='string',value=available?io.outputs.value:'';\n    const boxed=style.strokeOn===true || style.fill===true,stroke=style.strokeOn===true?Math.max(0,style.size||0):0;\n    const inset=boxed?Math.min(4+stroke/2,w/4,h/4):0,width=Math.max(1,w-inset*2),height=Math.max(1,h-inset*2);\n    const size=Math.max(5,Math.min(style.fontSize||18,height)),caption=state.showName===true?Math.min(22,height*.35):0;\n    const hintNeeded=state.showHints===true && available && (value==='' || this._view(value,width,Math.max(1,height-caption),size).hidden);\n    const footer=hintNeeded?Math.min(14,height*.25):0,bodyHeight=Math.max(1,height-caption-footer),bodySize=Math.min(size,bodyHeight/1.35);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[];\n    if(boxed)children.push({type:'rect',x:0,y:0,w,h,strokeOn:style.strokeOn===true,color:style.color,size:style.size,dash:style.dash,fill:style.fill===true,fillColor:style.fillColor});\n    if(caption)children.push({...text('',inset,inset,width,caption,12),...this._caption(io.name,'Text label',width,caption,{...style,fontSize:12})});\n    let status='';\n    if(!available)children.push(text('Input unavailable',inset,inset+caption,width,Math.min(bodyHeight,size*1.35),Math.min(size,bodyHeight/1.35),'#92400e'));\n    else if(value===''){\n      status='Empty text';\n    }else{\n      const view=this._view(value,width,bodyHeight,bodySize);\n      view.lines.forEach((line,index)=>children.push(text(line,inset,inset+caption+index*view.lineHeight,width,view.lineHeight,bodySize)));\n      if(view.hidden)status='More text in output…';\n    }\n    if(footer && status)children.push(text(status,inset,inset+height-footer,width,footer,Math.min(10,footer/1.35),'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "value": ""
+          },
+          "bindings": {
+            "value": {
+              "uid": "runtime-dashboard-clock",
+              "port": "value"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-dashboard-tick",
+          "componentApi": 2,
+          "componentName": "Second tick",
+          "x": 390,
+          "y": 238,
+          "color": "#64748b",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 240,
+          "h": 66,
+          "state": {},
+          "script": "// A boolean display. Missing inputs remain unavailable; they never look like false.\n({\n  apiVersion:2,\n  inputs:{value:{type:'boolean'}},\n  outputs:{value:{type:'boolean'}},\n  initState(){return {};},\n  initStyle(){return {w:220,h:100,fontSize:22,strokeOn:false};},\n  compute(inputs){return {value:inputs.value};},\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io){\n    const value=io.outputs.value,diameter=Math.min(w*.18,h*.42);\n    const caption=this._caption(io.name,'Status indicator',w,h*.33,style);\n    return [\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.33,...caption,align:'center',color:style.textColor,strokeOn:false},\n      {type:'ellipse',x:w*.18-diameter/2,y:h*.66-diameter/2,w:diameter,h:diameter,fill:true,fillColor:value?'#15803d':'#64748b',strokeOn:false},\n      {type:'text',x:w*.32,y:h*.36,w:w*.65,h:h*.60,text:value?'ON':'OFF',align:'center',font:style.font,color:style.textColor,strokeOn:false}\n    ];\n  }\n})\n",
+          "inputValues": {},
+          "bindings": {
+            "value": {
+              "uid": "runtime-dashboard-clock",
+              "port": "tick"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-message",
+          "componentApi": 2,
+          "componentName": "Message for Services",
+          "x": 40,
+          "y": 316,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 390,
+          "h": 128,
+          "state": {
+            "values": [
+              "Hello Services"
+            ],
+            "current": 0,
+            "pending": [],
+            "submitted": false,
+            "press": 0,
+            "entryRuntime": "",
+            "showSubmitted": false,
+            "showHints": false,
+            "maxLength": 2000,
+            "required": false,
+            "placeholder": "Type a message, then press Enter"
+          },
+          "script": "// Each accepted entry emits its captured value as an event and queues one submitted pulse.\n// Repeating a value produces another event and pulse; the two connection styles remain independent.\n// The bounded inbox survives Pause; a fresh runtime retains the latest value without replaying it.\n// A 10 ms arming gap lets connected Clear signals settle before the first queued pulse.\n({\n  apiVersion:2,\n  eventApi:1,\n  wakePolicy:'latest',\n  settings:{maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'},required:{type:'boolean',default:false,label:'Required'},placeholder:{type:'string',default:'',label:'Placeholder'},showSubmitted:{type:'boolean',default:false,label:'Show submission state'},showHints:{type:'boolean',default:false,label:'Show hints'}},\n  inputs:{clear:{role:'control',type:'boolean',default:false}},\n  outputs:{value:{type:'string',event:true},submitted:{role:'control',type:'boolean'}},\n  initState(){return {values:[''],current:0,pending:[],submitted:false,press:0,entryRuntime:'',showSubmitted:false,showHints:false,maxLength:2000,required:false,placeholder:''};},\n  initStyle(){return {w:320,h:72,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  _value(value){if(typeof value!=='string' || value.length>2000)throw new Error('Text must contain at most 2000 characters'); return value;},\n  _config(state){if(!Number.isSafeInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000 || typeof state.required!=='boolean' || typeof state.placeholder!=='string' || state.placeholder.length>120 || /[\\r\\n]/.test(state.placeholder))throw new Error('Choose a length from 1 to 2000 and a single-line placeholder of at most 120 characters');},\n  _state(state){\n    this._config(state);\n    if(!Array.isArray(state.values) || !state.values.length || state.values.length>65 ||\n       !Number.isSafeInteger(state.current) || state.current<0 || state.current>=state.values.length ||\n       !Array.isArray(state.pending) || state.pending.length>64 ||\n       state.pending.some(index=>!Number.isSafeInteger(index) || index<0 || index>=state.values.length) ||\n       typeof state.submitted!=='boolean' || !Number.isSafeInteger(state.press) || state.press<0 ||\n       (state.entryRuntime!==undefined && (typeof state.entryRuntime!=='string' || state.entryRuntime.length>128)))throw new Error('Invalid stored input state');\n    state.values.forEach(value=>this._value(value));\n    if(JSON.stringify(state.values).length>3200 || JSON.stringify(state).length>4000)throw new Error('Stored input text is too large');\n  },\n  _latest(state){return state.values[state.pending.length?state.pending[state.pending.length-1]:state.current];},\n  _compact(state){\n    const used=[...new Set([state.current,...state.pending])],values=used.map(index=>state.values[index]);\n    return {...state,values,current:used.indexOf(state.current),pending:state.pending.map(index=>used.indexOf(index))};\n  },\n  _entry(value,state){\n    this._value(value);if(value.length>state.maxLength)throw new Error('Text exceeds the configured maximum length');\n    if(state.required && !value.trim())throw new Error('Enter a value');\n    if(/[\\r\\n]/.test(value))throw new Error('Enter a single line of text');\n    return value;\n  },\n  publish(state){\n    this._state(state);\n    return {value:state.submitted?state.values[state.current]:this._latest(state),submitted:state.submitted};\n  },\n  compute(inputs,state){return this.publish(state);},\n  transition(inputs,state,memory,context){\n    this._state(state);\n    const now=context.now,clear=inputs.clear===undefined?false:inputs.clear;\n    if(typeof clear!=='boolean')throw new Error('Clear trigger must be Boolean');\n    if(!Number.isFinite(now) || now<0)throw new Error('Input requires a valid monotonic time');\n    if(memory?.primed!==true){\n      const runtimeId=typeof context.runtimeId==='string'?context.runtimeId:'';\n      if(!runtimeId || state.entryRuntime!==runtimeId){\n        return {state:{...state,values:[this._latest(state)],current:0,pending:[],submitted:false,entryRuntime:runtimeId},\n          memory:{primed:true,phase:'idle',nextAt:null,clear},nextWakeAt:null};\n      }\n      // A first entry accepted while paused belongs to this runtime, so Step may emit it.\n      state={...state,submitted:false};memory={primed:true,phase:'idle',nextAt:null,clear};\n    }\n    if(!['idle','high','low'].includes(memory.phase) || (memory.phase!=='idle' && (!Number.isFinite(memory.nextAt) || memory.nextAt<0)))throw new Error('Invalid input scheduling memory');\n    // Clear wins over the queue, but an initially high signal only establishes its baseline.\n    if(memory.clear===false && clear){\n      return {state:{...state,values:[''],current:0,pending:[],submitted:false},\n        memory:{primed:true,phase:'idle',nextAt:null,clear},nextWakeAt:null};\n    }\n    let phase=memory.phase,nextAt=memory.nextAt,current=state.current,pending=state.pending.slice();\n    // One phase per round gives every accepted entry its own rising edge and matching value.\n    if(phase==='high' && !context.historical && now>=nextAt){phase='low';nextAt=now+10;}\n    else if(phase==='idle' && pending.length){phase='low';nextAt=now+10;}\n    else if(phase==='low' && !context.historical && now>=nextAt && pending.length){\n      current=pending.shift();phase='high';nextAt=now+100;\n    }else if(phase==='low' && !context.historical && now>=nextAt){phase='idle';nextAt=null;}\n    if(nextAt!==null && !Number.isFinite(nextAt))throw new Error('Input wake time is outside the numeric range');\n    const next=this._compact({...state,current:phase!=='high' && pending.length?pending[0]:current,pending,submitted:phase==='high'});this._state(next);\n    return {state:next,memory:{primed:true,phase,nextAt,clear},nextWakeAt:nextAt};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _preview(value,width,size){\n    const chars=this._graphemes(value),unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size;if(chars.reduce((used,c)=>used+unit(c),0)<=room)return value;\n    let result='',used=.9;for(const c of chars){if(used+unit(c)>room)break;result+=c;used+=unit(c);}return result+'…';\n  },\n  _field(state,w,h,style={}){\n    const scale=Math.min(w/320,h/72),footer=state.showSubmitted===true || state.showHints===true?14*scale:0;\n    const y=24*scale,height=Math.max(1,h-y-footer);\n    return {x:0,y,w,h:height,fontSize:Math.max(5,Math.min(style.fontSize||18,height*.55))};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/320,h/72),field=this._field(state,w,h,style),font=(size,weight=400)=>(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    const text=(value,x,y,width,height,size,align='left')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align,font:font(size),color:style.textColor||style.color,strokeOn:false,fill:false});\n    let available=false,value;try{this._state(state);value=this._latest(state);available=!io.error;}catch{}\n    const label=available?value || state.placeholder || (state.showHints===true?'Enter text':''):'Input unavailable',inset=Math.min(10*scale,field.w*.08);\n    const children=[\n      {...text('',0,0,w,20*scale,13*scale),...this._caption(io.name,'Text input',w,20*scale,{...style,fontSize:13*scale})},\n      {type:'rect',x:field.x,y:field.y,w:field.w,h:field.h,fill:true,fillColor:style.fillColor||'#ffffff',strokeOn:true,color:style.color||'#94a3b8',size:style.size||1.5},\n      {...text(this._preview(label,Math.max(1,field.w-inset*2),field.fontSize),field.x+inset,field.y+(field.h-field.fontSize*1.35)/2,Math.max(1,field.w-inset*2),field.fontSize*1.35,field.fontSize),color:available?available && !value?'#64748b':style.textColor||style.color:'#92400e'}\n    ];\n    if(state.showHints===true || state.showSubmitted===true){\n      const hint=state.showHints===true?'Enter to submit':'',status=state.showSubmitted===true?'Submitted: '+(available?String(io.outputs?.submitted===true):'—'):'';\n      children.push(text([hint,status].filter(Boolean).join(' · '),0,h-12*scale,w,12*scale,9*scale));\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,error:io.error||'Input unavailable',outputs:{}});},\n  handles(state,w,h,style={}){\n    this._state(state);const inline=this._field(state,w,h,style);\n    return [{id:'entry',x:inline.x+inline.w/2,y:inline.y+inline.h/2,kind:'text',value:this._latest(state),maxLength:state.maxLength,required:state.required,placeholder:state.placeholder,inline}];\n  },\n  hitEdit(state,x,y,w,h){const field=this._field(state,w,h);return x>=field.x && x<=field.x+field.w && y>=field.y && y<=field.y+field.h?'entry':null;},\n  dragEdit(state,handle,value,ly,w,h,style,io={}){\n    this._state(state);if(handle!=='entry')return {state};\n    value=this._entry(value,state);\n    const runtimeId=typeof io.runtimeId==='string'?io.runtimeId:'';\n    if(runtimeId && state.entryRuntime!==runtimeId){\n      // Reopened/copied inboxes are old actions; keep their latest value, then accept this new one.\n      state={...state,values:[this._latest(state)],current:0,pending:[],submitted:false,entryRuntime:runtimeId};\n    }\n    if(state.pending.length>=64)throw new Error('Submission queue is full; wait for pending submissions');\n    const values=state.values.slice(),pending=state.pending.slice();\n    let index=values.indexOf(value);if(index<0){index=values.length;values.push(value);}pending.push(index);\n    const next=this._compact({...state,values,current:state.submitted?state.current:pending[0],pending,press:state.press===Number.MAX_SAFE_INTEGER?0:state.press+1});\n    if(JSON.stringify(next.values).length>3200 || JSON.stringify(next).length>4000)throw new Error('Submission text is too large; shorten it or wait for pending submissions');\n    this._state(next);return {state:next,events:[{port:'value',payload:value}]};\n  }\n})\n",
+          "inputValues": {
+            "clear": false
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-quantity",
+          "componentApi": 2,
+          "componentName": "Quantity",
+          "x": 460,
+          "y": 316,
+          "color": "#64748b",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 20,
+          "font": "16px sans-serif",
+          "w": 220,
+          "h": 128,
+          "state": {
+            "value": 1
+          },
+          "script": "// A numeric source with configurable bounds and step. Click the value to type a number.\n// The slider, buttons, and direct entry use the same step grid, anchored at the minimum.\n({\n  apiVersion:2,\n  inputs:{min:{role:'control',type:'number',default:0},max:{role:'control',type:'number',default:100},step:{role:'control',type:'number',default:1}},\n  outputs:{value:{type:'number'}},\n  initState(){return {value:50};},\n  initStyle(){return {w:240,h:130,fontSize:20,strokeOn:false};},\n  _config(inputs={}){\n    const {min=0,max=100,step=1}=inputs;\n    if(!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step))throw new Error('Bounds and step must be finite numbers');\n    if(min>max)throw new Error('Minimum must not exceed maximum');\n    if(step<=0)throw new Error('Step must be greater than zero');\n    if(!Number.isFinite(max-min) || !Number.isFinite((max-min)/step))throw new Error('Range or step is outside the numeric range');\n    return {min,max,step};\n  },\n  _snap(value,config){\n    const {min,max,step}=config;\n    value=Number.isFinite(value)?Math.max(min,Math.min(max,value)):min;\n    if(value===min || value===max)return value||0;\n    const ticks=Math.round((value-min)/step),raw=Math.max(min,Math.min(max,min+ticks*step));\n    const decimals=value=>{const [mantissa,exponent='0']=String(value).split('e');return Math.max(0,(mantissa.split('.')[1]||'').length-Number(exponent));};\n    const precision=Math.max(decimals(min),decimals(step));\n    const snapped=precision<=100?Number(raw.toFixed(precision)):raw;\n    return Math.max(min,Math.min(max,snapped))||0;\n  },\n  compute(inputs,state){const config=this._config(inputs);return {value:this._snap(state.value,config)};},\n  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io={}){\n    let config;try{config=this._config(io.inputs);}catch{}\n    const value=io.outputs?.value,available=!io.error && Number.isFinite(value) && !!config;\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15),y=h*.55;\n    const textColor=style.textColor||style.color,font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';\n    const position=available && config.max!==config.min?(value-config.min)/(config.max-config.min):.5;\n    const label=this._number(value);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.22,...this._caption(io.name,'Number control',w,h*.22,style),align:'center',color:textColor,strokeOn:false,fill:false},\n      {type:'text',x:w*.12,y:h*.23,w:w*.76,h:h*.23,text:available?label:'—',align:'center',font:font(20),color:textColor,strokeOn:false,fill:false},\n      {type:'line',x1:pad,y1:y,x2:w-pad,y2:y,color:style.color,size:2}\n    ];\n    if(available){\n      children.push({type:'ellipse',x:pad+(w-pad*2)*position-6*scale,y:y-6*scale,w:12*scale,h:12*scale,fill:true,fillColor:style.color,strokeOn:false});\n      if(editing){\n        for(const [x,label] of [[0,'− '+this._number(config.step)],[w/2,'+ '+this._number(config.step)]]){\n          children.push({type:'rect',x:x+4*scale,y:h*.72,w:Math.max(0,w/2-8*scale),h:h*.25,strokeOn:true,color:style.color,size:1,fill:false});\n          children.push({type:'text',x,y:h*.72,w:w/2,h:h*.25,text:label,align:'center',font:font(16),color:textColor,strokeOn:false,fill:false});\n        }\n      }\n    }else{\n      children.push({type:'text',x:0,y:h*.72,w,h:h*.25,text:'Check bounds and step in Edit',align:'center',font:font(10),color:'#92400e',strokeOn:false,fill:false});\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,outputs:{}});},\n  handles(state,w,h,style,io={}){\n    let config;try{config=this._config(io.inputs);}catch{return [];}\n    const value=io.outputs?.value;if(!Number.isFinite(value) || io.error)return [];\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15);\n    const position=config.max===config.min?.5:(value-config.min)/(config.max-config.min);\n    return [\n      {id:'value',x:pad+(w-pad*2)*position,y:h*.55},\n      {id:'entry',x:w/2,y:h*.345,kind:'number',value,min:config.min,max:config.max,step:config.step},\n      {id:'minus',x:w/4,y:h*.84,kind:'click'},\n      {id:'plus',x:w*.75,y:h*.84,kind:'click'}\n    ];\n  },\n  hitEdit(state,lx,ly,w,h){\n    if(lx<0 || lx>w)return null;\n    if(ly>=h*.72 && ly<=h)return lx<w/2?'minus':'plus';\n    if(ly>=h*.23 && ly<=h*.46)return 'entry';\n    if(Math.abs(ly-h*.55)<=Math.min(18,h*.09))return 'value';\n    return null;\n  },\n  dragEdit(state,handle,lx,ly,w,h,style,io={}){\n    const config=this._config(io.inputs),current=this._snap(io.outputs?.value??state.value,config);\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15);\n    let value=current;\n    if(handle==='value')value=config.min+Math.max(0,Math.min(1,(lx-pad)/Math.max(1,w-pad*2)))*(config.max-config.min);\n    else if(handle==='entry'){if(!Number.isFinite(lx))throw new Error('Enter a finite number');value=lx;}\n    else if(handle==='plus')value=config.max-current<=config.step?config.max:current+config.step;\n    else if(handle==='minus')value=current-config.min<=config.step?config.min:current-config.step;\n    if(!Number.isFinite(value))throw new Error('Calculation overflow');\n    return {state:{...state,value:this._snap(value,config)}};\n  }\n})\n",
+          "inputValues": {
+            "min": 0,
+            "max": 100,
+            "step": 1
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-publish-message",
+          "componentApi": 2,
+          "componentName": "Publish submissions",
+          "x": 720,
+          "y": 316,
+          "color": "#818cf8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#eef2ff",
+          "strokeOn": true,
+          "textColor": "#3730a3",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 320,
+          "h": 150,
+          "state": {
+            "endpoints": [
+              {
+                "id": "value",
+                "name": "Fruit submitted",
+                "type": "string",
+                "description": "Current fruit plus one event for every accepted submission."
+              },
+              {
+                "id": "quantity",
+                "name": "Quantity",
+                "type": "number",
+                "description": "Current quantity; editing it does not submit a fruit."
+              }
+            ]
+          },
+          "script": "// Publish several named, typed endpoints from this sketch.\n// Stable endpoint IDs preserve connections when labels or row order change.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{},\n  initState(){return {endpoints:[{id:'value',name:'Value',type:'string',description:''}]};},\n  initStyle(){return {w:320,h:100,fontSize:18,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',textColor:'#3730a3',size:1.5};},\n  _rows(state){\n    if(!state || !Array.isArray(state.endpoints) || state.endpoints.length<1 || state.endpoints.length>16)throw new Error('Configure 1–16 endpoints');\n    const ids=new Set();\n    for(const row of state.endpoints){\n      if(!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).some(key=>!['id','name','type','description'].includes(key)) ||\n        typeof row.id!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(row.id) || ['constructor','prototype','__proto__'].includes(row.id) || ids.has(row.id))throw new Error('Endpoint IDs must be unique stable identifiers');\n      if(typeof row.name!=='string' || !row.name.trim() || row.name.length>64)throw new Error('Endpoint name must contain 1–64 characters');\n      if(!['string','number','boolean','table','event'].includes(row.type))throw new Error('Choose a text, number, Boolean, table, or event endpoint');\n      if(typeof row.description!=='string' || row.description.length>200)throw new Error('Endpoint description must be text of at most 200 characters');\n      ids.add(row.id);\n    }\n    return state.endpoints;\n  },\n  _value(value,row){\n    if(row.type==='table'){\n      if(!value || typeof value!=='object' || Array.isArray(value) || typeof value.datasetId!=='string')throw new Error(row.name+' requires a table input');\n    }else if(typeof value!==row.type || row.type==='number' && !Number.isFinite(value) || row.type==='string' && value.length>2000)throw new Error(row.name+' must match its declared type');\n    return value;\n  },\n  _event(payload,row){\n    if(payload!==null && !['boolean','number','string'].includes(typeof payload) || typeof payload==='number' && !Number.isFinite(payload) || typeof payload==='string' && payload.length>2000)throw new Error('Unsupported event payload');\n    if(row.type!=='event' && typeof payload!==row.type)throw new Error('Event payload must match its declared type');\n  },\n  _text(value,x,y,w,h,size,color,weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    const limit=Math.max(1,Math.floor(w/(size*.7))),text=chars.length>limit?chars.slice(0,Math.max(0,limit-1)).join('')+'…':content;\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  workspaceEndpoint(state){return {direction:'publish',ports:Object.fromEntries(this._rows(state).map(row=>[row.id,{type:row.type}]))};},\n  outputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true})}]));},\n  eventOutputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'right'}]));},\n  inputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true,default:row.type==='string'?'':row.type==='number'?0:false})}]));},\n  eventInputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'left'}]));},\n  compute(inputs,state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,this._value(inputs[row.id],row)]));},\n  onEvent(name,payload,state){\n    const row=this._rows(state).find(row=>row.id===name);if(!row)throw new Error('Unknown published event input');\n    this._event(payload,row);return {state,events:[{port:row.id,payload}]};\n  },\n  children(state,style,w,h,editing,io={}){\n    const rows=this._rows(state),baseH=64+rows.length*36,scale=Math.min(w/320,h/baseH),pad=12*scale,color=style.textColor||'#3730a3';\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#eef2ff',strokeOn:style.strokeOn!==false,color:style.color||'#818cf8',size:style.size,dash:style.dash},\n      this._text((typeof io.name==='string'?io.name:'').trim()||'Publish',pad,10*scale,w-pad*2,20*scale,13*scale,color,600)];\n    rows.forEach((row,index)=>{\n      const y=(36+index*36)*scale,type=row.type==='string'?'text':row.type==='event'?'events':row.type;\n      children.push(this._text(row.name+' · '+type,pad,y,w-pad*2,18*scale,12*scale,color,600));\n      const detail=row.description||'→ Workspace';\n      children.push(this._text(detail,pad,y+18*scale,w-pad*2,14*scale,9*scale,'#64748b'));\n    });\n    if(io.error)children.push(this._text(io.error,pad,h-19*scale,w-pad*2,15*scale,9*scale,'#92400e'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "value": "",
+            "quantity": 0
+          },
+          "bindings": {
+            "value": {
+              "uid": "runtime-message",
+              "port": "value"
+            },
+            "quantity": {
+              "uid": "runtime-quantity",
+              "port": "value"
+            }
+          },
+          "workspaceEndpoint": "publish"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-dashboard-table",
+          "componentApi": 2,
+          "componentName": "Shared fruit stock",
+          "x": 40,
+          "y": 486,
+          "color": "#94a3b8",
+          "size": 1,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "font": "16px sans-serif",
+          "w": 720,
+          "h": 322,
+          "state": {
+            "maxRows": 6,
+            "maxColumns": 2,
+            "showCounts": true,
+            "editDataset": false,
+            "allowReaderEdit": false
+          },
+          "script": "// View or edit shared dataset records. The host validates every write; drawing stays read-only.\n({\n  apiVersion:2,\n  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},\n  tablePresentation:'full',\n  settings:{maxRows:{type:'number',default:12,min:1,max:12,step:1,label:'Visible rows'},maxColumns:{type:'number',default:8,min:1,max:8,step:1,label:'Visible columns'},showCounts:{type:'boolean',default:true,label:'Show row count'},editDataset:{type:'boolean',default:false,label:'Edit dataset records'},allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'}},\n  inputs:{data:{type:'table'},startRow:{role:'control',type:'number',default:0},startColumn:{role:'control',type:'number',default:0}},\n  outputs:{rowCount:{type:'number'}},\n  initState(){return {maxRows:12,maxColumns:8,showCounts:true,editDataset:false,allowReaderEdit:false};},\n  initStyle(){return {w:720,h:440,fontSize:13,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Edit');\n    for(const key of ['startRow','startColumn'])if(inputs[key]!==undefined && (!Number.isSafeInteger(inputs[key]) || inputs[key]<0))throw new Error('First row and first column must be nonnegative integers');\n    return {rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400,align='left'){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from((typeof value==='number'?this._number(value):String(value)).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align,font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  _view(state,w,h,io){\n    const scale=Math.min(1,w/360,h/240),pad=10*scale,table=io.tables?.inputs?.data;\n    const bodyY=48*scale,header=36*scale,rowHeight=24*scale,footer=60*scale;\n    const rowLimit=Math.max(1,Math.min(12,Number.isInteger(state.maxRows)?state.maxRows:12));\n    const columnLimit=Math.max(1,Math.min(8,Number.isInteger(state.maxColumns)?state.maxColumns:8));\n    const pageRows=Math.max(1,Math.min(rowLimit,Math.floor((h-bodyY-header-footer)/rowHeight)));\n    const startRow=Math.max(0,Math.min(Math.max(0,(table?.rowCount||0)-1),Number.isSafeInteger(io.inputs?.startRow)?io.inputs.startRow:0));\n    const startColumn=Math.max(0,Math.min(Math.max(0,(table?.columns.length||0)-1),Number.isSafeInteger(io.inputs?.startColumn)?io.inputs.startColumn:0));\n    const editable=state.editDataset===true && table?.editable===true && !io.error;\n    const numberWidth=38*scale,deleteWidth=editable?26*scale:0,width=w-pad*2;\n    const columns=table?.columns.slice(startColumn,startColumn+columnLimit)||[],rows=table?.rows.slice(startRow,startRow+pageRows)||[];\n    return {scale,pad,table,bodyY,header,rowHeight,pageRows,columnLimit,startRow,startColumn,editable,numberWidth,deleteWidth,width,columns,rows,\n      cellWidth:(width-numberWidth-deleteWidth)/Math.max(1,columns.length),footerY:h-50*scale};\n  },\n  _pages(count,step,current,label){\n    const starts=Array.from({length:Math.max(1,Math.ceil(count/step))},(_,index)=>index*step);\n    if(!starts.includes(current)){if(starts.length>=1000)starts.pop();starts.push(current);}starts.sort((a,b)=>a-b);\n    return starts.map(value=>({value,label:label+' '+value+(count>value+1?'–'+Math.min(count-1,value+step-1):'')}));\n  },\n  children(state,style,w,h,editing,io={}){\n    const g=this._view(state,w,h,io),{scale,pad,table,bodyY,header,rowHeight,width}=g;\n    const text=(v,x,y,ww,hh,size,color,weight,align)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight,align);\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},text(io.name?.trim()||'Dataset editor',pad,pad,w-pad*2,25*scale,16,undefined,600)];\n    if(io.error || !table){children.push(text(io.error||'Connect a table in Edit',pad,bodyY,width,24*scale,13,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:bodyY,w:width,h:header,fill:true,fillColor:'#e2e8f0',strokeOn:false});\n    children.push(text('#',pad+4*scale,bodyY+8*scale,g.numberWidth-8*scale,18*scale,11,'#64748b'));\n    g.columns.forEach((column,index)=>{\n      const x=pad+g.numberWidth+index*g.cellWidth+5*scale;\n      children.push(text(column.name,x,bodyY+3*scale,g.cellWidth-10*scale,16*scale,12,undefined,600));\n      children.push(text(column.type,x,bodyY+19*scale,g.cellWidth-10*scale,13*scale,9,'#64748b'));\n    });\n    g.rows.forEach((row,index)=>{\n      const y=bodyY+header+rowHeight*index;\n      if(index%2===1)children.push({type:'rect',x:pad,y,w:width,h:rowHeight,fill:true,fillColor:'#f1f5f9',strokeOn:false});\n      children.push(text(g.startRow+index,pad+4*scale,y+4*scale,g.numberWidth-8*scale,rowHeight-8*scale,10,'#64748b'));\n      g.columns.forEach((column,col)=>{\n        const value=row[g.startColumn+col];\n        children.push(text(value===null?'—':value,pad+g.numberWidth+col*g.cellWidth+5*scale,y+4*scale,g.cellWidth-10*scale,rowHeight-8*scale,12,value===null?'#94a3b8':undefined,400,column.type==='number'?'right':'left'));\n      });\n      if(g.editable)children.push({...text('×',w-pad-g.deleteWidth,y+2*scale,g.deleteWidth,rowHeight-4*scale,16,'#b91c1c',400,'center'),editorOnly:state.allowReaderEdit!==true});\n    });\n    if(table.rowCount===0)children.push(text('No matching rows',pad,bodyY+header+8*scale,width,24*scale,13,'#64748b'));\n    for(const control of this._controls(state,w,h,io,g)){\n      const box=control.inline||control.box;\n      children.push({type:'rect',x:box.x,y:box.y,w:box.w,h:box.h,fill:true,fillColor:control.disabled?'#f8fafc':'#eef2ff',strokeOn:true,color:'#cbd5e1',size:1,editorOnly:control.editorOnly===true});\n      children.push({...text(control.label,box.x+7*scale,box.y+5*scale,box.w-14*scale,box.h-10*scale,11,control.disabled?'#94a3b8':'#334155',400,'center'),editorOnly:control.editorOnly===true});\n    }\n    const more=table.rowCount>g.rows.length||table.columns.length>g.columns.length;\n    if(state.showCounts!==false||more){\n      const counts=table.rowCount>g.rows.length?'Showing '+g.rows.length+' of '+table.rowCount+' rows':table.rowCount+' '+(table.rowCount===1?'row':'rows');\n      const columns=table.columns.length>g.columns.length?' · '+g.columns.length+' of '+table.columns.length+' columns':'';\n      children.push(text(counts+columns,pad,h-19*scale,width,14*scale,10,'#64748b'));\n    }\n    return children;\n  },\n  _controls(state,w,h,io,g=this._view(state,w,h,io)){\n    if(io.error||!g.table)return [];\n    const controls=[],gap=8*g.scale,buttonHeight=26*g.scale,addWidth=g.editable?100*g.scale:0;\n    const pageWidth=(g.width-addWidth-(addWidth?2:1)*gap)/2;\n    for(const [index,key,count,step,start,label] of [[0,'startRow',g.table.rowCount,g.pageRows,g.startRow,'Rows'],[1,'startColumn',g.table.columns.length,g.columnLimit,g.startColumn,'Columns']]){\n      const inline={x:g.pad+index*(pageWidth+gap),y:g.footerY,w:pageWidth,h:buttonHeight,fontSize:11*g.scale};\n      const end=Math.min(Math.max(0,count-1),start+step-1),disabled=(io.boundInputs||[]).includes(key);\n      controls.push({id:key,kind:'choice',input:key,value:io.inputs?.[key]??0,options:this._pages(count,step,io.inputs?.[key]??0,label),inline,x:inline.x+inline.w/2,y:inline.y+inline.h/2,label:(key==='startColumn'?'Cols':label)+' '+start+(end>start?'–'+end:'')+(disabled?' · linked':' ▾'),disabled});\n    }\n    if(g.editable){\n      const box={x:w-g.pad-addWidth,y:g.footerY,w:addWidth,h:buttonHeight};\n      const whole=io.inputs?.data?.rows===undefined,disabled=!whole||g.table.rowCount>=1000;\n      controls.push({id:'addRow',kind:'action',x:box.x+box.w/2,y:box.y+box.h/2,box,label:'+ Record',disabled,editorOnly:state.allowReaderEdit!==true,action:{type:'appendDatasetRow',input:'data',datasetId:g.table.datasetId,revision:g.table.revision}});\n    }\n    return controls;\n  },\n  handles(state,w,h,style={},io={}){\n    const g=this._view(state,w,h,io);if(io.error||!g.table||g.scale<1/11||g.cellWidth<1)return [];\n    const handles=this._controls(state,w,h,io,g).filter(control=>!control.disabled).map(({label,disabled,box,...handle})=>handle);\n    if(!g.editable)return handles;\n    for(let row=0;row<g.rows.length;row++){\n      const rowId=g.table.rowIds?.[g.startRow+row];if(!rowId)continue;\n      const y=g.bodyY+g.header+row*g.rowHeight;\n      g.columns.forEach((column,col)=>{\n        const value=g.rows[row][g.startColumn+col],x=g.pad+g.numberWidth+col*g.cellWidth;\n        handles.push({id:'cell-'+row+'-'+col,kind:'text',value:value===null?'':String(value),x:x+g.cellWidth/2,y:y+g.rowHeight/2,inline:{x,y,w:g.cellWidth,h:g.rowHeight,fontSize:12*g.scale,mode:'edit',align:column.type==='number'?'right':'left',references:false},datasetCell:{input:'data',datasetId:g.table.datasetId,rowId,column:column.key,revision:g.table.revision},editorOnly:state.allowReaderEdit!==true});\n      });\n      handles.push({id:'delete-'+row,kind:'action',x:w-g.pad-g.deleteWidth/2,y:y+g.rowHeight/2,editorOnly:state.allowReaderEdit!==true,action:{type:'deleteDatasetRow',input:'data',datasetId:g.table.datasetId,revision:g.table.revision,rowId}});\n    }\n    return handles;\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const g=this._view(state,w,h,io);\n    for(const handle of this.handles(state,w,h,style,io)){\n      const box=handle.inline;\n      if(box&&x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h)return handle.id;\n      const halfW=handle.id==='addRow'?50*g.scale:g.deleteWidth/2;\n      if(!box&&Math.abs(x-handle.x)<=halfW&&Math.abs(y-handle.y)<=g.rowHeight/2)return handle.id;\n    }\n    return null;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "startRow": 0,
+            "startColumn": 0,
+            "data": {
+              "datasetId": "workspace-stock",
+              "sketchId": "runtime-services"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-open-editor",
+          "componentApi": 2,
+          "componentName": "Edit stock",
+          "x": 1070,
+          "y": 146,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 240,
+          "h": 120,
+          "state": {
+            "showButton": true,
+            "showIndicators": false
+          },
+          "script": "// Ask the host to open a zero-based workspace tab, by released button, Go event or rising signal.\n// Computation never navigates. Loaded/high-at-activation signals only establish a baseline.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{arrived:{type:'number'},failed:{type:'string'}},\n  actionEvents:{goToTab:{success:'arrived',failure:'failed'}},\n  settings:{showButton:{type:'boolean',default:true,label:'Show button'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},\n  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}},\n  outputs:{},\n  dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},\n  initState(){return {showButton:true,showIndicators:true};},\n  initStyle(){return {w:240,h:120,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs){\n    if(!Number.isSafeInteger(inputs.page) || inputs.page<0)throw new Error('Tab index must be a whole number starting at 0');\n    if(typeof inputs.parameters!=='string' || inputs.parameters.length>2000)throw new Error('Parameters must be JSON text of at most 2000 characters');\n    if(typeof inputs.go!=='boolean')throw new Error('Go trigger must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/240,h/120),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Go to tab';\n    if(state.showButton===false)return [\n      {type:'rect',x:0,y:0,w,h,fill:false,strokeOn:true,color:'#cbd5e1',size:1,dash:'dash',editorOnly:true},\n      {...this._text(name+' · automatic',pad,pad,w-pad*2,19*scale,12*scale,style,'#64748b'),editorOnly:true}\n    ];\n    const available=!io.error && Number.isSafeInteger(io.inputs?.page) && io.inputs.page>=0;\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      this._text(name,pad,pad,w-pad*2,19*scale,13*scale,style,style.textColor||'#334155',600)];\n    if(!available){children.push(this._text(io.error||'Input unavailable',pad,46*scale,w-pad*2,26*scale,12*scale,style,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:39*scale,w:w-pad*2,h:40*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1},\n      this._text('Go to tab '+io.inputs.page+' →',pad+12*scale,49*scale,w-pad*2-24*scale,22*scale,15*scale,style,'#3730a3',600));\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:99*scale,w:8*scale,h:8*scale,fill:true,fillColor:io.inputs.go===true?'#15803d':'#94a3b8',strokeOn:false},\n        this._text('Go: '+String(io.inputs.go===true)+' · first tab is 0',pad+15*scale,94*scale,w-pad*2-15*scale,18*scale,10*scale,style,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.showButton===false?[]:[{id:'go',kind:'action',x:w/2,y:59*Math.min(w/240,h/120),action:{type:'goToTab',input:'page',parameters:'parameters'}}];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/240,h/120),pad=12*scale;return state.showButton!==false && x>=pad && x<=w-pad && y>=39*scale && y<=79*scale?'go':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "page": 2,
+            "parameters": "{}",
+            "go": false
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-open-services",
+          "componentApi": 2,
+          "componentName": "Inspect hidden Services",
+          "x": 1070,
+          "y": 320,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 240,
+          "h": 120,
+          "state": {
+            "showButton": true,
+            "showIndicators": false
+          },
+          "script": "// Ask the host to open a zero-based workspace tab, by released button, Go event or rising signal.\n// Computation never navigates. Loaded/high-at-activation signals only establish a baseline.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{arrived:{type:'number'},failed:{type:'string'}},\n  actionEvents:{goToTab:{success:'arrived',failure:'failed'}},\n  settings:{showButton:{type:'boolean',default:true,label:'Show button'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},\n  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}},\n  outputs:{},\n  dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},\n  initState(){return {showButton:true,showIndicators:true};},\n  initStyle(){return {w:240,h:120,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs){\n    if(!Number.isSafeInteger(inputs.page) || inputs.page<0)throw new Error('Tab index must be a whole number starting at 0');\n    if(typeof inputs.parameters!=='string' || inputs.parameters.length>2000)throw new Error('Parameters must be JSON text of at most 2000 characters');\n    if(typeof inputs.go!=='boolean')throw new Error('Go trigger must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/240,h/120),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Go to tab';\n    if(state.showButton===false)return [\n      {type:'rect',x:0,y:0,w,h,fill:false,strokeOn:true,color:'#cbd5e1',size:1,dash:'dash',editorOnly:true},\n      {...this._text(name+' · automatic',pad,pad,w-pad*2,19*scale,12*scale,style,'#64748b'),editorOnly:true}\n    ];\n    const available=!io.error && Number.isSafeInteger(io.inputs?.page) && io.inputs.page>=0;\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      this._text(name,pad,pad,w-pad*2,19*scale,13*scale,style,style.textColor||'#334155',600)];\n    if(!available){children.push(this._text(io.error||'Input unavailable',pad,46*scale,w-pad*2,26*scale,12*scale,style,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:39*scale,w:w-pad*2,h:40*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1},\n      this._text('Go to tab '+io.inputs.page+' →',pad+12*scale,49*scale,w-pad*2-24*scale,22*scale,15*scale,style,'#3730a3',600));\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:99*scale,w:8*scale,h:8*scale,fill:true,fillColor:io.inputs.go===true?'#15803d':'#94a3b8',strokeOn:false},\n        this._text('Go: '+String(io.inputs.go===true)+' · first tab is 0',pad+15*scale,94*scale,w-pad*2-15*scale,18*scale,10*scale,style,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.showButton===false?[]:[{id:'go',kind:'action',x:w/2,y:59*Math.min(w/240,h/120),action:{type:'goToTab',input:'page',parameters:'parameters'}}];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/240,h/120),pad=12*scale;return state.showButton!==false && x>=pad && x<=w-pad && y>=39*scale && y<=79*scale?'go':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "page": 0,
+            "parameters": "{}",
+            "go": false
+          }
+        },
+        {
+          "type": "text",
+          "uid": "runtime-dashboard-try",
+          "text": "Try it\n1. Set Quantity, then submit “Pears” twice: two rows are captured.\n2. Open Services: both log lines arrived while it was hidden.\n3. Edit stock, then return: this table shows the same records.",
+          "x": 850,
+          "y": 530,
+          "w": 430,
+          "h": 230,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        }
+      ],
+      "datasets": {},
+      "assets": {}
+    },
+    {
+      "id": "runtime-editor",
+      "name": "Data editor",
+      "items": [
+        {
+          "type": "text",
+          "uid": "runtime-editor-title",
+          "text": "Edit shared stock",
+          "x": 40,
+          "y": 24,
+          "w": 1240,
+          "h": 44,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 28,
+          "font": "28px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "runtime-editor-help",
+          "text": "Edit a cell or add a row. Dashboard and Services use this same Dataset. The window title overrides the workspace default.",
+          "x": 40,
+          "y": 76,
+          "w": 1220,
+          "h": 48,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-stock-editor",
+          "componentApi": 2,
+          "componentName": "Fruit stock · editable",
+          "x": 40,
+          "y": 166,
+          "color": "#94a3b8",
+          "size": 1,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 13,
+          "font": "16px sans-serif",
+          "w": 760,
+          "h": 360,
+          "state": {
+            "maxRows": 8,
+            "maxColumns": 2,
+            "showCounts": true,
+            "editDataset": true,
+            "allowReaderEdit": true
+          },
+          "script": "// View or edit shared dataset records. The host validates every write; drawing stays read-only.\n({\n  apiVersion:2,\n  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},\n  tablePresentation:'full',\n  settings:{maxRows:{type:'number',default:12,min:1,max:12,step:1,label:'Visible rows'},maxColumns:{type:'number',default:8,min:1,max:8,step:1,label:'Visible columns'},showCounts:{type:'boolean',default:true,label:'Show row count'},editDataset:{type:'boolean',default:false,label:'Edit dataset records'},allowReaderEdit:{type:'boolean',default:false,label:'Allow reader edits'}},\n  inputs:{data:{type:'table'},startRow:{role:'control',type:'number',default:0},startColumn:{role:'control',type:'number',default:0}},\n  outputs:{rowCount:{type:'number'}},\n  initState(){return {maxRows:12,maxColumns:8,showCounts:true,editDataset:false,allowReaderEdit:false};},\n  initStyle(){return {w:720,h:440,fontSize:13,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},\n  compute(inputs,state,context={}){\n    const table=context.tables?.data;\n    if(!table || !Number.isInteger(table.rowCount) || table.rowCount<0)throw new Error('Connect a table in Edit');\n    for(const key of ['startRow','startColumn'])if(inputs[key]!==undefined && (!Number.isSafeInteger(inputs[key]) || inputs[key]<0))throw new Error('First row and first column must be nonnegative integers');\n    return {rowCount:table.rowCount};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400,align='left'){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=Array.from((typeof value==='number'?this._number(value):String(value)).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align,font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  _view(state,w,h,io){\n    const scale=Math.min(1,w/360,h/240),pad=10*scale,table=io.tables?.inputs?.data;\n    const bodyY=48*scale,header=36*scale,rowHeight=24*scale,footer=60*scale;\n    const rowLimit=Math.max(1,Math.min(12,Number.isInteger(state.maxRows)?state.maxRows:12));\n    const columnLimit=Math.max(1,Math.min(8,Number.isInteger(state.maxColumns)?state.maxColumns:8));\n    const pageRows=Math.max(1,Math.min(rowLimit,Math.floor((h-bodyY-header-footer)/rowHeight)));\n    const startRow=Math.max(0,Math.min(Math.max(0,(table?.rowCount||0)-1),Number.isSafeInteger(io.inputs?.startRow)?io.inputs.startRow:0));\n    const startColumn=Math.max(0,Math.min(Math.max(0,(table?.columns.length||0)-1),Number.isSafeInteger(io.inputs?.startColumn)?io.inputs.startColumn:0));\n    const editable=state.editDataset===true && table?.editable===true && !io.error;\n    const numberWidth=38*scale,deleteWidth=editable?26*scale:0,width=w-pad*2;\n    const columns=table?.columns.slice(startColumn,startColumn+columnLimit)||[],rows=table?.rows.slice(startRow,startRow+pageRows)||[];\n    return {scale,pad,table,bodyY,header,rowHeight,pageRows,columnLimit,startRow,startColumn,editable,numberWidth,deleteWidth,width,columns,rows,\n      cellWidth:(width-numberWidth-deleteWidth)/Math.max(1,columns.length),footerY:h-50*scale};\n  },\n  _pages(count,step,current,label){\n    const starts=Array.from({length:Math.max(1,Math.ceil(count/step))},(_,index)=>index*step);\n    if(!starts.includes(current)){if(starts.length>=1000)starts.pop();starts.push(current);}starts.sort((a,b)=>a-b);\n    return starts.map(value=>({value,label:label+' '+value+(count>value+1?'–'+Math.min(count-1,value+step-1):'')}));\n  },\n  children(state,style,w,h,editing,io={}){\n    const g=this._view(state,w,h,io),{scale,pad,table,bodyY,header,rowHeight,width}=g;\n    const text=(v,x,y,ww,hh,size,color,weight,align)=>this._text(v,x,y,ww,hh,size*scale,style,color,weight,align);\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size,dash:style.dash},text(io.name?.trim()||'Dataset editor',pad,pad,w-pad*2,25*scale,16,undefined,600)];\n    if(io.error || !table){children.push(text(io.error||'Connect a table in Edit',pad,bodyY,width,24*scale,13,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:bodyY,w:width,h:header,fill:true,fillColor:'#e2e8f0',strokeOn:false});\n    children.push(text('#',pad+4*scale,bodyY+8*scale,g.numberWidth-8*scale,18*scale,11,'#64748b'));\n    g.columns.forEach((column,index)=>{\n      const x=pad+g.numberWidth+index*g.cellWidth+5*scale;\n      children.push(text(column.name,x,bodyY+3*scale,g.cellWidth-10*scale,16*scale,12,undefined,600));\n      children.push(text(column.type,x,bodyY+19*scale,g.cellWidth-10*scale,13*scale,9,'#64748b'));\n    });\n    g.rows.forEach((row,index)=>{\n      const y=bodyY+header+rowHeight*index;\n      if(index%2===1)children.push({type:'rect',x:pad,y,w:width,h:rowHeight,fill:true,fillColor:'#f1f5f9',strokeOn:false});\n      children.push(text(g.startRow+index,pad+4*scale,y+4*scale,g.numberWidth-8*scale,rowHeight-8*scale,10,'#64748b'));\n      g.columns.forEach((column,col)=>{\n        const value=row[g.startColumn+col];\n        children.push(text(value===null?'—':value,pad+g.numberWidth+col*g.cellWidth+5*scale,y+4*scale,g.cellWidth-10*scale,rowHeight-8*scale,12,value===null?'#94a3b8':undefined,400,column.type==='number'?'right':'left'));\n      });\n      if(g.editable)children.push({...text('×',w-pad-g.deleteWidth,y+2*scale,g.deleteWidth,rowHeight-4*scale,16,'#b91c1c',400,'center'),editorOnly:state.allowReaderEdit!==true});\n    });\n    if(table.rowCount===0)children.push(text('No matching rows',pad,bodyY+header+8*scale,width,24*scale,13,'#64748b'));\n    for(const control of this._controls(state,w,h,io,g)){\n      const box=control.inline||control.box;\n      children.push({type:'rect',x:box.x,y:box.y,w:box.w,h:box.h,fill:true,fillColor:control.disabled?'#f8fafc':'#eef2ff',strokeOn:true,color:'#cbd5e1',size:1,editorOnly:control.editorOnly===true});\n      children.push({...text(control.label,box.x+7*scale,box.y+5*scale,box.w-14*scale,box.h-10*scale,11,control.disabled?'#94a3b8':'#334155',400,'center'),editorOnly:control.editorOnly===true});\n    }\n    const more=table.rowCount>g.rows.length||table.columns.length>g.columns.length;\n    if(state.showCounts!==false||more){\n      const counts=table.rowCount>g.rows.length?'Showing '+g.rows.length+' of '+table.rowCount+' rows':table.rowCount+' '+(table.rowCount===1?'row':'rows');\n      const columns=table.columns.length>g.columns.length?' · '+g.columns.length+' of '+table.columns.length+' columns':'';\n      children.push(text(counts+columns,pad,h-19*scale,width,14*scale,10,'#64748b'));\n    }\n    return children;\n  },\n  _controls(state,w,h,io,g=this._view(state,w,h,io)){\n    if(io.error||!g.table)return [];\n    const controls=[],gap=8*g.scale,buttonHeight=26*g.scale,addWidth=g.editable?100*g.scale:0;\n    const pageWidth=(g.width-addWidth-(addWidth?2:1)*gap)/2;\n    for(const [index,key,count,step,start,label] of [[0,'startRow',g.table.rowCount,g.pageRows,g.startRow,'Rows'],[1,'startColumn',g.table.columns.length,g.columnLimit,g.startColumn,'Columns']]){\n      const inline={x:g.pad+index*(pageWidth+gap),y:g.footerY,w:pageWidth,h:buttonHeight,fontSize:11*g.scale};\n      const end=Math.min(Math.max(0,count-1),start+step-1),disabled=(io.boundInputs||[]).includes(key);\n      controls.push({id:key,kind:'choice',input:key,value:io.inputs?.[key]??0,options:this._pages(count,step,io.inputs?.[key]??0,label),inline,x:inline.x+inline.w/2,y:inline.y+inline.h/2,label:(key==='startColumn'?'Cols':label)+' '+start+(end>start?'–'+end:'')+(disabled?' · linked':' ▾'),disabled});\n    }\n    if(g.editable){\n      const box={x:w-g.pad-addWidth,y:g.footerY,w:addWidth,h:buttonHeight};\n      const whole=io.inputs?.data?.rows===undefined,disabled=!whole||g.table.rowCount>=1000;\n      controls.push({id:'addRow',kind:'action',x:box.x+box.w/2,y:box.y+box.h/2,box,label:'+ Record',disabled,editorOnly:state.allowReaderEdit!==true,action:{type:'appendDatasetRow',input:'data',datasetId:g.table.datasetId,revision:g.table.revision}});\n    }\n    return controls;\n  },\n  handles(state,w,h,style={},io={}){\n    const g=this._view(state,w,h,io);if(io.error||!g.table||g.scale<1/11||g.cellWidth<1)return [];\n    const handles=this._controls(state,w,h,io,g).filter(control=>!control.disabled).map(({label,disabled,box,...handle})=>handle);\n    if(!g.editable)return handles;\n    for(let row=0;row<g.rows.length;row++){\n      const rowId=g.table.rowIds?.[g.startRow+row];if(!rowId)continue;\n      const y=g.bodyY+g.header+row*g.rowHeight;\n      g.columns.forEach((column,col)=>{\n        const value=g.rows[row][g.startColumn+col],x=g.pad+g.numberWidth+col*g.cellWidth;\n        handles.push({id:'cell-'+row+'-'+col,kind:'text',value:value===null?'':String(value),x:x+g.cellWidth/2,y:y+g.rowHeight/2,inline:{x,y,w:g.cellWidth,h:g.rowHeight,fontSize:12*g.scale,mode:'edit',align:column.type==='number'?'right':'left',references:false},datasetCell:{input:'data',datasetId:g.table.datasetId,rowId,column:column.key,revision:g.table.revision},editorOnly:state.allowReaderEdit!==true});\n      });\n      handles.push({id:'delete-'+row,kind:'action',x:w-g.pad-g.deleteWidth/2,y:y+g.rowHeight/2,editorOnly:state.allowReaderEdit!==true,action:{type:'deleteDatasetRow',input:'data',datasetId:g.table.datasetId,revision:g.table.revision,rowId}});\n    }\n    return handles;\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const g=this._view(state,w,h,io);\n    for(const handle of this.handles(state,w,h,style,io)){\n      const box=handle.inline;\n      if(box&&x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h)return handle.id;\n      const halfW=handle.id==='addRow'?50*g.scale:g.deleteWidth/2;\n      if(!box&&Math.abs(x-handle.x)<=halfW&&Math.abs(y-handle.y)<=g.rowHeight/2)return handle.id;\n    }\n    return null;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "startRow": 0,
+            "startColumn": 0,
+            "data": {
+              "datasetId": "workspace-stock",
+              "sketchId": "runtime-services"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-editor-settings",
+          "componentApi": 2,
+          "componentName": "Sketch presentation override",
+          "x": 950,
+          "y": 166,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#f8fafc",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 300,
+          "h": 160,
+          "state": {
+            "overrideTitle": true,
+            "overrideShowTabs": false,
+            "overrideShowWiring": false,
+            "overrideShowSimulationControls": false
+          },
+          "script": "// One Sketch settings component overrides workspace presentation defaults for this sketch.\n// Override flags are authoring settings. Values remain ordinary live inputs when overridden.\n// This authoring block is omitted from exported drawings, including its unavailable-input preview.\n({\n  apiVersion:2,\n  settings:{\n    overrideTitle:{type:'boolean',default:false,label:'Override window title'},\n    overrideShowTabs:{type:'boolean',default:false,label:'Override tab-bar visibility'},\n    overrideShowWiring:{type:'boolean',default:false,label:'Override wiring visibility'},\n    overrideShowSimulationControls:{type:'boolean',default:false,label:'Override simulation controls visibility'}\n  },\n  inputs:{\n    title:{type:'string',default:'',label:'Window title'},\n    showTabs:{role:'control',type:'boolean',default:true,label:'Show tab bar'},\n    showWiring:{role:'control',type:'boolean',default:false,label:'Show wiring'},\n    showSimulationControls:{role:'control',type:'boolean',default:true,label:'Show simulation controls'}\n  },\n  outputs:{},\n  pageSettings:{title:'title',showTabs:'showTabs',showWiring:'showWiring',showSimulationControls:'showSimulationControls'},\n  sketchSettingsOverrides:{title:'overrideTitle',showTabs:'overrideShowTabs',showWiring:'overrideShowWiring',showSimulationControls:'overrideShowSimulationControls'},\n  initState(){return {overrideTitle:false,overrideShowTabs:false,overrideShowWiring:false,overrideShowSimulationControls:false};},\n  initStyle(){return {w:300,h:160,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs,state=this.initState()){\n    for(const key of Object.values(this.sketchSettingsOverrides))if(typeof state[key]!=='boolean')throw new Error('Each presentation override must be Boolean');\n    if(typeof inputs.title!=='string' || inputs.title.length>2000)throw new Error('Window title must be text of at most 2000 characters');\n    for(const key of ['showTabs','showWiring','showSimulationControls'])if(typeof inputs[key]!=='boolean')throw new Error(this.inputs[key].label+' must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false,editorOnly:true};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/300,h/160),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Sketch settings';\n    const inputs={...Object.fromEntries(Object.entries(this.inputs).map(([key,port])=>[key,port.default])),...io.inputs};\n    const text=(value,y,size=11,color=style.textColor||'#334155',weight=400)=>this._text(value,pad,y*scale,w-pad*2,18*scale,size*scale,style,color,weight);\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#f8fafc',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash,editorOnly:true},\n      text(name,12,13,style.textColor||'#334155',600)];\n    if(io.error){\n      children.push(text(io.error,43,11,'#92400e'),text('Workspace defaults apply',67,11,'#64748b'));\n    }else{\n      children.push(text('Title: '+(state.overrideTitle?(inputs.title||'(empty)'):'inherit'),42,12),\n        text('Tab bar: '+(state.overrideShowTabs?(inputs.showTabs?'shown':'hidden'):'inherit')+' · Wiring: '+(state.overrideShowWiring?(inputs.showWiring?'shown':'hidden'):'inherit'),66,10),\n        text('Simulation controls: '+(state.overrideShowSimulationControls?(inputs.showSimulationControls?'shown':'hidden'):'inherit'),88));\n    }\n    children.push(text('Applied before this sketch is shown',114,10,'#64748b'),text('Authoring only · one per sketch',134,10,'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "title": "Edit fruit stock · Workspace example",
+            "showTabs": true,
+            "showWiring": false,
+            "showSimulationControls": true
+          },
+          "pageSettings": true
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-editor-home",
+          "componentApi": 2,
+          "componentName": "Back to dashboard",
+          "x": 950,
+          "y": 390,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 240,
+          "h": 120,
+          "state": {
+            "showButton": true,
+            "showIndicators": false
+          },
+          "script": "// Ask the host to open a zero-based workspace tab, by released button, Go event or rising signal.\n// Computation never navigates. Loaded/high-at-activation signals only establish a baseline.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventOutputs:{arrived:{type:'number'},failed:{type:'string'}},\n  actionEvents:{goToTab:{success:'arrived',failure:'failed'}},\n  settings:{showButton:{type:'boolean',default:true,label:'Show button'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},\n  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}},\n  outputs:{},\n  dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},\n  initState(){return {showButton:true,showIndicators:true};},\n  initStyle(){return {w:240,h:120,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs){\n    if(!Number.isSafeInteger(inputs.page) || inputs.page<0)throw new Error('Tab index must be a whole number starting at 0');\n    if(typeof inputs.parameters!=='string' || inputs.parameters.length>2000)throw new Error('Parameters must be JSON text of at most 2000 characters');\n    if(typeof inputs.go!=='boolean')throw new Error('Go trigger must be Boolean');\n    return {};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):content?[content]:[];let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/240,h/120),pad=12*scale,name=(typeof io.name==='string'?io.name:'').trim()||'Go to tab';\n    if(state.showButton===false)return [\n      {type:'rect',x:0,y:0,w,h,fill:false,strokeOn:true,color:'#cbd5e1',size:1,dash:'dash',editorOnly:true},\n      {...this._text(name+' · automatic',pad,pad,w-pad*2,19*scale,12*scale,style,'#64748b'),editorOnly:true}\n    ];\n    const available=!io.error && Number.isSafeInteger(io.inputs?.page) && io.inputs.page>=0;\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      this._text(name,pad,pad,w-pad*2,19*scale,13*scale,style,style.textColor||'#334155',600)];\n    if(!available){children.push(this._text(io.error||'Input unavailable',pad,46*scale,w-pad*2,26*scale,12*scale,style,'#92400e'));return children;}\n    children.push({type:'rect',x:pad,y:39*scale,w:w-pad*2,h:40*scale,fill:true,fillColor:'#eef2ff',strokeOn:true,color:'#818cf8',size:1},\n      this._text('Go to tab '+io.inputs.page+' →',pad+12*scale,49*scale,w-pad*2-24*scale,22*scale,15*scale,style,'#3730a3',600));\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:99*scale,w:8*scale,h:8*scale,fill:true,fillColor:io.inputs.go===true?'#15803d':'#94a3b8',strokeOn:false},\n        this._text('Go: '+String(io.inputs.go===true)+' · first tab is 0',pad+15*scale,94*scale,w-pad*2-15*scale,18*scale,10*scale,style,'#64748b'));\n    }\n    return children;\n  },\n  handles(state,w,h){return state.showButton===false?[]:[{id:'go',kind:'action',x:w/2,y:59*Math.min(w/240,h/120),action:{type:'goToTab',input:'page',parameters:'parameters'}}];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/240,h/120),pad=12*scale;return state.showButton!==false && x>=pad && x<=w-pad && y>=39*scale && y<=79*scale?'go':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "page": 1,
+            "parameters": "{}",
+            "go": false
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-editor-messages",
+          "componentApi": 2,
+          "componentName": "Receive submissions",
+          "x": 40,
+          "y": 620,
+          "color": "#5eead4",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#f0fdfa",
+          "strokeOn": true,
+          "textColor": "#115e59",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 330,
+          "h": 100,
+          "state": {
+            "endpoints": [
+              {
+                "id": "value",
+                "name": "Fruit submitted",
+                "type": "string",
+                "description": "Import only the endpoint needed here."
+              }
+            ]
+          },
+          "script": "// Import explicitly chosen workspace endpoints as local outputs.\n// Stable endpoint IDs preserve connections when labels or row order change.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{},\n  initState(){return {endpoints:[{id:'value',name:'Value',type:'string',description:''}]};},\n  initStyle(){return {w:320,h:100,fontSize:18,fill:true,fillColor:'#f0fdfa',strokeOn:true,color:'#5eead4',textColor:'#115e59',size:1.5};},\n  _rows(state){\n    if(!state || !Array.isArray(state.endpoints) || state.endpoints.length<1 || state.endpoints.length>16)throw new Error('Configure 1–16 endpoints');\n    const ids=new Set();\n    for(const row of state.endpoints){\n      if(!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).some(key=>!['id','name','type','description'].includes(key)) ||\n        typeof row.id!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(row.id) || ['constructor','prototype','__proto__'].includes(row.id) || ids.has(row.id))throw new Error('Endpoint IDs must be unique stable identifiers');\n      if(typeof row.name!=='string' || !row.name.trim() || row.name.length>64)throw new Error('Endpoint name must contain 1–64 characters');\n      if(!['string','number','boolean','table','event'].includes(row.type))throw new Error('Choose a text, number, Boolean, table, or event endpoint');\n      if(typeof row.description!=='string' || row.description.length>200)throw new Error('Endpoint description must be text of at most 200 characters');\n      ids.add(row.id);\n    }\n    return state.endpoints;\n  },\n  _value(value,row){\n    if(row.type==='table'){\n      if(!value || typeof value!=='object' || Array.isArray(value) || typeof value.datasetId!=='string')throw new Error(row.name+' requires a table input');\n    }else if(typeof value!==row.type || row.type==='number' && !Number.isFinite(value) || row.type==='string' && value.length>2000)throw new Error(row.name+' must match its declared type');\n    return value;\n  },\n  _event(payload,row){\n    if(payload!==null && !['boolean','number','string'].includes(typeof payload) || typeof payload==='number' && !Number.isFinite(payload) || typeof payload==='string' && payload.length>2000)throw new Error('Unsupported event payload');\n    if(row.type!=='event' && typeof payload!==row.type)throw new Error('Event payload must match its declared type');\n  },\n  _text(value,x,y,w,h,size,color,weight=400){\n    const content=String(value).replace(/\\s+/g,' '),chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    const limit=Math.max(1,Math.floor(w/(size*.7))),text=chars.length>limit?chars.slice(0,Math.max(0,limit-1)).join('')+'…':content;\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  workspaceEndpoint(state){return {direction:'receive',ports:Object.fromEntries(this._rows(state).map(row=>[row.id,{type:row.type}]))};},\n  outputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>[row.id,{type:row.type,label:row.name,...(row.type==='table'?{}:{event:true})}]));},\n  eventOutputs(state){return Object.fromEntries(this._rows(state).filter(row=>row.type==='event').map(row=>[row.id,{types:['none','boolean','number','string'],label:row.name,side:'right'}]));},\n  inputs:{},\n  compute(inputs,state,context={}){\n    return Object.fromEntries(this._rows(state).filter(row=>row.type!=='event').map(row=>{\n      const key='__remote_'+row.id,available=Object.hasOwn(inputs,key) || Object.hasOwn(context.workspaceEndpoint||{},row.id);\n      if(!available)throw new Error('Choose a published endpoint for '+row.name+' in Edit; Whole workspace mode is required');\n      return [row.id,this._value(Object.hasOwn(inputs,key)?inputs[key]:context.workspaceEndpoint[row.id],row)];\n    }));\n  },\n  onEvent(name,payload,state){\n    const row=this._rows(state).find(row=>'__remote_'+row.id===name);if(!row)throw new Error('Unknown remote event input');\n    this._event(payload,row);return {state,events:[{port:row.id,payload}]};\n  },\n  children(state,style,w,h,editing,io={}){\n    const rows=this._rows(state),baseH=64+rows.length*36,scale=Math.min(w/320,h/baseH),pad=12*scale,color=style.textColor||'#115e59';\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#f0fdfa',strokeOn:style.strokeOn!==false,color:style.color||'#5eead4',size:style.size,dash:style.dash},\n      this._text((typeof io.name==='string'?io.name:'').trim()||'Receive',pad,10*scale,w-pad*2,20*scale,13*scale,color,600)];\n    rows.forEach((row,index)=>{\n      const y=(36+index*36)*scale,type=row.type==='string'?'text':row.type==='event'?'events':row.type;\n      children.push(this._text(row.name+' · '+type,pad,y,w-pad*2,18*scale,12*scale,color,600));\n      const detail=io.workspaceSourceNames?.[row.id]||'Choose a published endpoint';\n      children.push(this._text(detail,pad,y+18*scale,w-pad*2,14*scale,9*scale,'#64748b'));\n    });\n    if(io.error)children.push(this._text(io.error,pad,h-19*scale,w-pad*2,15*scale,9*scale,'#92400e'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Published endpoint unavailable'});}\n})\n",
+          "inputValues": {},
+          "workspaceReceive": {
+            "value": {
+              "sketchId": "runtime-dashboard",
+              "componentUid": "runtime-publish-message",
+              "port": "value"
+            }
+          },
+          "workspaceEndpoint": "receive"
+        },
+        {
+          "type": "smart",
+          "uid": "runtime-editor-log",
+          "componentApi": 2,
+          "componentName": "Messages received while elsewhere",
+          "x": 410,
+          "y": 600,
+          "color": "#64748b",
+          "size": 2,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 420,
+          "h": 230,
+          "state": {
+            "text": "",
+            "lineCount": 0,
+            "notice": "",
+            "maxLines": 12,
+            "maxLength": 2000,
+            "showCounts": true,
+            "showHints": false,
+            "logMode": true,
+            "scrollOffset": -1
+          },
+          "script": "// Set replaces stored text; Append adds a line/block; Clear empties it.\n// Event receivers and rising-edge triggers share the same bounded operations.\n// Empty storage has zero lines. Appending an empty line makes one explicitly stored blank line.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{\n    showCounts:{type:'boolean',default:false,label:'Show counts'},\n    showHints:{type:'boolean',default:false,label:'Show hints'},\n    logMode:{type:'boolean',default:false,label:'Log mode'},\n    maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},\n    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}\n  },\n  inputs:{content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},\n    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}},\n  outputs:{text:{type:'string'},lineCount:{type:'number'}},\n  initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1};},\n  initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},\n  _fits(text){\n    // Reserve the longest status plus maximum configuration/count widths. JSON escapes count\n    // toward the host's 4000-character state budget, even when the visible string is shorter.\n    return JSON.stringify({text,lineCount:1000,notice:' '.repeat(160),maxLines:1000,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:8000}).length<=4000;\n  },\n  _state(state){\n    if(!Number.isInteger(state.maxLines) || state.maxLines<1 || state.maxLines>1000)throw new Error('Maximum lines must be an integer from 1 to 1000');\n    if(!Number.isInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000)throw new Error('Maximum characters must be an integer from 1 to 2000');\n    if(typeof state.text!=='string' || state.text.length>2000 || /\\r/.test(state.text) || !this._fits(state.text))throw new Error('Memo requires bounded, normalized stored text');\n    const count=state.text===''?0:state.text.split('\\n').length;\n    if(!Number.isInteger(state.lineCount) || state.lineCount<0 || state.lineCount>1000 ||\n      (state.lineCount!==count && !(state.text==='' && state.lineCount===1)))throw new Error('Memo line count must match its stored text');\n    if(typeof state.notice!=='string' || state.notice.length>160)throw new Error('Memo requires a bounded status message');\n    if(state.scrollOffset!==undefined && (!Number.isInteger(state.scrollOffset) || state.scrollOffset< -1 || state.scrollOffset>8000))throw new Error('Memo requires a bounded scroll position');\n    const stored={text:state.text,lineCount:state.lineCount,notice:state.notice,maxLines:state.maxLines,maxLength:state.maxLength,showCounts:state.showCounts===true,showHints:state.showHints===true,\n      logMode:state.logMode===true,scrollOffset:state.scrollOffset??-1};\n    if(JSON.stringify(stored).length>4000)throw new Error('Memo state exceeds its storage budget');\n    return stored;\n  },\n  _inputs(inputs){\n    for(const key of ['content','line'])if(typeof inputs[key]!=='string' || inputs[key].length>2000)throw new Error('Memo '+key+' requires a string of at most 2000 characters');\n    for(const key of ['set','append','clear'])if(typeof inputs[key]!=='boolean')throw new Error('Memo '+key+' trigger must be Boolean');\n    if(typeof inputs.showScrollbar!=='boolean')throw new Error('Show scrollbar must be Boolean');\n  },\n  publish(state){const stored=this._state(state);return {text:stored.text,lineCount:stored.lineCount};},\n  compute(inputs,state){this._inputs(inputs);return this.publish(state);},\n  _operate(state,operation,payload){\n    const next=this._state(state);\n    let text=next.text,lineCount=next.lineCount,removedLength=0;\n    if(operation==='clear'){text='';lineCount=0;}\n    else if(operation==='set'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Set text requires a string of at most 2000 characters');\n      text=payload.replace(/\\r\\n?/g,'\\n');lineCount=text===''?0:text.split('\\n').length;\n    }else if(operation==='append'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Append line requires a string of at most 2000 characters');\n      const line=payload.replace(/\\r\\n?/g,'\\n');\n      text=(lineCount>0?text+'\\n':'')+line;lineCount+=line.split('\\n').length;\n      if(next.logMode && lineCount>next.maxLines){\n        const kept=text.split('\\n').slice(-next.maxLines).join('\\n');\n        // The viewport is anchored in the expanded display text, so wrapped lines and\n        // tabs keep their reading position when earlier logical lines leave the log.\n        removedLength=text.slice(0,text.length-kept.length).replace(/\\t/g,'    ').length;\n        text=kept;lineCount=next.maxLines;\n      }\n    }else throw new Error('Unknown Memo operation');\n    if(lineCount>next.maxLines)next.notice='Line limit reached ('+next.maxLines+'). Previous text retained.';\n    else if(text.length>next.maxLength)next.notice='Character limit reached ('+next.maxLength+'). Previous text retained.';\n    else if(!this._fits(text))next.notice='Storage limit reached (escaped text). Previous text retained.';\n    else {\n      next.text=text;next.lineCount=lineCount;next.notice='';\n      if(operation!=='append')next.scrollOffset=-1;\n      else if(next.scrollOffset>=0)next.scrollOffset=Math.max(0,next.scrollOffset-removedLength);\n    }\n    return next;\n  },\n  onEvent(name,payload,state,io){return {state:this._operate(state,name==='content'?'set':name==='line'?'append':name,payload)};},\n  transition(inputs,state,memory){\n    this._inputs(inputs);\n    let next=this._state(state);\n    const observed={set:inputs.set,append:inputs.append,clear:inputs.clear};\n    const primed=memory && ['set','append','clear'].every(key=>typeof memory[key]==='boolean');\n    const rising=key=>primed && memory[key]===false && inputs[key];\n    const operation=rising('clear')?'clear':rising('set')?'set':rising('append')?'append':null;\n    if(operation)next=this._operate(next,operation,operation==='set'?inputs.content:inputs.line);\n    const reduced='Stored text exceeds the configured limit. Clear it or set shorter text.';\n    if(!operation && (next.lineCount>next.maxLines || next.text.length>next.maxLength))next.notice=reduced;\n    else if(!operation && next.notice===reduced)next.notice='';\n    return {state:next,memory:observed,nextWakeAt:null};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size,scrollOffset=-1){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[],offsets=[];\n    let base=0;\n    for(const block of text.replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block),consumed=0;\n      if(!chars.length){rows.push('');offsets.push(base);}\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        const row=chars.splice(0,length).join('');\n        rows.push(row);offsets.push(base+consumed);consumed+=row.length;\n      }\n      base+=block.length+1;\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),maxStart=Math.max(0,rows.length-limit);\n    let row=0;\n    while(row<maxStart && offsets[row+1]<=scrollOffset)row++;\n    const start=scrollOffset<0?maxStart:row;\n    return {lines:rows.slice(start,start+limit),offsets,lineHeight,hidden:maxStart>0,start,total:rows.length,limit,maxStart};\n  },\n  _layout(state,style,w,h,io={}){\n    const stored=this._state(state),scale=Math.min(1,w/360,h/280),pad=8*scale,header=18*scale;\n    const size=Math.max(5,Math.min(style.fontSize||16,h*.25)),width=Math.max(1,w-pad*2),bodyY=pad+header+4*scale;\n    const notice=stored.notice || (io.error?'Input unavailable; stored text retained':'');\n    const hintNeeded=stored.showHints && this._view(stored.text,width,Math.max(1,h-bodyY-pad),size).hidden;\n    const footer=notice?26*scale:stored.showCounts || hintNeeded?14*scale:0,bodyHeight=Math.max(1,h-bodyY-pad-footer);\n    let bodyWidth=width,view=this._view(stored.text,width,bodyHeight,size),scrollbar=null;\n    if(io.inputs?.showScrollbar===true && view.hidden){\n      const trackWidth=Math.min(12*scale,width*.2),gap=6*scale;\n      bodyWidth=Math.max(1,width-trackWidth-gap);\n      view=this._view(stored.text,bodyWidth,bodyHeight,size,stored.scrollOffset);\n      const thumbH=Math.min(bodyHeight,Math.max(20*scale,bodyHeight*view.limit/view.total));\n      scrollbar={x:w-pad-trackWidth,y:bodyY,w:trackWidth,h:bodyHeight,thumbH,\n        thumbY:bodyY+(bodyHeight-thumbH)*view.start/view.maxStart};\n    }\n    return {stored,scale,pad,header,size,width,bodyWidth,bodyY,bodyHeight,notice,footer,view,scrollbar};\n  },\n  children(state,style,w,h,editing,io={}){\n    const {stored,scale,pad,header,size,width,bodyWidth,bodyY,notice,footer,view,scrollbar}=this._layout(state,style,w,h,io);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {...text('',pad,pad,width,header,12*scale),...this._caption(io.name,'Memo',width,header,{...style,fontSize:12*scale})}\n    ];\n    if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,bodyWidth,view.lineHeight,size,'#94a3b8'));\n    else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,bodyWidth,view.lineHeight,size)));\n    if(scrollbar){\n      const bar=scrollbar;\n      children.push({type:'rect',x:bar.x,y:bar.y,w:bar.w,h:bar.h,fill:true,fillColor:'#e2e8f0',strokeOn:false},\n        {type:'rect',x:bar.x,y:bar.thumbY,w:bar.w,h:bar.thumbH,fill:true,fillColor:'#64748b',strokeOn:false});\n    }\n    if(footer){\n      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';\n      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';\n      const hint=stored.showHints && view.hidden?(view.start===view.maxStart?'Showing latest text':'Showing earlier text'):'';\n      const status=notice || [counts,hint].filter(Boolean).join(' · ');\n      if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),\n        ...this._caption(status,' ',width,footer,{...style,fontSize:10*scale,font:font(10*scale)})});\n    }\n    return children;\n  },\n  handles(state,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar?[{id:'scroll',x:scrollbar.x+scrollbar.w/2,y:scrollbar.thumbY+scrollbar.thumbH/2}]:[];\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar && x>=scrollbar.x && x<=scrollbar.x+scrollbar.w && y>=scrollbar.y && y<=scrollbar.y+scrollbar.h?'scroll':null;\n  },\n  dragEdit(state,handle,x,y,w,h,style={},io={}){\n    const {stored,view,scrollbar}=this._layout(state,style,w,h,io);\n    if(handle!=='scroll' || !scrollbar || !Number.isFinite(y))return {state:stored};\n    const travel=scrollbar.h-scrollbar.thumbH;\n    const row=travel>0?Math.round(Math.max(0,Math.min(1,(y-scrollbar.y-scrollbar.thumbH/2)/travel))*view.maxStart):view.maxStart;\n    return {state:{...stored,scrollOffset:row===view.maxStart?-1:view.offsets[row]}};\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "inputValues": {
+            "content": "",
+            "line": "",
+            "set": false,
+            "append": false,
+            "clear": false,
+            "showScrollbar": true
+          },
+          "bindings": {
+            "line": {
+              "uid": "runtime-editor-messages",
+              "port": "value"
+            }
+          }
+        },
+        {
+          "type": "text",
+          "uid": "runtime-editor-event-help",
+          "text": "This second receiver gets the same submissions as Services.\nChanging tabs does not replay old events.",
+          "x": 920,
+          "y": 630,
+          "w": 370,
+          "h": 132,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        }
+      ],
+      "datasets": {},
+      "assets": {}
+    }
+  ]
+}

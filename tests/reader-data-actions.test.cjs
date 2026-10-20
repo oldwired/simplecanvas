@@ -13,7 +13,7 @@ function declaration(name){
 }
 const context=vm.createContext({crypto});
 vm.runInContext('const isNum=v=>typeof v==="number"&&Number.isFinite(v);\n'+dataset+'\n'+helpers+'\n'+
-  ['componentPortName','smartNumber','datasetOwnersOf','componentTableSnapshot','validateSmartReply'].map(declaration).join('\n')+
+  ['componentPortName','smartNumber','datasetOwnersOf','componentWorkspace','attachComponentWorkspace','workspaceDatasetPoolMetadata','componentTableSnapshot','validateSmartReply'].map(declaration).join('\n')+
   '\nthis.actions={normalizeComponentDataAction,validateSmartReply,validateDatasetReplacementSchema,prepareDatasetReplacement,retainDatasetTimelinePool,safeDataFilename,serializeComponentTable,componentTableSnapshot,parseDatasetText};',context);
 const dialogStart=html.indexOf('  async function openComponentDataAction('),dialogEnd=html.indexOf('  // This function is shipped into HTML exports.',dialogStart);
 vm.runInContext(html.slice(dialogStart,dialogEnd)+'\nthis.actions.openComponentDataAction=openComponentDataAction;',context);

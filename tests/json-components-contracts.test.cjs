@@ -24,6 +24,7 @@ test('JSON components declare typed ports and all configured builder inputs are 
     value:{type:resultType==='JSON'?'string':resultType,event:true},found:{role:'control',type:'boolean',event:true},valid:{role:'control',type:'boolean',event:true}
   });
   assert.deepEqual(plain(buildDef.inputs({fields:'name:string\ncount:number\nactive:boolean\nitems:json'})),{
+    reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Emit / Reprocess'},
     field0:{label:'name',type:'string',default:''},field1:{label:'count',type:'number',default:0},field2:{label:'active',type:'boolean',default:false},field3:{label:'items',type:'string',default:'null'}
   });
   assert.deepEqual(compute('json-build'),{text:'{"name":"","value":0}',valid:true});

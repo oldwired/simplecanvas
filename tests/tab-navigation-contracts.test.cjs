@@ -15,7 +15,7 @@ const record={caps:{apiVersion:2,inputs:plain(def.inputs),dataActions:plain(def.
 
 test('navigation builtin exposes a zero-based target, Boolean rising trigger and released host button',()=>{
   assert.equal(def.apiVersion,2);
-  assert.deepEqual(plain(def.inputs),{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false}});
+  assert.deepEqual(plain(def.inputs),{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}});
   assert.deepEqual(plain(def.outputs),{});
   assert.deepEqual(plain(def.compute({page:0,parameters:'{}',go:true})),{});
   assert.deepEqual(plain(def.dataActions),{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}});

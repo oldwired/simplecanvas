@@ -101,7 +101,7 @@ async function settledDrawings(page){
   catch(error){throw new Error(error.message+'\nDrawing diagnostics: '+JSON.stringify(await drawingDiagnostics(page)));}
 }
 
-const sourceFiles={pageSettings:"page-settings.js",jsonEdit:"json-edit.js",jsonExtract:"json-extract.js",jsonBuild:"json-build.js",dateParse:"date-parse.js",dateFormat:"date-format.js",dateDifference:"date-difference.js",urlParameter:"url-parameter.js",goToTab:"go-to-tab.js",dropdown:'dropdown.js',textLookup:'text-lookup.js',textCompare:'text-compare.js',textExtract:'text-extract.js',numberToText:'number-to-text.js',textToNumber:'text-to-number.js',textCompose:'text-compose.js',textTransform:'text-transform.js',textReplace:'text-replace.js',textSelector:'text-selector.js',numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
+const sourceFiles={workspaceSettings:'workspace-settings.js',publish:'publish.js',receive:'receive.js',eventToPulse:'event-to-pulse.js',signalToEvent:'signal-to-event.js',pageSettings:"page-settings.js",jsonEdit:"json-edit.js",jsonExtract:"json-extract.js",jsonBuild:"json-build.js",dateParse:"date-parse.js",dateFormat:"date-format.js",dateDifference:"date-difference.js",urlParameter:"url-parameter.js",goToTab:"go-to-tab.js",dropdown:'dropdown.js',textLookup:'text-lookup.js',textCompare:'text-compare.js',textExtract:'text-extract.js',numberToText:'number-to-text.js',textToNumber:'text-to-number.js',textCompose:'text-compose.js',textTransform:'text-transform.js',textReplace:'text-replace.js',textSelector:'text-selector.js',numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
   dataSource:'data-source.js',captureRow:'capture-row.js',tableFilter:'table-filter.js',tableSort:'table-sort.js',tableAggregate:'table-aggregate.js',dataDownload:'data-download.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
   and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
   statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
@@ -130,13 +130,14 @@ test('bundled component sources, defaults, and displayed ports match the shipped
       definition.key+' bundled source must stay synchronized with the editable example');
     assert.deepEqual(definition.savedState,definition.state,definition.key+' saved defaults must match fresh placement');
     assert.equal(definition.w,definition.style.w);assert.equal(definition.h,definition.style.h);
-    assert.deepEqual(definition.ports,{inputs:definition.caps.inputs,outputs:definition.caps.outputs},
+    const publicPorts=ports=>Object.fromEntries(Object.entries(ports).filter(([,port])=>!port.internal));
+    assert.deepEqual(definition.ports,{inputs:publicPorts(definition.caps.inputs),outputs:publicPorts(definition.caps.outputs)},
       definition.key+' library port labels must describe the actual validated script');
   }
   const dataset=definitions.find(definition=>definition.key==='dataSource');
   assert.equal(dataset.caps.datasetOwner,'data');
   assert.equal(dataset.caps.inputs.source.optional,true);
-  assert.deepEqual(dataset.state,{allowReaderImport:false,allowReaderUpdates:false,updateMode:'Manual'});
+  assert.deepEqual(dataset.state,{allowReaderImport:false,allowReaderColumnChanges:false,allowReaderUpdates:false,updateMode:'Manual'});
   assert.deepEqual(dataset.caps.dataActions,{
     reload:{type:'reloadDataset',input:'data',trigger:'reload'},
     replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},
@@ -458,11 +459,13 @@ test('Math operations are configured per instance in Inputs and persist through 
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
-test('every API2 catalog component can show its instance name in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
+test('standalone API2 catalog components show their instance names in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
-    // the spreadsheet deliberately draws no caption: its cells fill the whole shape
-    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && definition.key!=='spreadsheet');
+    // Spreadsheet cells fill the shape. Settings are authoring-only, while Publish/Receive
+    // need a configured workspace; their labels have dedicated workspace authoring coverage.
+    const excluded=new Set(['spreadsheet','pageSettings','workspaceSettings','publish','receive']);
+    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && !excluded.has(definition.key));
     datasets={catalog:{name:'Catalog sample',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['Sample',2]]}};
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},

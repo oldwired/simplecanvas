@@ -125,7 +125,15 @@ test('table references survive reload and a complete workspace download/import w
     await run('newTab()');await run('pendingFileAction="openWorkspace"');
     await page.locator('#projectInput').setInputFiles(file);
     await page.waitForFunction(()=>__test.run('tabs.length===1 && items.length===5'));
-    assert.deepEqual(await run('datasets'),{results});assert.deepEqual(await output(run,2),{data:{datasetId:'results',rows:[0,2]},rowCount:2});
+    const imported=await run('({datasets:clone(datasets),reference:clone(items[0].inputValues.data),sketchId:activeTabId})');
+    const datasetId=imported.reference.datasetId;
+    assert.equal(datasetId,'results','whole-workspace replacement preserves an unambiguous owned-store identity');
+    assert.deepEqual(Object.keys(imported.datasets),[datasetId],'import still retains exactly one source table');
+    assert.deepEqual(imported.datasets[datasetId],results);
+    assert.deepEqual(imported.reference,{datasetId});
+    assert.equal(imported.sketchId,saved.tabs[0].id,'whole-workspace import preserves the sketch identity');
+    assert.deepEqual(await output(run,0),{data:{datasetId},rowCount:3});
+    assert.deepEqual(await output(run,2),{data:{datasetId,rows:[0,2]},rowCount:2});
     assert.equal((await output(run,4)).rowCount,2);
   }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }));

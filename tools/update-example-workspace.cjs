@@ -345,11 +345,20 @@ async function updateExampleWorkspace({root:directory=root,exportReader=exportWo
   const readerPath=path.join(examples,'smart-components-workspace.html');
   const previousWorkspace=io.readFileSync(workspacePath),previousReader=io.readFileSync(readerPath);
   const workspace=JSON.parse(previousWorkspace.toString('utf8'));
+  for(const tab of workspace.tabs){
+    if(typeof tab.name==='string')tab.name=tab.name.replace(/Page settings/g,'Sketch settings');
+    for(const item of tab.items)for(const key of ['text','componentName'])if(typeof item[key]==='string')item[key]=item[key].replace(/Page settings/g,'Sketch settings');
+  }
   for(const tab of workspace.tabs)for(const item of tab.items){
     if(item.type!=='smart')continue;
     if(!sources[item.uid])throw new Error('Add the source filename for '+item.uid+' to this generator');
     item.script=io.readFileSync(path.join(examples,sources[item.uid]),'utf8');
     if(sources[item.uid]==='data-source.js')item.datasetOwner='data';
+    if(sources[item.uid]==='page-settings.js'){
+      item.componentName=item.componentName==='Page settings'?'Sketch settings':item.componentName;
+      item.state={overrideTitle:true,overrideShowTabs:true,overrideShowWiring:true,overrideShowSimulationControls:true,...item.state};
+    }
+    if(item.uid==='demo-32-title')item.state.values=item.state.values.map(value=>value.replace(/Page settings/g,'Sketch settings'));
   }
   const staging=io.mkdtempSync(path.join(examples,'.smart-components-workspace-'));
   let preserveRecovery=false;
@@ -383,7 +392,7 @@ async function updateExampleWorkspace({root:directory=root,exportReader=exportWo
   }
 }
 
-module.exports={updateExampleWorkspace};
+module.exports={updateExampleWorkspace,exportWorkspaceReader};
 if(require.main===module)updateExampleWorkspace()
   .then(({tabCount})=>console.log('Updated '+tabCount+' editable tabs and offline HTML reader.'))
   .catch(error=>{console.error(error);process.exitCode=1;});

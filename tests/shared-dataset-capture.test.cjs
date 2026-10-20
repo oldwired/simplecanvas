@@ -75,7 +75,7 @@ test('real editor Capture row samples connected controls, updates the shared gri
 
 test('queued real-graph captures retain each sampled row and a held-high input adds no duplicates',async()=>app(async({page,run})=>{
   await seed(run,{held:true});
-  await run('smartGestureQueue=new Promise(resolve=>window.releaseCaptures=resolve);items[3].state.value=true;ensureEditorComponentGraph()');
+  await run('dispatchComponentActions(editorActionDispatcher,[{}],{generation:()=>workspaceGeneration,valid:()=>true,execute:()=>new Promise(resolve=>window.releaseCaptures=resolve)});items[3].state.value=true;ensureEditorComponentGraph()');
   await run("items[3].state.value=false;items[1].state.value=9;items[2].state.values=['Second'];ensureEditorComponentGraph()");
   await run('items[3].state.value=true;ensureEditorComponentGraph()');
   await run("items[1].state.value=99;items[2].state.values=['After sampling'];ensureEditorComponentGraph()");
@@ -100,8 +100,8 @@ test('row limits fail visibly and atomically in both editor and offline HTML',as
   await editorClick(page,run,3,'trigger');await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('1000'));
   assert.deepEqual(await run('datasets.observations.rows'),rows);assert.equal(await run('datasetRevision(datasets.observations)'),0);
   const {reader,errors,requests}=await openReader(page,run,context);await readerClick(reader,3,trigger);
-  await reader.waitForFunction(()=>document.querySelector('[data-data-action-error]')?.textContent.includes('1000'));
-  await readerRows(reader,1000);assert.equal(await reader.locator('[data-data-action-error][role="alert"]').count(),1);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  await reader.waitForFunction(()=>document.querySelector('[data-component-event-error]')?.textContent.includes('1000'));
+  await readerRows(reader,1000);assert.equal(await reader.locator('[data-component-event-error][role="alert"]').count(),1);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
 test('reader capture stays disabled until explicitly enabled even when its source allows importing',async()=>app(async({page,run,context})=>{

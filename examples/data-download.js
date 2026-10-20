@@ -1,7 +1,15 @@
-// Explicit host-owned buttons download the connected rows; computation never performs actions.
+// Buttons, commands and rising signals request a captured table download.
+// Prepared reports the filename once the result is ready; it does not claim the OS saved a file.
 ({
   apiVersion:2,
-  inputs:{data:{type:'table'},filename:{role:'control',type:'string',default:'results'}},
+  eventApi:1,
+  eventOutputs:{prepared:{type:'string'},failed:{type:'string'}},
+  actionEvents:{downloadTable:{success:'prepared',failure:'failed'}},
+  inputs:{data:{type:'table'},filename:{role:'control',type:'string',default:'results'},csv:{role:'control',type:'boolean',default:false,event:'action',label:'Prepare CSV'},json:{role:'control',type:'boolean',default:false,event:'action',label:'Prepare JSON'}},
+  dataActions:{
+    csv:{type:'downloadTable',input:'data',trigger:'csv',format:'csv',filename:'filename'},
+    json:{type:'downloadTable',input:'data',trigger:'json',format:'json',filename:'filename'}
+  },
   outputs:{rowCount:{type:'number'}},
   initState(){return {};},
   initStyle(){return {w:320,h:150,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1};},

@@ -261,13 +261,17 @@ async function installPairPicker(page){
   });
 }
 async function releasePair(page){
-  await page.waitForFunction(()=>window.pendingReloads.length===2);
-  await page.evaluate(()=>{
-    for(const {index,resolve} of window.pendingReloads)resolve(new File(['Name;Value\nUpdated '+index+';'+(index+5)],'dataset-'+index+'.csv',{type:'text/csv'}));
-  });
+  // Both commands are accepted by the same pulse, then the workspace dispatcher executes them in order.
+  for(let request=0;request<2;request++){
+    await page.waitForFunction(request=>window.pendingReloads.length>request,request);
+    await page.evaluate(request=>{
+      const {index,resolve}=window.pendingReloads[request];
+      resolve(new File(['Name;Value\nUpdated '+index+';'+(index+5)],'dataset-'+index+'.csv',{type:'text/csv'}));
+    },request);
+  }
 }
 
-test('simultaneous editor Dataset reloads serialize refreshed validation and keep both replacements',async()=>app(async({page,run})=>{
+test('Dataset reloads accepted by one editor pulse execute in order and keep both replacements',async()=>app(async({page,run})=>{
   await preparePair(run);await installPairPicker(page);
   for(const index of [0,1]){await editorClick(page,run,index,'loadData');await acceptFile(page);await run('smartHitSettled');}
   await page.evaluate(()=>{window.deferReload=true;});
@@ -276,7 +280,7 @@ test('simultaneous editor Dataset reloads serialize refreshed validation and kee
   assert.deepEqual(await run('[0,1].map(index=>datasets[items[index].inputValues.data.datasetId].rows)'),[[['Updated 0',5]],[['Updated 1',6]]]);
 }));
 
-test('simultaneous offline Dataset reloads preserve independent fresh pools and both result tables',async()=>app(async({page,run,context})=>{
+test('Dataset reloads accepted by one offline pulse preserve both replacements in order',async()=>app(async({page,run,context})=>{
   await preparePair(run);const {reader,errors,requests}=await openReader(page,run,context);
   await reader.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===5);await installPairPicker(reader);
   for(const index of [0,1]){

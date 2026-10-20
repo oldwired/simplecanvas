@@ -15,7 +15,9 @@ function caps(def){const state=def.initState();return {eventApi:def.eventApi,eve
 
 test('Dataset and Capture row declare narrow host success/failure mappings with typed event outputs',()=>{
   for(const [name,operation,success] of [['data-source','importDataset','loaded'],['capture-row','appendRow','captured']]){
-    const def=defs[name],record=caps(def);assert.deepEqual(plain(api.normalize(def.actionEvents,record)),{[operation]:{success,failure:'failed'}});
+    const def=defs[name],record=caps(def),normalized=plain(api.normalize(def.actionEvents,record));
+    assert.deepEqual(normalized,plain(def.actionEvents));
+    assert.deepEqual(normalized[operation],{success,failure:'failed'});
     assert.equal(record.eventOutputs[success].type,'number');assert.equal(record.eventOutputs.failed.type,'string');
     assert.equal(Object.hasOwn(def.outputs,success),false,'completion is an occurrence, not a latched signal');
   }

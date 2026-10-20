@@ -521,9 +521,10 @@ test('cycled arrowhead variants survive conversion, undo, reload, and workspace 
   assert.equal(await run('pointEditIdx'),null);
   const workspace=await downloadedJSON(page,run,'exportWorkspace()');
   await page.reload();assert.deepEqual(await variants(),['filled-inverted','filled']);
-  const original=await run('activeTabId');
+  const original=await run('({activeTabId,workspaceGeneration})');
   await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'variants.json'))`);
-  await page.waitForFunction(id=>__test.run('activeTabId')!==id,original);
+  await page.waitForFunction(generation=>__test.run('workspaceGeneration')>generation,original.workspaceGeneration);
+  assert.equal(await run('activeTabId'),original.activeTabId,'a whole-workspace reload preserves its sketch identities');
   assert.deepEqual(await variants(),['filled-inverted','filled']);
 }));
 
@@ -3566,7 +3567,8 @@ test('source edits update the library and bundled PNG, survive export, and prese
   await page.locator('#libraryDialogSubmit').click();await page.locator('.shape-thumb img').waitFor();
   const before=await downloadedJSON(page,run,'exportShapeLibrary()');
   await run("placeShapeAt(shapeLibrary.shapes[0],400,300)");
-  await page.locator('#shapeLibBtn').click();await page.locator('#manageShapesBtn').click();
+  if(await page.locator('#shapePicker').isHidden())await page.locator('#shapeLibBtn').click();
+  await page.locator('#manageShapesBtn').click();
   await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
   assert.equal(await page.locator('#smartObjectNameField').isHidden(),true);
   assert.equal(await page.locator('#smartObjectNameInput').isDisabled(),true);

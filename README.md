@@ -214,16 +214,16 @@ related controls, operations, and displays together; Data covers tables and stru
 
 | Category | Examples |
 | --- | --- |
-| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, Constant, Trigger, Download table, Go to tab, Page settings |
-| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches, registers, latches, counters, and pulse tools |
+| Controls | Number control, Text input, Number input, Dropdown, Spreadsheet, Dataset editor, Toggle, Constant, Trigger, Download table, Go to tab, Sketch settings, Workspace settings |
+| Logic | Boolean gates, Tri-state buffer, Compare, Text compare, selectors, stepped switches, registers, latches, counters, pulse tools, Publish, Receive |
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric selectors/registers, text/number conversion, Spreadsheet, Table aggregate, Gauge, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Page settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 93 entries, including 84 connected API v2 components. Every smart-shape
+The catalog includes 96 entries, including 87 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -320,6 +320,18 @@ Open [the smart-components workspace](examples/smart-components-workspace.json) 
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
+For a small application spanning sketches, use the separate
+[workspace-runtime example](examples/workspace-runtime.json) and its
+[offline HTML reader](examples/workspace-runtime.html). It starts on **Dashboard**. **Services**
+is hidden from the reader's tab bar, but its clock, shared Dataset, row capture and message log
+keep running. Submit a fruit name twice to capture two distinct rows, then open **Data editor**
+to change the same records. The submission block carries separate fruit and quantity endpoints;
+the clock block carries time and its second tick. Change Quantity before submitting to sample
+both values into the new row. **Inspect hidden Services** demonstrates that hidden tabs are still
+reachable through Go to tab; `?page=0` also opens Services. The Data editor overrides the window
+title while inheriting other workspace presentation defaults. All sketches remain accessible in
+the editor. This example is separate from the component-by-component catalog below.
+
 | Tab | Try it |
 | --- | --- |
 | Basics | Change one number and watch a gauge and value label follow. |
@@ -353,7 +365,7 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | JSON messages | Build a typed JSON message, replace selected values while preserving other fields, and extract typed or nested values. |
 | Date and time | Parse explicit dates/timestamps, format the same instant in different timezones, and calculate elapsed duration. |
 | URL inputs and visible characters | Read a name from the reader URL, compare visible-character/code-point processing, and use a button to open another tab. |
-| Page settings | Set the browser title, hide or show navigation and simulation controls, and inspect read-only wiring in the HTML reader. |
+| Sketch settings | Set the browser title, hide or show navigation and simulation controls, and inspect read-only wiring in the HTML reader. |
 | Events and signals | Use one hybrid value connection or separate value/pulse connections, and carry number events through Number to text. |
 | Hybrid transformations | Submit text through an extractor, change range parameters without appending, then Reprocess or sample the current result with a trigger. |
 | Shared event origins | Split one submission into name and city, then compose one complete log line; combine independent edits explicitly with Apply. |
@@ -554,6 +566,8 @@ Renaming changes the emitted JSON key, so update downstream JSON paths or parame
 that refer to its old name.
 Outputs are serialized **Text** and Boolean **Valid**. Invalid nested JSON returns
 empty text and Valid off; oversized output reports an error instead of truncating the message.
+Fields update the current result without submitting it. **Emit / Reprocess** captures all current
+fields and emits one Text/Valid occurrence; repeated identical requests remain distinct.
 
 **JSON edit** changes selected values in an incoming JSON string while preserving the other
 parsed fields. Configure one to eight `pointer:type` lines, such as `/name:string`,
@@ -618,21 +632,34 @@ and 128 parameter pairs; each selected value still fits the usual 2,000-unit str
 editor and exported HTML and add no dependencies or network requests. Advanced mathematical
 functions and further locale-aware formatting/comparison remain planned extensions.
 
-**Page settings** controls an exported tab's browser/window title, tab-bar visibility, read-only
-wiring visibility, and simulation-control visibility. Place at most one per drawing and configure
-its four inputs in **Edit…**, or connect Text input, URL parameter, Toggle, and other components.
-The title defaults to the export's original title when empty; the tab bar and simulation controls
-start visible, and wiring starts hidden. The host resolves the destination's dependencies and applies
-these settings before revealing the tab, then follows connected changes. Each tab starts from the
-reader defaults, so leaving a tab cannot carry its hidden controls or title into another tab.
-Unavailable settings fall back to those defaults. In the editor, the Page settings block stays visible
-for configuration, and your normal authoring controls remain available; the block itself is hidden
-in the HTML reader. Reader wiring shows typed, directed flows and distinct Dataset links without
-allowing connection edits. Hiding simulation controls only hides the panel; it does not pause the graph.
+**Workspace settings** supplies the default browser/window title, tab-bar visibility, read-only
+wiring visibility and simulation-control visibility. Place one per workspace. Its Edit inspector
+also configures **Active sketch only / Whole workspace**, the initial sketch and individual tab
+visibility. Execution mode and the initial sketch are configuration choices, with no live inputs.
+Hidden tabs remain reachable through URL parameters and Go to tab; the editor keeps them accessible.
 
-Try [tab 32 · Page settings](examples/smart-components-workspace.html?page=31): submit a new title,
+**Publish** and **Receive** connect sketches in Whole workspace mode. Each block contains up to
+16 named, typed endpoints with separate wiring pins. Publish exposes local inputs; Receive imports
+chosen published endpoints and offers local outputs. A Receive block can use endpoints from
+different publishers and import only the ones it needs. The Receive picker offers endpoints from
+other sketches only; use direct wiring within a sketch. Edit the names, descriptions and order
+without breaking connections: each row keeps a stable ID. Removing a published row leaves its
+receivers visibly unresolved until you choose another source. Text, number and Boolean endpoints
+carry values and events; tables carry values, and event-only rows carry scalar/null occurrences.
+Dataset sharing remains a separate association to an owner's editable records.
+
+**Sketch settings** overrides those presentation defaults for one sketch. Each property starts
+with **Inherit**; enable its override to use the local literal or connection. An explicitly
+overridden empty title is empty, while an empty workspace title uses the original export title.
+The host settles dependencies and applies workspace defaults followed by sketch overrides before
+revealing the destination, then follows connected changes. Unavailable settings fall back to the
+inherited defaults. Both settings blocks remain visible while authoring and disappear in HTML.
+Reader wiring shows typed, directed flows and distinct Dataset links without allowing connection
+edits. Hiding simulation controls only hides the panel; it does not pause execution.
+
+Try [tab 32 · Sketch settings](examples/smart-components-workspace.html?page=31): submit a new title,
 change the visibility toggles, and use **Open Basics** even while the tab bar is hidden. Basics has no
-Page settings component and restores the reader defaults. When hiding the tab bar in your own
+Sketch settings component and inherits the workspace defaults. When hiding the tab bar in your own
 application, provide Go to tab buttons for navigation. Page background, initial fit/zoom, and initial
 keyboard focus are planned extensions.
 
@@ -935,7 +962,7 @@ setting remains in Edit rather than becoming a connectable port. Scalar feedback
 use the existing simulation rules.
 
 Links follow their components and are an overlay, not drawing objects. They stay out of PNG,
-SVG, and print. HTML hides them by default; **Page settings · Show wiring** enables a read-only
+SVG, and print. HTML hides them by default; **Sketch settings · Show wiring** enables a read-only
 reader view of the same connections. The saved bindings execute independently of visibility.
 **Edit…** opens the component inspector for its name, settings, literal values, and connections.
 Its fixed header identifies the component type (for example, **URL parameter**) independently

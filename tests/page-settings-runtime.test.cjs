@@ -26,7 +26,7 @@ async function seed(run,{single=false,invalid=false,duplicate=false}={}){
   await run(`cancelGesture();tabs=[{id:'settings',name:'Configured'},${single?'':"{id:'plain',name:'Default'},"}{id:'static',name:'Static'}].slice(0,${single?1:3});tabDocuments.clear();
     for(const tab of tabs)tabDocuments.set(tab.id,makeDocument());
     function builtin(key,uid,x,y,patch={}){const item=clone(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key===key).items[0]);return {...item,uid,x,y,...patch,state:{...item.state,...patch.state}};}
-    const controller=builtin('textLabel','settings',80,80,{script:${JSON.stringify(settingsSource)},pageSettings:true,componentName:'Page settings',state:{},inputValues:{},bindings:{title:{uid:'title',port:'value'},showTabs:{uid:'tabs',port:'value'},showWiring:{uid:'wires',port:'value'},showSimulationControls:{uid:'simulation',port:'value'}}});
+    const controller=builtin('textLabel','settings',80,80,{script:${JSON.stringify(settingsSource)},pageSettings:true,componentName:'Sketch settings',state:{overrideTitle:true,overrideShowTabs:true,overrideShowWiring:true,overrideShowSimulationControls:true},inputValues:{},bindings:{title:{uid:'title',port:'value'},showTabs:{uid:'tabs',port:'value'},showWiring:{uid:'wires',port:'value'},showSimulationControls:{uid:'simulation',port:'value'}}});
     ${invalid?"controller.bindings.title={uid:'missing',port:'value'};":''}
     const content=[controller,builtin('textInput','title',430,80,{state:{values:['Welcome']}}),builtin('toggle','tabs',80,300,{state:{value:false}}),builtin('toggle','wires',430,300,{state:{value:true}}),builtin('toggle','simulation',780,300,{state:{value:false}}),builtin('goToTab','next',80,520,{inputValues:{page:1,go:false},state:{showButton:true}})];
     ${duplicate?"content.push({...clone(controller),uid:'duplicate',x:790,y:80});":''}
@@ -64,7 +64,7 @@ async function clickHandle(reader,index,x,y){
 async function editorHandle(run,index,id){return run(`(async()=>{const it=items[${index}],io=await resolveSmartComponentIo(it);return (await requestSmartCall(it,'handles',[it.state,it.w,it.h,smartResolvedStyle(it),io])).find(h=>h.id===${JSON.stringify(id)});})()`);}
 async function presentation(reader){return reader.evaluate(()=>({title:document.title,tabs:!document.querySelector('.tabbar')?.hidden,wiring:!!document.querySelector('.tab-panel:not([style*="display: none"]) [data-reader-wiring]'),controls:getComputedStyle(document.querySelector('[aria-label="Signal simulation"]')).display!=='none'}));}
 
-test('connected Page settings settle before first reveal and remain live without changing the editor',async()=>app(async({page,run,context})=>{
+test('connected Sketch settings settle before first reveal and remain live without changing the editor',async()=>app(async({page,run,context})=>{
   const editorTitle=await page.title();await seed(run);assert.equal(await page.title(),editorTitle);
   assert.equal(await page.locator('#tabbar').isVisible(),true,'export visibility does not hide authoring navigation');
   const input=await editorHandle(run,1,'entry'),tabs=await editorHandle(run,2,'toggle'),wires=await editorHandle(run,3,'toggle'),simulation=await editorHandle(run,4,'toggle');
@@ -94,7 +94,7 @@ test('Go to tab and tab clicks reset presentation; query entry and rapid activat
   assert.deepEqual(errors,[]);
 }));
 
-test('missing inputs and duplicate Page settings fail closed to defaults without an exported controller error card',async()=>app(async({page,run,context})=>{
+test('missing inputs and duplicate Sketch settings fail closed to defaults without an exported controller error card',async()=>app(async({page,run,context})=>{
   for(const options of [{invalid:true},{duplicate:true}]){
     await seed(run,options);const {reader,errors}=await openReader(context,await exportFile(page,run,context));await ready(reader);
     assert.deepEqual(await presentation(reader),{title:'Sketch',tabs:true,wiring:false,controls:true});
@@ -118,7 +118,9 @@ test('read-only wiring shares typed ports, flow arrows and dataset links and nev
     items[1].rotation=Math.PI/6;editorComponentEvaluation=null;save();render();`);
   await run('ensureEditorComponentGraph()');const {reader,errors}=await openReader(context,await exportFile(page,run,context));await ready(reader);
   const overlay=reader.locator('[data-reader-wiring]');assert.equal(await overlay.evaluate(node=>getComputedStyle(node).pointerEvents),'none');
-  assert.equal(await overlay.locator('[tabindex], [role="button"]').count(),0,'wiring exposes no editing affordances');
+  assert.match(await overlay.getAttribute('aria-label'),/read only/);
+  assert.ok(await overlay.locator('[role="button"][data-wire-edge]').count(),'links can be inspected without editing their connections');
+  assert.equal(await reader.locator('#componentWireDisconnect').count(),0,'reader inspection offers no authoring controls');
   assert.ok(await overlay.locator('[data-wire-edge][data-kind="flow"][data-type="string"] path[marker-end]').count());
   assert.ok(await overlay.locator('[data-wire-edge][data-kind="flow"][data-type="boolean"] path[marker-end]').count());
   const dataset=overlay.locator('[data-wire-edge][data-kind="dataset"][data-type="table"]');assert.equal(await dataset.count(),1);assert.equal(await dataset.locator('path[marker-end]').count(),0);assert.equal(await dataset.locator('path[stroke-dasharray="6 5"]').count(),1);
@@ -140,7 +142,7 @@ test('bfcache re-entry and background activation settle settings again before re
   assert.deepEqual(await presentation(reader),{title:'Sketch',tabs:true,wiring:false,controls:true});assert.deepEqual(errors,[]);
 }));
 
-test('paused simulation applies Page settings once a stepped signal propagation has settled',async()=>app(async({page,run,context})=>{
+test('paused simulation applies Sketch settings once a stepped signal propagation has settled',async()=>app(async({page,run,context})=>{
   await seed(run,{single:true});
   const timer=`({apiVersion:2,inputs:{},outputs:{value:{type:'number'}},publish(state){return {value:state.value||0};},transition(inputs,state,memory,{now}){return {state:{value:memory.started?(state.value||0)+1:0},memory:{started:true},nextWakeAt:now+1000};},children(){return [];}})`;
   await run(`items[0].bindings.title={uid:'formatted',port:'text'};items[4].state.value=true;

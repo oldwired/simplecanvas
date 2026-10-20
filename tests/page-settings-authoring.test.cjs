@@ -39,21 +39,21 @@ async function inspector(page,run,index=0){
 const snapshot=run=>run('({items:JSON.stringify(items),undo:undoStack.length,redo:redoStack.length})');
 const errorOf=async(run,source)=>run(`(async()=>{try{await (${source});return null;}catch(error){return error.message;}})()`);
 
-test('Page settings is a placeable builtin with a real thumbnail, labelled inspector and persistent host capability',async()=>app(async({page,run})=>{
+test('Sketch settings is a placeable builtin with a real thumbnail, labelled inspector and persistent host capability',async()=>app(async({page,run})=>{
   const definition=await run('BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==="pageSettings")');
-  assert.ok(definition);assert.equal(definition.name,'Page settings');assert.equal(definition.items[0].script.trim(),script.trim());
-  await page.locator('#shapeLibBtn').click();await page.locator('#browseShapesBtn').click();await page.locator('#librarySearch').fill('Page settings');
-  const tile=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place Page settings',exact:true}),thumbnail=tile.locator('img');
+  assert.ok(definition);assert.equal(definition.name,'Sketch settings');assert.equal(definition.items[0].script.trim(),script.trim());
+  await page.locator('#shapeLibBtn').click();await page.locator('#browseShapesBtn').click();await page.locator('#librarySearch').fill('Sketch settings');
+  const tile=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place Sketch settings',exact:true}),thumbnail=tile.locator('img');
   await thumbnail.waitFor();assert.match(await thumbnail.getAttribute('src'),/^data:image\/png;base64,/);
   assert.ok(await thumbnail.evaluate(async image=>{await image.decode();return image.naturalWidth>0&&image.naturalHeight>0;}));
   await tile.click();const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+320,box.y+300);await run('shapePlacementQueue');
-  const item=await run('items[0]');assert.equal(item.componentName,'Page settings');assert.equal(item.pageSettings,true);
+  const item=await run('items[0]');assert.equal(item.componentName,'Sketch settings');assert.equal(item.pageSettings,true);
   const caps=await run('requestSmartCaps(items[0])');assert.deepEqual(caps.pageSettings,{title:'title',showTabs:'showTabs',showWiring:'showWiring',showSimulationControls:'showSimulationControls'});
   assert.deepEqual(definition.ports,{inputs:caps.inputs,outputs:caps.outputs});
   const first=await run('activeTabId');await run(`newTab();activateTab(${JSON.stringify(first)});`);
   const title=await page.title();
   await inspector(page,run);
-  for(const label of ['Window title','Show tab bar','Show wiring','Show simulation controls'])await page.getByLabel(label+' value',{exact:true}).waitFor();
+  for(const label of ['Window title','Show tab bar','Show wiring','Show simulation controls']){await page.getByLabel(label+' override',{exact:true}).selectOption('true');await page.getByLabel(label+' value',{exact:true}).waitFor();}
   await page.getByLabel('Window title value',{exact:true}).fill('Reader-only title');
   for(const label of ['Show tab bar','Show wiring','Show simulation controls'])await page.getByLabel(label+' value',{exact:true}).selectOption('false');
   await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
@@ -70,12 +70,12 @@ test('Page settings is a placeable builtin with a real thumbnail, labelled inspe
   await page.locator('#componentBindingsCancel').click();
 }));
 
-test('a second Page settings cannot be placed, duplicated or pasted into the same tab and leaves history intact',async()=>app(async({page,run})=>{
+test('a second Sketch settings cannot be placed, duplicated or pasted into the same tab and leaves history intact',async()=>app(async({page,run})=>{
   await seed(run);const before=await snapshot(run);
   await run('placeShapeAt(BUILTIN_LIBRARY_DEFINITIONS.find(d=>d.key==="pageSettings"),700,400);shapePlacementQueue');
   assert.deepEqual(await snapshot(run),before,'library placement cannot add a competing controller');
   await run('selection=[0];duplicateSelection()');assert.deepEqual(await snapshot(run),before,'Duplicate selection is atomic');
-  assert.match(await errorOf(run,'duplicateItemsInPlace([0])'),/only one Page settings/);
+  assert.match(await errorOf(run,'duplicateItemsInPlace([0])'),/only one Sketch settings/);
   assert.deepEqual(await snapshot(run),before,'the drag duplication primitive also rejects the copy');
   const box=await page.locator('#canvas').boundingBox();
   await page.keyboard.down('Meta');await page.mouse.move(box.x+250,box.y+260);await page.mouse.down();await page.mouse.move(box.x+330,box.y+300,{steps:5});await page.mouse.up();await page.keyboard.up('Meta');await run('smartHitSettled');
@@ -86,7 +86,7 @@ test('a second Page settings cannot be placed, duplicated or pasted into the sam
   assert.deepEqual(await snapshot(run),before);
 }));
 
-test('copying Page settings to an empty tab is allowed and remains independent through undo and reload',async()=>app(async({page,run})=>{
+test('copying Sketch settings to an empty tab is allowed and remains independent through undo and reload',async()=>app(async({page,run})=>{
   await seed(run,[{key:'pageSettings',inputValues:{title:'Copied configuration',showTabs:false,showWiring:true,showSimulationControls:false}}]);
   const original=await run('({tab:activeTabId,item:clone(items[0])})');
   await run('selection=[0];copySelection();newTab()');assert.equal(await run('pasteClipboard()'),true);
@@ -102,7 +102,7 @@ test('imported duplicate controllers both report errors while a persisted marker
   await seed(run,[{key:'pageSettings'},{key:'pageSettings',inputValues:{title:'Competing title'}},{key:'constant',state:{value:7}}]);
   await run('(()=>{const scene=normalizeScene(clone(items),{},FORMAT_VERSION,{});applySketchToActiveTab(scene.items,scene.assets,activeTabId,scene.datasets);})()');
   const records=await run('(async()=>{const graph=await ensureEditorComponentGraph();return items.map(item=>{const r=graph.get(item);return {error:r.error||null,outputs:r.io.outputs,pageSettings:!!r.caps?.pageSettings};});})()');
-  assert.match(records[0].error,/only one Page settings/);assert.match(records[1].error,/only one Page settings/);
+  assert.match(records[0].error,/only one Sketch settings/);assert.match(records[1].error,/only one Sketch settings/);
   assert.equal(records[2].error,null);assert.equal(records[2].outputs.value,7);
   await seed(run,[{key:'pageSettings'},{key:'constant',pageSettings:true,state:{value:7}}]);
   const hinted=await run('(async()=>{const graph=await ensureEditorComponentGraph();return items.map(item=>{const r=graph.get(item);return {error:r.error||null,outputs:r.io.outputs,pageSettings:!!r.caps?.pageSettings};});})()');

@@ -117,7 +117,7 @@ async function readerIndicator(page,text){
   await page.waitForFunction(text=>document.querySelector('[data-smart-index="4"]')?.textContent.includes('Status indicator') && document.querySelector('[data-smart-index="4"]').textContent.includes(text),text,{timeout:10000});
 }
 
-test('every smart-shape template has a matching built-in, fresh defaults, and an inert preview',async()=>app(async({page,run})=>{
+test('every built-in has an inert preview and smart-shape templates retain matching sources and fresh defaults',async()=>app(async({page,run})=>{
   const catalog=await run(`(()=>{
     const expected=Object.fromEntries(Object.entries(SMART_TEMPLATES).map(([key,template])=>[key,template.script]));
     return Object.entries(expected).map(([key,script])=>{
@@ -132,16 +132,23 @@ test('every smart-shape template has a matching built-in, fresh defaults, and an
     assert.equal(entry.script.trim(),entry.expected.trim(),entry.key+' preserves the authoring template source');
     assert.ok(entry.id && entry.preview,entry.key+' supplies a valid cached thumbnail');
   }
+  const builtins=await run(`builtInShapeLibrary.map(entry=>({name:entry.name,preview:!!validShapeThumbnail(entry)}))`);
+  for(const entry of builtins)assert.ok(entry.preview,entry.name+' supplies a cached preview without running its script');
   await browse(page);await page.locator('#libraryCollection').selectOption('builtin');
   for(const name of ['Drill template','Race start timer']){
     await page.locator('#librarySearch').fill(name);
     assert.equal(await page.locator('#libraryBrowserGrid .shape-thumb').count(),0,name+' remains an example rather than a built-in');
   }
-  for(const entry of catalog){
+  for(const entry of builtins){
     await page.locator('#librarySearch').fill(entry.name);
     const button=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place '+entry.name,exact:true});
-    assert.equal(await button.count(),1,entry.key+' is discoverable by name');
+    assert.equal(await button.count(),1,entry.name+' is discoverable by name');
     await page.waitForFunction(button=>button.querySelector('img')?.naturalWidth===128,await button.elementHandle());
+    if(['Publish','Receive','Workspace settings'].includes(entry.name)){
+      await page.getByRole('button',{name:'Pin '+entry.name+' to working collection',exact:true}).click();
+      const pinned=page.locator('#shapeGrid').getByRole('button',{name:'Place '+entry.name,exact:true});
+      await page.waitForFunction(button=>button.querySelector('img')?.naturalWidth===128,await pinned.elementHandle());
+    }
   }
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0,'browsing all template previews executes no component code');
 

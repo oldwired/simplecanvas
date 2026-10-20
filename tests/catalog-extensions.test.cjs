@@ -508,7 +508,7 @@ test('spreadsheet context menu: Number format and Alignment per cell, moved with
  assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[{B1:'#,##0.00',B2:'0%'},{B3:'right'}]);
  await run(`(async()=>{const it=items[0];for(const id of ['nf0:B1','nf0:B2','al:default:B3'])applySmartDragResult(it,await requestSmartCall(it,'dragEdit',[it.state,id,0,0,it.w,it.h]));})()`);
  assert.deepEqual(await run('[items[0].state.formats,items[0].state.aligns]'),[undefined,undefined]);
- assert.ok(await run(`BUILTIN_LIBRARY_DEFINITIONS.some(d=>d.key==='spreadsheet'&&d.category==='Controls')`),'built into the Controls catalog');
+ assert.ok(await run(`BUILTIN_LIBRARY_DEFINITIONS.some(d=>d.key==='spreadsheet'&&d.categoryTags?.includes('Controls'))`),'built into the Controls catalog');
 }));
 
 test('spreadsheet column width from the header menu: number dialog, the shape grows by the difference, reset restores',async()=>app(async({page,run})=>{

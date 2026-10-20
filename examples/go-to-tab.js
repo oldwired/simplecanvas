@@ -1,9 +1,12 @@
-// Ask the host to open a zero-based workspace tab, by released button or a rising Go signal.
+// Ask the host to open a zero-based workspace tab, by released button, Go event or rising signal.
 // Computation never navigates. Loaded/high-at-activation signals only establish a baseline.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventOutputs:{arrived:{type:'number'},failed:{type:'string'}},
+  actionEvents:{goToTab:{success:'arrived',failure:'failed'}},
   settings:{showButton:{type:'boolean',default:true,label:'Show button'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false}},
+  inputs:{page:{type:'number',default:0},parameters:{type:'string',default:'{}'},go:{role:'control',type:'boolean',default:false,event:'action'}},
   outputs:{},
   dataActions:{go:{type:'goToTab',input:'page',parameters:'parameters',trigger:'go'}},
   initState(){return {showButton:true,showIndicators:true};},

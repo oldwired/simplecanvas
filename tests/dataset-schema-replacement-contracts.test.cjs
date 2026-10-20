@@ -17,6 +17,7 @@ function runtime(){
   vm.runInContext([
     section('// ---------- embedded datasets ----------','// End of embedded dataset contract.'),
     declaration('validateDatasetReplacementSchema'),declaration('datasetOwnersOf'),
+    declaration('componentWorkspace'),declaration('attachComponentWorkspace'),declaration('workspaceDatasetPoolMetadata'),
     declaration('prepareDatasetReplacement'),declaration('prepareDatasetTableAction'),
     declaration('datasetReplacementImpact'),declaration('validateDatasetReplacementGraph'),
     'this.api={datasetCommand,prepareDatasetReplacement,prepareDatasetTableAction,validateDatasetReplacementGraph};',
@@ -121,6 +122,26 @@ test('prepared column replacement preserves shared links, clears old row selecti
   assert.deepEqual(plain(next.items[2].signalState.previous),{datasetId:'stored',rows:[]});
   assert.deepEqual(plain(next.pool.stored.columns),replacement.columns);
   assert.equal(next.items[0].inputValues.data.datasetId,'stored');assert.equal(JSON.stringify(current),before);
+});
+
+test('workspace replacement applies storage limits to its owning sketch and retains other sketch datasets',()=>{
+  const api=runtime(),pool={stored:plain(original)},owners=new Map([['stored','services']]);
+  for(let index=0;index<8;index++){pool['local-'+index]=plain(original);owners.set('local-'+index,'services');}
+  for(let index=0;index<9;index++){pool['remote-'+index]=plain(original);owners.set('remote-'+index,'other');}
+  Object.defineProperty(pool,Symbol.for('simplecanvas.datasetSketches'),{value:owners});
+  const consumer={uid:'remote-view',inputValues:{data:{datasetId:'stored',sketchId:'services',rows:[1]}}};
+  const current=snapshot({pool,otherItems:[consumer]}),context={whole:true};
+  Object.defineProperty(current.items,Symbol.for('simplecanvas.workspace'),{value:context});
+  const before=JSON.stringify(current),next=api.prepareDatasetReplacement(current,'data',replacement,true);
+  assert.equal(Object.keys(next.pool).length,18);
+  assert.equal(next.pool['remote-0'],pool['remote-0']);
+  assert.deepEqual(plain(next.pool.stored.columns),replacement.columns);
+  assert.deepEqual(plain(next.items[1].inputValues.data),{datasetId:'stored',sketchId:'services',rows:[]});
+  assert.equal(next.pool[Symbol.for('simplecanvas.datasetSketches')],owners);
+  assert.equal(next.items[Symbol.for('simplecanvas.workspace')],context);
+  assert.equal(JSON.stringify(current),before);
+  for(const id of owners.keys())owners.set(id,'services');
+  assert.throws(()=>api.prepareDatasetReplacement(current,'data',replacement,true),/at most 16 datasets/);
 });
 
 test('reader column changes require the dedicated author permission while compatible data reloads do not',()=>{

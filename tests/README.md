@@ -77,7 +77,7 @@ authoring, and working saved connections, copies, deployed-library placements, a
 `tests/component-wiring-contracts.test.cjs` and `tests/component-wiring-runtime.test.cjs` cover
 visual wiring's typed flow/Dataset distinction and its use of existing bindings: bidirectional
 drag gestures, incompatible types, replacement/disconnection with Undo, and omission of the
-authoring overlay from exports. Page settings separately enables an optional read-only reader layer.
+authoring overlay from exports. Sketch settings separately enables an optional read-only reader layer.
 Component double-click/double-tap interaction remains available with wiring visible, alongside
 overlap selection, control use, and port/link gestures.
 `tests/component-wire-reconnect-runtime.test.cjs` covers moving a wire from its connected input,
@@ -486,7 +486,7 @@ Dataset editing and calculated table checks:
   host actions, target validation, sampled pulses, initially high/revisited trigger priming,
   button navigation and invisible automatic navigation above another clickable control.
 - The workspace suite covers all 38 tabs; tabs 29–31 demonstrate the native-data workflows and
-  navigate with parameters from tab 31 to the JSON example. Tab 32 covers live reader Page settings,
+  navigate with parameters from tab 31 to the JSON example. Tab 32 covers live reader Sketch settings,
   navigation with hidden tabs, and restoration of defaults on another tab. Tabs 33–34 compare hybrid
   events with traditional pulses and demonstrate Extractor → Memo, live range changes, and Reprocess.
   Tab 35 contrasts related branches that rejoin once with separately edited fields sampled on Apply.
@@ -495,7 +495,7 @@ Dataset editing and calculated table checks:
 
 Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for Chromium.
 
-## Page settings and reader presentation
+## Sketch settings and reader presentation
 
 - `page-settings-contracts.test.cjs` covers the four typed inputs, validated capability mapping,
   literal defaults, bounded titles, and an authoring-only block including error states.
@@ -506,3 +506,40 @@ Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for C
 - The workspace suite covers tab 32 in both the editable workspace and standalone HTML: submit
   a title, toggle wiring, use normal controls beneath the overlay, hide tabs/simulation controls,
   navigate to Basics, return to retained settings, and reload the saved snapshot.
+
+## Workspace execution and cross-sketch ownership
+
+- `workspace-persistence-contracts.test.cjs` checks sketch/component identity remapping, independent
+  copied dataset stores, retained external references, settings singleton transfer, and coherent
+  history across visible and hidden sketches. Multi-endpoint references retain stable local/source
+  port IDs through copy/import, and imported reference maps enforce port and row limits.
+- `workspace-dispatcher-contracts.test.cjs` checks per-occurrence execution, generation/source
+  cancellation, survival across navigation, ordered reentrancy, bounded action/failure cascades,
+  and rejection containment when a completion receiver itself fails.
+- `workspace-runtime-context-contracts.test.cjs` checks stable timer ownership across navigation,
+  ordinary component changes and dataset revisions; fresh ownership after history/workspace
+  replacement; qualified dataset and per-row endpoint lookup; independent scalar/event/table
+  channels; and explicit inactive or missing sources.
+- `workspace-value-endpoints-contracts.test.cjs` checks independent row dependencies, real feedback
+  faults, isolation of broken imports, healthy feedback-state retention, per-row Live Dataset
+  provenance, and bounded table presentation without interrupting routing.
+- `workspace-execution-ownership-contracts.test.cjs` checks that execution survives tab changes
+  and paint-cache retirement, while deleting an instance, editing its script or replacing its
+  runtime cancels old work.
+- `workspace-runtime-example-contracts.test.cjs` checks the separate three-sketch application
+  fixture and atomic JSON/HTML publication, including failed exports and concurrent edits.
+- `workspace-runtime.test.cjs` exercises hidden processing, repeated cross-sketch events, static
+  exports, shared edits/history, queued Worker ownership, table endpoints, and offline operations
+  with more datasets across the workspace than one sketch's limit.
+- `workspace-runtime-authoring.test.cjs` exercises settings inheritance, endpoint selection,
+  endpoint addition/reordering/removal with stable references, dataset catalog visibility,
+  and the editor's actual wiring overlay.
+- `workspace-actions.test.cjs` checks captured service actions across navigation, repeated
+  equal event commands, and cancellation when their owner is deleted.
+- `workspace-multi-endpoints.test.cjs` checks mixed scalar/table/event rows, imports from several
+  publishers, repeated submissions, and shared-origin reconvergence through one Publish/Receive
+  pair in the editor and offline HTML.
+
+Regenerate the separate **Services / Dashboard / Data editor** example with
+`node tools/update-workspace-runtime-example.cjs`. It does not add tabs to the main component
+catalog. The JSON is editable; the HTML is produced by the app's real standalone exporter.

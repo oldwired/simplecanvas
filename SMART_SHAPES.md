@@ -1024,7 +1024,7 @@ metadata is deferred. These link styles do not change runtime evaluation or muta
 
 Wiring is an overlay derived from component identities, current ports, bindings, and table
 ownership. It is not saved as drawing geometry and does not appear in PNG, SVG, or print. The
-HTML reader hides it by default; **Page settings · Show wiring** exposes a read-only view with
+HTML reader hides it by default; **Sketch settings · Show wiring** exposes a read-only view with
 the same port and link conventions. Semantic bindings and table references serialize and execute
 independently of visibility. Optional descriptor roles and side overrides control placement; no
 script hook or manual port coordinates are needed for this first editor.
@@ -1206,8 +1206,30 @@ independently edited fields on demand, turn Receive events off on their Compose 
 connect an Apply button to Reprocess.
 Arithmetic uses **A**; Date difference
 uses **End**, with Start and Unit as parameters. Dropdown and scalar selectors use the explicit
-selection policy below. Dataset-dependent text lookup, JSON build, and table transforms await
+selection policy below. JSON build emits only on its explicit Emit/Reprocess command and keeps
+its fields value-only. Dataset-dependent text lookup and table transforms await
 their own event contracts.
+
+#### Application action commands
+
+Boolean control inputs can declare `event:'action'` when a validated `dataActions` declaration
+uses that input as its trigger. Ordinary rising Boolean signals continue to work. In event mode,
+each scalar/null occurrence requests the action once: Boolean `false` is ignored, while numeric
+zero, empty text and null are accepted requests. The occurrence payload does not replace the
+action's typed parameters; the host captures those from settled inputs.
+
+The shared dispatcher keeps captured requests owned by their workspace/sketch/component,
+independently of the visible sketch. It validates live ownership and permissions before executing,
+deduplicates the same accepted request, and bounds pending actions and cascades. Deleting the source
+or replacing the workspace cancels stale work. Accepted service actions survive navigation in
+Whole workspace mode. Failure notifications are themselves contained so a failing receiver cannot
+strand later actions.
+
+Declared completion events include Dataset `loaded`, `replaced` and `appended` row counts;
+Capture row `captured` zero-based row index; Go to tab `arrived` zero-based destination index;
+Download table `prepared` filename; and `failed` text. Automatic downloads prepare captured content
+and expose an explicit **Download** button for browser user activation. `prepared` means ready to
+download, not that the browser saved a file. Cancellation and restoration do not emit completions.
 
 #### Delivery and existing triggers
 
@@ -2159,11 +2181,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 93 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 96 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 84 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 87 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -2312,6 +2334,8 @@ The built-in catalog includes 84 API v2 components, with editable sources in `ex
   nested JSON or non-finite parsed numbers produce empty text with `valid:false`. Invalid
   configuration/types and serialized output over 2,000 UTF-16 units produce errors. Object keys
   and string values are escaped through native `JSON.stringify`, not template substitution.
+  Fields are value-only parameters. The explicit Boolean Emit/Reprocess input accepts a rising
+  signal or command event and emits a captured `text`/`valid` result, including repeated equal messages.
 - [JSON edit](examples/json-edit.js): string `text` is the original JSON message. The multiline
   `fields` setting contains 1–8 `pointer:string|number|boolean|json` declarations; default
   `/name:string`. Dynamic inputs `field0`… carry their JSON Pointer paths as display labels and
@@ -2359,18 +2383,44 @@ The built-in catalog includes 84 API v2 components, with editable sources in `ex
   to 16,000 UTF-16 units and 128 pairs; selected values retain the 2,000-unit string-port bound.
   These eight additions expose optional `showIndicators`, use native engines without dependencies,
   and work in offline HTML. Demo tabs 29–31 cover JSON, date/time, URL input, and segmentation.
-- [Page settings](examples/page-settings.js): string `title` (default empty) and Boolean control
+- [Sketch settings](examples/page-settings.js): string `title` (default empty) and Boolean control
   inputs `showTabs` (true), `showWiring` (false), and `showSimulationControls` (true), with no outputs.
   Its declared `pageSettings` capability maps these input IDs to the four host-owned presentation
-  properties. At most one component may declare this capability per drawing; duplicate imported
+  properties. `sketchSettingsOverrides` maps each property to its explicit Boolean override setting;
+  false inherits Workspace settings instead of sampling a local input. At most one component may declare this capability per drawing; duplicate imported
   controllers are errors. The host settles dependencies, applies the resolved settings, then reveals
-  the destination tab. Later connected changes update the reader presentation. Empty titles use the
-  original export title; absent or unavailable settings use the reader defaults, without inheriting
+  the destination tab. Later connected changes update the reader presentation. Explicit title overrides
+  may be empty; absent or unavailable settings inherit workspace defaults, without inheriting
   values from the previous tab. All drawing children are editor-only: the block remains selectable
   in authoring and disappears in HTML. Settings do not hide editor controls. Reader wiring is
   read-only and distinguishes typed/directed signal flows from Dataset associations; hiding the
   simulation panel does not pause execution. Demo tab 32 connects a title input and three toggles,
   with a Go to tab button that remains usable when navigation is hidden.
+- [Workspace settings](examples/workspace-settings.js): one workspace-wide owner of the same four
+  presentation defaults, plus authoring-only execution mode, initial sketch ID and per-sketch tab
+  visibility. Optional Boolean controls can drive tab visibility. Hidden sketches remain reachable
+  by URL and Go to tab. Its drawing is editor-only, and duplicating its sketch omits this singleton.
+- [Publish](examples/publish.js) and [Receive](examples/receive.js): explicitly expose and consume a
+  list of 1–16 named, typed endpoints across sketches in Whole workspace mode. Each Publish row
+  has a local input; each Receive row selects a source from another sketch in Edit and offers
+  a local output.
+  The picker excludes publishers on the receiving sketch; connect those components directly.
+  Receive may import a subset of one publisher or combine rows from different publishers.
+  State stores `endpoints:[{id,name,type,description}]`; IDs are stable across renaming and
+  reordering. The host validates endpoint metadata as `{direction,ports:{[id]:{type}}}`.
+  Scalar endpoints preserve both values and
+  occurrences; table endpoints carry live table values without events, and event-only endpoints
+  accept bounded scalar/null payloads. A table flow is distinct from selecting a shared Dataset
+  owner's records through the workspace catalog. The host stores the stable
+  source identity per local row in `item.workspaceReceive={[id]:{sketchId,componentUid,port}}`,
+  where `port` is the published row's stable ID. IDs contain 1–48 letters/digits/underscores,
+  begin with a letter, and exclude reserved object keys. Copying a whole sketch remaps
+  its internal endpoints and preserves external references; copying a selected Publish/Receive
+  pair reconnects the copies together without changing either port ID. Deleting a published row
+  leaves references to that ID unavailable; another row never inherits its connections. Changing
+  a row's type retains its ID but makes incompatible connections unavailable until repaired.
+  The separate [workspace example](examples/workspace-runtime.json) demonstrates values, events,
+  hidden service actions and shared datasets across three sketches.
 - [Text label](examples/text-label.js): string `value` input (default empty) and matching `value` output.
   It wraps and truncates the visible preview while preserving the complete output; incoming content
   renders literally, including leading `---` and HTML-looking text. It starts as plain text with

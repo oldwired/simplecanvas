@@ -33,7 +33,7 @@ function caller(api,custom={}){return async(item,hook,args)=>{
 test('Capture row maps a bounded editable field list into stable scalar inputs and an append declaration',()=>{
   const def=source(),state=def.initState(),ports=plain(def.inputs(state));
   assert.equal(def.settings.fields.format,'lines');assert.equal(state.allowReaderCapture,false);
-  assert.deepEqual(ports,{data:{type:'table'},capture:{role:'control',type:'boolean',default:false},field0:{type:'string',default:''},field1:{type:'number',default:0},field2:{type:'boolean',default:false}});
+  assert.deepEqual(ports,{data:{type:'table'},capture:{role:'control',type:'boolean',default:false,event:'action'},field0:{type:'string',default:''},field1:{type:'number',default:0},field2:{type:'boolean',default:false}});
   assert.deepEqual(plain(def.dataActions(state)),{capture:{type:'appendRow',input:'data',trigger:'capture',fields:{label:'field0',value:'field1',active:'field2'}}});
   assert.equal(Object.keys(def.inputs({...state,fields:Array.from({length:24},(_,i)=>'column'+i+':number').join('\n')})).length,26);
   for(const fields of ['', 'same:number\nsame:string','value:date','constructor:string','no type',Array.from({length:25},(_,i)=>'x'+i+':number').join('\n')])assert.throws(()=>def.inputs({...state,fields}));
@@ -126,40 +126,66 @@ test('cancellation rolls back sampled actions and a saturated queue fails withou
 });
 
 function dispatchFixture(reader=false){
-  const item=node(),timeline={dataActions:[]},calls=[],errors=[],entry={item},document={hidden:false,querySelector:()=>null};
-  const scope=vm.createContext({Promise,items:[item],editorTimeline:timeline,timeline,activeTabId:'tab',epoch:1,entries:[entry],document,
-    componentRuntimeId:()=> 'owned',takeComponentDataActions:t=>{const actions=t.dataActions;t.dataActions=[];return actions;},current:()=>true,
-    smartGestureQueue:Promise.resolve(),gestureQueue:Promise.resolve(),toast:message=>errors.push(message),
-    commitEditorDatasetCommand:async(intent,valid)=>{if(valid())calls.push(intent.row);},commitReaderDatasetCommand:async(intent,valid)=>{if(valid())calls.push(intent.row);}});
-  const start=reader?'    function dispatchReaderComponentDataActions(':'  function dispatchEditorComponentDataActions(',end=reader?'    async function openReaderDataAction(':'  async function openEditorComponentDataAction(';
-  vm.runInContext(html.slice(html.indexOf(start),html.indexOf(end))+'\nthis.dispatch='+ (reader?'dispatchReaderComponentDataActions':'dispatchEditorComponentDataActions')+';',scope);
-  return {item,timeline,scope,calls,errors,intent:value=>({type:'appendRow',item,runtimeId:'owned',script:item.script,bindings:'{}',row:{value}})};
+  const item=node(),timeline={dataActions:[]},calls=[],errors=[],events=[],entry={item};
+  const table={...data,rows:[]},pool={log:table};Object.defineProperty(pool,Symbol.for('simplecanvas.datasetOwners'),{value:new Map([['log',{uid:'owner',input:'data'}]])});
+  const action=source().dataActions(item.state).capture,record={caps:{dataActions:{capture:action}},io:{inputs:{data:ref}}};
+  const graph=new Map([[item,record]]);graph.datasets=pool;
+  const context={scene:[item],sketchByUid:new Map([[item.uid,'tab']])};
+  const document={hidden:false,querySelector:()=>null};
+  let gate=Promise.resolve();
+  const commit=(command,valid)=>{if(!valid())throw Object.assign(new Error('Cancelled'),{cancelled:true});calls.push(command.row);table.rows.push(Object.values(command.row));return {table};};
+  const scope=vm.createContext({Promise,console,smartCancelled:()=>Object.assign(new Error('Cancelled'),{cancelled:true}),items:context.scene,editorTimeline:timeline,timeline,activeTabId:'tab',runtimeGeneration:1,workspaceGeneration:1,workspaceContext:context,entries:[entry],document,datasets:pool,
+    DATASET_ID:/^[a-zA-Z0-9_-]+$/,datasetReference:value=>value,datasetOwnersOf:p=>p[Symbol.for('simplecanvas.datasetOwners')],
+    componentRuntimeId:()=> 'owned',editorRuntimeContext:()=>context,entryFor:it=>it===item?entry:null,
+    takeComponentDataActions:t=>{const actions=t.dataActions;t.dataActions=[];return actions;},
+    gestureQueue:Promise.resolve(),toast:message=>errors.push(message),showReaderEventError:message=>errors.push(message),
+    ensureEditorComponentGraph:async()=>{await gate;return graph;},resolveComponentGraph:async()=>{await gate;return graph;},refreshComponents:async()=>{},
+    commitEditorDatasetChange:commit,commitReaderDatasetChange:commit,
+    emitEditorComponentActionEvent:async(it,operation,status,payload)=>events.push({operation,status,payload}),
+    emitReaderComponentActionEvent:async(e,operation,status,payload)=>events.push({operation,status,payload})});
+  const between=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
+  const shared=between('  function createComponentActionDispatcher(','  function prepareComponentDownload(')+
+    between('  function prepareDatasetAppend(','  function prepareDatasetTableAction(')+
+    between('  async function resolveAcceptedComponentGraph(','  function prepareComponentDownload(');
+  const hosted=reader?between('    function readerActionCurrent(','    const defaultTitle=')+
+    between('    async function commitReaderDatasetCommand(','    async function commitReaderDatasetTableAction(')+
+    between('    function dispatchReaderComponentDataActions(','    async function openReaderDataAction('):
+    between('  function queueEditorComponentActionIntents(','  async function openEditorComponentDataAction(')+
+    between('  async function commitEditorDatasetCommand(','  async function commitEditorDatasetTableAction(');
+  vm.runInContext(shared+'\nconst '+(reader?'actionDispatcher':'editorActionDispatcher')+'=createComponentActionDispatcher();\n'+hosted+
+    '\nthis.dispatch='+ (reader?'dispatchReaderComponentDataActions':'dispatchEditorComponentDataActions')+';this.dispatcher='+(reader?'actionDispatcher':'editorActionDispatcher')+';',scope);
+  const drain=async()=>{for(let i=0;i<100 && scope.dispatcher.running;i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(scope.dispatcher.running,false,'action dispatcher must drain');};
+  const block=()=>{let release;gate=new Promise(resolve=>{release=resolve;});return release;};
+  return {item,timeline,scope,calls,errors,events,drain,block,intent:value=>({type:'appendRow',name:'capture',input:'data',fields:action.fields,item,runtimeId:'owned',script:item.script,bindings:'{}',reference:ref,schema:JSON.stringify(table.columns),row:{value}})};
 }
 
 test('editor dispatch preserves all sampled rows; stale source bindings cancel queued capture',async()=>{
-  const f=dispatchFixture();f.timeline.dataActions=[f.intent(1),f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,'tab');await f.scope.smartGestureQueue;
-  assert.deepEqual(f.calls,[{value:1},{value:2}]);
-  let release;f.scope.smartGestureQueue=new Promise(resolve=>{release=resolve;});f.timeline.dataActions=[f.intent(3)];f.scope.dispatch(f.timeline,f.scope.items,'tab');
-  f.item.bindings={data:{uid:'different',port:'data'}};release();await f.scope.smartGestureQueue;assert.equal(f.calls.length,2);assert.deepEqual(f.errors,[]);
+  const f=dispatchFixture();f.timeline.dataActions=[f.intent(1),f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,'tab');await f.drain();
+  assert.deepEqual(f.calls,[{value:1},{value:2}]);assert.deepEqual(f.events.map(e=>e.status),['success','success']);
+  const release=f.block();f.timeline.dataActions=[f.intent(3)];f.scope.dispatch(f.timeline,f.scope.items,'tab');
+  f.item.bindings={data:{uid:'different',port:'data'}};release();await f.drain();assert.equal(f.calls.length,2);assert.deepEqual(f.errors,[]);
 });
 
 test('reader dispatch requires explicit capture permission and never treats import permission as capture permission',async()=>{
-  const f=dispatchFixture(true);f.item.state.allowReaderImport=true;f.timeline.dataActions=[f.intent(1)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.scope.gestureQueue;assert.equal(f.calls.length,0);
-  f.item.state.allowReaderCapture=true;f.timeline.dataActions=[f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.scope.gestureQueue;assert.deepEqual(f.calls,[{value:2}]);
-  let release;f.scope.gestureQueue=new Promise(resolve=>{release=resolve;});f.timeline.dataActions=[f.intent(3)];f.scope.dispatch(f.timeline,f.scope.items,1);
-  f.item.state.allowReaderCapture=false;release();await f.scope.gestureQueue;assert.equal(f.calls.length,1);
+  const f=dispatchFixture(true);f.item.state.allowReaderImport=true;f.timeline.dataActions=[f.intent(1)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.drain();assert.equal(f.calls.length,0);
+  assert.equal(f.events[0].status,'failure');assert.match(f.errors[0],/unavailable or disabled/);
+  f.item.state.allowReaderCapture=true;f.timeline.dataActions=[f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.drain();assert.deepEqual(f.calls,[{value:2}]);
+  const release=f.block();f.timeline.dataActions=[f.intent(3)];f.scope.dispatch(f.timeline,f.scope.items,1);
+  f.item.state.allowReaderCapture=false;release();await f.drain();assert.equal(f.calls.length,1);assert.equal(f.events.at(-1).status,'failure');
 });
 
 test('reader capture failures show one replaceable visible notice and ignore cancelled work',async()=>{
   const f=dispatchFixture(true),notices=[];f.item.state.allowReaderCapture=true;
   f.scope.document.querySelector=()=>notices[0]||null;
-  f.scope.document.createElement=()=>({dataset:{},style:{},setAttribute(name,value){this[name]=value;},remove(){notices.splice(notices.indexOf(this),1);}});
+  f.scope.document.createElement=()=>({dataset:{},style:{},children:[],setAttribute(name,value){this[name]=value;},addEventListener(){},append(...children){this.children.push(...children);},remove(){notices.splice(notices.indexOf(this),1);}});
   f.scope.document.body={append:notice=>notices.push(notice)};
-  let failure=new Error('Dataset row limit reached');f.scope.commitReaderDatasetCommand=async()=>{throw failure;};
+  const start=html.indexOf('    function showReaderEventError('),end=html.indexOf('    async function applyReaderSmartEvents(',start);
+  vm.runInContext(html.slice(start,end),f.scope);
+  let failure=new Error('Dataset row limit reached');f.scope.commitReaderDatasetChange=()=>{throw failure;};
   for(const message of ['Dataset row limit reached','Target dataset is no longer available']){
-    failure=new Error(message);f.timeline.dataActions=[f.intent(1)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.scope.gestureQueue;
-    assert.equal(notices.length,1);assert.equal(notices[0].role,'alert');assert.equal(notices[0].textContent,message);
+    failure=new Error(message);f.timeline.dataActions=[f.intent(1)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.drain();
+    assert.equal(notices.length,1);assert.equal(notices[0].role,'alert');assert.equal(notices[0].children[0].textContent,message);
   }
-  failure=Object.assign(new Error('Cancelled'),{cancelled:true});f.timeline.dataActions=[f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.scope.gestureQueue;
-  assert.equal(notices.length,1);assert.equal(notices[0].textContent,'Target dataset is no longer available');
+  failure=Object.assign(new Error('Cancelled'),{cancelled:true});f.timeline.dataActions=[f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,1);await f.drain();
+  assert.equal(notices.length,1);assert.equal(notices[0].children[0].textContent,'Target dataset is no longer available');assert.equal(f.events.length,2);
 });

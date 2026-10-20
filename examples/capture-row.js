@@ -1,4 +1,4 @@
-// A rising Capture input appends one sampled row to a whole embedded dataset.
+// A Capture event or rising Capture signal appends one sampled row to a whole embedded dataset.
 // Fields are one columnKey:number|string|boolean entry per line. Unmapped columns stay empty.
 ({
   apiVersion:2,
@@ -21,7 +21,7 @@
     });
   },
   inputs(state){
-    const ports={data:{type:'table'},capture:{role:'control',type:'boolean',default:false}};
+    const ports={data:{type:'table'},capture:{role:'control',type:'boolean',default:false,event:'action'}};
     for(const {port,type} of this._fields(state))ports[port]={type,default:type==='number'?0:type==='boolean'?false:''};
     return ports;
   },
@@ -59,7 +59,7 @@
       children.push(text(io.error||'Choose a dataset and map its columns in Edit',60,12,'#92400e'));return children;
     }
     children.push(text(table.name,43,13),text(io.outputs.rowCount+' '+(io.outputs.rowCount===1?'row':'rows'),73,22,undefined,600),
-      text('Pulse Capture to add one row',116,11,'#64748b'));
+      text('Send Capture to add one row',116,11,'#64748b'));
     return children;
   },
   unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}

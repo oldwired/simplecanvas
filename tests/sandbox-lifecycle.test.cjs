@@ -80,7 +80,7 @@ test('the standalone file export also retires post-reply async execution',async(
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-sandbox-lifecycle-'));
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
   const exported=fs.readFileSync(await(await download).path(),'utf8');
-  const instrumented=exported.replace('activate(documents[0].id);','window.__sandboxStats=()=>({...smartRuntimeStats});activate(documents[0].id);');
+  const instrumented=exported.replace('void activate(initial);','window.__sandboxStats=()=>({...smartRuntimeStats});void activate(initial);');
   assert.notEqual(instrumented,exported,'instrument only the generated runtime for observing resident workers');
   const file=path.join(directory,'background.html');fs.writeFileSync(file,instrumented);
   const reader=await context.newPage(),errors=[],requests=[];

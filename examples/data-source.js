@@ -1,12 +1,18 @@
-// Own one stored dataset. Manual source pulses or Live source publications copy incoming rows.
+// Own one stored dataset. Commands, source pulses or Live source publications copy incoming rows.
 ({
   apiVersion:2,
   eventApi:1,
-  eventOutputs:{loaded:{type:'number'},failed:{type:'string'}},
-  actionEvents:{importDataset:{success:'loaded',failure:'failed'}},
+  eventOutputs:{loaded:{type:'number'},replaced:{type:'number'},appended:{type:'number'},failed:{type:'string'}},
+  actionEvents:{
+    importDataset:{success:'loaded',failure:'failed'},
+    reloadDataset:{success:'loaded',failure:'failed'},
+    replaceTable:{success:'replaced',failure:'failed'},
+    appendTable:{success:'appended',failure:'failed'},
+    syncTable:{success:'replaced',failure:'failed'}
+  },
   datasetOwner:'data',
   settings:{updateMode:{type:'string',default:'Manual',options:['Manual','Live'],label:'Source update mode'},allowReaderImport:{type:'boolean',default:false,label:'Allow file import and reload'},allowReaderColumnChanges:{type:'boolean',default:false,label:'Allow column changes in HTML export'},allowReaderUpdates:{type:'boolean',default:false,label:'Allow source updates in HTML export'}},
-  inputs:{data:{type:'table'},source:{type:'table',optional:true},replace:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},reload:{role:'control',type:'boolean',default:false}},
+  inputs:{data:{type:'table'},source:{type:'table',optional:true},replace:{role:'control',type:'boolean',default:false,event:'action'},append:{role:'control',type:'boolean',default:false,event:'action'},reload:{role:'control',type:'boolean',default:false,event:'action'}},
   dataActions(state){return {reload:{type:'reloadDataset',input:'data',trigger:'reload'},replace:{type:'replaceTable',input:'data',source:'source',trigger:'replace'},append:{type:'appendTable',input:'data',source:'source',trigger:'append'},live:{type:'syncTable',input:'data',source:'source',enabled:state.updateMode==='Live'}};},
   outputs:{data:{type:'table'},rowCount:{type:'number'}},
   initState(){return {updateMode:'Manual',allowReaderImport:false,allowReaderColumnChanges:false,allowReaderUpdates:false};},

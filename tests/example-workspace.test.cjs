@@ -54,13 +54,30 @@ async function activate(run,tab){
   await run(`activateTab(tabs[${tab-1}].id);selection=[];setTool('select');render();`);
   await run('ensureEditorComponentGraph()');
 }
+// Whole-workspace imports preserve unique IDs and remap duplicate local IDs. Follow
+// the Dataset owner's actual reference rather than a fixture's pre-import spelling.
+const datasetExpr=(tab,id)=>`datasets[items.find(item=>item.uid===${JSON.stringify(uid(tab,id))}).inputValues.data.datasetId]`;
+async function editorView(run,tab,id,hook='handles'){
+  for(let attempt=0;attempt<5;attempt++){
+    const view=await run(`(async()=>{
+      await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);
+      const item=items.find(item=>item.uid===${JSON.stringify(uid(tab,id))}),io=await resolveSmartComponentIo(item);
+      const args=${hook==='handles'?'[item.state,item.w,item.h,smartResolvedStyle(item),io]':'[item.state,smartResolvedStyle(item),item.w,item.h,false,io]'};
+      const result=await requestSmartCall(item,${JSON.stringify(hook)},args);
+      return result===null?null:{item,io,result};
+    })()`);
+    if(view)return view;
+    // A pulse resetting while a Worker read is pending invalidates only that read.
+    // Read the newly accepted graph again; no click or state mutation is retried.
+  }
+  assert.fail(uid(tab,id)+' did not settle for '+hook);
+}
 async function editorHandle(page,run,tab,id,handleId){
   const target=uid(tab,id);
-  const {item,handle}=await run(`(async()=>{
+  await run(`(()=>{
     const index=items.findIndex(item=>item.uid===${JSON.stringify(target)});selection=[index];editingSmartIdx=index;render();
-    const item=items[index],handles=await requestSmartCall(item,'handles',[item.state,item.w,item.h,smartResolvedStyle(item)]);
-    return {item,handle:handles.find(handle=>handle.id===${JSON.stringify(handleId)})};
   })()`);
+  const {item,result:handles}=await editorView(run,tab,id),handle=handles.find(handle=>handle.id===handleId);
   assert.ok(handle,target+' has interactive '+handleId);
   const box=await page.locator('#canvas').boundingBox();
   await page.mouse.click(box.x+item.x+handle.x,box.y+item.y+handle.y);
@@ -399,19 +416,20 @@ async function confirmedJsonDownload(page){
 
 test('shared dataset demo captures control values, edits a record, and downloads the same updated rows',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,22);
+  const readings=datasetExpr(22,'source');
   assert.equal((await outputs(run,22,'label')).value,'Gamma','the text entry starts with its intended live value');
   assert.deepEqual(await outputs(run,22,'sheet'),{total:35,rows:2});
   await editorHandle(page,run,22,'pulse','trigger');
-  await page.waitForFunction(()=>__test.run('datasets.readings.rows.length===3'));await run('smartHitSettled');
-  assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.deepEqual(await run('datasets.readings.rows[2]'),['Gamma',40]);
+  await page.waitForFunction(source=>__test.run(source),`${readings}.rows.length===3`);await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.deepEqual(await run(`${readings}.rows[2]`),['Gamma',40]);
   await editorHandle(page,run,22,'sheet','B4');const field=page.locator('#smartTextValue');await field.waitFor();assert.equal(await field.inputValue(),'40');
   await field.fill('45');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
   assert.deepEqual(await outputs(run,22,'sheet'),{total:80,rows:3});assert.equal((await outputs(run,22,'chart')).rowCount,3);
-  const chart=await run(`(async()=>{const it=items.find(item=>item.uid==='demo-22-chart');return requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false]);})()`);
+  const {result:chart}=await editorView(run,22,'chart','children');
   assert.ok(chart.some(child=>child.type==='text'&&child.text==='45'),'chart immediately displays the edited record');
-  assert.deepEqual(await run('datasetRowIds(datasets.readings)'),['r0','r1','r2']);
+  assert.deepEqual(await run(`datasetRowIds(${readings})`),['r0','r1','r2']);
   await editorHandle(page,run,22,'download','json');assert.deepEqual(await confirmedJsonDownload(page),[{label:'Alpha',value:10},{label:'Beta',value:25},{label:'Gamma',value:45}]);
-  await run('undo();ensureEditorComponentGraph()');assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.equal(await run('datasets.readings.rows[2][1]'),40);
+  await run('undo();ensureEditorComponentGraph()');assert.deepEqual(await outputs(run,22,'sheet'),{total:75,rows:3});assert.equal(await run(`${readings}.rows[2][1]`),40);
   await editorHandle(page,run,22,'offset','plus');assert.equal((await outputs(run,22,'offset')).value,1);
   const paged=await run("resolveSmartComponentIo(items.find(item=>item.uid==='demo-22-sheet'))");
   assert.equal(paged.inputs.startRow,1);assert.deepEqual(paged.outputs,{total:75,rows:3},'paging leaves whole-table formulas unchanged');
@@ -438,21 +456,22 @@ test('shared dataset demo supports capture, direct editing, chart refresh and do
 
 test('source-to-dataset demo applies explicit copies and keeps incoming and owned edits independent',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,23);
+  const saved=datasetExpr(23,'target'),incoming=datasetExpr(23,'source');
   assert.deepEqual(await outputs(run,23,'sheet'),{total:7,rows:1});assert.equal((await outputs(run,23,'filter')).rowCount,2);
   await editorHandle(page,run,23,'replace','trigger');
-  await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===2'));await run('smartHitSettled');
+  await page.waitForFunction(source=>__test.run(source),`${saved}.rows.length===2`);await run('smartHitSettled');
   assert.deepEqual(await outputs(run,23,'sheet'),{total:65,rows:2});
-  const ids=await run('datasets.saved.rowIds');assert.deepEqual(ids,['r1','r2']);
+  const ids=await run(`${saved}.rowIds`);assert.deepEqual(ids,['r1','r2']);
   await editorHandle(page,run,23,'incoming','B4');let field=page.locator('#smartTextValue');await field.waitFor();await field.fill('50');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
-  assert.equal(await run('datasets.incoming.rows[2][1]'),50);assert.deepEqual(await outputs(run,23,'sheet'),{total:65,rows:2},'source edits wait for an explicit apply pulse');
+  assert.equal(await run(`${incoming}.rows[2][1]`),50);assert.deepEqual(await outputs(run,23,'sheet'),{total:65,rows:2},'source edits wait for an explicit apply pulse');
   await editorHandle(page,run,23,'sheet','B2');field=page.locator('#smartTextValue');await field.waitFor();await field.fill('30');await field.press('Enter');await field.waitFor({state:'detached'});await run('smartHitSettled');
-  assert.equal(await run('datasets.incoming.rows[1][1]'),25,'destination edits never write upstream');assert.deepEqual(await outputs(run,23,'sheet'),{total:70,rows:2});
-  await editorHandle(page,run,23,'append','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===4'));await run('smartHitSettled');
-  assert.deepEqual(await outputs(run,23,'sheet'),{total:145,rows:4});assert.deepEqual(await run('datasets.saved.rowIds.slice(0,2)'),ids);
+  assert.equal(await run(`${incoming}.rows[1][1]`),25,'destination edits never write upstream');assert.deepEqual(await outputs(run,23,'sheet'),{total:70,rows:2});
+  await editorHandle(page,run,23,'append','trigger');await page.waitForFunction(source=>__test.run(source),`${saved}.rows.length===4`);await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:145,rows:4});assert.deepEqual(await run(`${saved}.rowIds.slice(0,2)`),ids);
   await editorHandle(page,run,23,'threshold','plus');assert.equal((await outputs(run,23,'filter')).rowCount,1);assert.deepEqual(await outputs(run,23,'sheet'),{total:145,rows:4});
-  await editorHandle(page,run,23,'replace','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows.length===1'));await run('smartHitSettled');
-  assert.deepEqual(await outputs(run,23,'sheet'),{total:50,rows:1});assert.deepEqual(await run('datasets.saved.rows'),[['Gamma',50]]);
-  const chart=await run(`(async()=>{const it=items.find(item=>item.uid==='demo-23-chart');return requestSmartCall(it,'children',[it.state,smartResolvedStyle(it),it.w,it.h,false]);})()`);
+  await editorHandle(page,run,23,'replace','trigger');await page.waitForFunction(source=>__test.run(source),`${saved}.rows.length===1`);await run('smartHitSettled');
+  assert.deepEqual(await outputs(run,23,'sheet'),{total:50,rows:1});assert.deepEqual(await run(`${saved}.rows`),[['Gamma',50]]);
+  const {result:chart}=await editorView(run,23,'chart','children');
   assert.ok(chart.some(child=>child.type==='text'&&child.text==='50'));
 }));
 
@@ -481,18 +500,19 @@ async function saveInlineText(page,value){
 
 test('live editor and spreadsheet result examples keep local edits until their source refreshes',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,24);
+  const working=datasetExpr(24,'working'),incoming=datasetExpr(24,'source'),results=datasetExpr(25,'results');
   await editorHandle(page,run,24,'working-editor','cell-0-1');await saveInlineText(page,'99');await run('smartHitSettled');
-  assert.equal(await run('datasets.working.rows[0][1]'),99);assert.equal(await run('datasets.incoming.rows[0][1]'),10);
+  assert.equal(await run(`${working}.rows[0][1]`),99);assert.equal(await run(`${incoming}.rows[0][1]`),10);
   await editorHandle(page,run,24,'source-editor','cell-0-1');await saveInlineText(page,'12');
-  await page.waitForFunction(()=>__test.run('datasets.working.rows[0][1]===12'));
+  await page.waitForFunction(source=>__test.run(source),`${working}.rows[0][1]===12`);
   await activate(run,25);
   await editorHandle(page,run,25,'result-editor','cell-0-1');await saveInlineText(page,'99');await run('smartHitSettled');
-  assert.equal(await run('datasets.results.rows[0][1]'),99);
+  assert.equal(await run(`${results}.rows[0][1]`),99);
   await editorHandle(page,run,25,'source-editor','cell-0-1');await saveInlineText(page,'12');
-  await page.waitForFunction(()=>__test.run('datasets.results.rows[0][1]===24'));
+  await page.waitForFunction(source=>__test.run(source),`${results}.rows[0][1]===24`);
   await editorHandle(page,run,25,'sheet','E2');await saveInlineText(page,'=B2*3');
-  await page.waitForFunction(()=>__test.run('datasets.results.rows[0][1]===36'));
-  assert.deepEqual(await run('datasets.results.rows'),[['Alpha',36],['Beta',50],['Gamma',80]]);
+  await page.waitForFunction(source=>__test.run(source),`${results}.rows[0][1]===36`);
+  assert.deepEqual(await run(`${results}.rows`),[['Alpha',36],['Beta',50],['Gamma',80]]);
   assert.equal(await run('items.find(item=>item.uid==="demo-25-sheet").state.cells.E2'),'=B2*3','formula stays on the authored sheet');
 }));
 
@@ -527,26 +547,29 @@ test('shipped live and calculated-result examples allow reader edits and refresh
 
 test('views and stored results demo edits original records through sorted views and copies calculated results explicitly',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,26);
-  const inspect=async id=>run(`(async()=>{const item=items.find(item=>item.uid===${JSON.stringify(uid(26,id))});return {io:await resolveSmartComponentIo(item),handles:await requestSmartCall(item,'handles',[item.state,item.w,item.h,smartResolvedStyle(item)])};})()`);
+  const readings=datasetExpr(26,'source'),saved=datasetExpr(26,'saved');
+  const [sourceRef,savedRef]=await run(`['demo-26-source','demo-26-saved'].map(uid=>items.find(item=>item.uid===uid).inputValues.data)`);
+  assert.notEqual(sourceRef.datasetId,savedRef.datasetId);
+  const inspect=async id=>{const {io,result:handles}=await editorView(run,26,id);return {io,handles};};
   let view=await inspect('view'),calculated=await inspect('calculated'),stored=await inspect('stored');
-  assert.deepEqual(view.io.inputs.data,{datasetId:'readings',rows:[1,0]});
+  assert.deepEqual(view.io.inputs.data,{...sourceRef,rows:[1,0]});
   assert.deepEqual(view.io.tables.inputs.data.rowIds,['r1','r0']);
   assert.deepEqual(view.io.tables.inputs.data.rows,[['Gamma',40],['Beta',25]]);
   assert.equal(view.handles.find(handle=>handle.id==='cell-0-1').datasetCell.rowId,'r1','the first sorted row retains Gamma’s original record identity');
   assert.equal(view.handles.some(handle=>handle.id==='addRow'),false,'a filtered/sorted selection cannot append an unspecified record');
   assert.equal(calculated.io.tables.inputs.data.editable,false,'calculated rows have no write-back owner');
   assert.equal(calculated.handles.some(handle=>handle.datasetCell||handle.kind==='action'),false,'requesting edits does not make a calculated table editable');
-  assert.notEqual(calculated.io.inputs.data.datasetId,'readings');assert.notEqual(calculated.io.inputs.data.datasetId,'saved');
-  assert.equal(stored.io.inputs.data.datasetId,'saved');assert.equal(stored.io.tables.inputs.data.editable,true);
+  assert.notEqual(calculated.io.inputs.data.datasetId,sourceRef.datasetId);assert.notEqual(calculated.io.inputs.data.datasetId,savedRef.datasetId);
+  assert.deepEqual(stored.io.inputs.data,savedRef);assert.equal(stored.io.tables.inputs.data.editable,true);
   const edit=async(id,handle,value)=>{await editorHandle(page,run,26,id,handle);await saveInlineText(page,value);await run('smartHitSettled');};
   const sum=async()=> (await inspect('calculated')).io.tables.inputs.data.rows;
   await edit('view','cell-0-1','50');
-  assert.deepEqual(await run('datasets.readings.rows'),[['Beta',25],['Gamma',50],['Alpha',10]],'view edits reach the original record without sorting stored rows');
-  assert.deepEqual(await run('datasets.readings.rowIds'),['r0','r1','r2']);assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run('datasets.saved.rows'),[[65]],'a stored copy waits for an explicit replacement');
-  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows[0][0]===75'));await run('smartHitSettled');
-  await edit('stored','cell-0-0','99');assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run('datasets.readings.rows'),[['Beta',25],['Gamma',50],['Alpha',10]],'editing the independent copy never changes its contributors');
-  await edit('original','cell-0-1','30');assert.deepEqual(await sum(),[[80]]);assert.deepEqual(await run('datasets.saved.rows'),[[99]],'later source changes leave the edited Manual copy alone');
-  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(()=>__test.run('datasets.saved.rows[0][0]===80'));await run('smartHitSettled');
+  assert.deepEqual(await run(`${readings}.rows`),[['Beta',25],['Gamma',50],['Alpha',10]],'view edits reach the original record without sorting stored rows');
+  assert.deepEqual(await run(`${readings}.rowIds`),['r0','r1','r2']);assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run(`${saved}.rows`),[[65]],'a stored copy waits for an explicit replacement');
+  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(source=>__test.run(source),`${saved}.rows[0][0]===75`);await run('smartHitSettled');
+  await edit('stored','cell-0-0','99');assert.deepEqual(await sum(),[[75]]);assert.deepEqual(await run(`${readings}.rows`),[['Beta',25],['Gamma',50],['Alpha',10]],'editing the independent copy never changes its contributors');
+  await edit('original','cell-0-1','30');assert.deepEqual(await sum(),[[80]]);assert.deepEqual(await run(`${saved}.rows`),[[99]],'later source changes leave the edited Manual copy alone');
+  await editorHandle(page,run,26,'copy','trigger');await page.waitForFunction(source=>__test.run(source),`${saved}.rows[0][0]===80`);await run('smartHitSettled');
   assert.deepEqual((await inspect('view')).io.tables.inputs.data.rows,[['Gamma',50],['Beta',30]]);
 }));
 
@@ -757,7 +780,7 @@ test('native tools demo opens by URL and passes JSON parameters to the destinati
 test('page settings demo imports live inputs while keeping the editor controls available',async()=>app(async({page,run})=>{
   await importExample(page,run);await activate(run,32);
   const settings=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
-  assert.deepEqual(settings.inputs,{title:'SimpleCanvas · Page settings',showTabs:true,showWiring:false,showSimulationControls:true});
+  assert.deepEqual(settings.inputs,{title:'SimpleCanvas · Sketch settings',showTabs:true,showWiring:false,showSimulationControls:true});
   assert.deepEqual(settings.outputs,{});
   await editorHandle(page,run,32,'tabs','toggle');await editorHandle(page,run,32,'simulation','toggle');
   const changed=await run(`resolveSmartComponentIo(items.find(item=>item.uid==='demo-32-settings'))`);
@@ -774,7 +797,7 @@ test('page settings demo updates reader chrome and restores defaults through its
   },{selector,value});
   try{
     await page.goto(pathToFileURL(readerPath).href+'?page=31');
-    await page.waitForFunction(()=>document.title==='SimpleCanvas · Page settings');
+    await page.waitForFunction(()=>document.title==='SimpleCanvas · Sketch settings');
     await readerTab(page,32);
     const settings=readerHost(page,32,'settings');
     assert.equal(await settings.locator('text,rect').count(),0,'the settings block is authoring-only');
@@ -799,7 +822,7 @@ test('page settings demo updates reader chrome and restores defaults through its
     await readerTab(page,32);await page.waitForFunction(()=>document.title==='My interactive page');
     await shown('.tabbar',false);await shown('[aria-label="Signal simulation"]',false);
     await page.reload();await readerTab(page,32);
-    await page.waitForFunction(()=>document.title==='SimpleCanvas · Page settings');
+    await page.waitForFunction(()=>document.title==='SimpleCanvas · Sketch settings');
     await shown('.tabbar',true);await shown('[aria-label="Signal simulation"]',true);
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}

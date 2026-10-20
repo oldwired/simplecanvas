@@ -68,7 +68,7 @@ test('menu groups file and export actions by workspace or current sketch with us
   assert.deepEqual(await menu.getByRole('group').evaluateAll(groups=>groups.map(group=>document.getElementById(group.getAttribute('aria-labelledby'))?.textContent.trim())),['Workspace','Current sketch']);
   const actions=async name=>menu.getByRole('group',{name,exact:true}).locator('[data-act]').evaluateAll(buttons=>buttons.map(button=>button.dataset.act));
   assert.deepEqual(await actions('Workspace'),['newWorkspace','openWorkspace','saveWorkspace','newTab','html']);
-  assert.deepEqual(await actions('Current sketch'),['open','save','png','svg','htmlSketch','print','clear']);
+  assert.deepEqual(await actions('Current sketch'),['duplicateSketch','open','save','png','svg','htmlSketch','print','clear']);
   assert.match(await menu.locator('[data-act="open"]').textContent(),/Import sketch…/);
   assert.match(await menu.locator('[data-act="save"]').textContent(),/Export sketch…/);
   assert.match(await menu.locator('[data-act="clear"]').textContent(),/Clear current sketch/);
@@ -236,9 +236,10 @@ test('workspace-disabled deployments hide the whole workspace menu group and can
   await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({version:1,features:{workspace:false}})}));
   await page.reload();await run('appStarted');const before=await run('JSON.stringify({tabs,activeTabId,items})');await page.locator('#menuBtn').click();
   assert.equal(await page.locator('#menu').getByRole('group',{name:'Workspace',exact:true}).count(),0);
-  for(const name of ['newWorkspace','openWorkspace','saveWorkspace','newTab','html'])assert.equal(await page.locator('[data-act='+JSON.stringify(name)+']').isVisible(),false);
+  for(const name of ['newWorkspace','openWorkspace','saveWorkspace','newTab','duplicateSketch','html'])assert.equal(await page.locator('[data-act='+JSON.stringify(name)+']').isVisible(),false);
+  assert.equal(await page.locator('[data-act="duplicateSketch"]').isDisabled(),true);
   assert.equal(await page.locator('#menu').getByRole('group',{name:'Current sketch',exact:true}).isVisible(),true);
-  assert.deepEqual(await page.locator('#menu').getByRole('group',{name:'Current sketch',exact:true}).locator('[data-act]').evaluateAll(buttons=>buttons.map(button=>button.dataset.act)),['open','save','png','svg','htmlSketch','print','clear']);
+  assert.deepEqual(await page.locator('#menu').getByRole('group',{name:'Current sketch',exact:true}).locator('[data-act]:visible').evaluateAll(buttons=>buttons.map(button=>button.dataset.act)),['open','save','png','svg','htmlSketch','print','clear']);
   await page.keyboard.press('Home');assert.equal(await page.evaluate(()=>document.activeElement.dataset.act),'open');
   await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.dataset.act),'save');
   await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.dataset.act),'png');

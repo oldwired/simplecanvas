@@ -36,7 +36,7 @@ test('event declarations and emissions preserve types and reject malformed, unbo
     [{port:'tick',payload:null},{port:'value',payload:2.8},{port:'value',payload:2.8}]);
   for(const descriptor of [{type:'table'},{types:[]},{types:['number','number']},{type:'string',types:['string']},{type:'string',label:''}])
     assert.throws(()=>normalize({value:descriptor},'input'));
-  assert.throws(()=>normalize({value:{types:['string','number']}},'output'),/payload types/);
+  assert.deepEqual(plain(normalize({value:{types:['string','number']}},'output')),{value:{types:['string','number'],type:'scalar',role:'control'}},'event-only endpoints may forward a bounded scalar payload union');
   assert.equal(Object.keys(normalize(Object.fromEntries(Array.from({length:32},(_,i)=>['e'+i,{type:'none'}])),'input')).length,32);
   assert.throws(()=>normalize(Object.fromEntries(Array.from({length:33},(_,i)=>['e'+i,{type:'none'}])),'input'),/32 event/);
   assert.throws(()=>normalize(Object.fromEntries(Array.from({length:17},(_,i)=>['e'+i,{type:'none'}])),'output'),/16 event/);

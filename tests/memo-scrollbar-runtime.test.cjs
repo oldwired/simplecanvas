@@ -46,7 +46,7 @@ async function seed(run,{scrollbar=false,readerWiring=false,withToggle=false}={}
       builtin('textInput','entry',580,140,{componentName:'Append a line'}),
       builtin('valueLabel','count',580,380,{componentName:'Stored lines',bindings:{value:{uid:'memo',port:'lineCount'}}})
       ${withToggle?",builtin('toggle','scrollbar-toggle',960,140,{componentName:'Scrollbar',state:{value:true}})":''}
-      ${readerWiring?",builtin('pageSettings','settings',80,500,{inputValues:{showWiring:true,title:'Scrollable memo'}})":''}
+      ${readerWiring?",builtin('pageSettings','settings',80,500,{state:{overrideTitle:true,overrideShowWiring:true},inputValues:{showWiring:true,title:'Scrollable memo'}})":''}
     ],{});
     selection=[];editingSmartIdx=null;setTool('select');render();`);
   await run('ensureEditorComponentGraph()');await run('save()');
@@ -119,6 +119,7 @@ async function visibleReaderLine(page,line,present=true){
 }
 async function submitReader(page,point,value,count){
   const location=await readerPoint(page,1,point);
+  assert.equal(await page.evaluate(point=>document.elementFromPoint(point.x,point.y)?.closest('[data-smart-index]')?.dataset.smartIndex,location),'1','component controls take pointer priority over crossing wires');
   await page.mouse.click(location.x,location.y);
   const field=page.locator('[data-smart-inline-input]'),input=field.locator('input');
   await input.waitFor({state:'visible'});await input.fill(value);await input.press('Enter');

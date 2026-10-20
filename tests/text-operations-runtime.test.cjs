@@ -51,7 +51,7 @@ async function inputDialog(page,run,index){
   await run(`selection=[${index}];editingSmartIdx=null;render();void openComponentBindings();`);
   await page.waitForFunction(()=>document.querySelector('#componentBindingsDialog').open&&!document.querySelector('#componentBindingFields').disabled);
 }
-async function saveDialog(page){await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);}
+async function saveDialog(page){await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open&&__test.run('componentDialogSession===null'));}
 async function entryHandle(run,index){
   return run(`(async()=>{const item=items[${index}],io=await resolveSmartComponentIo(item);return (await requestSmartCall(item,'handles',[item.state,item.w,item.h,smartResolvedStyle(item),io])).find(handle=>handle.id==='entry');})()`);
 }
@@ -103,7 +103,11 @@ test('text operations are placeable built-ins with typed, mode-specific Edit con
   const caps=await run('(async()=>Promise.all(items.map(item=>requestSmartCaps(item))))()');
   assert.equal(caps[0].inputs.text.type,'string');assert.equal(caps[0].inputs.compare.type,'string');assert.equal(caps[0].outputs.value.type,'boolean');
   assert.equal(caps[1].inputs.start.type,'number');assert.equal(caps[1].outputs.text.type,'string');assert.equal(caps[1].outputs.found.type,'boolean');
-  assert.deepEqual(caps[2].inputs,{value:{type:'number',default:0}});assert.deepEqual(caps[2].outputs,{text:{type:'string'}});
+  assert.deepEqual(caps[2].inputs,{
+    value:{type:'number',default:0,event:true},
+    reprocess:{type:'boolean',default:false,event:'command',label:'Reprocess',role:'control'}
+  });
+  assert.deepEqual(caps[2].outputs,{text:{type:'string',event:true}});
   await inputDialog(page,run,0);
   await page.getByLabel('text value',{exact:true}).fill('Hello');await page.getByLabel('compare value',{exact:true}).fill('HELLO');
   await page.locator('#component-setting-caseSensitive').selectOption('false');await saveDialog(page);
@@ -187,7 +191,9 @@ test('connected text operations respond to inline entry and work in a downloaded
     {key:'statusIndicator',componentName:'Valid',bindings:{value:{uid:'operation-1',port:'value'}}},
     {key:'textLabel',componentName:'Number',bindings:{value:{uid:'operation-2',port:'text'}}},
     {key:'textInput',componentName:'Pattern',state:{values:['order-(\\d+)']}},
-    {key:'textExtract',componentName:'Live pattern',state:{mode:'regex match',caseSensitive:false},bindings:{text:{uid:'operation-0',port:'value'},pattern:{uid:'operation-5',port:'value'}}},
+    // This branch tests value-preview error isolation. Receiving events would deliberately
+    // reject the whole submitted occurrence while its regex is invalid.
+    {key:'textExtract',componentName:'Live pattern',state:{mode:'regex match',caseSensitive:false},eventModes:{text:'value'},bindings:{text:{uid:'operation-0',port:'value'},pattern:{uid:'operation-5',port:'value'}}},
     {key:'textLabel',componentName:'Live result',bindings:{value:{uid:'operation-6',port:'text'}}}
   ]);
   await submitEditor(page,run,0,'ORDER-42');assert.deepEqual(await output(run,3),{value:true});assert.deepEqual(await output(run,4),{value:'42'});

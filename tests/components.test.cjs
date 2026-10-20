@@ -530,14 +530,18 @@ test('copying a connected consumer keeps its rendered PNG while editable binding
   assert.deepEqual(clipboard.payload.items[0].bindings.value,{uid:'source',port:'value',unresolved:true});
 },{origin:'http://localhost:8875'}));
 
-test('matching UIDs in different tabs remain isolated in editor and offline reader',async()=>app(async({page,run,context})=>{
+test('reimporting matching UIDs into another tab assigns fresh identities and keeps editor and reader isolated',async()=>app(async({page,run,context})=>{
   await seed(run,pair(6));await drawing(page,'gauge','Gauge:12');
   const first=await run('activeTabId');
-  await run('newTab()');await seed(run,pair(31));await drawing(page,'gauge','Gauge:62');
+  await run('newTab()');await seed(run,pair(31));
+  const imported=await run('items.map(item=>({uid:item.uid,bindings:item.bindings}))');
+  assert.notEqual(imported[0].uid,'source');assert.notEqual(imported[1].uid,'gauge');
+  assert.equal(imported[1].bindings.value.uid,imported[0].uid);
+  await drawing(page,imported[1].uid,'Gauge:62');
   const second=await run('activeTabId');
   await run(`activateTab(${JSON.stringify(first)})`);await drawing(page,'gauge','Gauge:12');
   await editorClick(page,run);await drawing(page,'gauge','Gauge:20');
-  await run(`activateTab(${JSON.stringify(second)})`);await drawing(page,'gauge','Gauge:62');
+  await run(`activateTab(${JSON.stringify(second)})`);await drawing(page,imported[1].uid,'Gauge:62');
   const {preview,errors,requests}=await openExport(page,run,context);
   await readerDrawing(preview,0,'Gauge:20');
   await readerClick(preview,preview.locator('.tab-panel').nth(0).locator('[data-smart-index="0"]'));
@@ -881,7 +885,7 @@ test('delayed component computations cannot repaint after undo, sketch replaceme
   await page.evaluate(()=>{
     window.__componentPaintTrace=[];window.__stopComponentPaintTrace=false;
     const observe=()=>{
-      const value=__test.run("smartChildrenCache.get('gauge')?.kids.find(k=>k.type==='text')?.text");
+      const value=__test.run("smartChildrenCache.get(items[1]?.uid)?.kids.find(k=>k.type==='text')?.text");
       if(value)window.__componentPaintTrace.push(value);
       if(!window.__stopComponentPaintTrace)requestAnimationFrame(observe);
     };
@@ -908,13 +912,15 @@ test('delayed component computations cannot repaint after undo, sketch replaceme
   const retiredTab=await run('activeTabId');
   await startDelayed(42);
   await run('newTab()');await seed(run,pair(21));
+  const freshGauge=await run('items[1].uid');
+  assert.notEqual(freshGauge,'gauge','importing while the old sketch exists remaps colliding identities');
   await run(`closeTab(${JSON.stringify(retiredTab)})`);
-  await drawing(page,'gauge','Gauge:42');
+  await drawing(page,freshGauge,'Gauge:42');
   await page.waitForTimeout(300);
   assert.equal(await run(`tabs.some(tab=>tab.id===${JSON.stringify(retiredTab)})`),false);
   assert.deepEqual(await run('items[0].state'),{n:21});
-  assert.equal(await run("smartChildrenCache.get('gauge').kids.find(k=>k.type==='rect').w"),42);
-  assert.equal(await run("smartCacheOwners.get('gauge').item===items[1]"),true);
+  assert.equal(await run(`smartChildrenCache.get(${JSON.stringify(freshGauge)}).kids.find(k=>k.type==='rect').w`),42);
+  assert.equal(await run(`smartCacheOwners.get(${JSON.stringify(freshGauge)}).item===items[1]`),true);
   const observed=await page.evaluate(()=>{window.__stopComponentPaintTrace=true;return window.__componentPaintTrace;});
   assert.ok(observed.length>0);
   assert.deepEqual(observed.filter(value=>['Gauge:80','Gauge:82','Gauge:84'].includes(value)),[],

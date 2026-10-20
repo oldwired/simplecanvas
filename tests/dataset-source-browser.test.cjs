@@ -44,7 +44,7 @@ test('offline source updates use the same explicit actions and stay local to the
 test('missing source and simultaneous update pulses are visible failures while stored readers stay available',async()=>app(async({page,run,context})=>{
   await seed(run,{source:false});await click(page,run,3);await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('Source table'));assert.deepEqual(await run('datasets.saved.rows'),[['Old',1]]);
   await click(page,run,3);await run('smartGestureQueue');const {reader,errors}=await exportReader(page,run,context);await readerClick(reader,3);
-  await reader.waitForFunction(()=>document.querySelector('[data-data-action-error]')?.textContent.includes('Source table'));assert.match(await reader.locator('[data-smart-index="5"]').textContent(),/Old/);assert.deepEqual(errors,[]);
+  await reader.waitForFunction(()=>document.querySelector('[data-component-event-error]')?.textContent.includes('Source table'));assert.match(await reader.locator('[data-smart-index="5"]').textContent(),/Old/);assert.deepEqual(errors,[]);
   await seed(run);await run('items[3].state.value=true;items[4].state.value=true;ensureEditorComponentGraph()');await run('smartGestureQueue');
   await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('either Replace or Append'));assert.deepEqual(await run('datasets.saved.rows'),[['Old',1]]);
 }));

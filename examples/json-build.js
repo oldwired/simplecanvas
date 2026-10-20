@@ -1,8 +1,11 @@
 // Build a JSON object from 1–8 named, typed fields; field0 is the first configured field.
 // Labels show JSON keys; connection IDs stay positional so a same-slot rename keeps its wiring.
 // Each setting line is name:string|number|boolean|json. A json field parses nested JSON from a string port.
+// Field changes update the current JSON value. Emit/Reprocess deliberately captures one message.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{inputs:[],outputs:['text','valid'],reprocess:'reprocess'},
   settings:{fields:{type:'string',format:'lines',default:'name:string\nvalue:number',label:'Fields, in port order (name:type)'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
   _fields(state){
     if(typeof state.fields!=='string' || state.fields.length>2000)throw new Error('Fields must fit within 2000 characters');
@@ -16,11 +19,11 @@
     });
   },
   inputs(state){
-    const ports={};
+    const ports={reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Emit / Reprocess'}};
     for(const {key,type,port} of this._fields(state))ports[port]={label:key,type:type==='json'?'string':type,default:type==='number'?0:type==='boolean'?false:type==='json'?'null':''};
     return ports;
   },
-  outputs:{text:{type:'string'},valid:{role:'control',type:'boolean'}},
+  outputs:{text:{type:'string',event:true},valid:{role:'control',type:'boolean',event:true}},
   initState(){return {fields:'name:string\nvalue:number',showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   _finite(value){
