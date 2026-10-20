@@ -1,2 +1,7 @@
 node_modules/
 test-results/
+.DS_Store
+.idea/
+/tmp/
+/shapes-library.json
+/xxshapes-library.json

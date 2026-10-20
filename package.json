@@ -2,9 +2,11 @@
   "name": "simplecanvas",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test --test-concurrency=2 tests/*.test.cjs"
   },
   "devDependencies": {
+    "acorn": "8.19.0",
+    "eslint-scope": "9.1.2",
     "playwright": "1.62.1"
   }
 }

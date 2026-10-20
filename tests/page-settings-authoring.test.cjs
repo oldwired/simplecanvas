@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the served fixture exposes the editor closure. Capability validation and
 // computation still use production Workers; placement and inspectors use real UI.
@@ -12,7 +12,7 @@ const script=fs.readFileSync(path.join(root,'examples','page-settings.js'),'utf8
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{await browser?.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1500,height:1100}});

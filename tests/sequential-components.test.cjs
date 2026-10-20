@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -106,8 +107,8 @@ for(const name of ['ring-counter','johnson-counter'])test(name+' bounds dynamic 
 });
 
 test('new built-ins ship identical scripts and port metadata with finite named rendering',()=>{
-  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');const start=html.indexOf('  const BUILTIN_LIBRARY_DEFINITIONS = '),end=html.indexOf('\n  const BUILTIN_LIBRARY_THUMBNAILS',start);
-  const definitions=JSON.parse(html.slice(start,end).replace('  const BUILTIN_LIBRARY_DEFINITIONS = ','').trim().replace(/;$/,''));
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const definitions=plain(vm.runInNewContext(parseApp(html).declaration('BUILTIN_LIBRARY_DEFINITIONS')+'\nBUILTIN_LIBRARY_DEFINITIONS'));
   const keys=['srLatch','dLatch','dFlipFlop','registerBoolean','registerNumber','ringCounter','johnsonCounter','decadeCounter'];
   for(let i=0;i<names.length;i++){
     const name=names[i],c=source(name),definition=definitions.find(d=>d.key===keys[i]);assert.ok(definition,keys[i]);

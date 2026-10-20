@@ -29,6 +29,17 @@ test('CSV column-wide inference preserves mixed text and missing cells without c
   const allEmpty=csv('Empty\n""\n');assert.equal(allEmpty.columns[0].type,'string');assert.deepEqual(allEmpty.rows,[[null]]);
 });
 
+test('CSV skips physically blank records without dropping quoted empty cells or delimiter-only rows',()=>{
+  for(const delimiter of [',',';','\t']){
+    const table=inspect(`\r\n\nName${delimiter}Value\r\nA${delimiter}1\r\n\r\n${delimiter}\n""${delimiter}""\nB${delimiter}2\n\n`);
+    assert.equal(table.delimiter,delimiter);assert.deepEqual(table.table.rows,[['A',1],[null,null],[null,null],['B',2]]);
+  }
+  assert.deepEqual(csv('\nName\n\n""\n"\n"\n \n\n').rows,[[null],['\n'],[' ']],'explicit empty and whitespace content remains data');
+  assert.deepEqual(csv('Name\n\n\r\n').rows,[]);
+  assert.throws(()=>csv('\n\r\n'),/header row/);
+  assert.equal(csv('Value\n'+Array.from({length:1000},(_,i)=>i+'\n\n').join('')).rows.length,1000,'blank physical records do not consume the data-row budget');
+});
+
 test('CSV automatically detects semicolons while preserving quoted commas, multiline cells and decimal-comma text',()=>{
   const result=inspect('\ufeff"Boat, name";Points;Qualified;Notes\r\n"Möwe; 2";12.5;true;"line 1\r\nline ""2"", here"\r\nSkua;-3;false;\r\n');
   assert.equal(result.delimiter,';');assert.equal(result.ambiguous,false);

@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // The served fixture exposes its closure only for seeding and verification. Wiring uses
 // real pointer events against the same SVG ports and links the editor presents to users.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{await browser?.close();});
 
 async function app(fn,settings=null,contextOptions={}){
@@ -59,12 +58,23 @@ async function point(locator){
   assert.fail('port did not retain a rendered hit target');
 }
 async function selectEdge(page,locator){
-  await locator.waitFor({state:'visible'});
-  const p=await locator.evaluate(el=>{
-    const path=el.matches('path')?el:el.querySelector('path'),local=path.getPointAtLength(path.getTotalLength()/2),p=new DOMPoint(local.x,local.y).matrixTransform(path.getScreenCTM());
-    return {x:p.x,y:p.y};
-  });
+  // Undo/redo restores bindings synchronously, then rebuilds their graph and SVG.
+  await page.evaluate(()=>__test.run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)'));
+  let p;
+  for(let attempt=0;attempt<10;attempt++){
+    await locator.waitFor({state:'visible'});
+    p=await locator.evaluate(el=>{
+      if(!el.isConnected)return null;
+      const path=el.matches('path')?el:el.querySelector('path'),matrix=path.getScreenCTM();
+      if(!matrix)return null;
+      const local=path.getPointAtLength(path.getTotalLength()/2),p=new DOMPoint(local.x,local.y).matrixTransform(matrix);
+      return {x:p.x,y:p.y,key:el.getAttribute('data-wire-edge')};
+    });
+    if(p)break;
+  }
+  assert.ok(p,'wire retained a rendered hit target');
   await page.mouse.click(p.x,p.y);
+  assert.equal(await page.evaluate(()=>__test.run('componentWiring.selected')),p.key,'the single pointer click selects the intended wire');
 }
 async function wiring(page,run){
   await page.locator('#componentWiringBtn').click();

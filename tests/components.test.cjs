@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
-const {chromium, webkit} = require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the served test copy exposes the application closure. The sandbox, graph,
 // drawing, pointer handling, persistence, and downloaded reader are production code.
@@ -14,8 +14,7 @@ const engine = process.env.BROWSER_ENGINE || 'chromium';
 assert.ok(['chromium', 'webkit'].includes(engine));
 let browser;
 before(async () => {
-  browser = await ({chromium, webkit}[engine]).launch({headless:true,
-    ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})});
+  browser = await launchBrowser({engine});
 });
 after(async () => { if(browser) await browser.close(); });
 
@@ -85,6 +84,11 @@ async function editorClick(page,run,index=0){
 async function downloadJSON(page,run,expression='exportProject()'){
   const download=page.waitForEvent('download');await run(expression);
   return JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
+}
+async function downloadedSketchItems(run,project){
+  // Inspect the downloaded file through the actual import boundary, which hydrates
+  // format 6 script references while keeping each instance's source and state.
+  return run(`parseFileAsTabs(${JSON.stringify(project)}).entries[0].items`);
 }
 async function openExport(page,run,context,{init}={}){
   const download=page.waitForEvent('download');await run('exportHtml()');
@@ -325,7 +329,7 @@ test('input choices validate defaults, literals, and live bindings in editor and
   await editorClick(page,run,0);await drawing(page,'bound','Choice:×');
   const saved=await downloadJSON(page,run);
   assert.deepEqual(saved.items[1].bindings,{operation:{uid:'source',port:'value'}});
-  assert.equal(saved.items[1].script,chooser);assert.deepEqual(saved.items[2].inputValues,{operation:'÷'});
+  assert.equal((await downloadedSketchItems(run,saved))[1].script,chooser);assert.deepEqual(saved.items[2].inputValues,{operation:'÷'});
   const {preview,errors,requests}=await openExport(page,run,context);
   await readerDrawing(preview,0,'Choice:×');
   const source=preview.locator('[data-smart-index="0"]'),bound=preview.locator('[data-smart-index="1"]');
@@ -564,7 +568,7 @@ test('ambiguous imported IDs keep component references unresolved while preservi
   assert.deepEqual(await run('items[2].bindings.value'),{uid:'ambiguous',port:'value',unresolved:true});
   assert.deepEqual(await run('items.slice(0,2).map(it=>it.state.n)'),[6,99]);
   const recovered=await downloadJSON(page,run);
-  assert.deepEqual(recovered.items.map(it=>it.script),fixture.map(it=>it.script));
+  assert.deepEqual((await downloadedSketchItems(run,recovered)).map(it=>it.script),fixture.map(it=>it.script));
   await page.reload();await page.waitForFunction(()=>Boolean(__test.run('componentGraphError(items[2])')));
   assert.equal(await run('items[2].bindings.value.unresolved'),true);
   await page.locator('#shapeLibraryInput').setInputFiles({name:'ambiguous-library.json',mimeType:'application/json',
@@ -633,7 +637,8 @@ test('unsupported component versions preserve source, bindings, and literals thr
     inputValues:{value:42},bindings:{value:{uid:'missing',port:'futurePort'}}});
   await seed(run,[future]);
   const project=await downloadJSON(page,run);
-  for(const key of ['script','componentApi','state','bindings','inputValues'])assert.deepEqual(project.items[0][key],future[key],key);
+  const exported=(await downloadedSketchItems(run,project))[0];
+  for(const key of ['script','componentApi','state','bindings','inputValues'])assert.deepEqual(exported[key],future[key],key);
   await page.reload();
   const restored=await run('items[0]');
   for(const key of ['script','componentApi','state','bindings','inputValues'])assert.deepEqual(restored[key],future[key],key+' after reload');
@@ -667,9 +672,9 @@ test('cycles, missing ports, wrong output types, and failed computations isolate
     await page.waitForFunction(()=>Boolean(__test.run('componentGraphError(items[items.length-2])')));
     assert.ok(await run('componentGraphError(items[items.length-2])'));
     assert.equal(await run("smartChildrenCache.get('healthy').kids.find(k=>k.type==='text').text"),'Source:8');
-    const saved=await downloadJSON(page,run);
+    const saved=await downloadJSON(page,run),exported=await downloadedSketchItems(run,saved);
     for(let i=0;i<fixture.length;i++){
-      assert.equal(saved.items[i].script,fixture[i].script,'error does not replace its recoverable script');
+      assert.equal(exported[i].script,fixture[i].script,'error does not replace its recoverable script');
       assert.deepEqual(saved.items[i].state,fixture[i].state,'error does not rewrite local state');
       assert.deepEqual(saved.items[i].bindings||{},fixture[i].bindings||{});
     }
@@ -839,8 +844,12 @@ test('invalid and throwing unavailable drawings fall back to host status without
 test('an offline component retry does not discard a healthy in-flight click',async()=>app(async({page,run,context})=>{
   const slowProducer=producerScript.replace('return {state:{n:state.n+4}};',
     'console.log("healthy-drag-started");const end=performance.now()+200;while(performance.now()<end){}return {state:{n:state.n+4}};');
+  // Drawing-hook failures remain retryable. Invalid API versions are permanent declaration
+  // errors and must no longer schedule periodic whole-graph retries.
+  const failedDrawing=consumerScript.replace('children(state,style,w,h,editing,io){return [',
+    'children(state,style,w,h,editing,io){throw new Error("Drawing temporarily unavailable");return [');
   await seed(run,[smart('healthy',slowProducer,{n:8}),
-    smart('future',consumerScript.replace('apiVersion:2','apiVersion:99'),{},{componentApi:99,x:400})]);
+    smart('drawing-error',failedDrawing,{},{x:400})]);
   const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
     // Hold only the reader's backoff timer so its real callback can run deterministically
     // while the healthy hook is busy in its Worker. No application functions are replaced.

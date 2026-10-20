@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -115,7 +116,7 @@ test('Spreadsheet linked cells show rounded numbers but expose exact literal edi
 
 test('paused signal traces format numeric summaries without modifying stored outputs or literal text',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
-  const declaration=name=>{const start=html.indexOf('  function '+name+'(');assert.ok(start>=0,name);return html.slice(start,html.indexOf('\n  function ',start+3));};
+  const declaration=parseApp(html).declaration;
   const status=vm.runInNewContext(['formatComponentNumber','componentTimelineNow','componentSimulationStatus'].map(declaration).join('\n')+'\ncomponentSimulationStatus');
   const outputs={value:artifact,text:String(artifact),count:Number.MAX_SAFE_INTEGER,ready:true,tiny:Number.MIN_VALUE};
   const timeline={elapsed:1250,active:false,pausedByUser:true,pendingTime:1250,rounds:2,trace:[{changes:[{name:'Trace',outputs}]}]},before=JSON.stringify(timeline);
@@ -125,14 +126,12 @@ test('paused signal traces format numeric summaries without modifying stored out
   timeline.pendingTime=null;assert.match(status(timeline),/1\.250 s · settled · Trace: value=56/);
 });
 
-test('the original Chart template, built-in and demo library share decimal labels and retain stored values',()=>{
-  const html=fs.readFileSync(path.join(root,'index.html'),'utf8'),marker='const BARCHART_EXAMPLE_SCRIPT = ';
-  const start=html.indexOf(marker)+marker.length,end=html.indexOf('\n})`;',start)+5;
-  const script=vm.runInNewContext(html.slice(start,end));
-  const catalogStart=html.indexOf('const BUILTIN_LIBRARY_DEFINITIONS = '),arrayStart=html.indexOf('[',catalogStart);
-  const catalog=JSON.parse(html.slice(arrayStart,html.indexOf('\n];',arrayStart)+2));
+test('the canonical Chart source, built-in and demo library share decimal labels and retain stored values',()=>{
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const catalog=vm.runInNewContext(parseApp(html).declaration('BUILTIN_LIBRARY_DEFINITIONS')+'\nBUILTIN_LIBRARY_DEFINITIONS');
+  const chart=catalog.find(entry=>entry.key==='chart'),script=chart.items[0].script;
+  assert.equal(fs.readFileSync(path.join(root,'examples',chart.source),'utf8').trim(),script.trim(),'canonical Chart source matches the built-in');
   const demo=JSON.parse(fs.readFileSync(path.join(root,'examples','demo-shapes-library.json'),'utf8'));
-  assert.equal(catalog.find(entry=>entry.key==='chart').items[0].script.trim(),script.trim());
   assert.equal(demo.shapes.find(entry=>entry.id==='builtin:chart:1').items[0].script.trim(),script.trim());
   const def=vm.runInNewContext(script),state={values:[.1+.2,1.25,artifact]},before=JSON.stringify(state),style={...def.initStyle(),font:'400 12px sans-serif'};
   const labels=def.children(state,style,240,160,false).filter(child=>child.type==='text').map(child=>child.text);

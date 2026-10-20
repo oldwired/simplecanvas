@@ -3,14 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 const workspace=JSON.parse(fs.readFileSync(path.join(root,'examples','smart-components-workspace.json'),'utf8'));
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1440,height:1000}});

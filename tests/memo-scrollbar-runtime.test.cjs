@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // The editor fixture exposes its closure for setup and output assertions only.
 // Scrolling and submissions use real pointers; downloaded HTML is unmodified.
@@ -15,8 +15,7 @@ assert.ok(['chromium','webkit'].includes(engine));
 const lines=Array.from({length:30},(_,i)=>'Line '+String(i).padStart(2,'0'));
 const initialText=lines.join('\n');
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{await browser?.close();});
 
 async function app(fn){

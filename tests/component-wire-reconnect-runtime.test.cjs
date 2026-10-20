@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Exercise the public pins with real pointer/keyboard events; the closure bridge only seeds
 // scenes and observes transactions. Reconnecting must never expose a half-detached document.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>browser?.close());
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1500,height:1050}});

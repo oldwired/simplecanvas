@@ -8,6 +8,7 @@ const root=path.join(__dirname,'..');
 
 test('the separate application example has stable, resolvable identities and deliberate catalog sharing',()=>{
   const workspace=buildWorkspaceRuntimeExample(),[services,dashboard,editor]=workspace.tabs;
+  assert.deepEqual(buildWorkspaceRuntimeExample(),workspace,'rebuilding preserves IDs, references and initial state');
   assert.deepEqual(workspace.tabs.map(tab=>tab.id),['runtime-services','runtime-dashboard','runtime-editor']);
   assert.equal(workspace.activeIndex,1);
   const ids=workspace.tabs.flatMap(tab=>tab.items.map(item=>item.uid));

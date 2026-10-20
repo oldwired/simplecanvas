@@ -1,16 +1,16 @@
 const fs=require('node:fs');
 const cp=require('node:child_process');
 const path=require('node:path');
-const {chromium}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const repo=path.join(__dirname,'..');
 const baseline=process.argv[2] || 'b95efd1';
 const script=fs.readFileSync(repo+'/examples/race-start-timer.js','utf8');
 const fixture={type:'smart',x:20,y:20,w:330,h:200,color:'#000000',fillColor:'#dc2626',fill:false,strokeOn:false,textColor:'#000000',size:2,fontFamily:'sans',fontSize:12,font:'600 12px sans-serif',script,state:{}};
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const browser=await launchBrowser();
  try{
   for(const version of [baseline,'working']){
-   const html=(version==='working'?fs.readFileSync(repo+'/index.html','utf8'):cp.execFileSync('git',['show',version+':index.html'],{cwd:repo,encoding:'utf8'})).replace('\n})();','\nwindow.run=source=>eval(source);\n})();');
+   const html=(version==='working'?fs.readFileSync(repo+'/index.html','utf8'):cp.execFileSync('git',['show',version+':index.html'],{cwd:repo,encoding:'utf8',maxBuffer:32*1024*1024})).replace('\n})();','\nwindow.run=source=>eval(source);\n})();');
    async function open(){
     const ctx=await browser.newContext({viewport:{width:1400,height:1000}}),page=await ctx.newPage();
     await page.route('http://bench.test/**',r=>r.fulfill({status:r.request().url().endsWith('index.html')?200:404,contentType:'text/html',body:html}));

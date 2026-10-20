@@ -4,12 +4,12 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..'),example=path.join(root,'examples','workspace-runtime.json');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 const engine=process.env.BROWSER_ENGINE||'chromium';
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>browser?.close());
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1500,height:1100}});
@@ -203,7 +203,7 @@ test('authored cross-sketch endpoints and shared records survive save, reopen an
   const receiver=data.tabs.find(tab=>tab.id==='runtime-editor').items.find(item=>item.uid==='runtime-editor-messages');
   assert.deepEqual(receiver.workspaceReceive[localId],reference);assert.equal(receiver.state.endpoints[1].name,'Stock quantity');
 
-  await page.reload();await run('appStarted');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');
+  await run('persistWorkspace()');await page.reload();await run('appStarted');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');
   assert.deepEqual(await run("editorRuntimeContext().pool['workspace-stock'].rows"),stock.rows,'autosave reload does not replay submitted events');
   const generation=await run('workspaceGeneration');
   await run('pendingFileAction="openWorkspace"');

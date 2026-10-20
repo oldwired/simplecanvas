@@ -5,12 +5,12 @@ const os=require('node:os');
 const path=require('node:path');
 const vm=require('node:vm');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..');
 const scripts=Object.fromEntries(['capture-row','data-source','spreadsheet','number-control','text-input','trigger','toggle'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name+'.js'),'utf8')]));
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[process.env.BROWSER_ENGINE||'chromium']).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser();});
 after(async()=>{await browser?.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1600,height:1100}});
@@ -50,7 +50,13 @@ async function editorClick(page,run,index,id){
   await page.mouse.click(box.x+it.x+h.x,box.y+it.y+h.y);
 }
 async function editorRows(page,count){await page.waitForFunction(count=>__test.run('datasets.observations.rows.length')===count,count);}
-async function outputs(run){return run('(async()=>{const record=(await ensureEditorComponentGraph()).get(items[5]);if(record.error)throw new Error(record.error);return record.io.outputs;})()');}
+async function outputs(run){return run(`(async()=>{
+  const item=items[5];
+  // A capture's reset pulse may supersede this read after the row is already committed.
+  // Retry only the graph read; never repeat the button click or the accepted append.
+  const record=(await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>items.includes(item))).get(item);
+  if(record.error)throw new Error(record.error);return record.io.outputs;
+})()`);}
 async function openReader(page,run,context){
   const download=page.waitForEvent('download');await run('exportHtml()');const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-capture-')),file=path.join(directory,'document.html');
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));fs.copyFileSync(await(await download).path(),file);

@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 const root=path.join(__dirname,'..');
 // Only the editor exposes fixture state. Reader assertions exercise the actual
@@ -15,8 +15,7 @@ const datasetScript=fs.readFileSync(path.join(root,'examples','data-source.js'),
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>browser?.close());
 
 async function app(fn){

@@ -3,7 +3,7 @@
 Status: stages 1–4 are complete on `feature/smart-components`, based on `main`,
 with the stage 3 closeout validated 2026-10-18 and stage 4 closed out 2026-10-20.
 Stage 2 includes the expanded library, logic, routing, timed signals,
-an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
+the initial eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
 Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
 aggregation, optional transform switches, editable/dataset-driven choices and text lookup, a connected
@@ -57,6 +57,11 @@ selection events, signal/event adapters, Counter/Timer completion, and dataset a
 Their HTML reader opens with wiring visible so occurrences can be inspected.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
+The current main example has 38 sketches; the separate three-sketch
+[workspace-runtime example](../examples/workspace-runtime.html) demonstrates hidden Services,
+cross-sketch Publish/Receive, and shared dataset editing. The counts above describe how the main
+example grew during each delivered milestone. The later review sections record the current
+runtime, storage, export, and validation follow-up.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
 For the maintainer and contributors deciding how far SimpleCanvas should grow.
 
@@ -93,7 +98,7 @@ The table distinguishes those main-branch foundations from the additions on `fea
 | --- | --- |
 | Programmable shapes | Each `smart` item carries a script, JSON state, dimensions, and styling. Scripts return drawing primitives and interactive handles. |
 | Connected scalar values — feature branch | API v2 scripts declare typed ports and compute outputs from inputs and state. Number control and Gauge templates demonstrate saved bindings, undo/redo, independent copies, and offline HTML. |
-| Isolated execution | Each instance runs in its own Worker, managed by an opaque-origin sandboxed frame. Network access is blocked, replies are validated, and hook timeouts terminate the offending Worker. HTML exports use the same isolation machinery. |
+| Isolated execution | Calls run in instance-owned Workers managed by an opaque-origin sandboxed frame, with at most four resident Workers and bounded realm lifetimes. Network access is blocked, replies are validated, and hook timeouts terminate the offending Worker. Validated capability declarations may be cached without sharing mutable instance state. HTML exports use the same isolation machinery. |
 | Live readings | `refreshMs(state)` requests redraws at intervals clamped to 100–60,000 ms. Timestamp-based presentation, such as Stopwatch, does not mutate saved state or create undo entries. |
 | Connected wall clock — feature branch | Live clock uses API v2 transitions to synchronize timezone-aware hands/readout, four boundary-pulse outputs, and a string time output. Pure computation reads its settled snapshot. |
 | Connected stopwatch — feature branch | Stopwatch accepts run/reset commands and publishes elapsed seconds on pause/reset. Its live display independently follows saved wall timestamps without updating the output on each refresh. |
@@ -154,7 +159,7 @@ workspace execution.
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
 - **Definitions are instance snapshots.** Library edits do not propagate to placed objects.
-  Component API v2 is explicit and separate from document format 5. There is no state-migration
+  Component API v2 is explicit and separate from document format 6. There is no state-migration
   or automatic definition-upgrade contract.
 - **State is small.** Scripts are limited to 64,000 characters; state to 4,000 serialized JSON
   characters. Invalid state updates are rejected. Bulk data lives in the document dataset pool.
@@ -166,6 +171,11 @@ workspace execution.
   organization, and pins; built-in definitions remain. Export is for backups and sharing.
   Workspace saves/autosave retain sketch tabs and placed scripts, state, and connections, but
   exclude the library, pins, and category organization.
+- **The current workspace saves atomically in IndexedDB.** One editor window can write the current
+  workspace for a browser profile, origin and application path. Other windows can browse and
+  download it; **Take over editing** loads the latest saved snapshot before transferring ownership.
+  Save failures retain the working documents and offer a download. Unreadable saved records stay
+  protected for recovery. This does not add persistence to exported HTML readers.
 - **Ports remain explicitly typed.** Text input and Text label carry strings; Number input,
   Constant, and Value label carry numbers. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
@@ -1146,7 +1156,7 @@ opts into `{state, events?}` with `eventApi:1`; future effect fields still requi
 envelope from its keys: an existing valid state object can already contain fields named
 `state`, `emit`, or `effects`.
 
-Format 4 preserves unsupported versions and bounded source/state/metadata for recovery, and the
+The format 4 milestone preserves unsupported versions and bounded source/state/metadata for recovery, and the
 runtime reports incompatibility rather than silently downgrading the script. Older app versions
 cannot be assumed to preserve the new fields.
 
@@ -1317,7 +1327,9 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
   Ports carry `{datasetId, rows?}`; row selections retain source indices rather than copying data.
   Stored row IDs and revisions allow accepted edits to update all consumers without confusing row identity with position.
 - CSV and TSV use a unique header row and column-wide type inference; quotes, escaped quotes, and embedded
-  line breaks are supported. The import delimiter is configurable as Automatic (default), Comma,
+  line breaks are supported. Physically blank records are ignored, including before the header;
+  explicitly quoted empty cells, delimiter-only rows, and whitespace content remain records.
+  The import delimiter is configurable as Automatic (default), Comma,
   Semicolon, or Tab. Detection respects quoted cells and warns on ambiguity; changing the choice refreshes
   the preview before Save. Delimiters do not change type inference: decimal-comma values remain text.
   Empty cells become null, and leading-zero/unsafe-integer identifiers
@@ -1336,7 +1348,7 @@ by a Text input and shipped as the **Embedded data** workspace tab. Import the m
 - **Edit…** previews imported column types and initial rows before Save. **New dataset…** creates
   an empty table with named, nullable typed columns. Cancel discards pending data; tab/session changes
   cancel stale imports. Existing datasets can be selected directly.
-- Format 5 sketch/workspace JSON and offline HTML retain the data and references together. Copy,
+- Native sketch/workspace JSON and offline HTML retain the data and references together. Copy,
   paste, and library transfer carry referenced datasets with collision-safe IDs. Undo/redo keeps
   immutable prior data; exported files omit data reachable only from history.
 
@@ -1413,6 +1425,9 @@ retains the default restriction, providing a reader example that only permits co
   command events and trigger edges to prepare a result for an explicit Download button.
   Computation, repaint, restore, retry, and Undo never request a download. Preparation does not
   claim that a file was saved, and the host retains browser user-activation requirements.
+  CSV defaults to Spreadsheet-safe output: formula-like text cells and column headers are prefixed
+  with an apostrophe; actual numeric negatives stay numeric. The user can select Raw (exact text)
+  for both manual and prepared downloads. JSON preserves the original typed values.
   Neither path grants unrestricted file/network access.
 
 **Dropdown and Text lookup** extend the data workflow with a shared choice-list model:
@@ -2345,6 +2360,159 @@ the full suite was rerun cleanly after every correction. Physical iPad Safari, n
 and physical print behavior remain manual checks; browser automation does not certify them.
 Stage 4's agreed scope is complete. Structured dataset events, stepped-distributor event policy,
 and joins waiting for independent origins remain the deferred extensions listed above.
+
+### Stabilization after review — 2026-10-20
+
+The stabilization pass preserves stage 4's event and workspace contracts while correcting runtime,
+editing, and durability issues. Validated capability declarations are shared only for the same API
+marker, script and state, with fresh copies returned to callers. The cache is bounded to 1,024 entries
+and four million retained characters; cancellation and timeout cooldown still apply on a cache hit.
+The four-Worker limit and 250 ms realm lease remain unchanged. Accepted drawings can finish while
+unchanged graph work is pending, and the reader reuses unchanged drawings/handles until their
+declared refresh deadline. Neither optimization suppresses occurrences or changes event ordering.
+
+Feedback faults remain attached to the affected graph group across unrelated edits. A relevant
+definition/configuration change or changed external input permits recovery in the same evaluation;
+a reset or new timeline clears the retained fault. Timeout diagnostics remain visible through the
+three-second cooldown. The reader waits for a graph change before retrying a permanent graph or
+configuration error; transient Worker failures and drawing-hook errors retain their retry behavior.
+See the [runtime-stability regressions](../tests/runtime-stability.test.cjs).
+
+Reader readiness now belongs to the requested graph revision and
+completed drawing. Step clears readiness before evaluation begins, and an older asynchronous paint
+cannot mark a newer round ready. An unchanged validated drawing can be reused for the new revision;
+the intermediate completion/reset states remain inspectable. The deterministic
+[simulation-control tests](../tests/feedback-controls.test.cjs) hold evaluation and actual drawing
+replies separately rather than relying on timing sleeps.
+Ignored or rejected reader controls restore live evaluation and paint readiness after their
+temporary gesture state ends. Simulation status updates preserve the Pause button's click target.
+
+Editor history now keeps drawing gestures and other mutations in separate transactions. Mutating
+shortcuts and paste cannot replace an active drag's history entry; deferred text alignment is
+cancelled before a new gesture or conflicting edit. Polygon drafts, anchor drags and rotated-group
+erasing preserve undo state and group geometry. Native select controls retain their keyboard input.
+See the [editor-history regressions](../tests/editor-history.test.cjs).
+
+Workspace autosave uses one atomic IndexedDB snapshot of all sketches, image assets, datasets and
+editor state. Each application path has one current workspace and one writable editor window;
+other windows stay read-only. **Take over editing** loads the latest saved snapshot before enabling
+edits, and the old writer cannot overwrite it. Reload and graceful close/reopen retain editing
+availability; small ownership handoff receipts contain no drawing data. Different URL paths
+remain independent. Writes that fail leave the prior saved snapshot intact and keep the current
+working documents available for download. When browser storage is unavailable, session editing
+remains possible with an explicit unsaved warning and workspace-download fallback.
+
+Unreadable workspace records are preserved instead of silently replaced with a blank drawing.
+The user can download recovery data and explicitly start fresh; recovery retains the original
+record in the browser. Legacy localStorage documents are imported when no IndexedDB snapshot exists
+and remain as a backup; a missing legacy index with remaining documents also enters recovery.
+Personal library definitions, pins and organization still use a separate
+database. Exported HTML readers keep their existing session-local behavior. These boundaries are
+covered by the [workspace-storage tests](../tests/workspace-storage.test.cjs).
+
+Both demo generators retain stable sketch identities. The main catalog assigns missing IDs once;
+renaming, reordering and later exports preserve them. The separate runtime example keeps its
+explicit Services/Dashboard/Data editor IDs and their references. JSON and HTML are still published
+together only after the real exporter succeeds; each HTML artifact remains self-contained.
+
+### Review follow-up — 2026-10-21
+
+An accepted event owns its captured payload and baseline graph until its bounded transaction
+finishes. Becoming hidden after that capture does not discard part of the occurrence: temporary
+execution owners allow the accepted transaction to finish. Hidden pages still suspend interval
+clocks and new actions; queued follow-up host actions wait until the page is active again.
+Entering pagehide (including back/forward cache entry), replacing the document, changing its scene,
+or losing editor ownership invalidates stale work; events are never replayed after reopening.
+In Whole workspace mode, switching the visible sketch leaves an accepted transaction intact.
+Active sketch only mode cancels it atomically when its owning sketch is left.
+Both editor and HTML reader now enforce this distinction; regression tests hold an accepted
+receiver call across navigation and verify completion or cancellation in the selected mode.
+
+CSV parsing now distinguishes physically blank records from explicit empty records, including
+leading blank lines during delimiter detection. CSV downloads default to Spreadsheet-safe output,
+with an explicit Raw choice when original text is required; numeric values are not converted to
+strings. Both editor and reader use the same options, including prepared downloads. XML exports
+remove characters disallowed by XML 1.0 and escape attributes consistently; valid Unicode remains
+intact. Font names resolve only through declared own keys. Imported component/group identifiers
+retain valid Unicode and punctuation; only empty or control-character identities require repair.
+
+Generated-reader dependencies are checked structurally with a development-only JavaScript parser
+and scope analysis. The contract parses fresh exports and shipped readers, including dormant
+branches, so an unexecuted reference to an editor-only helper cannot hide behind a passing browser
+example. Existing named-function contract fixtures use AST declarations instead of neighboring
+function text. The app and exported readers still require no runtime dependencies or build step.
+
+Native sketch/workspace format 6 stores each distinct script once in a top-level `scripts` pool.
+Items refer to deterministic encounter-order keys (`s0`, `s1`, …) through `scriptRef`. IndexedDB's
+record remains version 1 and holds the pool on its workspace snapshot; HTML similarly shares one
+pool across its exported sketches and hydrates before runtime startup. Instance state, geometry,
+styles and connections remain independent. Live documents, clipboard and individual library
+transfers keep inline scripts. Pooling only touches known item arrays, never arbitrary state.
+
+Older inline-script files remain readable. Malformed source strings/keys, missing references,
+non-smart references, conflicting inline source plus reference and unused pool entries are
+rejected atomically; the per-script 64,000-character bound still applies. Corrupt autosaves remain
+protected. This is representation sharing, not a change to library updates or instance ownership.
+
+Each scripted built-in identifies its canonical example source in the catalog. Authoring templates
+reuse that catalog definition. Both demo generators read canonical example scripts: the main demo
+uses source metadata, and the workspace-runtime builder explicitly names its source files.
+Regular templates also have standalone example scripts. Inert bundled previews retain
+the PNG format with smaller palette-encoded images; browsing does not execute component scripts.
+
+The catalog updater (`node tools/update-builtin-catalog.cjs`, or `--check`) verifies source parity
+and synchronizes matching built-in source/preview snapshots in the shipped demo library, preserving
+custom entries. This keeps inert browsing from requesting preview generation for unchanged built-ins.
+Main-demo smart items name their script through validated `exampleSource` filenames, replacing the
+UID-to-source map; runtime normalization removes this generator-only metadata. Optional PNG
+optimization uses a separate Pillow development tool and preserves dimensions and inert previews.
+The main demo also assigns stable sketch-qualified dataset IDs when local IDs collide. Only declared
+dataset reference locations are rewritten; arbitrary state, cell values and external references stay
+unchanged. Its fourteen datasets now have globally unique identities. Two independent real generator
+runs produced byte-identical JSON and HTML, with self-contained output preserved.
+
+All image-asset transfers enforce 16 MiB per image and 64 MiB per sketch, counting each referenced
+asset identity once. The complete incoming clipboard set is checked before committing either the
+asset pool or the drawing. New image insertion additionally rejects images over 40 megapixels and
+reduces accepted large images to a maximum dimension of 1,800 pixels; existing serialized assets
+retain their resolution. Sketch and library-entry names are limited to 120 characters. Invalid imports leave the current drawing/history unchanged.
+Iconify search keeps at most 960 results; individual icon bodies are limited to 65,536 characters,
+and the cache to 1,024 entries/eight million body characters. Streamed search and icon-set responses
+are bounded to 512 KiB and 2 MiB respectively, independently of Content-Length. These bounds apply
+to editor resource acquisition without adding network permissions to components or readers.
+
+Browser launch configuration is shared across suites; disjoint catalog batches retain every
+eligible built-in's caption assertions without reevaluating the whole library after each rename.
+Feature-branch pushes and pull requests run Chromium and WebKit with bounded file concurrency and
+30-minute installation/execution headroom. Pages watches relevant example, generator and test
+inputs, and publication remains gated on both engines. The [testing guide](../tests/README.md)
+contains the commands; its [coverage catalog](../tests/COVERAGE.md) retains the detailed scenarios.
+The user-facing component reference now lives in [docs/components.md](components.md), linked from
+the shorter README. Physical iPad Safari, native Office paste and physical printing remain manual
+integration checks.
+
+The regenerated main HTML example is approximately 1.65 MB, down from 3.50 MB; the editor's gzip
+size is approximately 506 KB, down from 781 KB. These are observed artifact sizes, not new runtime
+budgets. Repository object packing reduced approximately 144 MiB to 13 MiB with no pruning or
+reflog expiry; history and reflogs were preserved.
+
+The warmed-paint benchmark against `0e557fe` recorded medians of 74.6 ms for the baseline and
+74.5 ms for the working tree across 200 paints, with unchanged measured work counts. These local
+timings are observations, not a performance guarantee or a substitute for the correctness checks.
+
+Final verification on 2026-10-21: the complete WebKit run passed 1,486 tests with zero failures and
+three expected Chromium-only touch-test skips. The complete Chromium run passed 1,488 of 1,489 tests. The one
+failure was a test helper reading a wire's geometry after a repaint detached its SVG path; the
+helper now reacquires detached geometry and confirms the selected wire before pressing Delete.
+The complete affected suite then passed 23/23 in Chromium and 23/23 in WebKit; a forced repaint
+also reproduced the old helper's failure and verified the correction. This follow-up changes test
+synchronization only; it does not retry a canvas edit or alter application behavior.
+
+The visibility/navigation suite passed 10/10 in each engine. Canonical catalog/source checks and
+AST dependency checks for fresh exports and both shipped readers passed. Both self-contained demos
+were regenerated; 256 local documentation links and anchors resolve, and `git diff --check` is clean.
+The full Chromium suite was not repeated after the test-helper correction; the complete affected
+suite supplies the follow-up evidence above.
 
 ### Existing narrow host actions and future effect boundaries
 

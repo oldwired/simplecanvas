@@ -2,7 +2,7 @@ const {test, before, after} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium, webkit} = require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const engine = process.env.BROWSER_ENGINE || 'chromium';
 assert.ok(['chromium','webkit'].includes(engine), 'BROWSER_ENGINE must be chromium or webkit');
 
@@ -12,8 +12,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')
   .replace('\n})();', '\nwindow.__test = {run: source => eval(source)};\n})();');
 let browser;
 before(async () => {
-  browser = await ({chromium,webkit}[engine]).launch({headless:true,
-    ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})});
+  browser = await launchBrowser({engine});
 });
 after(async () => { if(browser) await browser.close(); });
 
@@ -50,6 +49,24 @@ async function downloadedJSON(page, run, expression){
 async function downloadedHTML(page, run){
   const download=page.waitForEvent('download');await run('exportHtml()');
   return fs.readFileSync(await (await download).path(),'utf8');
+}
+async function savedWorkspace(run){
+  await run('persistWorkspace()');
+  const record=await run('readSavedWorkspace()');
+  assert.ok(record?.workspace?.tabs.length,'a complete workspace is durable in IndexedDB');
+  return record;
+}
+async function failWorkspaceWrites(page){
+  await page.evaluate(()=>{
+    window.originalWorkspacePut=IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put=function(...args){
+      if(this.name==='workspaces')throw new DOMException('Full','QuotaExceededError');
+      return window.originalWorkspacePut.apply(this,args);
+    };
+  });
+}
+async function restoreWorkspaceWrites(page){
+  await page.evaluate(()=>{IDBObjectStore.prototype.put=window.originalWorkspacePut;});
 }
 
 test('HTML export keeps each tab’s images, group rotation, and pending text edits', async () => app(async ({page,run,context}) => {
@@ -95,14 +112,14 @@ test('copy/paste keeps editable objects before the PNG fallback without internal
     Object.defineProperty(navigator.clipboard,'write',{value:async entries=>{clipboardWrites.push(entries);}});
   });
   await run(`items=[{...${JSON.stringify(rectangle('a'))},group:'copied',groupRotation:.3},
-    {...${JSON.stringify(line)},group:'copied',groupRotation:.3}];setTool('select');selection=[0,1];render();`);
+    {...${JSON.stringify(line)},group:'copied',groupRotation:.3}];setTool('select');selection=[0,1];render();save();`);
   await page.keyboard.press('Control+c');
   const captured=await page.evaluate(async()=>{
     const entry=clipboardWrites.at(-1)[0], text=await(await entry.getType('text/plain')).text(), png=await entry.getType('image/png');
     const bytes=Array.from(new Uint8Array(await png.arrayBuffer()));
     return {text,bytes};
   });
-  await page.reload();assert.equal(await run('clipboard.length'),0);
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('clipboard.length'),0);
   await page.evaluate(({text,bytes})=>{
     const dt=new DataTransfer();dt.setData('text/plain',text);
     dt.items.add(new File([new Uint8Array(bytes)],'copy.png',{type:'image/png'}));
@@ -131,7 +148,7 @@ test('structured clipboard validates objects and preserves conflicting image ass
   assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue,fixture.red]);
   assert.equal(await run('items[0].id!==items[1].id && items[0].uid!==items[1].uid'),true);
   await run('undo()');assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue]);
-  await run('redo()');await page.reload();
+  await run('redo()');await run('persistWorkspace()');await page.reload();
   assert.deepEqual(await run('items.map(it=>assets[it.id])'),[fixture.blue,fixture.red]);
 }));
 
@@ -151,16 +168,12 @@ test('external PNG paste still wins over the internal clipboard when JSON is inv
 test('quota failures preserve tabs, history, JSON/HTML recovery exports, and retry', async () => app(async ({page,run,context}) => {
   await run(`beginHistory();items=[${JSON.stringify(rectangle('before'))}];commitHistory();`);
   const original = await run('activeTabId');
-  await page.evaluate(() => {
-    for(const size of [50000,1000,50]){
-      for(let n=0;n<2000;n++){
-        try{ localStorage.setItem('quota-'+size+'-'+n, 'x'.repeat(size)); }
-        catch{ break; }
-      }
-    }
-  });
+  const durable=await savedWorkspace(run);
+  await failWorkspaceWrites(page);
   await run(`beginHistory();items.push(${JSON.stringify(rectangle('after'))});commitHistory();newTab();`);
+  await run('persistWorkspace()');
   assert.equal(await page.locator('#autosaveWarning').isVisible(), true);
+  assert.deepEqual(await run('readSavedWorkspace()'),durable,'failed writes preserve the entire previous workspace record');
   await run(`activateTab(${JSON.stringify(original)})`);
   assert.deepEqual(await run('items.map(it=>it.uid)'), ['before','after']);
   const exported = await downloadedJSON(page,run,'exportWorkspace()');
@@ -171,12 +184,10 @@ test('quota failures preserve tabs, history, JSON/HTML recovery exports, and ret
     'HTML recovery contains unsaved edits and the empty tab');
   await run('undo()'); assert.equal(await run('items.length'),1);
   await run('redo()'); assert.equal(await run('items.length'),2);
-  await page.evaluate(() => {
-    for(const key of Object.keys(localStorage)) if(key.startsWith('quota-')) localStorage.removeItem(key);
-  });
-  await run('save()');
+  await restoreWorkspaceWrites(page);
+  await run('save();persistWorkspace()');
   assert.equal(await page.locator('#autosaveWarning').isVisible(), false);
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   assert.deepEqual(await run('items.map(it=>it.uid)'), ['before','after']);
 }));
 
@@ -189,13 +200,21 @@ test('disabled browser storage still permits drawing, tabs, and workspace export
   assert.equal(exported.tabs[0].items.length,1);
 }, {init:() => {
   for(const method of ['getItem','setItem','removeItem']) Storage.prototype[method]=()=>{throw new DOMException('Storage disabled','SecurityError');};
+  IDBFactory.prototype.open=()=>{throw new DOMException('Storage disabled','SecurityError');};
 }}));
 
-test('large legacy sketches migrate without duplicating their storage', async () => app(async ({page,run}) => {
-  // Seed from a page without the app's visibilitychange autosave handler.
-  await page.route('http://simplecanvas.test/seed',route=>route.fulfill({body:'',contentType:'text/html'}));
-  await page.goto('http://simplecanvas.test/seed');
-  const bytes=await page.evaluate(() => {
+test('large legacy sketches migrate to IndexedDB while retaining the source recovery backup', async () => app(async ({page,run}) => {
+  const backup=await page.evaluate(()=>localStorage.getItem('simplecanvas:v1'));
+  assert.ok(backup.length>3_000_000);
+  assert.equal(await run('items.length'),1);
+  assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
+  const migrated=await savedWorkspace(run);
+  assert.equal(migrated.workspace.tabs[0].document.items[0].id,'large');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:v1')),backup,'migration leaves its legacy recovery source intact');
+  await run('save();persistWorkspace()');await run('persistWorkspace()');await page.reload();
+  assert.equal(await run('items[0].id'),'large');
+}, {init:()=>{
+    if(localStorage.getItem('simplecanvas:v1'))return;
     const canvas=document.createElement('canvas');canvas.width=canvas.height=900;
     const ctx=canvas.getContext('2d'), image=ctx.createImageData(900,900);
     let seed=12345;
@@ -205,43 +224,32 @@ test('large legacy sketches migrate without duplicating their storage', async ()
     }
     ctx.putImageData(image,0,0);
     const data=JSON.stringify({version:2,items:[{type:'image',id:'large',x:100,y:100,w:400,h:400}],assets:{large:canvas.toDataURL()}});
-    localStorage.clear();localStorage.setItem('simplecanvas:v1',data);return data.length;
-  });
-  assert.ok(bytes>3_000_000);
-  await page.goto('http://simplecanvas.test/index.html');
-  assert.equal(await run('items.length'),1);
-  assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
-  await run('save()');await page.reload();
-  assert.equal(await run('items[0].id'),'large');
-}));
+    localStorage.setItem('simplecanvas:v1',data);
+}}));
 
-test('workspace replacement retains old storage until new documents and index succeed', async () => app(async ({page,run}) => {
+test('workspace replacement atomically retains the old durable workspace until retry succeeds', async () => app(async ({page,run}) => {
   await run(`beginHistory();items=[${JSON.stringify(rectangle('old'))}];commitHistory();`);
-  const oldIndex=await page.evaluate(()=>localStorage.getItem('simplecanvas:tabs:v1'));
-  const oldKey=await run('docKey(activeTabId)');
+  const old=await savedWorkspace(run);
   const workspace={app:'SimpleCanvasWorkspace',version:2,activeIndex:1,tabs:[
     {name:'Imported A',items:[rectangle('a')]},{name:'Imported B',items:[rectangle('b')]}
   ]};
-  await page.evaluate(()=>{
-    window.realStorageSet=Storage.prototype.setItem;let writes=0;
-    Storage.prototype.setItem=function(key,value){
-      if(key.startsWith('simplecanvas:doc:') && ++writes>=2)throw new DOMException('Full','QuotaExceededError');
-      return window.realStorageSet.call(this,key,value);
-    };
-  });
+  await failWorkspaceWrites(page);
   await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'workspace.json'));`);
   await page.waitForFunction(()=>__test.run('tabs[0].name')==='Imported A');
   assert.deepEqual(await run('items.map(it=>it.uid)'),['b']);
-  assert.equal(await page.evaluate(()=>localStorage.getItem('simplecanvas:tabs:v1')),oldIndex);
-  assert.ok(await page.evaluate(key=>localStorage.getItem(key),oldKey));
+  await run('persistWorkspace()');
+  assert.deepEqual(await run('readSavedWorkspace()'),old,'the previous documents and active tab remain one intact record');
   assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
   const exported=await downloadedJSON(page,run,'exportWorkspace()');
   assert.deepEqual(exported.tabs.map(t=>t.items[0].uid),['a','b']);
-  await page.evaluate(()=>{Storage.prototype.setItem=window.realStorageSet;});
-  await run('save()');
-  assert.equal(await page.evaluate(key=>localStorage.getItem(key),oldKey),null);
+  await restoreWorkspaceWrites(page);
+  await run('save();persistWorkspace()');
+  const replacement=await savedWorkspace(run);
+  assert.deepEqual(replacement.workspace.tabs.map(tab=>tab.document.items[0].uid),['a','b']);
+  assert.equal(replacement.workspace.activeId,replacement.workspace.tabs[1].id);
+  assert.ok(replacement.workspace.tabs.every(tab=>!old.workspace.tabs.some(previous=>previous.id===tab.id)));
   assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
-  await page.reload();assert.equal(await run('items[0].uid'),'b');
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('items[0].uid'),'b');
 }));
 
 async function insertImage(page,run){
@@ -254,7 +262,7 @@ test('cross-tab image paste survives source closure and destination reload', asy
   await run(`copySelection();newTab();closeTab(${JSON.stringify(original)});pasteClipboard();`);
   const exported=await downloadedJSON(page,run,'exportWorkspace()');
   assert.equal(exported.tabs[0].assets[exported.tabs[0].items[0].id],source);
-  await page.reload();assert.equal(await run('items.length'),1);
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('items.length'),1);
   assert.equal(await run('assets[items[0].id]'),source);
 }));
 
@@ -287,7 +295,7 @@ test('image import and undo stay with the original tab after switching away', as
   await run('redo()');assert.equal(await run('assets[items[0].id]'),source);
   await run(`setTool('select');selection=[0];deleteSelected();newTab();activateTab(${JSON.stringify(original)});undo();`);
   assert.equal(await run('assets[items[0].id]'),source,'deletion undo restores the image after another tab switch');
-  await page.reload();assert.equal(await run('assets[items[0].id]'),source);
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('assets[items[0].id]'),source);
 }));
 
 test('click cycling resets after deletion, layer reordering, and nudging', async () => app(async ({page,run}) => {
@@ -520,7 +528,7 @@ test('cycled arrowhead variants survive conversion, undo, reload, and workspace 
   await page.mouse.dblclick(box.x+200,box.y+200);
   assert.equal(await run('pointEditIdx'),null);
   const workspace=await downloadedJSON(page,run,'exportWorkspace()');
-  await page.reload();assert.deepEqual(await variants(),['filled-inverted','filled']);
+  await run('persistWorkspace()');await page.reload();assert.deepEqual(await variants(),['filled-inverted','filled']);
   const original=await run('({activeTabId,workspaceGeneration})');
   await run(`openWorkspaceFile(new File([${JSON.stringify(JSON.stringify(workspace))}],'variants.json'))`);
   await page.waitForFunction(generation=>__test.run('workspaceGeneration')>generation,original.workspaceGeneration);
@@ -1799,7 +1807,8 @@ test('HTML smart shapes run offline with live timing, direct ordered controls an
     items=[sw,{...${JSON.stringify(smartFixture(clockScript))},uid:'refresh-clock',x:500,h:208}];
     setTool('select');selection=[];render();save();return sw;
   })()`);
-  const before=await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})');
+  await savedWorkspace(run);
+  const before=await run('(async()=>JSON.stringify({items,undoStack,redoStack,storage:await readSavedWorkspace()}))()');
   const {preview,errors,requests}=await openExport(page,run,context,{init:()=>{
     // Force early callbacks, as can occur naturally when browsers round fractional delays.
     const timeout=window.setTimeout.bind(window);
@@ -1824,7 +1833,7 @@ test('HTML smart shapes run offline with live timing, direct ordered controls an
   assert.deepEqual(await sw.boundingBox(),box,'the body cannot be moved');
   assert.equal(await sw.locator('[data-resize-width]').count(),0,'no regular resize controls');
   assert.equal(await sw.locator('[data-resize-height],[data-rotate]').count(),0,'rotation and height resizing also default off');
-  assert.equal(await run('JSON.stringify({items,undoStack,redoStack,storage:{...localStorage}})'),before,'export interactions never edit the source workspace');
+  assert.equal(await run('(async()=>JSON.stringify({items,undoStack,redoStack,storage:await readSavedWorkspace()}))()'),before,'export interactions never edit the source workspace');
   assert.deepEqual(requests,[],'the downloaded file needs no server or network');assert.deepEqual(errors,[]);
 }));
 
@@ -1839,7 +1848,7 @@ test('ruler author controls bind moving and rotation; HTML extends opted-in inst
   assert.deepEqual(await run('items[0].state'),{unit:'cm',allowMove:true,allowExtend:true});
   await run('undo()');assert.equal(await run('items[0].state.allowExtend'),false);await run('redo()');
   const saved=await downloadedJSON(page,run,'exportProject()');assert.equal(saved.items[0].state.allowExtend,true);
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   await run(`items.push({...clone(items[0]),uid:'locked',x:650,state:{unit:'cm'}});items[0].rotation=.2;
     items[0].group='rotated';items[0].groupRotation=.3;items.push({...${JSON.stringify(rectangle('sibling'))},x:200,y:300,group:'rotated',groupRotation:.3});render();`);
   const {preview,errors,requests}=await openExport(page,run,context);
@@ -2280,7 +2289,7 @@ test('missing smart previews require consent; exported PNGs load without executi
   assert.equal(exported.shapes[0].thumbnail.version,1);
   await contextFresh(exported);
   async function contextFresh(data){
-    await page.reload();
+    await run('persistWorkspace()');await page.reload();
     await importLibrary(page,data);
     await page.locator('.shape-thumb img').waitFor();
     assert.equal(await page.locator('#libraryDialog[open]').count(),0);
@@ -2304,10 +2313,11 @@ test('optional smart refresh redraws without changing state, history or saves, a
   const script=`({refreshMs(){return 100;},children(){return [{type:'text',x:0,y:0,w:180,h:30,text:String(Date.now())}];}})`;
   await run(`items=[${JSON.stringify(smartFixture(script,{keep:'saved'}))}];setTool('select');selection=[];save();render();`);
   await page.waitForFunction(()=>__test.run("smartChildrenCache.get('smart-test')?.kids.length")===1);
-  const first=await run(`({reading:smartChildrenCache.get('smart-test').kids[0].text,
-    saved:localStorage.getItem(docKey(activeTabId)),history:undoStack.length,tab:activeTabId})`);
+  await savedWorkspace(run);
+  const first=await run(`(async()=>({reading:smartChildrenCache.get('smart-test').kids[0].text,
+    saved:await readSavedWorkspace(),history:undoStack.length,tab:activeTabId}))()`);
   await page.waitForFunction(first=>__test.run("smartChildrenCache.get('smart-test')?.kids[0]?.text")!==first,first.reading);
-  assert.equal(await run('localStorage.getItem(docKey(activeTabId))'),first.saved);
+  assert.deepEqual(await run('readSavedWorkspace()'),first.saved);
   assert.deepEqual(await run('items[0].state'),{keep:'saved'});assert.equal(await run('undoStack.length'),first.history);
   await run('newTab()');
   assert.equal(await run('smartRefreshTimer'),null);assert.equal(await run('smartChildrenCache.size'),0);
@@ -2391,7 +2401,7 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   // Model a delayed/background redraw: elapsed time must follow the saved timestamp, not tick count.
   await run('items[0].state.startedAt=Date.now()-62300;render();save()');
   const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/00:01:02\.[3-9]\d{2}/);
-  await page.reload();assert.equal(await run('typeof items[0].state.startedAt'),'number');
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('typeof items[0].state.startedAt'),'number');
   await run('setTool("select");selection=[0];editingSmartIdx=0;render()');
   await click('toggle');assert.equal(await run('items[0].state.startedAt'),null);
   const paused=await run('items[0].state.elapsedMs');assert.ok(paused>=62300 && paused<68000);
@@ -2400,7 +2410,7 @@ test('live clock advances on its own and stopwatch controls, exports, undo and r
   await click('reset');assert.equal(await run('items[0].state.elapsedMs'),0);
   await run('undo()');assert.equal(await run('items[0].state.elapsedMs'),paused);
   await run('redo()');assert.equal(await run('items[0].state.elapsedMs'),0);
-  await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null,observedRun:false});
+  await run('persistWorkspace()');await page.reload();assert.deepEqual(await run('items[0].state'),{elapsedMs:0,startedAt:null,observedRun:false});
 }));
 
 test('ruler grows at a fixed drill-template scale and unit switching is undoable and survives saving',async()=>app(async({page,run})=>{
@@ -2458,7 +2468,7 @@ test('ruler grows at a fixed drill-template scale and unit switching is undoable
   const wide=await run(`requestSmartCall(items[0],'children',[{unit:'cm'},smartResolvedStyle(items[0]),1000000,76,false])`);
   assert.ok(wide.length>1 && wide.length<=1000,'very long rulers keep valid bounded geometry');
   const exported=await downloadedJSON(page,run,'exportProject()');assert.equal(exported.items[0].state.unit,'px');
-  await page.reload();assert.equal(await run('items[0].state.unit'),'px');
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('items[0].state.unit'),'px');
 }));
 
 async function printFrameReady(page){
@@ -2478,7 +2488,8 @@ test('printing preserves physical ruler scale, assets and pending text on the ac
   assert.equal(await page.locator('#printMode').inputValue(),'actual');
   assert.equal(await page.locator('#printOrientation').inputValue(),'landscape');
   assert.equal(await run('items[1].text'),'Latest print note');
-  const before=await run('({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:localStorage.getItem(docKey(activeTabId))})');
+  await savedWorkspace(run);
+  const before=await run('(async()=>({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:await readSavedWorkspace()}))()');
   await page.locator('#printReference').check();await printFrameReady(page);
   const result=await page.locator('#printPreview').evaluate(frame=>{
     const doc=frame.contentDocument,page=doc.querySelector('body>svg'),art=doc.querySelector('.print-artwork>svg');
@@ -2499,7 +2510,7 @@ test('printing preserves physical ruler scale, assets and pending text on the ac
   await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls=String(+(frame.dataset.printCalls||0)+1);};});
   await page.locator('#printDialogSubmit').click();
   assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1','Print targets the prepared document');
-  assert.deepEqual(await run('({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:localStorage.getItem(docKey(activeTabId))})'),before);
+  assert.deepEqual(await run('(async()=>({scene:JSON.stringify(items),history:undoStack.length,assets:JSON.stringify(assets),saved:await readSavedWorkspace()}))()'),before);
   await page.locator('#printDialogCancel').click();await page.waitForFunction(()=>__test.run('printSnapshot')===null);
 }));
 
@@ -2577,7 +2588,8 @@ test('oversized actual-size printing requires clipping consent, retains scale, a
 
 test('tiled printing keeps physical scale, matching overlap marks, numbered previews, and every sheet in the PDF',async()=>app(async({page,run,context})=>{
   await run(`items=[{...${JSON.stringify(rectangle())},w:2000,h:1100}];save();render();`);
-  const before=await run('JSON.stringify({items,undoStack,redoStack,assets,storage:{...localStorage}})');
+  await savedWorkspace(run);
+  const before=await run('(async()=>JSON.stringify({items,undoStack,redoStack,assets,storage:await readSavedWorkspace()}))()');
   await page.keyboard.press('Control+p');await page.locator('#printDialog[open]').waitFor();
   await page.locator('#printMode').selectOption('tile');await printFrameReady(page);
   assert.equal(await page.locator('#printOverlap').inputValue(),'10');
@@ -2628,7 +2640,7 @@ test('tiled printing keeps physical scale, matching overlap marks, numbered prev
   await page.locator('#printPreview').evaluate(frame=>{frame.contentWindow.print=()=>{frame.dataset.printCalls='1';};});
   await page.keyboard.press('Control+p');
   assert.equal(await page.locator('#printPreview').getAttribute('data-print-calls'),'1');
-  assert.equal(await run('JSON.stringify({items,undoStack,redoStack,assets,storage:{...localStorage}})'),before,'tiling never changes the drawing or saved state');
+  assert.equal(await run('(async()=>JSON.stringify({items,undoStack,redoStack,assets,storage:await readSavedWorkspace()}))()'),before,'tiling never changes the drawing or saved state');
   await page.locator('#printOverlap').fill('');assert.equal(await page.locator('#printDialogSubmit').isDisabled(),true);
   assert.match(await page.locator('#printDialogError').textContent(),/overlap/);
   await page.locator('#printMode').selectOption('fit');await printFrameReady(page);
@@ -2724,16 +2736,16 @@ test('the Really Simple deployment loads its own title and disables all optional
   await page.mouse.move(canvas.x+100,canvas.y+100);await page.mouse.down();
   await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});await page.mouse.up();
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-  await page.reload();assert.equal(await page.title(),'Really SimpleCanvas');
+  await run('persistWorkspace()');await page.reload();await run('appReady');assert.equal(await page.title(),'Really SimpleCanvas');
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
 },{origin:'http://simplecanvas.test/simplecanvas/reallysimple',files:{'settings.json':fs.readFileSync(path.join(__dirname,'..','reallysimple','settings.json'),'utf8')}}));
 
 test('workspace settings preserve saved tabs, restrict exports to the active sketch, and retain recovery',async()=>app(async({page,run})=>{
   const first=await run(`applySketchToActiveTab([{...${JSON.stringify(rectangle('background'))},fillColor:'#ef4444'}],{});activeTabId`);
   await run(`newTab();applySketchToActiveTab([{...${JSON.stringify(rectangle('active'))},fillColor:'#3b82f6'}],{});`);
-  const stored=await run(`({index:localStorage.getItem(TABS_KEY),background:localStorage.getItem(docKey(${JSON.stringify(first)})),active:activeTabId})`);
+  const stored=await savedWorkspace(run);
   await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:settingsFile({workspace:false})}));
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   assert.equal(await run('features.workspace'),false);
   assert.equal(await page.locator('#tabbar').isHidden(),true);
   await page.locator('#menuBtn').click();
@@ -2742,23 +2754,26 @@ test('workspace settings preserve saved tabs, restrict exports to the active ske
   assert.equal(await page.locator('[data-act="png"]').evaluate(el=>el===document.activeElement),true,'menu navigation skips disabled workspace actions');
   await page.keyboard.press('Escape');
   await run(`newTab();activateTab(${JSON.stringify(first)});closeTab(${JSON.stringify(first)});renameTab(${JSON.stringify(first)});openWorkspaceFile(new File(['{}'],'workspace.json'));exportWorkspace();`);
-  assert.equal(await run('activeTabId'),stored.active);
+  assert.equal(await run('activeTabId'),stored.workspace.activeId);
   assert.equal(await run('tabs.length'),2);
   assert.equal(await page.locator('dialog[open]').count(),0);
   const exported=await downloadedHTML(page,run);
   assert.ok(exported.includes('#3b82f6') && !exported.includes('#ef4444'),'HTML exports only the active drawing');
   await run('beginHistory();items[0].x+=1;commitHistory();');
-  await page.evaluate(()=>{window.originalSettingsSetItem=Storage.prototype.setItem;Storage.prototype.setItem=()=>{throw new Error('storage unavailable');};});
-  await run('items[0].x+=10;save();');
+  const beforeFailure=await savedWorkspace(run);
+  await failWorkspaceWrites(page);
+  await run('items[0].x+=10;save();persistWorkspace()');
   assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
   const download=page.waitForEvent('download');await page.locator('#saveRecoveryWorkspace').click();
   const recovery=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));
   assert.deepEqual(recovery.tabs.map(t=>t.items[0].uid),['background','active']);
   assert.equal(recovery.tabs[1].items[0].x,111);
-  assert.equal(await run(`localStorage.getItem(docKey(${JSON.stringify(first)}))`),stored.background,'hidden documents remain untouched');
-  assert.equal(await run('localStorage.getItem(TABS_KEY)'),stored.index,'disabling tabs never rewrites their saved index');
-  await page.evaluate(()=>{Storage.prototype.setItem=window.originalSettingsSetItem;});await run('persistWorkspace()');
-  await page.unroute('**/settings.json');await page.reload();await run('appReady');
+  assert.deepEqual(await run('readSavedWorkspace()'),beforeFailure,'failed saves retain every hidden and visible tab');
+  assert.deepEqual(beforeFailure.workspace.tabs.find(tab=>tab.id===first),stored.workspace.tabs.find(tab=>tab.id===first),'hidden documents remain untouched');
+  await restoreWorkspaceWrites(page);await run('persistWorkspace()');
+  const retried=await savedWorkspace(run);
+  assert.deepEqual(retried.workspace.tabs.find(tab=>tab.id===first),stored.workspace.tabs.find(tab=>tab.id===first),'single-sketch saves preserve the hidden documents in the atomic snapshot');
+  await page.unroute('**/settings.json');await run('persistWorkspace()');await page.reload();await run('appReady');
   assert.equal(await page.locator('#tabbar').isVisible(),true);
   assert.equal(await run('items[0].x'),111);
   await run(`activateTab(${JSON.stringify(first)})`);assert.equal(await run('items[0].uid'),'background');
@@ -2843,18 +2858,20 @@ test('disabling the complete library skips its request and preserves smart drawi
   assert.equal(await page.locator('#shapePicker').isVisible(),false);
   await run(`applySketchToActiveTab([normalizeItem({...${JSON.stringify(JSON.parse(demoLibrary).shapes[6].items[0])},uid:'saved-clock',x:100,y:100},{})],{});`);
   const svg=await run('itemsToSVGMarkup(items)');assert.match(svg,/<ellipse|<circle/);
-  await page.reload();assert.equal(await run('items[0].uid'),'saved-clock');
+  await run('persistWorkspace()');await page.reload();assert.equal(await run('items[0].uid'),'saved-clock');
 }, {files:{'settings.json':settingsFile({shapeLibrary:false}),'shapes-library.json':demoLibrary}}));
 
 test('settings resolve before input, document restoration, or library loading',async()=>app(async({page,run})=>{
   let finish,started;
   const pending=new Promise(resolve=>{finish=resolve;}),requested=new Promise(resolve=>{started=resolve;});
-  await page.route('**/settings.json',async route=>{started();await pending;await route.fulfill({contentType:'application/json',body:settingsFile({workspace:false,shapeLibrary:false})});});
-  await page.reload({waitUntil:'domcontentloaded'});await requested;
+  await page.route('**/settings.json',async route=>{started();await pending;await route.fulfill({contentType:'application/json',body:JSON.stringify({title:'Delayed deployment title',features:{workspace:false,shapeLibrary:false}})});});
+  await run('persistWorkspace()');await page.reload({waitUntil:'domcontentloaded'});await requested;
   assert.equal(await page.evaluate(()=>document.body.inert),true);
+  assert.equal(await page.title(),'SimpleCanvas — Quick Sketches','document load does not imply asynchronous settings are ready');
   assert.equal(await page.evaluate(()=>__test.run('activeTabId')),null);
   await page.keyboard.press('r');assert.equal(await page.evaluate(()=>__test.run('ui.tool')),'pen');
   finish();await run('appReady');
+  assert.equal(await page.title(),'Delayed deployment title');
   assert.equal(await page.evaluate(()=>document.body.inert),false);
   assert.equal(await page.locator('#shapeLibWrap').isVisible(),false);
   assert.equal(await page.locator('[data-act="newTab"]').getAttribute('hidden'),'');
@@ -2875,7 +2892,7 @@ test('a stalled settings request times out and releases the standard app',async(
     await new Promise(resolve=>setTimeout(resolve,2200));
     await route.fulfill({contentType:'application/json',body:settingsFile({workspace:false})}).catch(()=>{});
   });
-  await page.reload();await run('appReady');
+  await run('persistWorkspace()');await page.reload();await run('appReady');
   assert.equal(await page.locator('#settingsWarning').isVisible(),true);
   assert.match(await page.locator('#settingsWarning').textContent(),/timed out/);
   assert.equal(await run('features.workspace'),true);
@@ -2981,7 +2998,7 @@ test('the bundled demo loads under a Pages subpath with inert previews and edita
   await run('smartHitSettled');
   assert.equal(await run('items[5].state.values.length'),5);
   await run('undo()');assert.deepEqual(await run('items[5].state.values'),[30,60,45,80]);
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   assert.equal(await run('items[4].state.m'),15,'edited demo shapes survive autosave/reload');
   assert.deepEqual(await run('items[5].state.values'),[30,60,45,80]);
 }, {origin:'http://simplecanvas.test/simplecanvas',files:{'shapes-library.json':demoLibrary},init:()=>{
@@ -3025,7 +3042,7 @@ test('contributor demo entries keep their source scripts, working controls, and 
   const exported=await downloadedJSON(page,run,'exportProject()');
   assert.equal(exported.items[0].state.holeDiameterMm,changedDiameter);
   assert.equal(exported.items[1].state.orangeShown,false);
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   assert.equal(await run('items[0].state.holeDiameterMm'),changedDiameter);
   assert.equal(await run('items[1].state.orangeShown'),false);
 },{files:{'shapes-library.json':demoLibrary}}));
@@ -3043,7 +3060,7 @@ test('a single HTML deployment works without a shape library',async()=>app(async
   await page.mouse.move(canvas.x+260,canvas.y+200,{steps:5});
   await page.mouse.up();
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect']);
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   assert.deepEqual(await run('items.map(it=>it.type)'),['rect'],'drawing and autosave work without a library');
 }));
 
@@ -3056,7 +3073,7 @@ test('a delayed demo response preserves a library imported during startup',async
     await route.fulfill({contentType:'application/json',body:demoLibrary});
   });
   // Do not wait for the deliberately pending startup fetch's load event.
-  await page.reload({waitUntil:'domcontentloaded'});
+  await run('persistWorkspace()');await page.reload({waitUntil:'domcontentloaded'});
   await responseReady;
   await importLibrary(page,{shapes:[{name:'My imported shape',items:[rectangle()]}]});
   finishDemo();await page.waitForLoadState('networkidle');
@@ -3066,7 +3083,7 @@ test('a delayed demo response preserves a library imported during startup',async
 test('startup libraries keep missing smart previews inert until the library is opened and approved',async()=>app(async({page,run})=>{
   const library={shapes:[{name:'Startup smart',items:[smartFixture(slowClickScript)]}]};
   await page.route('**/shapes-library.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(library)}));
-  await page.reload();
+  await run('persistWorkspace()');await page.reload();
   await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.length')===1);
   assert.equal(await page.locator('iframe[sandbox~="allow-scripts"]').count(),0);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0);
@@ -3585,7 +3602,7 @@ test('source edits update the library and bundled PNG, survive export, and prese
   assert.deepEqual(after.shapes[0].items[0],{...before.shapes[0].items[0],script:newScript});
   assert.notEqual(after.shapes[0].thumbnail.png,before.shapes[0].thumbnail.png);
   assert.equal(await run('items[0].script'),oldScript,'placed instances keep their own definition');
-  await page.reload();await importLibrary(page,after);
+  await run('persistWorkspace()');await page.reload();await importLibrary(page,after);
   assert.equal(await page.locator('#libraryDialog[open]').count(),0,'the edited preview is bundled');
   await page.locator('#manageShapesBtn').click();
   await page.getByRole('button',{name:'Edit Color box',exact:true}).click();
@@ -4171,7 +4188,7 @@ test('font controls edit selected tables and mixed text selections with undo and
   assert.equal(await run('items[3].font'),undefined,'non-text shapes do not acquire font fields');
   assert.deepEqual(await run('({family:ui.fontFamily,size:ui.fontSize})'),defaults,'editing a selection preserves drawing defaults');
   const exported=await downloadedJSON(page,run,'exportProject()');
-  await page.reload();await run(`applySketchToActiveTab(${JSON.stringify(exported.items)},${JSON.stringify(exported.assets)})`);
+  await run('persistWorkspace()');await page.reload();await run(`applySketchToActiveTab(${JSON.stringify(exported.items)},${JSON.stringify(exported.assets)})`);
   assert.deepEqual(await run('items.slice(0,3).map(it=>[it.fontFamily,it.fontSize])'),[['mono',36],['mono',36],['mono',36]]);
 }));
 

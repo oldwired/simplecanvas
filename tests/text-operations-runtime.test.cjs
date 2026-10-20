@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the editor exposes test observations. Component code is evaluated by the
 // production Worker bridge; the downloaded reader has no test instrumentation.
@@ -14,8 +14,7 @@ const html=fs.readFileSync(path.join(root,'index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{await browser?.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1600,height:1100}});

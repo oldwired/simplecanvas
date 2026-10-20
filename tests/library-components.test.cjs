@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the served copy exposes the closure. Calls still cross the production Worker
 // boundary, and the exported document uses its own unmodified offline runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -101,19 +100,6 @@ async function settledDrawings(page){
   catch(error){throw new Error(error.message+'\nDrawing diagnostics: '+JSON.stringify(await drawingDiagnostics(page)));}
 }
 
-const sourceFiles={workspaceSettings:'workspace-settings.js',publish:'publish.js',receive:'receive.js',eventToPulse:'event-to-pulse.js',signalToEvent:'signal-to-event.js',pageSettings:"page-settings.js",jsonEdit:"json-edit.js",jsonExtract:"json-extract.js",jsonBuild:"json-build.js",dateParse:"date-parse.js",dateFormat:"date-format.js",dateDifference:"date-difference.js",urlParameter:"url-parameter.js",goToTab:"go-to-tab.js",dropdown:'dropdown.js',textLookup:'text-lookup.js',textCompare:'text-compare.js',textExtract:'text-extract.js',numberToText:'number-to-text.js',textToNumber:'text-to-number.js',textCompose:'text-compose.js',textTransform:'text-transform.js',textReplace:'text-replace.js',textSelector:'text-selector.js',numberControl:'number-control.js',textInput:'text-input.js',numberInput:'number-input.js',textLabel:'text-label.js',memo:'memo.js',
-  dataSource:'data-source.js',captureRow:'capture-row.js',tableFilter:'table-filter.js',tableSort:'table-sort.js',tableAggregate:'table-aggregate.js',dataDownload:'data-download.js',dataTable:'data-table.js',dataBarChart:'data-bar-chart.js',toggle:'toggle.js',constant:'constant.js',compare:'compare.js',
-  and:'and-gate.js',or:'or-gate.js',not:'not-gate.js',xor:'xor-gate.js',nand:'nand-gate.js',nor:'nor-gate.js',xnor:'xnor-gate.js',buffer:'buffer.js',valueLabel:'value-label.js',
-  statusIndicator:'status-indicator.js',gauge:'gauge.js',numberInverter:'number-inverter.js',math:'math.js',triStateBuffer:'tri-state-buffer.js',
-  delay:'delay.js',counter:'counter.js',randomInteger:'random-integer.js',sampleHoldInteger:'sample-hold-integer.js',sampleHoldBoolean:'sample-hold-boolean.js',trigger:'trigger.js',
-  clamp:'clamp.js',rangeMap:'range-map.js',numberFunction:'number-function.js',pulseGenerator:'pulse-generator.js',edgePulse:'edge-pulse.js',
-  selectorNumber:'selector-number.js',selectorBoolean:'selector-boolean.js',steppedSelectorNumber:'stepped-selector-number.js',
-  steppedSelectorBoolean:'stepped-selector-boolean.js',steppedDistributorNumber:'stepped-distributor-number.js',steppedDistributorBoolean:'stepped-distributor-boolean.js',
-  shiftRegisterBoolean:'shift-register-boolean.js',shiftRegisterNumber:'shift-register-number.js',
-  srLatch:'sr-latch.js',dLatch:'d-latch.js',dFlipFlop:'d-flip-flop.js',registerBoolean:'register-boolean.js',registerNumber:'register-number.js',
-  ringCounter:'ring-counter.js',johnsonCounter:'johnson-counter.js',decadeCounter:'decade-counter.js',
-  sevenSegmentDisplay:'seven-segment-display.js',ledMatrix:'led-matrix.js',liveClock:'live-clock.js',stopwatch:'stopwatch.js',timer:'timer.js',spreadsheet:'spreadsheet.js'};
-
 test('bundled component sources, defaults, and displayed ports match the shipped examples',async()=>app(async({run})=>{
   const definitions=await run(`Promise.all(BUILTIN_LIBRARY_DEFINITIONS.filter(d=>d.items[0].componentApi===2).map(async d=>{
     const item=clone(d.items[0]),owner=createSmartExecution(item);
@@ -121,12 +107,12 @@ test('bundled component sources, defaults, and displayed ports match the shipped
       const caps=await requestSmartCaps(item,owner);
       const state=await requestSmartCall(item,'initState',[],owner);
       const style=await requestSmartCall(item,'initStyle',[],owner);
-      return {key:d.key,script:item.script,savedState:item.state,state,w:item.w,h:item.h,style,ports:d.ports,caps};
+      return {key:d.key,source:d.source,script:item.script,savedState:item.state,state,w:item.w,h:item.h,style,ports:d.ports,caps};
     }finally{disposeSmartExecution(owner);}
   }))`);
-  assert.deepEqual(definitions.map(d=>d.key).sort(),Object.keys(sourceFiles).sort());
+  assert.equal(new Set(definitions.map(d=>d.source)).size,definitions.length);
   for(const definition of definitions){
-    assert.equal(definition.script.trim(),fs.readFileSync(path.join(__dirname,'..','examples',sourceFiles[definition.key]),'utf8').trim(),
+    assert.equal(definition.script.trim(),fs.readFileSync(path.join(__dirname,'..','examples',definition.source),'utf8').trim(),
       definition.key+' bundled source must stay synchronized with the editable example');
     assert.deepEqual(definition.savedState,definition.state,definition.key+' saved defaults must match fresh placement');
     assert.equal(definition.w,definition.style.w);assert.equal(definition.h,definition.style.h);
@@ -459,13 +445,15 @@ test('Math operations are configured per instance in Inputs and persist through 
   assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 }));
 
-test('standalone API2 catalog components show their instance names in canvas, SVG, and offline HTML',async()=>app(async({page,run,context})=>{
+const catalogNameBatches=4;
+for(let batch=0;batch<catalogNameBatches;batch++)test('standalone API2 catalog instance names in canvas, SVG, and offline HTML · batch '+(batch+1)+'/'+catalogNameBatches,async()=>app(async({page,run,context})=>{
   await page.setViewportSize({width:1600,height:1250});
   const definitions=await run(`(()=>{
     // Spreadsheet cells fill the shape. Settings are authoring-only, while Publish/Receive
     // need a configured workspace; their labels have dedicated workspace authoring coverage.
     const excluded=new Set(['spreadsheet','pageSettings','workspaceSettings','publish','receive']);
-    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && !excluded.has(definition.key));
+    const definitions=BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].componentApi===2 && !excluded.has(definition.key))
+      .filter((definition,index)=>index%${catalogNameBatches}===${batch});
     datasets={catalog:{name:'Catalog sample',columns:[{key:'name',name:'Name',type:'string'},{key:'value',name:'Value',type:'number'}],rows:[['Sample',2]]}};
     const validInputs={
       clamp:{value:12,min:0,max:100},rangeMap:{value:25,inMin:0,inMax:100,outMin:0,outMax:1,clamp:true},
@@ -484,6 +472,8 @@ test('standalone API2 catalog components show their instance names in canvas, SV
       ])),...validInputs[definition.key]}
     }));setTool('select');selection=[];render();save();return definitions.map(definition=>definition.key);
   })()`);
+  // Disjoint batches cover every eligible entry while keeping graph work bounded per rename.
+  assert.ok(definitions.length>0);
   // This checks captions across the whole catalog, not wall-clock behavior. Keep the
   // clock/random/sample-hold sources from invalidating queued drawing replies while
   // the test renames every component. Timed behavior has its own focused regressions.

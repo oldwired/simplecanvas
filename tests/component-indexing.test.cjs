@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -5,8 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-const marker='  const BUILTIN_LIBRARY_DEFINITIONS = ',start=html.indexOf(marker)+marker.length;
-const definitions=JSON.parse(html.slice(start,html.indexOf(';\n  const BUILTIN_LIBRARY_THUMBNAILS',start)));
+const definitions=vm.runInNewContext(parseApp(html).declaration('BUILTIN_LIBRARY_DEFINITIONS')+'\nBUILTIN_LIBRARY_DEFINITIONS');
 
 test('every indexed built-in port family starts at zero with no gaps, including minimum and maximum channel counts',()=>{
   const audited=new Set();

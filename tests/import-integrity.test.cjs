@@ -2,14 +2,13 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
   .replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
@@ -28,8 +27,9 @@ async function twoTabs(run){
   return run(`(()=>{items=[${JSON.stringify(rect('tab-a'))}];save();const first=activeTabId;
     newTab();items=[${JSON.stringify(rect('tab-b',300))}];save();const second=activeTabId;activateTab(first);return {first,second};})()`);
 }
-const snapshot=run=>run(`({active:activeTabId,tabs:tabs.map(tab=>({id:tab.id,items:clone(tab.id===activeTabId?items:tabDocument(tab.id).items),
-  undo:clone(tab.id===activeTabId?undoStack:tabDocument(tab.id).undoStack),saved:localStorage.getItem(docKey(tab.id))}))})`);
+const snapshot=run=>run(`(async()=>{await persistWorkspace();const saved=await readSavedWorkspace();
+  return {active:activeTabId,tabs:tabs.map(tab=>({id:tab.id,items:clone(tab.id===activeTabId?items:tabDocument(tab.id).items),
+    undo:clone(tab.id===activeTabId?undoStack:tabDocument(tab.id).undoStack),saved:saved.workspace.tabs.find(entry=>entry.id===tab.id).document}))};})()`);
 
 test('a sketch file finishing after a tab switch cannot replace the newly active tab',async()=>app(async({page,run,dialogs})=>{
   const {second}=await twoTabs(run);
@@ -107,11 +107,12 @@ test('a file containing only overflowed geometry leaves the current drawing and 
 test('huge imported rotations remain finite in selection, SVG, and a saved drawing',async()=>app(async({page,run})=>{
   const angles=[1e308,-1e308,Number.MAX_VALUE,-Number.MAX_VALUE,Math.PI/3,-Math.PI/4];
   const source=angles.map((rotation,i)=>({...rect('angle-'+i,100+i*180),rotation,group:'group-'+i,groupRotation:rotation}));
-  const read=`(()=>{
+  const read=`(async()=>{
+    await persistWorkspace();const saved=await readSavedWorkspace();
     const frames=items.map(item=>worldFrameOf(item));
     const finite=value=>typeof value==='number'?Number.isFinite(value):Object.values(value).every(finite);
     return {angles:items.map(item=>[item.rotation,item.groupRotation]),finite:frames.every(finite),
-      svg:items.map(item=>itemToSVG(item)).join(''),saved:JSON.parse(localStorage.getItem(docKey(activeTabId))).items};
+      svg:items.map(item=>itemToSVG(item)).join(''),saved:saved.workspace.tabs.find(tab=>tab.id===activeTabId).document.items};
   })()`;
   const before=await run(`items=normalizeScene(${JSON.stringify(source)},{},FORMAT_VERSION).items;
     setTool('select');selection=[0];editingGroupId=items[0].group;save();render();${read}`);

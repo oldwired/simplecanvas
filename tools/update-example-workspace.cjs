@@ -3,320 +3,44 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
-const sources={
-  "demo-38-settings": "page-settings.js",
-  "demo-38-captured": "memo.js",
-  "demo-38-captured-text": "number-to-text.js",
-  "demo-38-record": "trigger.js",
-  "demo-38-capture": "capture-row.js",
-  "demo-38-value": "number-control.js",
-  "demo-38-label": "text-input.js",
-  "demo-38-table": "data-table.js",
-  "demo-38-reload": "trigger.js",
-  "demo-38-errors": "memo.js",
-  "demo-38-loaded": "memo.js",
-  "demo-38-loaded-text": "number-to-text.js",
-  "demo-38-source": "data-source.js",
-  "demo-37-settings": "page-settings.js",
-  "demo-37-timer-log": "memo.js",
-  "demo-37-timer-message": "text-compose.js",
-  "demo-37-run": "toggle.js",
-  "demo-37-timer": "timer.js",
-  "demo-37-count-log": "memo.js",
-  "demo-37-count-message": "text-compose.js",
-  "demo-37-reset": "trigger.js",
-  "demo-37-counter": "counter.js",
-  "demo-37-pulse": "event-to-pulse.js",
-  "demo-37-entry": "text-input.js",
-  "demo-37-samples": "memo.js",
-  "demo-37-sample-trigger": "trigger.js",
-  "demo-37-sample": "signal-to-event.js",
-  "demo-37-sample-value": "text-input.js",
-  "demo-36-settings": "page-settings.js",
-  "demo-36-selected": "memo.js",
-  "demo-36-selector": "text-selector.js",
-  "demo-36-select": "toggle.js",
-  "demo-36-reprocess": "trigger.js",
-  "demo-36-b": "text-input.js",
-  "demo-36-a": "text-input.js",
-  "demo-36-choices": "memo.js",
-  "demo-36-compose": "text-compose.js",
-  "demo-36-country": "dropdown.js",
-  "demo-36-city": "dropdown.js",
-  "demo-35-entry": "text-input.js",
-  "demo-35-name": "text-extract.js",
-  "demo-35-city": "text-extract.js",
-  "demo-35-compose": "text-compose.js",
-  "demo-35-events": "memo.js",
-  "demo-35-manual-name": "text-input.js",
-  "demo-35-manual-city": "text-input.js",
-  "demo-35-manual-compose": "text-compose.js",
-  "demo-35-manual-events": "memo.js",
-  "demo-35-apply": "trigger.js",
-  "demo-35-clear": "trigger.js",
-  "demo-33-formatted": "number-to-text.js",
-  "demo-34-entry": "text-input.js",
-  "demo-34-extract": "text-extract.js",
-  "demo-34-live": "text-label.js",
-  "demo-34-start": "number-control.js",
-  "demo-34-length": "number-control.js",
-  "demo-34-reprocess": "trigger.js",
-  "demo-34-append": "trigger.js",
-  "demo-34-events": "memo.js",
-  "demo-34-signals": "memo.js",
-  "demo-34-clear": "trigger.js",
-  "demo-34-scrollbars": "toggle.js",
-  "demo-33-entry": "text-input.js",
-  "demo-33-events": "memo.js",
-  "demo-33-signals": "memo.js",
-  "demo-33-number": "number-input.js",
-  "demo-33-numbers": "memo.js",
-  "demo-33-clear": "trigger.js",
-  "demo-32-navigate": "go-to-tab.js",
-  "demo-32-gauge": "gauge.js",
-  "demo-32-source": "number-control.js",
-  "demo-32-settings": "page-settings.js",
-  "demo-32-simulation": "toggle.js",
-  "demo-32-wiring": "toggle.js",
-  "demo-32-tabs": "toggle.js",
-  "demo-32-title": "text-input.js",
-  "demo-29-edit": "json-edit.js",
-  "demo-31-parameters": "json-build.js",
-  "demo-29-received-name": "url-parameter.js",
-  "demo-29-received-via": "url-parameter.js",
-  "demo-29-received-name-label": "text-label.js",
-  "demo-29-received-via-label": "text-label.js",
-  "demo-31-navigate": "go-to-tab.js",
-  "demo-31-codepoints": "text-transform.js",
-  "demo-31-visible": "text-transform.js",
-  "demo-31-characters": "text-input.js",
-  "demo-31-parse-target": "text-to-number.js",
-  "demo-31-target": "url-parameter.js",
-  "demo-31-welcome": "text-label.js",
-  "demo-31-greeting": "text-compose.js",
-  "demo-31-name": "url-parameter.js",
-  "demo-30-iso": "date-format.js",
-  "demo-30-days": "date-difference.js",
-  "demo-30-hours": "date-difference.js",
-  "demo-30-format": "date-format.js",
-  "demo-30-parse-end": "date-parse.js",
-  "demo-30-parse-start": "date-parse.js",
-  "demo-30-zone": "text-input.js",
-  "demo-30-end": "text-input.js",
-  "demo-30-start": "text-input.js",
-  "demo-29-nested-valid": "status-indicator.js",
-  "demo-29-nested-name": "json-extract.js",
-  "demo-29-nested": "text-input.js",
-  "demo-29-extract-amount": "json-extract.js",
-  "demo-29-extract-name": "json-extract.js",
-  "demo-29-build": "json-build.js",
-  "demo-29-enabled": "toggle.js",
-  "demo-29-amount": "number-control.js",
-  "demo-29-name": "text-input.js",
-  "demo-28-amount": "text-input.js",
-  "demo-28-trim": "text-transform.js",
-  "demo-28-parse": "text-to-number.js",
-  "demo-28-format": "number-to-text.js",
-  "demo-28-compose": "text-compose.js",
-  "demo-28-select": "text-selector.js",
-  "demo-28-result": "text-label.js",
-  "demo-28-valid": "status-indicator.js",
-  "demo-28-message": "text-input.js",
-  "demo-28-literal": "text-replace.js",
-  "demo-28-regex": "text-replace.js",
-  "demo-28-replaced": "text-label.js",
-  "demo-27-message": "text-input.js",
-  "demo-27-expected": "text-input.js",
-  "demo-27-same": "text-compare.js",
-  "demo-27-valid": "text-compare.js",
-  "demo-27-capture": "text-extract.js",
-  "demo-27-range": "text-extract.js",
-  "demo-27-same-result": "status-indicator.js",
-  "demo-27-valid-result": "status-indicator.js",
-  "demo-27-captured-label": "text-label.js",
-  "demo-27-ranged-label": "text-label.js",
-  "demo-27-capture-found": "status-indicator.js",
-  "demo-27-range-found": "status-indicator.js",
-  "demo-26-source": "data-source.js",
-  "demo-26-filter": "table-filter.js",
-  "demo-26-sort": "table-sort.js",
-  "demo-26-aggregate": "table-aggregate.js",
-  "demo-26-saved": "data-source.js",
-  "demo-26-copy": "trigger.js",
-  "demo-26-original": "data-table.js",
-  "demo-26-view": "data-table.js",
-  "demo-26-calculated": "data-table.js",
-  "demo-26-stored": "data-table.js",
-  "demo-24-source": "data-source.js",
-  "demo-24-working": "data-source.js",
-  "demo-24-source-editor": "data-table.js",
-  "demo-24-working-editor": "data-table.js",
-  "demo-25-source": "data-source.js",
-  "demo-25-source-editor": "data-table.js",
-  "demo-25-sheet": "spreadsheet.js",
-  "demo-25-results": "data-source.js",
-  "demo-25-result-editor": "data-table.js",
-  "demo-25-download": "data-download.js",
-  "demo-23-source": "data-source.js",
-  "demo-23-filter": "table-filter.js",
-  "demo-23-target": "data-source.js",
-  "demo-23-incoming": "spreadsheet.js",
-  "demo-23-threshold": "number-control.js",
-  "demo-23-replace": "trigger.js",
-  "demo-23-append": "trigger.js",
-  "demo-23-chart": "data-bar-chart.js",
-  "demo-23-sheet": "spreadsheet.js",
-  "demo-22-source": "data-source.js",
-  "demo-22-label": "text-input.js",
-  "demo-22-value": "number-control.js",
-  "demo-22-pulse": "trigger.js",
-  "demo-22-capture": "capture-row.js",
-  "demo-22-offset": "number-control.js",
-  "demo-22-sheet": "spreadsheet.js",
-  "demo-22-chart": "data-bar-chart.js",
-  "demo-22-download": "data-download.js",
-  "demo-1-source": "number-control.js",
-  "demo-1-gauge": "gauge.js",
-  "demo-1-readout": "value-label.js",
-  "demo-2-level": "number-control.js",
-  "demo-2-compare": "compare.js",
-  "demo-2-enabled": "toggle.js",
-  "demo-2-gate": "and-gate.js",
-  "demo-2-result": "status-indicator.js",
-  "demo-3-source": "number-control.js",
-  "demo-3-multiply": "math.js",
-  "demo-3-limit": "clamp.js",
-  "demo-3-scale": "range-map.js",
-  "demo-3-gauge": "gauge.js",
-  "demo-4-run": "toggle.js",
-  "demo-4-clock": "pulse-generator.js",
-  "demo-4-countdown": "counter.js",
-  "demo-4-digit": "seven-segment-display.js",
-  "demo-4-done": "status-indicator.js",
-  "demo-4-reset": "trigger.js",
-  "demo-5-send": "trigger.js",
-  "demo-5-delay": "delay.js",
-  "demo-5-delivered": "counter.js",
-  "demo-5-inputNow": "status-indicator.js",
-  "demo-5-afterDelay": "status-indicator.js",
-  "demo-6-next": "trigger.js",
-  "demo-6-reset": "trigger.js",
-  "demo-6-selector": "stepped-selector-number.js",
-  "demo-6-level": "gauge.js",
-  "demo-6-value": "value-label.js",
-  "demo-6-position": "value-label.js",
-  "demo-7-data": "toggle.js",
-  "demo-7-shift": "trigger.js",
-  "demo-7-reset": "trigger.js",
-  "demo-7-last": "status-indicator.js",
-  "demo-7-first": "shift-register-boolean.js",
-  "demo-7-second": "shift-register-boolean.js",
-  "demo-8-odd-rows": "toggle.js",
-  "demo-8-even-rows": "toggle.js",
-  "demo-8-odd-cols": "toggle.js",
-  "demo-8-even-cols": "toggle.js",
-  "demo-8-crossings": "led-matrix.js",
-  "demo-8-row-byte": "number-control.js",
-  "demo-8-smiley": "led-matrix.js",
-  "demo-8-columns": "led-matrix.js",
-  "demo-9-run": "toggle.js",
-  "demo-9-clock": "pulse-generator.js",
-  "demo-9-countdown": "counter.js",
-  "demo-9-digit": "seven-segment-display.js",
-  "demo-9-cycles": "counter.js",
-  "demo-10-clock": "pulse-generator.js",
-  "demo-10-countdown": "counter.js",
-  "demo-10-digit": "seven-segment-display.js",
-  "demo-10-keep-going": "not-gate.js",
-  "demo-10-reset": "trigger.js",
-  "demo-11-restart": "trigger.js",
-  "demo-11-stop": "sr-latch.js",
-  "demo-11-enabled": "not-gate.js",
-  "demo-11-clock": "pulse-generator.js",
-  "demo-11-countdown": "counter.js",
-  "demo-11-digit": "seven-segment-display.js",
-  "demo-12-set": "toggle.js",
-  "demo-12-reset": "toggle.js",
-  "demo-12-sr": "sr-latch.js",
-  "demo-12-nor-q": "nor-gate.js",
-  "demo-12-nor-notq": "nor-gate.js",
-  "demo-12-not-set": "not-gate.js",
-  "demo-12-not-reset": "not-gate.js",
-  "demo-12-nand-q": "nand-gate.js",
-  "demo-12-nand-notq": "nand-gate.js",
-  "demo-13-clock": "trigger.js",
-  "demo-13-data": "toggle.js",
-  "demo-13-reset": "trigger.js",
-  "demo-13-number": "number-control.js",
-  "demo-13-first": "d-flip-flop.js",
-  "demo-13-second": "d-flip-flop.js",
-  "demo-13-register": "register-number.js",
-  "demo-14-clock": "trigger.js",
-  "demo-14-reset": "trigger.js",
-  "demo-14-ring": "ring-counter.js",
-  "demo-14-johnson": "shift-register-boolean.js",
-  "demo-14-invert": "not-gate.js",
-  "demo-14-decade": "decade-counter.js",
-  "demo-15-delay": "delay.js",
-  "demo-15-invert": "not-gate.js",
-  "demo-15-output": "status-indicator.js",
-  "demo-16-entry": "text-input.js",
-  "demo-16-label": "text-label.js",
-  "demo-16-memo": "memo.js",
-  "demo-16-set": "trigger.js",
-  "demo-16-clear": "trigger.js",
-  "demo-16-count": "value-label.js",
-  "demo-16-number": "number-input.js",
-  "demo-16-gauge": "gauge.js",
-  "demo-17-source": "data-source.js",
-  "demo-17-filter": "table-filter.js",
-  "demo-17-boat": "text-input.js",
-  "demo-17-table": "data-table.js",
-  "demo-17-chart": "data-bar-chart.js",
-  "demo-18-source": "data-source.js",
-  "demo-18-reload": "trigger.js",
-  "demo-18-aggregate": "table-aggregate.js",
-  "demo-18-sort": "table-sort.js",
-  "demo-18-table": "data-table.js",
-  "demo-18-chart": "data-bar-chart.js",
-  "demo-18-download": "data-download.js",
-  "demo-19-manual": "dropdown.js",
-  "demo-19-manual-index": "value-label.js",
-  "demo-19-manual-key": "text-label.js",
-  "demo-19-manual-text": "text-label.js",
-  "demo-19-source": "data-source.js",
-  "demo-19-table": "data-table.js",
-  "demo-19-position": "number-control.js",
-  "demo-19-automatic": "dropdown.js",
-  "demo-19-automatic-text": "text-label.js",
-  "demo-19-valid": "status-indicator.js",
-  "demo-19-query": "text-input.js",
-  "demo-19-lookup": "text-lookup.js",
-  "demo-19-lookup-index": "value-label.js",
-  "demo-19-lookup-key": "text-label.js",
-  "demo-19-found": "status-indicator.js",
-  "demo-20-amount": "number-control.js",
-  "demo-20-enabled": "toggle.js",
-  "demo-20-sheet": "spreadsheet.js",
-  "demo-20-total": "value-label.js",
-  "demo-20-active": "status-indicator.js",
-  "demo-20-status": "text-label.js",
-  "demo-21-source": "data-source.js",
-  "demo-21-offset": "number-control.js",
-  "demo-21-sheet": "spreadsheet.js",
-  "demo-21-points": "value-label.js",
-  "demo-21-rows": "value-label.js",
-  "demo-21-scaled": "value-label.js"
-};
+// The editor enforces workspace-wide dataset identities on import. Canonical demo
+// sources resolve collisions once so subsequent HTML exports need no random remaps.
+function prepareExampleDatasetIdentities(workspace){
+  const counts=new Map();
+  for(const tab of workspace.tabs)for(const id of Object.keys(tab.datasets||{}))counts.set(id,(counts.get(id)||0)+1);
+  if(![...counts.values()].some(count=>count>1))return;
+  const reserved=new Set(counts.keys()),remaps=new Map();
+  for(const tab of [...workspace.tabs].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
+    const ids=new Map();remaps.set(tab.id,ids);
+    for(const id of Object.keys(tab.datasets||{}).sort()){
+      if(counts.get(id)===1){ids.set(id,id);continue;}
+      const base='demo-data-'+tab.id+'-'+id;let next=base.slice(0,100),number=2;
+      while(reserved.has(next)){const suffix='-'+number++;next=base.slice(0,100-suffix.length)+suffix;}
+      reserved.add(next);ids.set(id,next);
+    }
+  }
+  // Reuse the app's restricted walker, never traverse arbitrary component state,
+  // strings or table cells looking for matching IDs.
+  const {parseApp}=require('../tests/helpers/app-source.cjs'),vm=require('node:vm');
+  const app=parseApp(fs.readFileSync(path.join(root,'index.html'),'utf8'));
+  const eachDatasetReference=vm.runInNewContext('('+app.declaration('eachDatasetReference')+')');
+  for(const tab of workspace.tabs){
+    const own=remaps.get(tab.id);
+    tab.datasets=Object.fromEntries(Object.entries(tab.datasets||{}).map(([id,table])=>[own.get(id),table]));
+    eachDatasetReference(tab.items,reference=>{
+      const mapped=remaps.get(reference.sketchId||tab.id)?.get(reference.datasetId);
+      if(mapped)reference.datasetId=mapped;
+    });
+  }
+}
 
 async function exportWorkspaceReader({root,workspacePath,readerPath,tabCount}){
-  const {chromium,webkit}=require('playwright');
-  const html=fs.readFileSync(path.join(root,'index.html'),'utf8')
-    .replace('\n})();','\nwindow.__example={run:source=>eval(source)};\n})();');
+  const {launchBrowser}=require('../tests/helpers/browser.cjs');
+  const {parseApp}=require('../tests/helpers/app-source.cjs');
+  const html=parseApp(fs.readFileSync(path.join(root,'index.html'),'utf8')).inject('window.__example={run:source=>eval(source)};');
   const engine=process.env.BROWSER_ENGINE||'chromium';
   if(!['chromium','webkit'].includes(engine))throw new Error('Unsupported browser engine: '+engine);
-  const browser=await ({chromium,webkit}[engine]).launch({headless:true,
-    ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});
+  const browser=await launchBrowser({engine});
   try{
     const context=await browser.newContext({viewport:{width:1440,height:1000}});
     const page=await context.newPage(),errors=[];
@@ -345,16 +69,27 @@ async function updateExampleWorkspace({root:directory=root,exportReader=exportWo
   const readerPath=path.join(examples,'smart-components-workspace.html');
   const previousWorkspace=io.readFileSync(workspacePath),previousReader=io.readFileSync(readerPath);
   const workspace=JSON.parse(previousWorkspace.toString('utf8'));
+  // Keep importer-generated random IDs out of the reader. Once assigned, IDs follow
+  // their sketches through renaming/reordering and remain stable on later builds.
+  const sketchIds=new Set(workspace.tabs.map(tab=>tab.id).filter(Boolean));
+  workspace.tabs.forEach((tab,index)=>{
+    if(tab.id)return;
+    const base='demo-sketch-'+(index+1);let id=base,suffix=2;
+    while(sketchIds.has(id))id=base+'-'+suffix++;
+    tab.id=id;sketchIds.add(id);
+  });
+  prepareExampleDatasetIdentities(workspace);
   for(const tab of workspace.tabs){
     if(typeof tab.name==='string')tab.name=tab.name.replace(/Page settings/g,'Sketch settings');
     for(const item of tab.items)for(const key of ['text','componentName'])if(typeof item[key]==='string')item[key]=item[key].replace(/Page settings/g,'Sketch settings');
   }
   for(const tab of workspace.tabs)for(const item of tab.items){
     if(item.type!=='smart')continue;
-    if(!sources[item.uid])throw new Error('Add the source filename for '+item.uid+' to this generator');
-    item.script=io.readFileSync(path.join(examples,sources[item.uid]),'utf8');
-    if(sources[item.uid]==='data-source.js')item.datasetOwner='data';
-    if(sources[item.uid]==='page-settings.js'){
+    if(typeof item.exampleSource!=='string' || !/^[a-z0-9-]+\.js$/.test(item.exampleSource))
+      throw new Error('Set a valid exampleSource filename for '+item.uid);
+    item.script=io.readFileSync(path.join(examples,item.exampleSource),'utf8');
+    if(item.exampleSource==='data-source.js')item.datasetOwner='data';
+    if(item.exampleSource==='page-settings.js'){
       item.componentName=item.componentName==='Page settings'?'Sketch settings':item.componentName;
       item.state={overrideTitle:true,overrideShowTabs:true,overrideShowWiring:true,overrideShowSimulationControls:true,...item.state};
     }

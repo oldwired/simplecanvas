@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // The served copy alone exposes the app closure. Catalog discovery, placement,
 // persistence, Workers, and the downloaded reader remain production code.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn,{features={},files={}}={}){

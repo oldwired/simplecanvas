@@ -434,7 +434,11 @@ file's columns is an explicit import-dialog choice, not a persistent schema-chan
 CSV and JSON downloads contain the selected rows in their current order, using
 column keys as field names. JSON preserves scalar types and null values. CSV uses comma-separated
 fields, CRLF records, standard doubled-quote escaping, and empty cells for nulls; it cannot preserve
-every distinction between text, numbers, empty strings, and missing values on reimport. The dialog
+every distinction between text, numbers, empty strings, and missing values on reimport. The default
+**Spreadsheet-safe** mode prefixes formula-like text cells and headers with an apostrophe; numeric
+values remain numeric. **Raw (exact text)** preserves the original text. Both the direct download
+dialog and event/trigger-prepared downloads offer this choice. JSON retains the original typed data.
+The dialog
 previews the result before the user confirms. A paused, partially propagated graph must finish stepping or
 resume before downloading, so a file cannot mix intermediate results. These controls are a narrow
 local action contract, separate from the component-state [event API](#hybrid-valueevent-ports-event-api-1).
@@ -622,8 +626,9 @@ selected URL parameter values, retain their 2,000-unit limit.
 The host validates target, parameter shape, and bounds before applying the action, then uses
 `history.replaceState` to update the current URL without reloading or adding a history entry.
 A denied URL update reports an error and leaves the current tab and query unchanged. Successful
-navigation updates the runtime query environment and re-evaluates query-aware components on the
-destination; inactive tabs read the updated query when revisited. A same-tab action can therefore
+navigation updates the runtime query environment and re-evaluates query-aware components throughout
+the current execution scope. In Active sketch only mode, inactive sketches read it when revisited;
+in Whole workspace mode, every sketch can observe it immediately. A same-tab action can therefore
 change parameters and recompute; it is a no-op only when its query is also unchanged.
 
 Neither hook computation nor a script can directly access navigation, history, or the DOM.
@@ -674,6 +679,10 @@ or mutate another component. Start from the **Number control** or **Gauge** temp
 `inputs` and `outputs` are maps of port names to `{type}` descriptors, or synchronous pure
 `inputs(state)` / `outputs(state)` functions returning such maps from the current saved state.
 This supports author-configured port counts without making port layout depend on live inputs.
+Validated capabilities are cached by API marker, exact script source, and saved state; equivalent
+instances may share declarations while receiving independent copies. Declaration functions must be
+pure: do not use time, randomness, or Worker-local mutations to choose ports or other capabilities.
+Changing source or state obtains the corresponding declarations; cache eviction never changes semantics.
 Types are `number`, `string`, `boolean`, and `table`; scalar input descriptors may also include
 a matching `default`. Table ports carry validated dataset references, described below. A string input
 may declare `options`, an array of 1–32 distinct, nonempty strings of at most 2,000 characters each.
@@ -776,8 +785,9 @@ pure `compute`, keeping its hands, readout, and connected outputs synchronized.
 A component may declare top-level `queryParameters:true` to receive the host page's current
 runtime query string in `context.query` during `compute` and `transition`, including a leading
 `?` when present. The runtime initializes this value from its own `location.search` on opening
-and updates it through accepted `goToTab` actions. Query updates re-evaluate declared consumers,
-including on same-tab navigation and when an inactive tab is revisited. The value contains neither
+and updates it through accepted `goToTab` actions. Query updates re-evaluate declared consumers in
+the current execution scope, including on same-tab navigation; Active sketch only mode refreshes
+inactive sketches when revisited. The value contains neither
 the path nor fragment and exposes no host DOM or network access. Components without the capability
 do not receive this field. Editor and reader use their own environment independently. Library
 previews and HTML's initial frozen SVG use an empty query, so editor URL values are not baked
@@ -805,10 +815,11 @@ be optional or accept unknown values. The controller must have `compute` and no 
 controller; duplicates are graph errors. A persisted `pageSettings:true` item marker helps the
 editor prevent duplicate placement, but only a validated script capability grants host effects.
 
-The reader resolves the destination graph, applies settings, and then reveals the drawing.
-Live input changes update the current tab. No controller or an unavailable/invalid controller
-restores defaults: the export's original title, visible tab bar and simulation controls, and
-hidden wiring. An empty or whitespace-only title uses the original title; titles are bounded
+The reader resolves the destination graph, applies workspace defaults followed by sketch overrides,
+and then reveals the drawing. Live input changes update the current tab. Missing or unavailable
+sketch settings inherit workspace defaults; without valid workspace settings, these are the export's
+original title, visible tab bar and simulation controls, and hidden wiring. An empty or whitespace-only
+workspace title uses the original title; an explicitly overridden sketch title may be empty. Titles are bounded
 by the standard 2,000-UTF-16-unit string limit. Settings never affect the editor's authoring
 controls. Mark the controller's drawing children `editorOnly:true` to omit its block from
 exports. The built-in does so while retaining labelled connection endpoints in reader wiring.
@@ -859,14 +870,18 @@ counter, then emit false during one event. Positive Delay schedules a later even
 stays in the current bounded calculation. The runtime stops a non-settling loop with a visible
 error after at most 256 rounds while independent branches remain usable. A run also has a
 16,384-hook-call budget. Drawing order and Worker completion order do not choose the result.
+The fault remains on the affected group instead of retrying on unrelated edits or clock ticks.
+A relevant external input, state, script, or binding change, or a fresh timeline, permits another
+settling attempt. An external reset can therefore recover a faulted circuit.
 The host persists accepted combinational-cycle outputs
 as `signalState` on the item so a gate-built latch retains its bit through save/reload/copy/undo;
 scripts do not directly manipulate that field.
 
-The editor and exported HTML provide **Pause / Step / Resume** for the active document. Pause
+The editor and exported HTML provide **Pause / Step / Resume** for the current execution scope. Pause
 retains the current snapshot and stops active simulation time. Step advances one propagation
 round; when settled it advances to the next scheduled event. The status includes time, round,
-and recent signal changes. Pause is session-only and independent per document. Step advances
+and recent signal changes. Pause is session-only: independent per sketch in Active sketch only mode,
+or shared by all sketches in Whole workspace mode. Step advances
 logical active-document time; wall-clock Live clock, Stopwatch, and Timer still read actual wall
 time and are not fast-forwarded. Pure inspection and static exports never advance a paused timeline.
 Undo/Redo preserve the tab's Pause setting and simulation time while re-priming transient observation
@@ -878,8 +893,10 @@ never consume edges; their committed final value does. Missing inputs, Z, and fa
 compute calls clear that instance's transient observation. Replacement objects, changed scripts,
 and changed bindings re-prime it; changing a literal input is an ordinary input transition.
 
-Each document retains its own clock and transient memory across tab switches. Inactive/hidden
-documents pause, as does the editor's Edit dialog; the same instances resume on return.
+In Active sketch only mode, each sketch retains its clock and transient memory across tab switches;
+inactive sketches pause and resume on return. Whole workspace mode uses one timeline and continues
+processing every sketch, including sketches hidden from the reader tab bar. Hiding the browser page
+or opening the editor's Edit dialog pauses interval simulation in either mode.
 Saved JSON includes current durable counts/outputs, but reopening, duplicating, or undoing starts
 new transient observation. The built-in Counter preserves its saved count in either direction
 and seeds an already-high input without counting it. Its held reset follows the input while
@@ -1265,10 +1282,16 @@ next occurrence, so another branch cannot observe a partial receiver update.
 Delivery stages the initiating edit and receiver states before committing together. Invalid
 results, incompatible payloads, or exceeded work budgets reject the interaction. An accepted
 interaction is one editor Undo step; Undo/Redo restores outcomes without re-executing events.
-A tab switch, replaced instance, or changed wiring invalidates pending work. The dispatch queue
-is never serialized. Redraws, ordinary value settling, copying, reload, and HTML restoration do
-not re-emit submissions. Accepted user events run while signal simulation is paused; ordinary
-Boolean pulses still wait for Step or Resume.
+Once the source payload and graph snapshot have been captured, an accepted occurrence finishes
+atomically even if the browser page becomes hidden. New interactions and interval clocks pause;
+follow-up host actions wait until the page is visible again. Whole workspace mode also permits an
+accepted occurrence to finish after changing the visible sketch. Active sketch only mode cancels
+when leaving the source sketch. Page departure (`pagehide`, including entry into the back/forward
+cache), document replacement, editing-ownership loss, replaced participants, and changed wiring
+still cancel stale work. Unaccepted source hooks remain cancellable. The dispatch queue is never
+serialized. Redraws, ordinary value settling, copying, reload, and HTML restoration do not re-emit
+submissions. Accepted user events run while signal simulation is paused; ordinary Boolean pulses
+still wait for Step or Resume.
 
 Text input and Number input emit through their hybrid **Value** output while retaining their
 queued **Submitted** Boolean pulse. Trigger emits `true` through its hybrid Value output and
@@ -1348,7 +1371,8 @@ notifications described with dataset actions. These tabs enable reader wiring fo
 
 ### Saved components
 
-Sketch format 5 stores embedded datasets alongside items and assets. It retains the API marker on each component and bindings on the receiving item:
+Sketch/workspace format 6 stores embedded datasets alongside items and assets. It retains the API
+marker on each component and bindings on the receiving item:
 
 ```json
 {
@@ -1360,10 +1384,19 @@ Sketch format 5 stores embedded datasets alongside items and assets. It retains 
 }
 ```
 
-This is an excerpt; the item also retains its normal geometry, script, and state. The saved
-`componentApi` must match the script's `apiVersion`. Unsupported versions keep their source and
-saved values but cannot execute. Formats 1–4 remain readable; older app versions should not be
-used to edit connected documents. Derived outputs are recomputed, not stored as authoritative data.
+This is an excerpt; the item also retains its geometry and state. Native format 6 stores each
+distinct script once in a top-level `scripts` dictionary (`s0`, `s1`, …), with each smart item
+using a matching `scriptRef`. The source is hydrated before the component runs; live items,
+clipboard data and library transfers still contain inline scripts. IndexedDB workspace snapshots
+and HTML reader payloads share scripts the same way. Scripts are compared exactly, not by name
+or component type, and each instance retains its independent state. State fields named `script`
+or `scriptRef` remain ordinary state.
+
+The saved `componentApi` must match the script's `apiVersion`. Unsupported versions keep their
+source and saved values but cannot execute. Formats 1–5 with inline scripts remain readable;
+older app versions should not be used to edit current connected documents. Malformed pools,
+missing references or conflicting inline/reference sources reject the import without changing
+the current document. Derived outputs are recomputed, not stored as authoritative data.
 
 Copying, duplicating, or saving a connected selection to the library remaps its internal IDs
 as a unit. References outside the selection remain explicitly unresolved, even if a target
@@ -1372,12 +1405,15 @@ initialize fresh state. Undo/redo restores both state and bindings.
 
 Editor, static exports, library previews, and interactive HTML use the same validated computation
 contract. HTML keeps bindings working offline and retains changes across tabs; reopening restores
-the exported state. Typed events stay within the same sketch and do not replay after restoration.
-There are no cross-tab bindings or unrestricted external actions.
+the exported state. Ordinary bindings stay local; Whole workspace mode can pass values and typed
+events through explicit Publish/Receive endpoints. Events do not replay after restoration.
+There are no unrestricted external actions.
 
 ## Embedded table data
 
 `table` ports retain a compact `{datasetId}` reference or `{datasetId, rows:[0, 3, 7]}` selection.
+A direct reference to another sketch's shared Dataset also carries its owning `sketchId`; the host
+validates that owner in Whole workspace mode. Retain this field when forwarding such a reference.
 Omitting `rows` selects every row; `rows:[]` is an empty result. Selected indices refer to the
 original dataset, are unique integers, and retain their given order. A filter therefore returns
 references to its incoming dataset without duplicating row contents in state or saved output.
@@ -1613,9 +1649,12 @@ table input's **Edit…** controls. Creation names the dataset and its nullable 
 is staged until **Save**, just like import. CSV/TSV offers **Automatic**,
 **Comma**, **Semicolon**, and **Tab** delimiter choices. Automatic detection respects quoted cells and warns
 when the choice is ambiguous; changing the choice refreshes the typed-column and row preview.
-Type inference is independent of the delimiter: decimal-comma values remain strings. Imports stay
-provisional until **Save**, and **Cancel** discards them. Dataset selectors are document-local; connection
-selectors still allow one typed output per input. Copies and library entries carry only their
+Type inference is independent of the delimiter: decimal-comma values remain strings. Physically blank
+lines are ignored; quoted empty cells, delimiter-only records, and whitespace content remain rows.
+Imports stay provisional until **Save**, and **Cancel** discards them. Dataset selectors include local
+tables and, in Whole workspace mode, datasets whose owners enable **Show in workspace catalog**.
+Turning this off hides an owner from new choices without breaking existing references. Ordinary
+connection selectors still allow one typed output per input. Copies and library entries carry only their
 referenced tables, remapping dataset IDs if another document already uses an ID for different data.
 Duplicating or pasting a Dataset owner always allocates an independent stored table. Copying only a
 consumer within the same document retains its current shared reference; cross-document copies and
@@ -1895,8 +1934,9 @@ even though it renders fine on canvas.
 ## HTML export behavior
 
 Multi-tab readers accept `?page=N` to select the opening tab, using a zero-based index. Missing,
-invalid, or out-of-range values open the first tab. This applies to plain and smart exports;
-clicking another tab does not change the URL. Additional parameters remain available to declared
+invalid, or out-of-range values use the configured Workspace settings initial sketch when available,
+otherwise the first tab. Plain exports use the first tab as their fallback.
+Clicking another tab does not change the URL. Additional parameters remain available to declared
 query consumers, for example `drawing.html?page=1&name=Anna`. Query input is read locally and
 works for an exported file opened from disk as well as a hosted HTML document.
 
@@ -1935,7 +1975,9 @@ and cannot mutate the saved instance. `initState()` and `initStyle()` are not ca
 file opens: it resumes the exported state, style, and dimensions. State, movement, rotation, and
 dimension changes in the page are kept in memory across exported tab switches; reopening/reloading
 restores the export.
-Only the visible tab refreshes, and refreshes stop while the browser document is hidden.
+Only the visible sketch regenerates its drawing. Whole workspace mode continues component evaluation
+in every sketch; Active sketch only mode pauses inactive sketches. Both drawing refreshes and interval
+simulation stop while the browser document is hidden, with the accepted-event exception described above.
 
 For creator-only permission controls, mark **every visual child and its matching handle**:
 
@@ -1955,15 +1997,19 @@ permission toggles, off by default, with undo and sketch/workspace persistence. 
 **HTML: extend** controls width separately.
 
 The same Worker isolation, timeouts, reply validation, and network restrictions apply in HTML.
-A failing script keeps its last drawing (initially the frozen SVG) and retries after a backoff.
+A transient sandbox failure retries after a three-second backoff, retaining its original diagnostic.
+Unversioned shapes keep their last valid drawing; API v2 components show an unavailable drawing.
+Permanent configuration/connection errors wait for a relevant change rather than repeatedly retrying
+the whole graph. Unchanged valid reader drawings can be reused until their requested refresh is due.
 If JavaScript is disabled or unavailable, the initial SVG remains visible. The HTML contains the
 original shape source; `editorOnly` filters presentation and interaction, not source-code access.
 
 ### Live updates and exports
 
 The app owns one refresh timer for the active document and stops it while the browser document is
-hidden. Returning to a document refreshes live readings. Removing a shape, replacing its script,
-or changing tabs cancels its scheduling. Refreshes only redraw: they never mutate state, add undo
+hidden. Returning to a document refreshes live readings. Removing a shape or replacing its script
+cancels its drawing scheduling; changing tabs moves drawing refreshes to the newly visible sketch.
+Component simulation has the separate execution-scope rules above. Refreshes only redraw: they never mutate state, add undo
 entries, or autosave. Interactive controls remain available when smart-shape authoring is disabled.
 
 Derive readings from timestamps (`Date.now()` or `new Date()`), rather than incrementing counters
@@ -2029,17 +2075,23 @@ still rescale output. Check a known division on a printed template before use.
   replies do not extend it: an idle realm terminates on expiry; an active hook finishes or hits its
   existing request deadline, then the realm retires before its reply is delivered. This bounds
   background timers and Promise/async continuations scheduled after a successful return.
-  A timeout terminates only that instance's Worker and preserves healthy queued work. Failed live
-  drawings retain their last valid children and retry after a three-second backoff without requiring
-  another user interaction. Browser-level memory exhaustion is not a resource quota this boundary
+  A timeout terminates only that instance's Worker and preserves healthy queued work. Transient failures
+  retry after a three-second backoff without requiring another user interaction; the original failure
+  remains visible during that wait. Permanent API/configuration errors wait for a relevant change.
+  Browser-level memory exhaustion is not a resource quota this boundary
   can enforce. The app remains one HTML file and supports hosted and local use.
 - Workers start lazily. At most four instance Workers remain resident; the least recently used idle
   Worker is terminated before its slot is assigned a fresh realm. A resident Worker reuses only its
   own instance's compiled definition until its lifetime expires. Initialization, authoring and non-live previews/exports use
-  temporary owners, retired when their operation ends. App-owned state survives eviction, save/load,
+  temporary owners, retired when their operation ends. Accepted event deliveries also use temporary
+  owners so hiding the browser page cannot retire an already accepted transaction. App-owned state survives eviction, save/load,
   and undo/redo; eviction does not rerun initialization. Live drawing/handle caches and execution
-  owners are retired when an item leaves the active document or its script is replaced. Late
+  owners are retired when their item leaves the corresponding drawing/execution scope or its script is replaced. Late
   replies cannot recreate removed entries or commit state from an old source generation.
+- **Document resources:** image assets are limited to 16 MiB each and 64 MiB of distinct referenced
+  images per sketch. Imports and transfers validate the destination budget before applying changes.
+  Sketch names and library-entry names are limited to 120 characters. These are document/library
+  limits; scripts still cannot return image children or access stored assets directly.
 - Children cannot be nested smart shapes, tables, or asset-referencing images. Use the documented
   primitives above. Bézier controls (`c1`/`c2`) and polygon arcs (`arcTo`) are preserved.
 

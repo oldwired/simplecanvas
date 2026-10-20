@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose the served copy's closure to seed drawings and inspect persistence.
 // Form edits, component evaluation, source selection, and Save/Cancel are real.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -55,7 +54,7 @@ async function error(page,pattern){
   assert.match(await page.locator('#componentOutputs').textContent(),/unavailable/i,'invalid input clears the last successful output');
 }
 async function snapshot(run){
-  return run('({items,undo:undoStack,redo:redoStack,stored:JSON.parse(localStorage.getItem(docKey(activeTabId))).items})');
+  return run('(async()=>{await persistWorkspace();const saved=await readSavedWorkspace();return {items,undo:undoStack,redo:redoStack,stored:saved.workspace.tabs.find(tab=>tab.id===activeTabId).document.items};})()');
 }
 async function saveInputs(page){
   await page.locator('#componentBindingsSave').click();

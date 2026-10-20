@@ -1,13 +1,12 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-const start=html.indexOf('  function nextComponentBooleanInput('),end=html.indexOf('\n  function ',start+3);
-assert.ok(start>=0 && end>start);
 const context=vm.createContext({});
-vm.runInContext(html.slice(start,end)+'\nthis.toggle=nextComponentBooleanInput;',context);
+vm.runInContext(parseApp(html).declaration('nextComponentBooleanInput')+'\nthis.toggle=nextComponentBooleanInput;',context);
 const record={caps:{inputs:{enabled:{type:'boolean',default:true}}}},handle={input:'enabled'};
 
 test('Boolean switches change the actual unbound input literal and preserve independent input values',()=>{

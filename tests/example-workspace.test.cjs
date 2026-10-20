@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose only the served copy's closure. Component calls still cross the real
 // Worker boundary; downloaded HTML runs its own unmodified runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -26,14 +25,18 @@ async function app(fn){
     await page.route('http://example-workspace.test/**',route=>route.fulfill({
       status:route.request().url().endsWith('index.html')?200:404,contentType:'text/html',body:html}));
     await page.goto('http://example-workspace.test/index.html');
-    const run=source=>page.evaluate(source=>{
-      // Chromium's DevTools awaitPromise can lose an unrooted evaluation promise while
-      // Workers and a newer graph evaluation keep running. Retain this test bridge's
-      // completion until it settles; this neither retries nor changes application work.
-      const pending=window.__testPending||(window.__testPending=new Set());
-      const call=Promise.resolve(__test.run('appReady')).then(()=>__test.run(source));
-      const result=call.finally(()=>pending.delete(result));pending.add(result);return result;
-    },source);
+    let evaluationId=0;
+    const run=async source=>{
+      const id=++evaluationId;
+      try{return await page.evaluate(({source,id})=>{
+        // Keep the settled promise rooted until DevTools has returned its value, not
+        // merely until a JS finally callback runs. Do not retry application work.
+        const pending=window.__testPending||(window.__testPending=new Map());
+        const call=Promise.resolve(__test.run('appReady')).then(()=>__test.run(source));
+        pending.set(id,call);return call;
+      },{source,id});}
+      finally{await page.evaluate(id=>window.__testPending?.delete(id),id);}
+    };
     await run('appStarted');await fn({page,run,context});
     assert.deepEqual(errors,[],'no uncaught editor errors');
   }finally{await context.close();}
@@ -581,10 +584,11 @@ test('views and stored results demo edits original records through sorted views 
 test('shipped views and stored results comparison keeps view edits shared and calculated copies independent offline',async()=>{
   const context=await browser.newContext({viewport:{width:1600,height:1100}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
-  const tab=workspace.tabs[25],readings=tab.datasets.readings,saved=tab.datasets.saved;
+  const tab=workspace.tabs[25],readingsId=itemFor(26,'source').inputValues.data.datasetId,savedId=itemFor(26,'saved').inputValues.data.datasetId;
+  const readings=tab.datasets[readingsId],saved=tab.datasets[savedId];
   const cellPoint=async(id,row,column)=>{
     const item=itemFor(26,id),definition=vm.runInNewContext(item.script),selected=id==='view',derived=id==='calculated',table=derived||id==='stored'?saved:readings;
-    const reference={datasetId:derived?'derived-results':id==='stored'?'saved':'readings',...(selected?{rows:[1,0]}:{})};
+    const reference={datasetId:derived?'derived-results':id==='stored'?savedId:readingsId,...(selected?{rows:[1,0]}:{})};
     const snapshot={...table,datasetId:reference.datasetId,rows:selected?[table.rows[1],table.rows[0]]:table.rows,rowIds:selected?[table.rowIds[1],table.rowIds[0]]:table.rowIds,rowCount:selected?2:table.rows.length,editable:!derived};
     const io={inputs:{data:reference,startRow:0,startColumn:0},tables:{inputs:{data:snapshot}}};
     // Derive the actual rendered cell center. WebKit text bounds are not reliable inside the SVG host.
@@ -624,7 +628,11 @@ test('text operations demo compares and extracts connected strings in the editor
     const before=await page.locator('[data-smart-inline-input]').getAttribute('data-submissions');
     await field.fill(value);await field.press('Enter');
     await page.waitForFunction(before=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>Number(before||0),before);
-    await run('smartHitSettled');await field.press('Escape');
+    await run('smartHitSettled');
+    // These examples inspect retained signals: an accepted entry may still be queued
+    // behind the previous entry's pulse, which keeps its captured value until low.
+    await waitState(page,27,id,'state.pending.length===0 && !state.submitted');
+    await field.press('Escape');
   };
   await enter('message','Order-7 🚀');
   assert.equal((await outputs(run,27,'same-result')).value,false);
@@ -684,7 +692,9 @@ test('text processing demo formats parsed amounts, selects a fallback, and repla
     const before=await page.locator('[data-smart-inline-input]').getAttribute('data-submissions');
     await field.fill(value);await field.press('Enter');
     await page.waitForFunction(before=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>Number(before||0),before);
-    await run('smartHitSettled');await field.press('Escape');await field.waitFor({state:'detached'});
+    await run('smartHitSettled');
+    await waitState(page,28,id,'state.pending.length===0 && !state.submitted');
+    await field.press('Escape');await field.waitFor({state:'detached'});
   };
   await enter('amount','7,5');
   assert.equal((await outputs(run,28,'result')).value,'Total: 007,50 €');

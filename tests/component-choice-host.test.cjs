@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -6,11 +7,9 @@ const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const names=['smartNumber','componentPortName','datasetOwnersOf','componentTableSnapshot','normalizeComponentChoiceHandle','componentChoiceSnapshot','nextComponentChoiceInput','validateSmartReply'];
 const scope=vm.createContext({isNum:v=>typeof v==='number' && Number.isFinite(v)});
-const functions=names.map(name=>{const start=html.indexOf('  function '+name+'('),end=html.indexOf('\n  function ',start+3);assert.ok(start>=0 && end>start);return html.slice(start,end);});
+const functions=parseApp(html).declarationsSource(names);
 const dataStart=html.indexOf('// ---------- embedded datasets ----------'),dataEnd=html.indexOf('// End of embedded dataset contract.');
-// validateSmartReply is followed by declarations, so trim that final extraction at its exact end marker.
-functions[functions.length-1]=html.slice(html.indexOf('  function validateSmartReply('),html.indexOf('  // ---------- Smart-shape children()'));
-vm.runInContext(html.slice(dataStart,dataEnd)+'\n'+functions.join('\n')+'\nthis.api={normalizeComponentChoiceHandle,componentChoiceSnapshot,nextComponentChoiceInput,validateSmartReply};',scope);
+vm.runInContext(html.slice(dataStart,dataEnd)+'\n'+functions+'\nthis.api={normalizeComponentChoiceHandle,componentChoiceSnapshot,nextComponentChoiceInput,validateSmartReply};',scope);
 const api=scope.api,plain=value=>JSON.parse(JSON.stringify(value));
 const handle={id:'pick',kind:'choice',input:'select',value:0,options:[{value:0,label:'Idle'},{value:1,label:'Running'}],inline:{x:0,y:0,w:100,h:30},x:50,y:15};
 const record={caps:{inputs:{select:{type:'number',default:0},data:{type:'table'}}},io:{inputs:{select:0,data:{datasetId:'rows'}}}};

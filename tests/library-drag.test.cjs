@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the served copy exposes the closure for fixtures and assertions. Placement
 // starts with real browser pointer/keyboard input and keeps the production Workers.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 const rect={type:'rect',x:0,y:0,w:200,h:80,color:'#1e293b',fill:true,fillColor:'#eab308',size:2};
@@ -121,7 +120,7 @@ for(const source of ['working','catalog'])test(source+' first drag survives a li
   await assertCentered(run,[1,2],point);
 }));
 
-test('a delayed text alignment during a drag cannot discard a library placement',async()=>app(async({page,run})=>{
+test('a delayed text alignment is cancelled when a library drag takes over the interaction',async()=>app(async({page,run})=>{
   await run(`items[0]={type:'text',uid:'text',x:1040,y:650,w:260,h:60,text:'Alignment example',
     font:'600 24px sans-serif',fontFamily:'sans',fontSize:24,color:'#1e293b',align:'left'};
     selection=[0];render();save();
@@ -130,18 +129,21 @@ test('a delayed text alignment during a drag cannot discard a library placement'
       if(delay===300){window.__finishAlignment=()=>callback(...args);return nativeTimeout(()=>{},60000);}
       return nativeTimeout(callback,delay,...args);
     };`);
-  const canvas=await page.locator('#canvas').boundingBox();
+  const canvas=await page.locator('#canvas').boundingBox(),history=await run('undoStack.length');
   await page.mouse.click(canvas.x+1270,canvas.y+680);
   assert.equal(await page.evaluate(()=>typeof window.__finishAlignment),'function','real text click schedules alignment');
   await beginDrag(page,await thumbnail(page,'working','Connected drawing'));
   await page.evaluate(()=>window.__finishAlignment());
-  assert.equal(await run('items[0].align'),'right','the preceding text edit still completes');
+  assert.equal(await run('items[0].align'),'left','a stale alignment callback cannot mutate the scene during a drag');
+  assert.equal(await run('undoStack.length'),history,'cancelled alignment does not create a history entry');
   const point=await finishDrop(page,run);
   assert.equal(await run('items.length'),4,'the same first drop adds the connected group');
+  assert.equal(await run('undoStack.length'),history+1,'the placement creates one history entry');
   await assertCentered(run,[1,2,3],point);
   await run('undo()');
-  assert.equal(await run('items.length'),1);assert.equal(await run('items[0].align'),'right','placement has its own Undo step');
-  await run('undo()');assert.equal(await run('items[0].align'),'left','the preceding edit keeps its own Undo step');
+  assert.equal(await run('items.length'),1);assert.equal(await run('items[0].align'),'left','one Undo removes the placement and preserves the original text');
+  assert.equal(await run('undoStack.length'),history,'the placement is the only new edit');
+  await run('redo()');assert.equal(await run('items.length'),4);assert.equal(await run('items[0].align'),'left');
 }));
 
 test('filtering a pressed catalog entry out still cancels its pending drag',async()=>app(async({page,run})=>{

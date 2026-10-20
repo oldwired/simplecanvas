@@ -1,13 +1,9 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-function declaration(name){
-  const start=html.indexOf('  function '+name+'(');
-  const end=html.slice(start+3).search(/\n  (?:async )?function /);
-  assert.ok(start>=0 && end>=0,name);
-  return html.slice(start,start+3+end);
-}
+const declaration=parseApp(html).declaration;
 function fixture(){
   const item={uid:'service',script:'source'},scope=vm.createContext({
     runtime:[item],items:[item],activeTabId:'services',smartExecutionSeq:0,

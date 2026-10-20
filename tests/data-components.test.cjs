@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose the editor fixture only. Every component still crosses the actual
 // Worker boundary; downloaded HTML uses its own unmodified offline runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -87,7 +86,7 @@ async function childrenText(run,index){
     return (await requestSmartCall(item,'children',[item.state,smartResolvedStyle(item),item.w,item.h,false,io])).filter(child=>child.type==='text').map(child=>child.text);})()`);
 }
 async function dataSnapshot(run){
-  return run('({active:activeTabId,items:clone(items),datasets:clone(datasets),undo:clone(undoStack),redo:clone(redoStack),stored:localStorage.getItem(docKey(activeTabId))})');
+  return run('(async()=>{await persistWorkspace();const saved=await readSavedWorkspace();return {active:activeTabId,items:clone(items),datasets:clone(datasets),undo:clone(undoStack),redo:clone(redoStack),stored:saved.workspace.tabs.find(tab=>tab.id===activeTabId).document};})()');
 }
 
 test('one embedded dataset drives a filter, table and chart through the actual Text input',async()=>app(async({page,run})=>{
@@ -113,7 +112,7 @@ test('one embedded dataset drives a filter, table and chart through the actual T
 
 test('table references survive reload and a complete workspace download/import without duplicating source data',async()=>app(async({page,run})=>{
   await seed(run,circuit,{results});await run('save()');
-  const stored=await run('JSON.parse(localStorage.getItem(docKey(activeTabId)))');
+  const stored=(await dataSnapshot(run)).stored;
   assert.deepEqual(stored.datasets,{results});assert.deepEqual(stored.items[0].inputValues.data,{datasetId:'results'});
   await page.reload();await run('appStarted');assert.equal((await output(run,2)).rowCount,2);
   assert.deepEqual(await run('datasets'),{results});
@@ -484,8 +483,8 @@ test('repeated file previews retain only the original data and latest import, th
   await page.locator('#componentBindingsSave').click();await page.waitForFunction(()=>!document.querySelector('#componentBindingsDialog').open);
   const after=await dataSnapshot(run);assert.equal(after.undo.length,before.undo.length+1);
   assert.deepEqual(after.items[0].inputValues.data,{datasetId:latest[0]});assert.equal((await output(run,0)).rowCount,20);
-  assert.deepEqual(Object.keys(JSON.parse(after.stored).datasets),[latest[0]],'only the current dataset is persisted with the drawing');
+  assert.deepEqual(Object.keys(after.stored.datasets),[latest[0]],'only the current dataset is persisted with the drawing');
   await run('undo()');await waitCount(page,0,3);
   assert.deepEqual(await run('items[0].inputValues.data'),{datasetId:'results'});
-  assert.deepEqual(await run('JSON.parse(localStorage.getItem(docKey(activeTabId))).datasets'),{results});
+  assert.deepEqual((await dataSnapshot(run)).stored.datasets,{results});
 }));

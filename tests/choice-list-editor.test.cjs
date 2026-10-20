@@ -1,16 +1,16 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const html=source.replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
-const start=source.indexOf('  function parseComponentChoices('),end=source.indexOf('\n  // Value controls',start);
-const contract=vm.createContext({});vm.runInContext(source.slice(start,end)+'\nthis.parse=parseComponentChoices;',contract);
+const contract=vm.createContext({});vm.runInContext(parseApp(source).declaration('parseComponentChoices')+'\nthis.parse=parseComponentChoices;',contract);
 const engine=process.env.BROWSER_ENGINE||'chromium';let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{await browser?.close();});
 
 test('local choice list validation preserves text, allows blank keys, and bounds stored configuration',()=>{

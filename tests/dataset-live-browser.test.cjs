@@ -1,8 +1,8 @@
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),vm=require('node:vm');
-const {pathToFileURL}=require('node:url'),{chromium,webkit}=require('playwright');
+const {pathToFileURL}=require('node:url'),{launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..'),scripts=Object.fromEntries(['data-source','table-sort','toggle','spreadsheet'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name+'.js'),'utf8')]));
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
-let browser;before(async()=>{browser=await ({chromium,webkit}[process.env.BROWSER_ENGINE||'chromium']).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});after(async()=>{await browser?.close();});
+let browser;before(async()=>{browser=await launchBrowser();});after(async()=>{await browser?.close();});
 async function app(fn){const context=await browser.newContext({viewport:{width:1600,height:1100}});try{
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.route('http://dataset-source.test/**',route=>route.fulfill({status:route.request().url().endsWith('index.html')?200:404,contentType:'text/html',body:html}));await page.goto('http://dataset-source.test/index.html');

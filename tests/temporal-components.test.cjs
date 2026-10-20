@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose only the served copy's closure. Component calls still cross the real
 // Worker boundary; downloaded HTML runs its own unmodified runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -45,10 +44,10 @@ async function editorHandle(page,run,index,id){
   return handle;
 }
 async function openExport(page,run,context){
-  const download=page.waitForEvent('download');await run('exportHtml()');
+  const [download]=await Promise.all([page.waitForEvent('download'),run('exportHtml()')]);
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-temporal-'));
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
-  const file=path.join(directory,'document.html');fs.copyFileSync(await(await download).path(),file);
+  const file=path.join(directory,'document.html');fs.copyFileSync(await download.path(),file);
   const preview=await context.newPage(),errors=[],requests=[];
   preview.on('pageerror',error=>errors.push(error.message));
   preview.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
@@ -498,7 +497,7 @@ test('Trigger button emits once on release, queues rapid clicks, and works offli
   await page.waitForTimeout(250);assert.equal(await run('items[1].state.count'),5,'reopening a saved high pulse does not replay it');
   // Export the captured high snapshot itself, so the reader also starts with a
   // stored true output and nonzero press token rather than an editor-cleaned copy.
-  await run(`items=${JSON.stringify(project.items)};rememberActiveTab();`);
+  await run(`items=unpackSmartScriptLists([${JSON.stringify(project.items)}],${JSON.stringify(project.scripts)})[0];rememberActiveTab();`);
   const {preview,errors,requests}=await openExport(page,run,context);
   await preview.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===2);
   const readerIdle=async count=>{

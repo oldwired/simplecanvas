@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Only the editor fixture exposes its closure. All scripts cross the real Worker
 // boundary; downloaded HTML uses the unmodified, self-contained reader runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -176,11 +175,16 @@ test('inline text and number fields discard stale drafts after tab switches, und
     const original=(await outputs(run,0)).value,tabId=await run('activeTabId');
     await run('beginHistory();items[0].x+=1;commitHistory();save();');
     const {field,input}=await openEntry(page,run,0,type);await input.fill(type==='text'?'stale':'42');
-    if(action==='hidden')await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
+    if(action==='hidden')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
     else if(action==='visibility')await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
     else await run(action==='undo'?'undo()':'newTab()');
     await field.waitFor({state:'detached'});await run('smartHitSettled');
-    if(action==='hidden')await page.evaluate(()=>window.dispatchEvent(new Event('pageshow')));
+    if(action==='hidden'){
+      // Returning to the same document models BFCache restoration; a fresh pageshow
+      // belongs to a new document, whose normal startup owns the persistence setup.
+      await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+      await page.waitForFunction(()=>__test.run('workspaceStorage.writable && workspaceStorage.owned && !workspaceStorage.suspended'));
+    }
     if(action==='visibility')await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
     if(action==='tab'){assert.equal(await run('items.length'),0);await run('activateTab('+JSON.stringify(tabId)+')');}
     assert.equal((await outputs(run,0)).value,original);assert.equal(await run('items[1].state.count'),0);

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
@@ -12,7 +12,7 @@ const scripts=Object.fromEntries(names.map(name=>[name,fs.readFileSync(path.join
 const defs=Object.fromEntries(Object.entries(scripts).map(([name,script])=>[name,vm.runInNewContext(script)]));
 const artifact=(2.8*2/10)*100;
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[process.env.BROWSER_ENGINE||'chromium']).launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser();});
 after(async()=>{await browser?.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1500,height:1000}});

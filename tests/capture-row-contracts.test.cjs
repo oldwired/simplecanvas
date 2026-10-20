@@ -134,7 +134,7 @@ function dispatchFixture(reader=false){
   const document={hidden:false,querySelector:()=>null};
   let gate=Promise.resolve();
   const commit=(command,valid)=>{if(!valid())throw Object.assign(new Error('Cancelled'),{cancelled:true});calls.push(command.row);table.rows.push(Object.values(command.row));return {table};};
-  const scope=vm.createContext({Promise,console,smartCancelled:()=>Object.assign(new Error('Cancelled'),{cancelled:true}),items:context.scene,editorTimeline:timeline,timeline,activeTabId:'tab',runtimeGeneration:1,workspaceGeneration:1,workspaceContext:context,entries:[entry],document,datasets:pool,
+  const scope=vm.createContext({Promise,console,smartCancelled:()=>Object.assign(new Error('Cancelled'),{cancelled:true}),items:context.scene,editorTimeline:timeline,timeline,activeTabId:'tab',runtimeGeneration:1,workspaceGeneration:1,editorEventEpoch:0,workspaceStorage:{writable:true},workspaceContext:context,entries:[entry],document,datasets:pool,
     DATASET_ID:/^[a-zA-Z0-9_-]+$/,datasetReference:value=>value,datasetOwnersOf:p=>p[Symbol.for('simplecanvas.datasetOwners')],
     componentRuntimeId:()=> 'owned',editorRuntimeContext:()=>context,entryFor:it=>it===item?entry:null,
     takeComponentDataActions:t=>{const actions=t.dataActions;t.dataActions=[];return actions;},
@@ -164,6 +164,19 @@ test('editor dispatch preserves all sampled rows; stale source bindings cancel q
   assert.deepEqual(f.calls,[{value:1},{value:2}]);assert.deepEqual(f.events.map(e=>e.status),['success','success']);
   const release=f.block();f.timeline.dataActions=[f.intent(3)];f.scope.dispatch(f.timeline,f.scope.items,'tab');
   f.item.bindings={data:{uid:'different',port:'data'}};release();await f.drain();assert.equal(f.calls.length,2);assert.deepEqual(f.errors,[]);
+});
+
+test('editor page lifecycle invalidation cancels captured rows even when the same workspace becomes visible again',async()=>{
+  const f=dispatchFixture(),release=f.block();
+  f.timeline.dataActions=[f.intent(1)];f.scope.dispatch(f.timeline,f.scope.items,'tab');
+  assert.equal(f.scope.dispatcher.running,true,'capture is waiting for the accepted graph');
+  f.scope.document.hidden=true;f.scope.editorEventEpoch++;
+  f.scope.document.hidden=false;release();await f.drain();
+  assert.deepEqual(f.calls,[],'returning to the same workspace does not revive pre-pagehide work');
+  assert.deepEqual(f.events,[]);assert.deepEqual(f.errors,[],'cancellation is not a failed capture');
+  f.timeline.dataActions=[f.intent(2)];f.scope.dispatch(f.timeline,f.scope.items,'tab');await f.drain();
+  assert.deepEqual(f.calls,[{value:2}],'a newly accepted capture uses the new lifecycle epoch');
+  assert.deepEqual(f.events.map(event=>event.status),['success']);
 });
 
 test('reader dispatch requires explicit capture permission and never treats import permission as capture permission',async()=>{

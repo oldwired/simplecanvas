@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -5,12 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const plain=value=>JSON.parse(JSON.stringify(value));
-function helper(name){
-  const match=new RegExp('  (?:async )?function '+name+'\\(').exec(html);
-  assert.ok(match,name+' is present');
-  const source=html.slice(match.index),end=/\n  (?:async )?(?:function |const |let )/.exec(source);
-  return end?source.slice(0,end.index):source;
-}
+const helper=parseApp(html).declaration;
 function api(){
   const names=['componentPortName','componentScalar','normalizeComponentEventPorts','normalizeComponentEvents',
     'componentEventPayloadType','componentReplyEvents','componentEventBinding','normalizeComponentHybridEvents','transformComponentEvent','normalizeSmartState','smartNumber','componentValue','normalizeComponentOutputs','smartCancelled','prepareComponentEventDelivery'];

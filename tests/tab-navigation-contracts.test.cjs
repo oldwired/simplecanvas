@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -6,10 +7,9 @@ const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const script=fs.readFileSync(path.join(__dirname,'..','examples','go-to-tab.js'),'utf8');
 const def=vm.runInNewContext(script),plain=value=>JSON.parse(JSON.stringify(value));
-const context=vm.createContext({});
+const context=vm.createContext({}),appSource=parseApp(html);
 for(const name of ['componentPortName','normalizeComponentActionDeclarations','normalizeComponentDataAction','prepareComponentTabNavigation','primeComponentNavigation']){
-  const start=html.indexOf('  function '+name+'('),end=html.indexOf('\n  function ',start+3);
-  assert.ok(start>=0 && end>start,name);vm.runInContext(html.slice(start,end),context);
+  vm.runInContext(appSource.declaration(name),context);
 }
 const record={caps:{apiVersion:2,inputs:plain(def.inputs),dataActions:plain(def.dataActions)},io:{inputs:{page:1,parameters:'{}',go:false}}};
 

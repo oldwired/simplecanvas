@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Instrument the served editor only. Exported HTML and all component Workers
 // retain their production runtime, timers, and input handling.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
@@ -79,10 +78,12 @@ test('Stopwatch publishes paused milliseconds through connected run/reset inputs
   await editorHandle(page,run,0,'toggle');assert.equal(typeof await run('items[2].state.startedAt'),'number');
   assert.equal(await result(run),0);
   const first=await reading(page,'measured','00:00:00.000');
-  const stable=await run('JSON.stringify({state:items[2].state,storage:{...localStorage},history:undoStack.length})');
+  await run('persistWorkspace()');
+  const snapshot='(async()=>JSON.stringify({state:items[2].state,storage:await readSavedWorkspace(),history:undoStack.length}))()';
+  const stable=await run(snapshot);
   await reading(page,'measured',first);
   assert.equal(await result(run),0,'live display updates do not publish an unfinished measurement');
-  assert.equal(await run('JSON.stringify({state:items[2].state,storage:{...localStorage},history:undoStack.length})'),stable,
+  assert.equal(await run(snapshot),stable,
     'redrawing a running stopwatch does not mutate state, autosave, or add undo steps');
   await editorHandle(page,run,0,'toggle');
   const paused=await run('items[2].state.elapsedMs');assert.ok(Number.isInteger(paused) && paused>0);
@@ -135,14 +136,15 @@ test('Stopwatch keeps manual overrides and running timestamps across hidden time
   await editorHandle(page,run,0,'toggle');await reading(page,'measured','00:00:00.000');
   await editorHandle(page,run,2,'toggle');const paused=await run('items[2].state.elapsedMs');
   await editorHandle(page,run,4,'toggle');
-  const startedAt=await run('save();items[4].state.startedAt');
+  const startedAt=await run('(async()=>{save();await persistWorkspace();return items[4].state.startedAt;})()');
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
   await page.waitForTimeout(250);
   await page.reload();await run('appStarted');
   assert.deepEqual(await run('items[2].state'),{elapsedMs:paused,startedAt:null,observedRun:true},'a manual pause overrides the saved true run signal after reload');
   assert.equal(await run('items[4].state.startedAt'),startedAt,'manual Start with the default false run input survives reload');
   await editorHandle(page,run,4,'toggle');
-  assert.ok(await run('items[4].state.elapsedMs')>=250,'the measurement includes time spent hidden');
+  const resumed=await run('({state:items[4].state,writable:workspaceStorage.writable,storageError:workspaceStorage.error,now:Date.now()})');
+  assert.ok(resumed.state.elapsedMs>=250,'the measurement includes time spent hidden: '+JSON.stringify(resumed));
   assert.equal(await result(run),paused/1000);
 
   await editInputs(page,run,4,async()=>{

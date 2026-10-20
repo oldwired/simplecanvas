@@ -1,13 +1,27 @@
 # SimpleCanvas — Project Notes
 
 Single-file HTML/CSS/JS canvas drawing app. Everything lives in `index.html` —
-no build step, no dependencies.
+no build step or runtime dependencies. Node.js tooling is development-only.
 
 ## Current implementation
 
 The branch/provenance notes below describe earlier development. The current app includes the merged
 PR #2 changes: complete working documents and image/history state live in `tabDocuments`, independently
-of browser storage. Failed autosave shows a persistent warning with a workspace-download action.
+of browser storage. The current workspace autosaves as an atomic IndexedDB snapshot, with one
+writable editor per browser profile, origin and application path. Other windows stay read-only;
+**Take over editing** loads the latest saved workspace and retires the previous writer. Failed
+autosave preserves the working documents and shows a persistent warning with a workspace-download
+action. Corrupt snapshots stay protected until explicit recovery; imported legacy localStorage
+data remains as a backup. Small session/localStorage ownership handoff receipts support reload
+and graceful close/reopen; they contain no drawing data. The library uses its own separate
+IndexedDB store. HTML readers keep session-local changes only and do not participate in editor
+storage or ownership.
+
+Native format 6 pools repeated scripts at storage/export boundaries: one `scripts` dictionary and
+per-item `scriptRef` fields in sketch/workspace files, IndexedDB workspace snapshots and HTML
+payloads. Live items stay hydrated with inline scripts; clipboard and library transfers remain
+inline. Never walk arbitrary state to replace strings or keys. Reject invalid references/pools
+atomically and preserve corrupt autosaves for recovery.
 
 HTML export retains smart-shape scripts/state in an offline SVG runtime using the same Worker
 sandbox, validators, and primitive/SVG renderers. Scripted controls run directly with `editing=true`;
@@ -17,7 +31,33 @@ that object; all permissions default off. The ruler's marked editor controls set
 permissions, binding move and rotate to one toggle. The editor and export share Shift-to-15° rotation
 snapping, including original group/own angles.
 Rotation preserves script-local hit testing; resizing anchors the opposite edge.
-Keep example sources, embedded templates, and the demo library scripts in sync.
+Keep the canonical example sources, built-in catalog, and generated demo library scripts in sync.
+Run `tools/update-builtin-catalog.cjs` after editing a source (use `--check` in validation).
+Authoring templates reuse catalog scripts; main-demo instances carry validated `exampleSource` filenames
+instead of a UID lookup table. Runtime normalization drops that generator-only metadata.
+Previews remain inert PNG data URLs; their optional Pillow optimizer is development-only.
+
+Validated smart capabilities use a bounded cache keyed by API marker, source and state; callers
+receive independent copies. Stateful declarations must invalidate with state. Feedback faults
+survive unrelated graph changes and recover on relevant definition/input changes or a new timeline.
+Reader `data-smart-ready` identifies a completed paint for `data-smart-graph-revision`, not merely
+an earlier successful render; clear it when invalidation/Step is requested. Unchanged reader
+drawings may be reused only until their refresh deadline. See `tests/runtime-stability.test.cjs`
+and `tests/feedback-controls.test.cjs` before changing these paths.
+
+Workspace settings selects Active sketch only or Whole workspace execution at startup. Cross-sketch
+signals/events use explicit Publish/Receive endpoints; shared datasets appear in other sketches'
+pickers only when their owner exposes them in the workspace catalog. Accepted events own a captured
+payload and baseline graph: they finish atomically while the page is hidden or the visible sketch
+changes in Whole workspace mode. New activity and clocks pause while hidden. Page departure,
+ownership loss, invalidated participants, or leaving an Active sketch only execution scope still
+cancel pending work. Both editor and HTML reader follow these rules; see
+[event visibility tests](tests/event-visibility.test.cjs).
+
+**Duplicate sketch** creates a new sketch with independent component and owned-dataset IDs.
+Connections within the copy follow its copied objects; references to other sketches remain external.
+The singleton Workspace settings component stays in the original sketch. Export/import uses the same
+identity-remapping rules; missing external sources remain visibly broken rather than silently retargeted.
 
 PR #3 adds structured JSON plus PNG clipboard output, whole-workspace HTML export, and Markdown.
 Paste validates SimpleCanvas JSON before using the PNG fallback. HTML export reads working documents
@@ -54,6 +94,18 @@ Automated Playwright regressions are checked in under `tests/`; see `tests/READM
 and WebKit commands and the remaining manual Office/iPad checks. They are development dependencies
 only; opening `index.html` still requires no build step or runtime dependency.
 
+## Review status
+
+The current `feature/smart-components` stabilization pass covers runtime scheduling and fault
+recovery, history ownership, atomic workspace persistence, browser tests, and generated-reader
+contracts. [The design brief](docs/smart-components-brief.md) records the delivery decisions;
+[the testing guide](tests/README.md) gives reproducible commands and
+[the component reference](docs/components.md) documents the authoring controls.
+The brief's 2026-10-21 review follow-up records final full-suite counts and the separately verified
+wiring test-helper correction; keep that distinction when citing the validation result.
+Automated checks do not substitute for physical iPad Safari, native Office paste, or physical print
+verification. Historical branch notes below are background, not evidence of current review status.
+
 ## Provenance
 
 - Upstream: https://github.com/oldwired/simplecanvas (maintainer: oldwired)
@@ -70,16 +122,15 @@ only; opening `index.html` still requires no build step or runtime dependency.
   draws with a chisel nib, a toolbar brand/logo. Latest upstream commit as of
   this note: `8132811` ("Double tap on touch closes the polygon cleanly and
   raises the keyboard").
-- **Current branch (`feature/next`) is based directly on that upstream
-  `main` (`8132811`)**, not on the old `feature/toolbar-overhaul` lineage —
-  treat upstream `main` as the source of truth going forward and rebase new
-  work on top of it, not on `Update-2`/old `feature/toolbar-overhaul`.
+- The historical `feature/next` branch was based directly on upstream
+  `main` (`8132811`), rather than the old `feature/toolbar-overhaul` lineage.
+  These commit references describe that development stage, not the current branch tip.
 - The dblclick-on-empty-canvas → select-tool feature (from `Update-2`) was
   deliberately **not** ported onto this new base — left for oldwired to add
   upstream if/when they want it, since it would need reworking against the
   new shared `onDoubleClick` function anyway.
 
-## What this branch adds on top of upstream
+## Historical additions on top of upstream
 
 - **Text tool**: drag-to-create (like rect), own fill/stroke/border (default
   both off for new text), own text color (separate attribute from stroke),
@@ -129,10 +180,9 @@ only; opening `index.html` still requires no build step or runtime dependency.
 
 ## Branch `experiments`
 
-Local-only, not pushed into `oldwired`'s PR #2 — created off `feature/next`
-at `ce8afcb` specifically so further work here does **not** flow into that
-PR automatically. Rebase future upstream-tracking work onto `feature/next`,
-not this branch.
+The historical local `experiments` branch was created off `feature/next` at
+`ce8afcb` so its work would not enter PR #2 automatically. Its implementation notes
+below remain useful, but are not instructions about the current branch or merge base.
 
 - **Copy (Ctrl+C) also writes to the real OS clipboard**: `text/plain`
   carries our own JSON (what our own paste handler looks for first);
@@ -153,8 +203,10 @@ not this branch.
   line is bare `---` (matches YAML front-matter, deliberately not
   `---markdown`). Supports `#`/`##`/`###` headings (forced bold, sized
   1.6/1.3/1.15× the item's own font size), `**bold**`, `*italic*`/
-  `_italic_`, `- `/`* ` unordered lists, `[label](url)` links (styled, not
-  clickable — v1 limitation: one style per run, no nested bold-links), and
+  `_italic_`, `- `/`* ` unordered lists, and `[label](url)` links. Links are styled
+  on the editor canvas and clickable in SVG/HTML exports; PNG contains pixels only.
+  Allowed targets are HTTP(S) and mailto, with bare domains treated as HTTPS.
+  Runs still use one style each, without nested bold links. Also supported is
   a `---` line *inside* the body (never the first physical line, which is
   the marker) as a horizontal rule. Forces left+top alignment — both saved
   and LIVE while editing, the instant the first 3 typed characters are
@@ -186,10 +238,11 @@ not this branch.
   just per-vertex distance — it correctly splits a stroke erased mid-segment
   even when neither endpoint is near the eraser. Don't regress this to a
   naive vertex-only check.
-- Autosave writes the whole scene (incl. base64 images) to `localStorage` on
-  every change. Quota/storage failures retain all working tabs in memory and show a persistent warning.
-  Discussed but not yet implemented: moving to IndexedDB (much higher quota)
-  and/or JPEG compression for photos would fix this properly.
+- Autosave writes complete workspace snapshots (including image assets) to IndexedDB. Wait for
+  `persistWorkspace()` before reloads that must observe durable data; `readSavedWorkspace()` reads
+  the stored record. Writes are atomic and fenced by owner/revision, so an older window cannot
+  overwrite newer work. Quota/storage failures retain working tabs in memory and keep a visible
+  recovery-download action. Legacy localStorage documents are retained, not rewritten on edits.
 
 ## Historical testing approach
 
@@ -205,11 +258,10 @@ gotchas hit repeatedly:
 - Selection-outline pixels are `#6366f1`ish and will contaminate color
   sampling near a selected item — deselect before sampling fill/stroke/text
   colors from pixels.
-- Prefer reading `localStorage` (`JSON.parse(...).items`) over pixel-sampling
-  when checking data correctness — much less fragile than guessing exact
-  glyph/cell pixel coordinates.
+- The old harness read `localStorage` for document assertions. Current browser tests instead await
+  the IndexedDB save and read `readSavedWorkspace()`; use pixels when the rendering itself matters.
 
 ## Known open items (not yet done)
 
-- IndexedDB storage / JPEG compression for the localStorage-quota issue
-  (discussed, not implemented).
+- Optional JPEG compression for photos remains deferred. IndexedDB workspace storage is implemented;
+  browser quota failures still require the explicit download/retry workflow above.

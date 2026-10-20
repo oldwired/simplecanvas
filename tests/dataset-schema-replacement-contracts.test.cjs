@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
@@ -7,11 +8,7 @@ function section(start,end){
   const a=html.indexOf(start),b=html.indexOf(end,a+start.length);
   assert.ok(a>=0 && b>a,start);return html.slice(a,b);
 }
-function declaration(name){
-  const start=html.indexOf('  function '+name+'(');assert.ok(start>=0,name);
-  const end=html.slice(start+3).search(/\n  (?:async )?function /);
-  assert.ok(end>=0,name+' end');return html.slice(start,start+3+end);
-}
+const declaration=parseApp(html).declaration;
 function runtime(){
   const scope=vm.createContext({});
   vm.runInContext([

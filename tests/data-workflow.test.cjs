@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose the editor fixture only. Every component still crosses the actual
 // Worker boundary; downloaded HTML uses its own unmodified offline runtime.
@@ -13,8 +13,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(fn){
@@ -118,9 +117,9 @@ test('editor data actions download derived results without replay and replacemen
  assert.equal(csvDownload.text,'group,result\r\n"Dawn, ""Go""",1\r\nAurora,2\r\nBorealis,15\r\n');
  await run('undo()');assert.deepEqual((await resultTable(run)).rows,expected);
  await run('redo()');assert.deepEqual((await resultTable(run)).rows,[['Dawn, "Go"',1],['Aurora',2],['Borealis',15]]);
- await run('render();save()');await page.reload();await run('appStarted');assert.equal((await resultTable(run)).rows.length,3);
+ await run('render();save();persistWorkspace()');await page.reload();await run('appStarted');assert.equal((await resultTable(run)).rows.length,3);
  assert.deepEqual(downloads,['leaderboard.json','leaderboard.csv'],'undo, redo, redraw and reload never replay downloads');
- assert.deepEqual(Object.keys(await run('JSON.parse(localStorage.getItem(docKey(activeTabId))).datasets')).length,1,'only the current shared dataset is persisted');
+ assert.deepEqual(Object.keys(await run('(async()=>{const saved=await readSavedWorkspace();return saved.workspace.tabs.find(tab=>tab.id===activeTabId).document.datasets;})()')).length,1,'only the current shared dataset is persisted');
 }));
 
 test('editor reader-style imports reject mismatched schemas and stale file reads without modifying data',async()=>app(async({page,run})=>{

@@ -142,6 +142,7 @@ function buildWorkspaceRuntimeExample({root:directory=root}={}){
     }),
     text('runtime-editor-event-help','This second receiver gets the same submissions as Services.\nChanging tabs does not replay old events.',920,630,370,132,18),
   ];
+  // Fixed sketch IDs are also used by endpoint, dataset and settings references above.
   return {app:'SimpleCanvasWorkspace',version:5,activeIndex:1,tabs:[
     {id:'runtime-services',name:'Services',items:services,datasets:{'workspace-stock':stock,'workspace-scratch':scratch},assets:{}},
     {id:'runtime-dashboard',name:'Dashboard',items:dashboard,datasets:{},assets:{}},

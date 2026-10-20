@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -40,7 +41,7 @@ test('URL parameter display uses literal text, custom names and optional status'
 });
 
 const appSource=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
-const queryBuilder=vm.runInNewContext('('+appSource.slice(appSource.indexOf('  function prepareComponentNavigationQuery('),appSource.indexOf('  function updateComponentNavigationQuery(')).trim()+')',{URLSearchParams});
+const queryBuilder=vm.runInNewContext('('+parseApp(appSource).declaration('prepareComponentNavigationQuery')+')',{URLSearchParams});
 test('navigation parameters merge scalar fields, remove nulls, preserve unrelated values and set page',()=>{
   const query=queryBuilder(2,'{"name":"Anna & Zoë","score":2.5,"enabled":true,"remove":null}','?keep=yes&name=old&name=older&remove=x');
   assert.deepEqual([...new URLSearchParams(query)],[['keep','yes'],['name','Anna & Zoë'],['score','2.5'],['enabled','true'],['page','2']]);

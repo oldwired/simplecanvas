@@ -1,3 +1,4 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -5,11 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const plain=value=>JSON.parse(JSON.stringify(value));
-function helper(name){
-  const start=html.indexOf('  function '+name+'(');assert.notEqual(start,-1);
-  const source=html.slice(start),next=/\n  (?:async )?(?:function |const |let )/.exec(source);
-  return next?source.slice(0,next.index):source;
-}
+const helper=parseApp(html).declaration;
 const api=vm.runInNewContext(['componentWiringModel','componentWireCompatibility','componentWireProposal','componentWireCreatesTableCycle'].map(helper).join('\n')+
   '\n({model:componentWiringModel,compatible:componentWireCompatibility,proposal:componentWireProposal,tableCycle:componentWireCreatesTableCycle})');
 const item=(uid,extra={})=>({uid,type:'smart',componentApi:2,...extra});

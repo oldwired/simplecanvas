@@ -4,13 +4,12 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
   .replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 const engine=process.env.BROWSER_ENGINE||'chromium';
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 const box={type:'rect',x:0,y:0,w:120,h:70,color:'#334155',size:2,fill:true,fillColor:'#eab308'};
 const library=(name='Seed box')=>({app:'SimpleCanvasShapeLibrary',version:2,categories:['Drawing'],
@@ -296,6 +295,11 @@ test('a stale open page keeps its draft but cannot overwrite a newer library sav
   const stale=await open();assert.equal(await stale.run('shapeLibrary.shapes[0].name'),'Shared starting point');
   await renameEntry(page,run,'Newer saved library');await saved(page);
   const newer=await savedRecord(page);
+  // Workspace ownership and library revisions are separate. This second window must
+  // explicitly become editable before its older library copy can produce a save conflict.
+  await stale.page.locator('#takeWorkspaceOwnership').click();
+  await stale.page.waitForFunction(()=>__test.run('workspaceStorage.writable'));
+  assert.equal(await stale.run('shapeLibrary.shapes[0].name'),'Shared starting point','taking over the workspace preserves the open library copy');
   await renameEntry(stale.page,stale.run,'My stale-page draft');
   const warning=stale.page.locator('#libraryStorageWarning');await warning.waitFor({state:'visible'});
   assert.match(await warning.textContent(),/changed in another tab/);

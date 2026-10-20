@@ -1,13 +1,11 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const root=path.join(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8');
-function helper(name){
-  const start=html.indexOf('  function '+name+'(');assert.notEqual(start,-1,name);
-  const source=html.slice(start),next=/\n  (?:async )?(?:function |const |let )/.exec(source);return next?source.slice(0,next.index):source;
-}
+const helper=parseApp(html).declaration;
 const api=vm.runInNewContext(['componentPortName','componentScalar','normalizeComponentEventPorts','normalizeComponentEvents','normalizeComponentActionEvents','componentActionEventState','componentReplyEvents'].map(helper).join('\n')+'\n({ports:normalizeComponentEventPorts,normalize:normalizeComponentActionEvents,state:componentActionEventState,events:componentReplyEvents})');
 const plain=value=>JSON.parse(JSON.stringify(value));
 const defs=Object.fromEntries(['data-source','capture-row'].map(name=>[name,vm.runInNewContext(fs.readFileSync(path.join(root,'examples',name+'.js'),'utf8'))]));

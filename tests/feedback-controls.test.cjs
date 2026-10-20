@@ -4,14 +4,13 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
   .replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1600,height:1000}});
@@ -71,24 +70,60 @@ test('offline HTML Pause and Step preserve intermediate feedback displays and Re
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-feedback-controls-'));
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
   const file=path.join(directory,'feedback.html');fs.copyFileSync(await(await download).path(),file);
+  const exported=fs.readFileSync(file,'utf8'),paintHook='const handles=caps.handles ? await requestSmartCall(it,',stepHook='const graph=await settleComponentTimeline(list,call,valid,owner,{step:true,datasets:dataPool});';
+  assert.equal(exported.split(paintHook).length,2,'one reader drawing reply can be held for deterministic readiness testing');
+  assert.equal(exported.split(stepHook).length,2,'one Step evaluation can be held before refresh starts');
+  fs.writeFileSync(file,exported.replace(paintHook,`if(window.holdCounterPaint && it.uid==='step-1'){
+    window.holdCounterPaint=false;
+    await new Promise(resolve=>{window.releaseCounterPaint=()=>{window.releaseCounterPaint=null;resolve();};});
+  }
+  ${paintHook}`).replace(stepHook,`if(window.holdStepEvaluation){
+    window.holdStepEvaluation=false;
+    await new Promise(resolve=>{window.releaseStepEvaluation=()=>{window.releaseStepEvaluation=null;resolve();};});
+  }
+  ${stepHook}`));
   const reader=await context.newPage(),errors=[],requests=[];
   reader.on('pageerror',error=>errors.push(error.message));reader.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
   await reader.goto(pathToFileURL(file).href);
-  await reader.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===3);
+  const paintedRound=()=>reader.waitForFunction(()=>{
+    const revision=document.querySelector('#feedbackStatus').dataset.graphRevision;
+    const shapes=[...document.querySelectorAll('[data-smart-index]')];
+    return shapes.length===3 && shapes.every(shape=>shape.dataset.smartReady==='true' && shape.dataset.smartGraphRevision===revision);
+  });
+  await paintedRound();
   assert.equal(await reader.locator('#feedbackStep').isDisabled(),true);
   await reader.locator('#feedbackPause').click();
   await reader.waitForFunction(()=>document.querySelector('#feedbackPause').textContent==='Resume');
+  await paintedRound();
   const pausedStatus=await reader.locator('#feedbackStatus').textContent();
   await reader.waitForTimeout(150);assert.equal(await reader.locator('#feedbackStatus').textContent(),pausedStatus);
-  const rows=[];
+  const rows=[];let heldDrawings=0;
   for(let round=0;round<12;round++){
-    const before=await reader.locator('#feedbackStatus').textContent();await reader.locator('#feedbackStep').click();
-    await reader.waitForFunction(before=>document.querySelector('#feedbackStatus').textContent!==before,before);
-    await reader.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===3);
+    const before=await reader.locator('#feedbackStatus').getAttribute('data-graph-revision');
+    await reader.evaluate(()=>{window.holdCounterPaint=true;window.holdStepEvaluation=true;});
+    await reader.locator('#feedbackStep').click();
+    await reader.waitForFunction(()=>typeof window.releaseStepEvaluation==='function');
+    assert.equal(await reader.locator('[data-smart-ready="true"]').count(),0,'queued Step clears readiness before its graph evaluation and refresh begin');
+    await reader.evaluate(()=>window.releaseStepEvaluation());
+    await reader.waitForFunction(before=>{
+      const revision=document.querySelector('#feedbackStatus').dataset.graphRevision,shape=document.querySelector('[data-smart-index="1"]');
+      return revision!==before && (typeof window.releaseCounterPaint==='function' ||
+        shape.dataset.smartReady==='true' && shape.dataset.smartGraphRevision===revision);
+    },before);
+    if(await reader.evaluate(()=>typeof window.releaseCounterPaint==='function')){
+      heldDrawings++;
+      assert.equal(await reader.locator('[data-smart-index="1"]').getAttribute('data-smart-ready'),null,'the new round is not ready while its actual drawing reply is held');
+      await reader.evaluate(()=>window.releaseCounterPaint());
+    }else{
+      // A propagation round can change a different node while reusing this counter's drawing.
+      await reader.evaluate(()=>{window.holdCounterPaint=false;});
+    }
+    await paintedRound();
     const row={status:await reader.locator('#feedbackStatus').textContent(),
       counter:await reader.locator('[data-smart-index="1"]').textContent(),completed:await reader.locator('[data-smart-index="2"]').textContent()};
     rows.push(row);if(round>0 && /settled/.test(row.status))break;
   }
+  assert.ok(heldDrawings>0,'at least one changed counter drawing was held while readiness remained false');
   assert.ok(rows.some(row=>/Reached:\s*true/.test(row.counter)),'the reader displays the temporary completion before reset');
   assert.ok(rows.some(row=>/round/.test(row.status)));assert.match(rows.at(-1).status,/settled/);
   assert.match(rows.at(-1).counter,/Reached:\s*false/);

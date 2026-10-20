@@ -1,6 +1,6 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),vm=require('node:vm');
-const {pathToFileURL}=require('node:url'),{chromium,webkit}=require('playwright');
+const {pathToFileURL}=require('node:url'),{launchBrowser}=require('./helpers/browser.cjs');
 const root=path.join(__dirname,'..'),engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8')
@@ -62,8 +62,7 @@ function fixture(){
   ]};
 }
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>browser?.close());
 async function app(fn){
   const context=await browser.newContext({viewport:{width:1600,height:1050}});

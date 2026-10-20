@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Use the real modal, fields, previews, and persistence. Expose only the fixture's
 // app closure to seed a drawing and inspect state without driving unrelated UI.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 async function app(viewport,fn){
@@ -51,7 +50,7 @@ async function feedback(page,parts){
   },parts,{timeout:10000});
 }
 async function snapshot(run){
-  return run('({items,undo:undoStack,redo:redoStack,stored:JSON.parse(localStorage.getItem(docKey(activeTabId))).items})');
+  return run('(async()=>{await persistWorkspace();const saved=await readSavedWorkspace();return {items,undo:undoStack,redo:redoStack,stored:saved.workspace.tabs.find(tab=>tab.id===activeTabId).document.items};})()');
 }
 async function save(page){
   await page.locator('#componentBindingsSave').click();

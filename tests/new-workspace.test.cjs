@@ -2,7 +2,7 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium,webkit}=require('playwright');
+const {launchBrowser}=require('./helpers/browser.cjs');
 
 // Expose the editor closure only in the served fixture. Menu activation, modal
 // choices, downloads, persistence, and keyboard handling remain production code.
@@ -11,8 +11,7 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8')
 const engine=process.env.BROWSER_ENGINE||'chromium';
 assert.ok(['chromium','webkit'].includes(engine));
 let browser;
-before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true,
-  ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
+before(async()=>{browser=await launchBrowser({engine});});
 after(async()=>{if(browser)await browser.close();});
 
 const box={type:'rect',uid:'box',x:80,y:90,w:150,h:100,color:'#1f2937',size:2,fill:true,fillColor:'#ffd166'};
@@ -44,15 +43,23 @@ async function action(page,name){
   await page.locator('#menu [data-act='+JSON.stringify(name)+']').click();
 }
 async function seeded(run){
-  return run(`(()=>{
+  return run(`(async()=>{
     applySketchToActiveTab([${JSON.stringify(box)}],{});tabs[0].name='First drawing';
     newTab();applySketchToActiveTab([{...${JSON.stringify(box)},uid:'second'},${JSON.stringify(text)}],{});tabs[1].name='Second drawing';
     beginHistory();items[0].x+=20;commitHistory();
     ui.color='#ef4444';ui.size=17;saveTabList();save();renderTabs();
-    return tabs.map(tab=>({id:tab.id,key:docKey(tab.id)}));
+    await persistWorkspace();
+    return tabs.map(tab=>({id:tab.id}));
   })()`);
 }
-async function snapshot(run){return run(`JSON.stringify({tabs,activeTabId,documents:tabs.map(tab=>({id:tab.id,...documentForFile(tabDocument(tab.id)),undo:tabDocument(tab.id).undoStack,redo:tabDocument(tab.id).redoStack})),selection,stored:Object.fromEntries(Object.entries(localStorage))})`);}
+async function savedWorkspace(run){
+  await run('persistWorkspace()');const record=await run('readSavedWorkspace()');
+  assert.ok(record?.workspace?.tabs.length,'the complete workspace is durable in IndexedDB');return record;
+}
+async function snapshot(run){
+  await savedWorkspace(run);
+  return run(`(async()=>JSON.stringify({tabs,activeTabId,documents:tabs.map(tab=>({id:tab.id,...documentForFile(tabDocument(tab.id)),undo:tabDocument(tab.id).undoStack,redo:tabDocument(tab.id).redoStack})),selection,stored:await readSavedWorkspace()}))()`);
+}
 async function emptyWorkspace(run){
   const data=await run(`({tabs,activeTabId,items,assets,datasets,ui,defaults:defaultUi(),undo:undoStack,redo:redoStack,selection,documents:[...tabDocuments.keys()],timelines:[...editorTimelines.keys()]})`);
   assert.equal(data.tabs.length,1);assert.equal(data.tabs[0].name,'Sketch 1');assert.equal(data.activeTabId,data.tabs[0].id);
@@ -112,10 +119,12 @@ test('Start new resets documents, history and tools while retaining the personal
   await action(page,'newWorkspace');await page.locator('#newWorkspaceStart').click();await page.locator('#newWorkspaceDialog').waitFor({state:'hidden'});
   const id=await emptyWorkspace(run);assert.ok(old.every(tab=>tab.id!==id));
   assert.equal(await run('JSON.stringify(shapeLibrary)'),keptLibrary);
-  for(const tab of old)assert.equal(await page.evaluate(key=>localStorage.getItem(key),tab.key),null,'retired tab documents are removed after the new index is saved');
+  const stored=await savedWorkspace(run);
+  assert.deepEqual(stored.workspace.tabs.map(tab=>tab.id),[id],'one atomic replacement retires every old tab');
+  assert.deepEqual(stored.workspace.tabs[0].document.items,[]);
   assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
   assert.equal(await page.locator('#undo').isDisabled(),true);assert.equal(await page.locator('#redo').isDisabled(),true);
-  await page.reload();assert.equal(await emptyWorkspace(run),id);
+  await run('persistWorkspace()');await page.reload();assert.equal(await emptyWorkspace(run),id);
   await page.waitForFunction(()=>__test.run('shapeLibrary?.shapes.some(entry=>entry.name==="Retained library edit")'));
   assert.deepEqual(await run('shapeLibrary.workingCollection'),['personal-box']);
 }));
@@ -147,31 +156,29 @@ test('failed Save & start new leaves the workspace and confirmation available fo
   await page.locator('#newWorkspaceDialog').waitFor({state:'hidden'});await emptyWorkspace(run);
 }));
 
-for(const failedWrite of ['document','index'])test(`new-workspace ${failedWrite} storage failure retains old durable tabs until persistence succeeds`,async()=>app(async({page,run})=>{
-  const old=await seeded(run),oldIndex=await run('localStorage.getItem(TABS_KEY)');
-  const oldDocs=await page.evaluate(keys=>keys.map(key=>localStorage.getItem(key)),old.map(tab=>tab.key));
+for(const failedWrite of ['put rejection','transaction abort'])test(`new-workspace ${failedWrite} retains the complete durable workspace until retry succeeds`,async()=>app(async({page,run})=>{
+  await seeded(run);const old=await savedWorkspace(run);
   await action(page,'newWorkspace');
-  await page.evaluate(({failedWrite,oldKeys})=>{
-    window.originalStorageSet=Storage.prototype.setItem;window.originalStorageRemove=Storage.prototype.removeItem;window.storageWrites=[];
-    Storage.prototype.setItem=function(key,value){
-      window.storageWrites.push(['set',key]);
-      if((failedWrite==='document'&&key.startsWith('simplecanvas:doc:')&&!oldKeys.includes(key))||(failedWrite==='index'&&key==='simplecanvas:tabs:v1'))throw new DOMException('Full','QuotaExceededError');
-      return window.originalStorageSet.call(this,key,value);
+  await page.evaluate(failedWrite=>{
+    window.originalWorkspacePut=IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put=function(...args){
+      if(this.name!=='workspaces')return window.originalWorkspacePut.apply(this,args);
+      if(failedWrite==='put rejection')throw new DOMException('Full','QuotaExceededError');
+      const request=window.originalWorkspacePut.apply(this,args);this.transaction.abort();return request;
     };
-    Storage.prototype.removeItem=function(key){window.storageWrites.push(['remove',key]);return window.originalStorageRemove.call(this,key);};
-  },{failedWrite,oldKeys:old.map(tab=>tab.key)});
+  },failedWrite);
   await page.locator('#newWorkspaceStart').click();await page.locator('#newWorkspaceDialog').waitFor({state:'hidden'});
-  const id=await emptyWorkspace(run);assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
-  assert.equal(await run('localStorage.getItem(TABS_KEY)'),oldIndex);
-  assert.deepEqual(await page.evaluate(keys=>keys.map(key=>localStorage.getItem(key)),old.map(tab=>tab.key)),oldDocs);
-  assert.deepEqual(await page.evaluate(()=>window.storageWrites.filter(([kind])=>kind==='remove')),[]);
-  await page.evaluate(()=>{Storage.prototype.setItem=window.originalStorageSet;window.storageWrites=[];Storage.prototype.setItem=function(key,value){window.storageWrites.push(['set',key]);return window.originalStorageSet.call(this,key,value);};});
-  await run('save()');assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
-  const writes=await page.evaluate(()=>window.storageWrites),newDocument=writes.findIndex(([kind,key])=>kind==='set'&&key==='simplecanvas:doc:'+id),index=writes.findIndex(([kind,key])=>kind==='set'&&key==='simplecanvas:tabs:v1');
-  assert.ok(newDocument>=0&&index>newDocument,'replacement document is durable before its index');
-  assert.ok(writes.filter(([kind])=>kind==='remove').length>=2);assert.ok(writes.findIndex(([kind])=>kind==='remove')>index,'old tabs are deleted only after the replacement index');
-  await page.evaluate(()=>{Storage.prototype.setItem=window.originalStorageSet;Storage.prototype.removeItem=window.originalStorageRemove;});
-  await page.reload();assert.equal(await emptyWorkspace(run),id);
+  const id=await emptyWorkspace(run);await run('persistWorkspace()');
+  assert.equal(await page.locator('#autosaveWarning').isVisible(),true);
+  assert.deepEqual(await run('readSavedWorkspace()'),old,'an aborted write cannot expose a new index or partial documents');
+  await page.evaluate(()=>{IDBObjectStore.prototype.put=window.originalWorkspacePut;});
+  await run('save();persistWorkspace()');assert.equal(await page.locator('#autosaveWarning').isVisible(),false);
+  const replacement=await savedWorkspace(run);
+  assert.deepEqual(replacement.workspace.tabs.map(tab=>tab.id),[id]);
+  assert.equal(replacement.workspace.activeId,id);
+  assert.deepEqual(replacement.workspace.tabs[0].document.items,[]);
+  assert.ok(old.workspace.tabs.every(tab=>tab.id!==id));
+  await run('persistWorkspace()');await page.reload();assert.equal(await emptyWorkspace(run),id);
 }));
 
 test('a pristine workspace starts anew immediately but a renamed single tab is protected',async()=>app(async({page,run})=>{
@@ -234,7 +241,7 @@ test('Clear current sketch only clears the active tab and Undo restores it witho
 test('workspace-disabled deployments hide the whole workspace menu group and cannot reset preserved tabs',async()=>app(async({page,run})=>{
   await seeded(run);
   await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({version:1,features:{workspace:false}})}));
-  await page.reload();await run('appStarted');const before=await run('JSON.stringify({tabs,activeTabId,items})');await page.locator('#menuBtn').click();
+  await run('persistWorkspace()');await page.reload();await run('appStarted');const before=await run('JSON.stringify({tabs,activeTabId,items})');await page.locator('#menuBtn').click();
   assert.equal(await page.locator('#menu').getByRole('group',{name:'Workspace',exact:true}).count(),0);
   for(const name of ['newWorkspace','openWorkspace','saveWorkspace','newTab','duplicateSketch','html'])assert.equal(await page.locator('[data-act='+JSON.stringify(name)+']').isVisible(),false);
   assert.equal(await page.locator('[data-act="duplicateSketch"]').isDisabled(),true);
@@ -251,7 +258,7 @@ for(const workspace of [true,false])test(`Ctrl and Command open/save shortcuts u
   await seeded(run);
   if(!workspace){
     await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({version:1,features:{workspace:false}})}));
-    await page.reload();await run('appStarted');
+    await run('persistWorkspace()');await page.reload();await run('appStarted');
   }
   const saveAction=workspace?'saveWorkspace':'save',openAction=workspace?'openWorkspace':'open';
   await page.locator('#menuBtn').click();
@@ -307,7 +314,7 @@ test('HTML exports in each menu group use that group’s scope, including worksp
   assert.equal(current.drawings,1);assert.deepEqual(current.tabs,[]);assert.match(current.text.join(' '),/Saved draft/,'current-sketch export retains its initiating tab');
   await page.locator('.tab-select').nth(1).click();
   await page.route('**/settings.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({version:1,features:{workspace:false}})}));
-  await page.reload();await run('appStarted');
+  await run('persistWorkspace()');await page.reload();await run('appStarted');
   const restricted=await exported('htmlSketch');assert.equal(restricted.drawings,1);assert.deepEqual(restricted.tabs,[]);assert.match(restricted.text.join(' '),/Saved draft/);
 }));
 

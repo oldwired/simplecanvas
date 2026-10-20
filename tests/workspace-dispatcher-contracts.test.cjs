@@ -1,15 +1,13 @@
+const {parseApp}=require('./helpers/app-source.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
-const start=html.indexOf('  function createComponentActionDispatcher(');
-const end=html.indexOf('  function prepareComponentDownload(',start);
-assert.ok(start>0 && end>start);
 const warnings=[];
 const scope=vm.createContext({console:{warn:(...args)=>warnings.push(args)}});
-vm.runInContext(html.slice(start,end),scope);
+vm.runInContext(parseApp(html).declarationsSource(['createComponentActionDispatcher','dispatchComponentActions']),scope);
 const create=()=>scope.createComponentActionDispatcher();
 const dispatch=(...args)=>scope.dispatchComponentActions(...args);
 const deferred=()=>{let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve};};

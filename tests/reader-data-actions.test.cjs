@@ -100,7 +100,21 @@ test('CSV download writes keys, literal Unicode, escaped quotes and line breaks,
   assert.equal(csv,'Name,Points,Active\r\n"Möwe, ""red""",2.5,true\r\n"line\nnext",,false\r\n<script>alert(1)</script>,-3,\r\n');
   assert.deepEqual(plain(c.parseDatasetText(csv,'results.csv')).rows,table.rows);
   assert.equal(c.serializeComponentTable({...table,rows:[]},'csv'),'Name,Points,Active\r\n');
+  const empty={name:'Empty rows',columns:[{key:'text',name:'Text',type:'string'}],rows:[[null],['value'],['']]};
+  assert.equal(c.serializeComponentTable(empty,'csv'),'text\r\n""\r\nvalue\r\n""\r\n');
+  assert.deepEqual(plain(c.parseDatasetText(c.serializeComponentTable(empty,'csv'),'empty.csv')).rows,[[null],['value'],[null]]);
   assert.throws(()=>c.serializeComponentTable(table,'html'),/CSV or JSON/);
+});
+
+test('CSV downloads protect formula-like text by default while raw mode preserves exact strings and numbers',()=>{
+  const values=['=1+1','+SUM(A1)','-3','@name',' \t=2','\n+2','ordinary',"'already text",'x=2'];
+  const source={name:'Formula text',columns:[{key:'=heading',name:'Heading',type:'string'},{key:'number',name:'Number',type:'number'}],rows:values.map(value=>[value,-3])};
+  const safe=c.serializeComponentTable(source,'csv'),raw=c.serializeComponentTable(source,'csv',{csvMode:'raw'});
+  assert.deepEqual(plain(c.parseDatasetText(safe,'safe.csv')).rows,values.map((value,index)=>[index<6?"'"+value:value,-3]));
+  assert.equal(c.parseDatasetText(safe,'safe.csv').columns[0].key,"'=heading");
+  assert.deepEqual(plain(c.parseDatasetText(raw,'raw.csv')).rows,source.rows);assert.ok(raw.startsWith('=heading,number\r\n'));
+  assert.deepEqual(JSON.parse(c.serializeComponentTable(source,'json')),values.map(value=>({'=heading':value,number:-3})));
+  assert.equal(source.rows[0][0],'=1+1','serialization never changes the source dataset');
 });
 
 test('JSON download preserves scalar types and nulls, and selected order includes every selected row',()=>{

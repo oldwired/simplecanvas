@@ -146,7 +146,8 @@
             "min": 0,
             "max": 100,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -173,7 +174,8 @@
               "uid": "demo-1-source",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "gauge.js"
         },
         {
           "type": "smart",
@@ -200,7 +202,8 @@
               "uid": "demo-1-source",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "rect",
@@ -267,7 +270,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-1",
+      "datasets": {}
     },
     {
       "name": "2 · Threshold logic",
@@ -434,7 +439,8 @@
             "min": 0,
             "max": 100,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -466,7 +472,8 @@
           "inputValues": {
             "b": 70,
             "operation": ">"
-          }
+          },
+          "exampleSource": "compare.js"
         },
         {
           "type": "smart",
@@ -490,7 +497,8 @@
           "componentName": "Enabled",
           "uid": "demo-2-enabled",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -523,7 +531,8 @@
               "uid": "demo-2-enabled",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "and-gate.js"
         },
         {
           "type": "smart",
@@ -550,7 +559,8 @@
               "uid": "demo-2-gate",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "rect",
@@ -617,7 +627,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-2",
+      "datasets": {}
     },
     {
       "name": "3 · Numeric tools",
@@ -784,7 +796,8 @@
             "min": -10,
             "max": 10,
             "step": 0.1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -816,7 +829,8 @@
           "inputValues": {
             "b": 2,
             "operation": "×"
-          }
+          },
+          "exampleSource": "math.js"
         },
         {
           "type": "smart",
@@ -848,7 +862,8 @@
           "inputValues": {
             "min": 0,
             "max": 10
-          }
+          },
+          "exampleSource": "clamp.js"
         },
         {
           "type": "smart",
@@ -883,7 +898,8 @@
             "outMin": 0,
             "outMax": 100,
             "clamp": true
-          }
+          },
+          "exampleSource": "range-map.js"
         },
         {
           "type": "smart",
@@ -910,7 +926,8 @@
               "uid": "demo-3-scale",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "gauge.js"
         },
         {
           "type": "rect",
@@ -977,7 +994,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-3",
+      "datasets": {}
     },
     {
       "name": "4 · Countdown",
@@ -1275,7 +1294,8 @@
           "componentName": "Run",
           "uid": "demo-4-run",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -1308,7 +1328,8 @@
           "inputValues": {
             "seconds": 1,
             "width": 0.2
-          }
+          },
+          "exampleSource": "pulse-generator.js"
         },
         {
           "type": "smart",
@@ -1349,7 +1370,8 @@
               "uid": "demo-4-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -1378,7 +1400,8 @@
               "port": "count"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "seven-segment-display.js"
         },
         {
           "type": "smart",
@@ -1405,7 +1428,8 @@
               "uid": "demo-4-countdown",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -1431,7 +1455,8 @@
           "componentName": "Reset to 9",
           "uid": "demo-4-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "rect",
@@ -1498,7 +1523,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-4",
+      "datasets": {}
     },
     {
       "name": "5 · Delayed pulses",
@@ -1759,7 +1786,8 @@
           "componentName": "Send pulse",
           "uid": "demo-5-send",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -1791,7 +1819,8 @@
               "uid": "demo-5-send",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "delay.js"
         },
         {
           "type": "smart",
@@ -1828,7 +1857,8 @@
               "uid": "demo-5-delay",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -1855,7 +1885,8 @@
               "uid": "demo-5-send",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -1882,7 +1913,8 @@
               "uid": "demo-5-delay",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "rect",
@@ -1949,7 +1981,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-5",
+      "datasets": {}
     },
     {
       "name": "6 · Routing",
@@ -2153,7 +2187,8 @@
           "componentName": "Next channel",
           "uid": "demo-6-next",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -2179,7 +2214,8 @@
           "componentName": "Reset channel",
           "uid": "demo-6-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -2220,7 +2256,8 @@
             "in1": 25,
             "in2": 50,
             "in3": 75
-          }
+          },
+          "exampleSource": "stepped-selector-number.js"
         },
         {
           "type": "smart",
@@ -2247,7 +2284,8 @@
               "uid": "demo-6-selector",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "gauge.js"
         },
         {
           "type": "smart",
@@ -2274,7 +2312,8 @@
               "uid": "demo-6-selector",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -2301,7 +2340,8 @@
               "uid": "demo-6-selector",
               "port": "position"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "rect",
@@ -2368,7 +2408,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-6",
+      "datasets": {}
     },
     {
       "name": "7 · Shift memory",
@@ -2536,7 +2578,8 @@
           "componentName": "Data",
           "uid": "demo-7-data",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -2562,7 +2605,8 @@
           "componentName": "Shift",
           "uid": "demo-7-shift",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -2588,7 +2632,8 @@
           "componentName": "Clear memory",
           "uid": "demo-7-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -2615,7 +2660,8 @@
               "uid": "demo-7-second",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -2661,7 +2707,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "shift-register-boolean.js"
         },
         {
           "type": "smart",
@@ -2707,7 +2754,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "shift-register-boolean.js"
         },
         {
           "type": "rect",
@@ -2774,7 +2822,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-7",
+      "datasets": {}
     },
     {
       "name": "8 · LED patterns",
@@ -2904,7 +2954,8 @@
           "componentName": "Even rows (0, 2, 4, 6)",
           "uid": "demo-8-odd-rows",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -2928,7 +2979,8 @@
           "componentName": "Odd rows (1, 3, 5, 7)",
           "uid": "demo-8-even-rows",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -2952,7 +3004,8 @@
           "componentName": "Even columns (0, 2, 4, 6)",
           "uid": "demo-8-odd-cols",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -2976,7 +3029,8 @@
           "componentName": "Odd columns (1, 3, 5, 7)",
           "uid": "demo-8-even-cols",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -3065,7 +3119,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "led-matrix.js"
         },
         {
           "type": "smart",
@@ -3093,7 +3148,8 @@
             "min": 0,
             "max": 255,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -3130,7 +3186,8 @@
             "r5": 153,
             "r6": 66,
             "r7": 60
-          }
+          },
+          "exampleSource": "led-matrix.js"
         },
         {
           "type": "smart",
@@ -3187,7 +3244,8 @@
               "port": "c7"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "led-matrix.js"
         },
         {
           "type": "rect",
@@ -3270,7 +3328,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-8",
+      "datasets": {}
     },
     {
       "name": "9 · Self-reset",
@@ -3433,7 +3493,8 @@
           "componentName": "Run",
           "uid": "demo-9-run",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -3466,7 +3527,8 @@
               "uid": "demo-9-run",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "pulse-generator.js"
         },
         {
           "type": "smart",
@@ -3507,7 +3569,8 @@
               "uid": "demo-9-countdown",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -3536,7 +3599,8 @@
               "uid": "demo-9-countdown",
               "port": "count"
             }
-          }
+          },
+          "exampleSource": "seven-segment-display.js"
         },
         {
           "type": "smart",
@@ -3569,7 +3633,8 @@
               "uid": "demo-9-countdown",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "arrow",
@@ -3649,7 +3714,9 @@
           "fill": false,
           "size": 1
         }
-      ]
+      ],
+      "id": "demo-sketch-9",
+      "datasets": {}
     },
     {
       "name": "10 · Stop at zero",
@@ -3826,7 +3893,8 @@
               "uid": "demo-10-keep-going",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "pulse-generator.js"
         },
         {
           "type": "smart",
@@ -3867,7 +3935,8 @@
               "uid": "demo-10-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -3896,7 +3965,8 @@
               "uid": "demo-10-countdown",
               "port": "count"
             }
-          }
+          },
+          "exampleSource": "seven-segment-display.js"
         },
         {
           "type": "smart",
@@ -3925,7 +3995,8 @@
               "uid": "demo-10-countdown",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -3951,7 +4022,8 @@
           "componentName": "Reset to 3",
           "uid": "demo-10-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "arrow",
@@ -3997,7 +4069,9 @@
           "strokeOn": true,
           "fill": false
         }
-      ]
+      ],
+      "id": "demo-sketch-10",
+      "datasets": {}
     },
     {
       "name": "11 · Reset and stop",
@@ -4167,7 +4241,8 @@
           "componentName": "Restart",
           "uid": "demo-11-restart",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -4201,7 +4276,8 @@
               "uid": "demo-11-restart",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "sr-latch.js"
         },
         {
           "type": "smart",
@@ -4230,7 +4306,8 @@
               "uid": "demo-11-stop",
               "port": "q"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -4263,7 +4340,8 @@
               "uid": "demo-11-enabled",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "pulse-generator.js"
         },
         {
           "type": "smart",
@@ -4304,7 +4382,8 @@
               "uid": "demo-11-countdown",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -4333,7 +4412,8 @@
               "uid": "demo-11-countdown",
               "port": "count"
             }
-          }
+          },
+          "exampleSource": "seven-segment-display.js"
         },
         {
           "type": "arrow",
@@ -4418,7 +4498,9 @@
           "fill": false,
           "size": 1
         }
-      ]
+      ],
+      "id": "demo-sketch-11",
+      "datasets": {}
     },
     {
       "name": "12 · Latch laboratory",
@@ -4581,7 +4663,8 @@
           "componentName": "Set",
           "uid": "demo-12-set",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -4600,7 +4683,8 @@
           "componentName": "Reset",
           "uid": "demo-12-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -4634,7 +4718,8 @@
               "uid": "demo-12-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "sr-latch.js"
         },
         {
           "type": "smart",
@@ -4667,7 +4752,8 @@
               "uid": "demo-12-nor-notq",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "nor-gate.js"
         },
         {
           "type": "smart",
@@ -4700,7 +4786,8 @@
               "uid": "demo-12-nor-q",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "nor-gate.js"
         },
         {
           "type": "smart",
@@ -4729,7 +4816,8 @@
               "uid": "demo-12-set",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -4758,7 +4846,8 @@
               "uid": "demo-12-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -4791,7 +4880,8 @@
               "uid": "demo-12-nand-notq",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "nand-gate.js"
         },
         {
           "type": "smart",
@@ -4824,7 +4914,8 @@
               "uid": "demo-12-nand-q",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "nand-gate.js"
         },
         {
           "type": "text",
@@ -4943,7 +5034,9 @@
           "strokeOn": true,
           "fill": false
         }
-      ]
+      ],
+      "id": "demo-sketch-12",
+      "datasets": {}
     },
     {
       "name": "13 · Shared-edge storage",
@@ -5113,7 +5206,8 @@
           "componentName": "Clock",
           "uid": "demo-13-clock",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -5132,7 +5226,8 @@
           "componentName": "Data",
           "uid": "demo-13-data",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -5158,7 +5253,8 @@
           "componentName": "Reset",
           "uid": "demo-13-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -5181,7 +5277,8 @@
             "max": 100,
             "step": 1
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -5219,7 +5316,8 @@
               "uid": "demo-13-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "d-flip-flop.js"
         },
         {
           "type": "smart",
@@ -5257,7 +5355,8 @@
               "uid": "demo-13-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "d-flip-flop.js"
         },
         {
           "type": "smart",
@@ -5295,7 +5394,8 @@
               "uid": "demo-13-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "register-number.js"
         },
         {
           "type": "arrow",
@@ -5319,7 +5419,9 @@
           "strokeOn": true,
           "fill": false
         }
-      ]
+      ],
+      "id": "demo-sketch-13",
+      "datasets": {}
     },
     {
       "name": "14 · Sequences",
@@ -5489,7 +5591,8 @@
           "componentName": "Clock",
           "uid": "demo-14-clock",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -5515,7 +5618,8 @@
           "componentName": "Reset sequences",
           "uid": "demo-14-reset",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -5551,7 +5655,8 @@
               "uid": "demo-14-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "ring-counter.js"
         },
         {
           "type": "smart",
@@ -5597,7 +5702,8 @@
               "uid": "demo-14-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "shift-register-boolean.js"
         },
         {
           "type": "smart",
@@ -5626,7 +5732,8 @@
               "uid": "demo-14-johnson",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -5661,7 +5768,8 @@
               "uid": "demo-14-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "decade-counter.js"
         },
         {
           "type": "arrow",
@@ -5719,7 +5827,9 @@
           "fill": false,
           "size": 1
         }
-      ]
+      ],
+      "id": "demo-sketch-14",
+      "datasets": {}
     },
     {
       "name": "15 · Delayed feedback",
@@ -5895,7 +6005,8 @@
               "uid": "demo-15-invert",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "delay.js"
         },
         {
           "type": "smart",
@@ -5924,7 +6035,8 @@
               "uid": "demo-15-delay",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "not-gate.js"
         },
         {
           "type": "smart",
@@ -5946,7 +6058,8 @@
               "uid": "demo-15-delay",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "arrow",
@@ -5998,7 +6111,9 @@
           "strokeOn": true,
           "fill": false
         }
-      ]
+      ],
+      "id": "demo-sketch-15",
+      "datasets": {}
     },
     {
       "name": "16 · Text and notes",
@@ -6218,7 +6333,8 @@
           "componentName": "Message",
           "uid": "demo-16-entry",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -6248,7 +6364,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -6303,7 +6420,8 @@
           "eventModes": {
             "content": "value",
             "line": "value"
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -6329,7 +6447,8 @@
           "componentName": "Replace notes",
           "uid": "demo-16-set",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -6355,7 +6474,8 @@
           "componentName": "Clear notes",
           "uid": "demo-16-clear",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -6382,7 +6502,8 @@
               "port": "lineCount"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -6418,7 +6539,8 @@
           "componentName": "Typed level",
           "uid": "demo-16-number",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "number-input.js"
         },
         {
           "type": "smart",
@@ -6445,7 +6567,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "gauge.js"
         },
         {
           "type": "text",
@@ -6546,7 +6669,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-16",
+      "datasets": {}
     },
     {
       "name": "17 · Embedded data",
@@ -6715,10 +6840,11 @@
           "bindings": {},
           "inputValues": {
             "data": {
-              "datasetId": "sailing-results"
+              "datasetId": "demo-data-demo-sketch-17-sailing-results"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -6754,7 +6880,8 @@
           "inputValues": {
             "column": "Boat",
             "operation": "contains"
-          }
+          },
+          "exampleSource": "table-filter.js"
         },
         {
           "type": "smart",
@@ -6790,7 +6917,8 @@
           "componentName": "Filter boats",
           "uid": "demo-17-boat",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "text",
@@ -6837,7 +6965,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -6870,7 +6999,8 @@
           "inputValues": {
             "category": "Race",
             "value": "Points"
-          }
+          },
+          "exampleSource": "data-bar-chart.js"
         },
         {
           "type": "rect",
@@ -6921,7 +7051,7 @@
       ],
       "assets": {},
       "datasets": {
-        "sailing-results": {
+        "demo-data-demo-sketch-17-sailing-results": {
           "name": "Sailing results",
           "columns": [
             {
@@ -7038,7 +7168,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-17"
     },
     {
       "name": "18 · Reader data and results",
@@ -7226,10 +7357,11 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "sailing-results"
+              "datasetId": "demo-data-demo-sketch-18-sailing-results"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -7262,7 +7394,8 @@
             "group": "Boat",
             "value": "Points",
             "operation": "sum"
-          }
+          },
+          "exampleSource": "table-aggregate.js"
         },
         {
           "type": "smart",
@@ -7295,7 +7428,8 @@
           "inputValues": {
             "column": "Boat",
             "direction": "ascending"
-          }
+          },
+          "exampleSource": "table-sort.js"
         },
         {
           "type": "smart",
@@ -7324,7 +7458,8 @@
           },
           "inputValues": {
             "filename": "sailing-report"
-          }
+          },
+          "exampleSource": "data-download.js"
         },
         {
           "type": "smart",
@@ -7354,7 +7489,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -7387,7 +7523,8 @@
           "inputValues": {
             "category": "",
             "value": ""
-          }
+          },
+          "exampleSource": "data-bar-chart.js"
         },
         {
           "type": "smart",
@@ -7413,7 +7550,8 @@
           "componentName": "Reload file",
           "uid": "demo-18-reload",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "rect",
@@ -7464,7 +7602,7 @@
       ],
       "assets": {},
       "datasets": {
-        "sailing-results": {
+        "demo-data-demo-sketch-18-sailing-results": {
           "name": "Sailing results",
           "columns": [
             {
@@ -7581,7 +7719,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-18"
     },
     {
       "name": "19 · Choices and text lookup",
@@ -7722,7 +7861,8 @@
           "bindings": {},
           "inputValues": {
             "select": 0
-          }
+          },
+          "exampleSource": "dropdown.js"
         },
         {
           "type": "smart",
@@ -7749,7 +7889,8 @@
               "port": "index"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -7779,7 +7920,8 @@
               "port": "key"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -7809,7 +7951,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -7836,7 +7979,8 @@
               "datasetId": "state-names"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "arrow",
@@ -7877,7 +8021,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "text",
@@ -7961,7 +8106,8 @@
             "min": -1,
             "max": 4,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "arrow",
@@ -8010,7 +8156,8 @@
           "inputValues": {
             "textColumn": "Text",
             "keyColumn": "Key"
-          }
+          },
+          "exampleSource": "dropdown.js"
         },
         {
           "type": "arrow",
@@ -8051,7 +8198,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -8078,7 +8226,8 @@
               "port": "valid"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "text",
@@ -8159,7 +8308,8 @@
           "componentName": "Find state",
           "uid": "demo-19-query",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "arrow",
@@ -8209,7 +8359,8 @@
           "inputValues": {
             "textColumn": "Text",
             "keyColumn": "Key"
-          }
+          },
+          "exampleSource": "text-lookup.js"
         },
         {
           "type": "arrow",
@@ -8247,7 +8398,8 @@
               "port": "index"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -8277,7 +8429,8 @@
               "port": "key"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -8304,7 +8457,8 @@
               "port": "found"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "rect",
@@ -8389,7 +8543,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-19"
     },
     {
       "name": "20 · Connected spreadsheet",
@@ -8552,7 +8707,8 @@
             "min": 0,
             "max": 100,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -8576,7 +8732,8 @@
           "componentName": "Enabled",
           "uid": "demo-20-enabled",
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -8632,7 +8789,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "text",
@@ -8693,7 +8851,8 @@
               "uid": "demo-20-sheet",
               "port": "total"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -8720,7 +8879,8 @@
               "port": "active"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -8750,7 +8910,8 @@
               "port": "status"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "text",
@@ -8817,7 +8978,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-20",
+      "datasets": {}
     },
     {
       "name": "21 · Dataset spreadsheet",
@@ -8956,10 +9119,11 @@
           "bindings": {},
           "inputValues": {
             "data": {
-              "datasetId": "sailing-results"
+              "datasetId": "demo-data-demo-sketch-21-sailing-results"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -8987,7 +9151,8 @@
             "min": 0,
             "max": 7,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -9046,7 +9211,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "text",
@@ -9107,7 +9273,8 @@
               "uid": "demo-21-sheet",
               "port": "points"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -9134,7 +9301,8 @@
               "uid": "demo-21-sheet",
               "port": "rows"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "smart",
@@ -9161,7 +9329,8 @@
               "uid": "demo-21-sheet",
               "port": "scaled"
             }
-          }
+          },
+          "exampleSource": "value-label.js"
         },
         {
           "type": "text",
@@ -9212,7 +9381,7 @@
       ],
       "assets": {},
       "datasets": {
-        "sailing-results": {
+        "demo-data-demo-sketch-21-sailing-results": {
           "name": "Sailing results",
           "columns": [
             {
@@ -9329,7 +9498,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-21"
     },
     {
       "name": "22 · Shared dataset",
@@ -9484,11 +9654,12 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "readings"
+              "datasetId": "demo-data-demo-sketch-22-readings"
             }
           },
           "bindings": {},
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -9524,7 +9695,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -9547,7 +9719,8 @@
             "max": 100,
             "step": 5
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -9574,7 +9747,8 @@
             "seconds": 0.1
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -9616,7 +9790,8 @@
               "uid": "demo-22-value",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "capture-row.js"
         },
         {
           "type": "smart",
@@ -9644,7 +9819,8 @@
             "min": 0,
             "max": 995,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -9694,7 +9870,8 @@
               "uid": "demo-22-offset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "text",
@@ -9744,7 +9921,8 @@
               "uid": "demo-22-source",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "data-bar-chart.js"
         },
         {
           "type": "smart",
@@ -9773,7 +9951,8 @@
               "uid": "demo-22-source",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "data-download.js"
         },
         {
           "type": "rect",
@@ -9807,7 +9986,7 @@
       ],
       "assets": {},
       "datasets": {
-        "readings": {
+        "demo-data-demo-sketch-22-readings": {
           "name": "Readings",
           "columns": [
             {
@@ -9856,7 +10035,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-22"
     },
     {
       "name": "23 · Source to dataset",
@@ -10012,11 +10192,12 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "incoming"
+              "datasetId": "demo-data-demo-sketch-23-incoming"
             }
           },
           "bindings": {},
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -10052,7 +10233,8 @@
           "inputValues": {
             "column": "value",
             "operation": "≥"
-          }
+          },
+          "exampleSource": "table-filter.js"
         },
         {
           "type": "smart",
@@ -10078,7 +10260,7 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "saved"
+              "datasetId": "demo-data-demo-sketch-23-saved"
             }
           },
           "bindings": {
@@ -10095,7 +10277,8 @@
               "port": "value"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "text",
@@ -10169,7 +10352,8 @@
               "uid": "demo-23-source",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "text",
@@ -10209,7 +10393,8 @@
             "max": 100,
             "step": 10
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -10236,7 +10421,8 @@
             "seconds": 0.1
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -10263,7 +10449,8 @@
             "seconds": 0.1
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "text",
@@ -10313,7 +10500,8 @@
               "uid": "demo-23-target",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "data-bar-chart.js"
         },
         {
           "type": "smart",
@@ -10359,7 +10547,8 @@
               "uid": "demo-23-target",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "text",
@@ -10410,7 +10599,7 @@
       ],
       "assets": {},
       "datasets": {
-        "incoming": {
+        "demo-data-demo-sketch-23-incoming": {
           "name": "Incoming readings",
           "columns": [
             {
@@ -10446,7 +10635,7 @@
           "revision": 0,
           "nextRowId": 3
         },
-        "saved": {
+        "demo-data-demo-sketch-23-saved": {
           "name": "Saved readings",
           "columns": [
             {
@@ -10490,7 +10679,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-23"
     },
     {
       "name": "24 · Live dataset editor",
@@ -10631,10 +10821,11 @@
           "bindings": {},
           "inputValues": {
             "data": {
-              "datasetId": "incoming"
+              "datasetId": "demo-data-demo-sketch-24-incoming"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -10670,7 +10861,8 @@
               "datasetId": "working"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "text",
@@ -10720,7 +10912,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -10753,7 +10946,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "text",
@@ -10821,7 +11015,7 @@
       ],
       "assets": {},
       "datasets": {
-        "incoming": {
+        "demo-data-demo-sketch-24-incoming": {
           "name": "Incoming readings",
           "columns": [
             {
@@ -10911,7 +11105,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-24"
     },
     {
       "name": "25 · Spreadsheet result tables",
@@ -11069,10 +11264,11 @@
           "bindings": {},
           "inputValues": {
             "data": {
-              "datasetId": "incoming"
+              "datasetId": "demo-data-demo-sketch-25-incoming"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -11105,7 +11301,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -11155,7 +11352,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "spreadsheet.js"
         },
         {
           "type": "smart",
@@ -11191,7 +11389,8 @@
               "datasetId": "results"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -11224,7 +11423,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -11253,7 +11453,8 @@
           },
           "inputValues": {
             "filename": "calculated-readings"
-          }
+          },
+          "exampleSource": "data-download.js"
         },
         {
           "type": "text",
@@ -11338,7 +11539,7 @@
       ],
       "assets": {},
       "datasets": {
-        "incoming": {
+        "demo-data-demo-sketch-25-incoming": {
           "name": "Source readings",
           "columns": [
             {
@@ -11428,7 +11629,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-25"
     },
     {
       "name": "26 · Views and stored results",
@@ -11603,10 +11805,11 @@
           "bindings": {},
           "inputValues": {
             "data": {
-              "datasetId": "readings"
+              "datasetId": "demo-data-demo-sketch-26-readings"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -11639,7 +11842,8 @@
             "column": "value",
             "operation": "≥",
             "number": 20
-          }
+          },
+          "exampleSource": "table-filter.js"
         },
         {
           "type": "smart",
@@ -11672,7 +11876,8 @@
           "inputValues": {
             "column": "value",
             "direction": "descending"
-          }
+          },
+          "exampleSource": "table-sort.js"
         },
         {
           "type": "smart",
@@ -11705,7 +11910,8 @@
             "group": "",
             "value": "value",
             "operation": "sum"
-          }
+          },
+          "exampleSource": "table-aggregate.js"
         },
         {
           "type": "smart",
@@ -11742,10 +11948,11 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "saved"
+              "datasetId": "demo-data-demo-sketch-26-saved"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -11771,7 +11978,8 @@
             "showIndicators": false
           },
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "text",
@@ -11855,7 +12063,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -11888,7 +12097,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -11921,7 +12131,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "smart",
@@ -11954,7 +12165,8 @@
               "port": "data"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "data-table.js"
         },
         {
           "type": "text",
@@ -12056,7 +12268,7 @@
       ],
       "assets": {},
       "datasets": {
-        "readings": {
+        "demo-data-demo-sketch-26-readings": {
           "name": "Source readings",
           "columns": [
             {
@@ -12092,7 +12304,7 @@
           "revision": 0,
           "nextRowId": 3
         },
-        "saved": {
+        "demo-data-demo-sketch-26-saved": {
           "name": "Saved total",
           "columns": [
             {
@@ -12130,7 +12342,8 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-26"
     },
     {
       "name": "27 · Text matching and extraction",
@@ -12245,7 +12458,8 @@
             "placeholder": ""
           },
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -12281,7 +12495,8 @@
             "placeholder": ""
           },
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "text",
@@ -12385,7 +12600,8 @@
           },
           "inputValues": {
             "operation": "equals"
-          }
+          },
+          "exampleSource": "text-compare.js"
         },
         {
           "type": "smart",
@@ -12418,7 +12634,8 @@
           "inputValues": {
             "compare": "Order-\\d+ 🚀",
             "operation": "matches regex"
-          }
+          },
+          "exampleSource": "text-compare.js"
         },
         {
           "type": "smart",
@@ -12452,7 +12669,8 @@
           "inputValues": {
             "pattern": "Order-(\\d+)",
             "group": 0
-          }
+          },
+          "exampleSource": "text-extract.js"
         },
         {
           "type": "smart",
@@ -12486,7 +12704,8 @@
           "inputValues": {
             "start": 11,
             "length": 1
-          }
+          },
+          "exampleSource": "text-extract.js"
         },
         {
           "type": "text",
@@ -12576,7 +12795,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -12598,7 +12818,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -12628,7 +12849,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -12658,7 +12880,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -12680,7 +12903,8 @@
               "port": "found"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -12702,7 +12926,8 @@
               "port": "found"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "text",
@@ -12820,7 +13045,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-27",
+      "datasets": {}
     },
     {
       "name": "28 · Text processing and formatting",
@@ -12935,7 +13162,8 @@
             "placeholder": ""
           },
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -12966,7 +13194,8 @@
           },
           "inputValues": {
             "operation": "trim"
-          }
+          },
+          "exampleSource": "text-transform.js"
         },
         {
           "type": "smart",
@@ -12997,7 +13226,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-to-number.js"
         },
         {
           "type": "text",
@@ -13047,7 +13277,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "number-to-text.js"
         },
         {
           "type": "smart",
@@ -13080,7 +13311,8 @@
           },
           "inputValues": {
             "template": "Total: {a} €"
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -13115,7 +13347,8 @@
           },
           "inputValues": {
             "a": "Enter a valid amount"
-          }
+          },
+          "exampleSource": "text-selector.js"
         },
         {
           "type": "smart",
@@ -13145,7 +13378,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -13167,7 +13401,8 @@
               "port": "valid"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "text",
@@ -13237,7 +13472,8 @@
             "placeholder": ""
           },
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -13272,7 +13508,8 @@
           "inputValues": {
             "search": "order",
             "replacement": "ITEM"
-          }
+          },
+          "exampleSource": "text-replace.js"
         },
         {
           "type": "smart",
@@ -13307,7 +13544,8 @@
           "inputValues": {
             "search": "ITEM-(\\d+)",
             "replacement": "#$1"
-          }
+          },
+          "exampleSource": "text-replace.js"
         },
         {
           "type": "text",
@@ -13371,7 +13609,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "rect",
@@ -13421,7 +13660,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-28",
+      "datasets": {}
     },
     {
       "name": "29 · JSON messages",
@@ -13536,7 +13777,8 @@
           "componentName": "Customer name",
           "uid": "demo-29-name",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -13564,7 +13806,8 @@
             "min": 0,
             "max": 100,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -13588,7 +13831,8 @@
           "componentName": "Active customer",
           "uid": "demo-29-enabled",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -13624,7 +13868,8 @@
           },
           "inputValues": {
             "field0": 10
-          }
+          },
+          "exampleSource": "json-build.js"
         },
         {
           "type": "smart",
@@ -13658,7 +13903,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "json-edit.js"
         },
         {
           "type": "smart",
@@ -13690,7 +13936,8 @@
           },
           "inputValues": {
             "pointer": "/name"
-          }
+          },
+          "exampleSource": "json-extract.js"
         },
         {
           "type": "smart",
@@ -13722,7 +13969,8 @@
           },
           "inputValues": {
             "pointer": "/amount"
-          }
+          },
+          "exampleSource": "json-extract.js"
         },
         {
           "type": "text",
@@ -13775,7 +14023,8 @@
           "componentName": "Incoming JSON",
           "uid": "demo-29-nested",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -13807,7 +14056,8 @@
           },
           "inputValues": {
             "pointer": "/items/0/name"
-          }
+          },
+          "exampleSource": "json-extract.js"
         },
         {
           "type": "smart",
@@ -13834,7 +14084,8 @@
               "port": "valid"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "status-indicator.js"
         },
         {
           "type": "smart",
@@ -13861,7 +14112,8 @@
           "inputValues": {
             "key": "name",
             "fallback": "(no name parameter)"
-          }
+          },
+          "exampleSource": "url-parameter.js"
         },
         {
           "type": "smart",
@@ -13891,7 +14143,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -13918,7 +14171,8 @@
           "inputValues": {
             "key": "via",
             "fallback": "(no via parameter)"
-          }
+          },
+          "exampleSource": "url-parameter.js"
         },
         {
           "type": "smart",
@@ -13948,7 +14202,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "text",
@@ -14015,7 +14270,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-29",
+      "datasets": {}
     },
     {
       "name": "30 · Dates and timezones",
@@ -14130,7 +14387,8 @@
           "componentName": "Start (explicit UTC offset)",
           "uid": "demo-30-start",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -14166,7 +14424,8 @@
           "componentName": "End (explicit UTC offset)",
           "uid": "demo-30-end",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -14202,7 +14461,8 @@
           "componentName": "Display timezone",
           "uid": "demo-30-zone",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -14231,7 +14491,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "date-parse.js"
         },
         {
           "type": "smart",
@@ -14260,7 +14521,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "date-parse.js"
         },
         {
           "type": "smart",
@@ -14294,7 +14556,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "date-format.js"
         },
         {
           "type": "text",
@@ -14346,7 +14609,8 @@
           },
           "inputValues": {
             "unit": "hours"
-          }
+          },
+          "exampleSource": "date-difference.js"
         },
         {
           "type": "smart",
@@ -14381,7 +14645,8 @@
           },
           "inputValues": {
             "unit": "days"
-          }
+          },
+          "exampleSource": "date-difference.js"
         },
         {
           "type": "smart",
@@ -14411,7 +14676,8 @@
               "port": "timestamp"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "date-format.js"
         },
         {
           "type": "text",
@@ -14478,7 +14744,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-30",
+      "datasets": {}
     },
     {
       "name": "31 · URL inputs and navigation",
@@ -14584,7 +14852,8 @@
           "inputValues": {
             "key": "name",
             "fallback": "Guest"
-          }
+          },
+          "exampleSource": "url-parameter.js"
         },
         {
           "type": "smart",
@@ -14617,7 +14886,8 @@
           },
           "inputValues": {
             "template": "Welcome, {a}!"
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -14647,7 +14917,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "smart",
@@ -14674,7 +14945,8 @@
           "inputValues": {
             "key": "target",
             "fallback": "28"
-          }
+          },
+          "exampleSource": "url-parameter.js"
         },
         {
           "type": "smart",
@@ -14705,7 +14977,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-to-number.js"
         },
         {
           "type": "smart",
@@ -14737,7 +15010,8 @@
           },
           "inputValues": {
             "field1": "SimpleCanvas"
-          }
+          },
+          "exampleSource": "json-build.js"
         },
         {
           "type": "smart",
@@ -14771,7 +15045,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "go-to-tab.js"
         },
         {
           "type": "text",
@@ -14824,7 +15099,8 @@
           "componentName": "Emoji and combining accent",
           "uid": "demo-31-characters",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -14854,7 +15130,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-transform.js"
         },
         {
           "type": "smart",
@@ -14884,7 +15161,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-transform.js"
         },
         {
           "type": "text",
@@ -14951,7 +15229,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-31",
+      "datasets": {}
     },
     {
       "name": "32 · Sketch settings",
@@ -15066,7 +15346,8 @@
           "componentName": "Browser title",
           "uid": "demo-32-title",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -15087,7 +15368,8 @@
           "componentName": "Show tab bar",
           "uid": "demo-32-tabs",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -15108,7 +15390,8 @@
           "componentName": "Show wiring",
           "uid": "demo-32-wiring",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -15129,7 +15412,8 @@
           "componentName": "Simulation controls",
           "uid": "demo-32-simulation",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "text",
@@ -15191,7 +15475,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "page-settings.js"
         },
         {
           "type": "smart",
@@ -15216,7 +15501,8 @@
             "min": 0,
             "max": 100,
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -15241,7 +15527,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "gauge.js"
         },
         {
           "type": "text",
@@ -15302,7 +15589,8 @@
           "bindings": {},
           "inputValues": {
             "page": 0
-          }
+          },
+          "exampleSource": "go-to-tab.js"
         },
         {
           "type": "text",
@@ -15369,7 +15657,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-32",
+      "datasets": {}
     },
     {
       "name": "33 · Events and signals",
@@ -15484,7 +15774,8 @@
           "componentName": "Message · submit with Enter",
           "uid": "demo-33-entry",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "line",
@@ -15605,7 +15896,8 @@
           "eventModes": {
             "content": "value",
             "line": "both"
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -15652,7 +15944,8 @@
           "eventModes": {
             "content": "value",
             "line": "value"
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -15739,7 +16032,8 @@
           "componentName": "Amount · number event",
           "uid": "demo-33-number",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "number-input.js"
         },
         {
           "type": "smart",
@@ -15782,7 +16076,8 @@
           "eventModes": {
             "content": "value",
             "line": "both"
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -15808,7 +16103,8 @@
           "componentName": "Clear all memos",
           "uid": "demo-33-clear",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "text",
@@ -15892,7 +16188,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "number-to-text.js"
         },
         {
           "type": "arrow",
@@ -15935,7 +16232,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-33",
+      "datasets": {}
     },
     {
       "name": "34 · Hybrid transformations",
@@ -16050,7 +16349,8 @@
           "componentName": "Text · submit with Enter",
           "uid": "demo-34-entry",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -16094,7 +16394,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-extract.js"
         },
         {
           "type": "smart",
@@ -16124,7 +16425,8 @@
               "port": "text"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-label.js"
         },
         {
           "type": "arrow",
@@ -16184,7 +16486,8 @@
           "bindings": {},
           "inputValues": {
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -16205,7 +16508,8 @@
           "bindings": {},
           "inputValues": {
             "step": 1
-          }
+          },
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -16231,7 +16535,8 @@
           "componentName": "Reprocess now",
           "uid": "demo-34-reprocess",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "text",
@@ -16291,7 +16596,8 @@
           "componentName": "Append current result",
           "uid": "demo-34-append",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "text",
@@ -16386,7 +16692,8 @@
               "port": "value"
             }
           },
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -16438,7 +16745,8 @@
           "eventModes": {
             "line": "value",
             "content": "value"
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -16498,7 +16806,8 @@
           "componentName": "Clear both memos",
           "uid": "demo-34-clear",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -16517,7 +16826,8 @@
           "script": "// A boolean source. Double-click in the editor, or click directly in exported HTML.\n({\n  apiVersion:2,\n  inputs:{},\n  outputs:{value:{type:'boolean'}},\n  initState(){return {value:false};},\n  initStyle(){return {w:220,h:100,fontSize:20,strokeOn:false};},\n  compute(inputs,state){return {value:state.value===true};},\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io){\n    const value=io.outputs.value,diameter=Math.min(h*.28,w*.18),cy=h*.69;\n    const caption=this._caption(io.name,'Toggle',w,h*.42,style);\n    return [\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.42,...caption,align:'center',color:style.textColor,strokeOn:false},\n      {type:'rect',x:w*.25,y:h*.5,w:w*.5,h:h*.38,fill:true,fillColor:value?'#15803d':'#64748b',strokeOn:false},\n      {type:'ellipse',x:(value?w*.65:w*.35)-diameter/2,y:cy-diameter/2,w:diameter,h:diameter,fill:true,fillColor:'#ffffff',strokeOn:false}\n    ];\n  },\n  handles(state,w,h){return [{id:'toggle',x:w/2,y:h*.69,kind:'click'}];},\n  hitEdit(state,x,y,w,h){return x>=0 && x<=w && y>=0 && y<=h?'toggle':null;},\n  dragEdit(state,handle){return {state:handle==='toggle'?{...state,value:state.value!==true}:{...state}};}\n})\n",
           "componentApi": 2,
           "componentName": "Scrollbars",
-          "uid": "demo-34-scrollbars"
+          "uid": "demo-34-scrollbars",
+          "exampleSource": "toggle.js"
         }
       ],
       "assets": {},
@@ -16538,7 +16848,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-34",
+      "datasets": {}
     },
     {
       "name": "35 · Shared event origins",
@@ -16670,7 +16982,8 @@
           "componentName": "Name;City · press Enter",
           "uid": "demo-35-entry",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -16705,7 +17018,8 @@
           "inputValues": {
             "pattern": "^([^;]*);(.*)$",
             "group": 0
-          }
+          },
+          "exampleSource": "text-extract.js"
         },
         {
           "type": "smart",
@@ -16740,7 +17054,8 @@
           "inputValues": {
             "pattern": "^([^;]*);(.*)$",
             "group": 1
-          }
+          },
+          "exampleSource": "text-extract.js"
         },
         {
           "type": "smart",
@@ -16777,7 +17092,8 @@
           },
           "inputValues": {
             "separator": " / "
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -16820,7 +17136,8 @@
           },
           "inputValues": {
             "showScrollbar": true
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "arrow",
@@ -16945,7 +17262,8 @@
           "componentName": "Name · press Enter",
           "uid": "demo-35-manual-name",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -16981,7 +17299,8 @@
           "componentName": "City · press Enter",
           "uid": "demo-35-manual-city",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -17026,7 +17345,8 @@
           "eventModes": {
             "a": "value",
             "b": "value"
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -17069,7 +17389,8 @@
           },
           "inputValues": {
             "showScrollbar": true
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -17095,7 +17416,8 @@
           "componentName": "Apply",
           "uid": "demo-35-apply",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "arrow",
@@ -17216,7 +17538,8 @@
           "componentName": "Clear both logs",
           "uid": "demo-35-clear",
           "bindings": {},
-          "inputValues": {}
+          "inputValues": {},
+          "exampleSource": "trigger.js"
         }
       ],
       "assets": {},
@@ -17237,7 +17560,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-35",
+      "datasets": {}
     },
     {
       "name": "36 · Selection events",
@@ -17361,7 +17686,8 @@
           "inputValues": {
             "select": 0
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "dropdown.js"
         },
         {
           "type": "smart",
@@ -17392,7 +17718,8 @@
               "uid": "demo-36-city",
               "port": "index"
             }
-          }
+          },
+          "exampleSource": "dropdown.js"
         },
         {
           "type": "smart",
@@ -17429,7 +17756,8 @@
               "uid": "demo-36-country",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -17468,7 +17796,8 @@
               "uid": "demo-36-compose",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -17538,7 +17867,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -17574,7 +17904,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -17600,7 +17931,8 @@
             "showIndicators": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -17619,7 +17951,8 @@
             "value": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -17660,7 +17993,8 @@
               "uid": "demo-36-reprocess",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "text-selector.js"
         },
         {
           "type": "smart",
@@ -17699,7 +18033,8 @@
               "uid": "demo-36-selector",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -17745,7 +18080,8 @@
           "inputValues": {
             "showWiring": true
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "page-settings.js"
         }
       ],
       "assets": {},
@@ -17766,7 +18102,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-36",
+      "datasets": {}
     },
     {
       "name": "37 · Adapters and completion",
@@ -17898,7 +18236,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -17932,7 +18271,8 @@
               "uid": "demo-37-sample-trigger",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "signal-to-event.js"
         },
         {
           "type": "smart",
@@ -17958,7 +18298,8 @@
             "showIndicators": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -17997,7 +18338,8 @@
               "uid": "demo-37-sample",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -18084,7 +18426,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -18117,7 +18460,8 @@
               "uid": "demo-37-entry",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "event-to-pulse.js"
         },
         {
           "type": "smart",
@@ -18156,7 +18500,8 @@
               "uid": "demo-37-reset",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "counter.js"
         },
         {
           "type": "smart",
@@ -18182,7 +18527,8 @@
             "showIndicators": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -18216,7 +18562,8 @@
               "uid": "demo-37-counter",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -18255,7 +18602,8 @@
               "uid": "demo-37-count-message",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -18288,7 +18636,8 @@
               "uid": "demo-37-run",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "timer.js"
         },
         {
           "type": "smart",
@@ -18307,7 +18656,8 @@
             "value": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "toggle.js"
         },
         {
           "type": "smart",
@@ -18341,7 +18691,8 @@
               "uid": "demo-37-timer",
               "port": "reached"
             }
-          }
+          },
+          "exampleSource": "text-compose.js"
         },
         {
           "type": "smart",
@@ -18380,7 +18731,8 @@
               "uid": "demo-37-timer-message",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -18426,7 +18778,8 @@
           "inputValues": {
             "showWiring": true
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "page-settings.js"
         }
       ],
       "assets": {},
@@ -18447,7 +18800,9 @@
           "fill": false,
           "fillColor": "#f8fafc"
         }
-      }
+      },
+      "id": "demo-sketch-37",
+      "datasets": {}
     },
     {
       "name": "38 · Dataset action results",
@@ -18570,7 +18925,7 @@
           },
           "inputValues": {
             "data": {
-              "datasetId": "readings"
+              "datasetId": "demo-data-demo-sketch-38-readings"
             }
           },
           "bindings": {
@@ -18579,7 +18934,8 @@
               "port": "value"
             }
           },
-          "datasetOwner": "data"
+          "datasetOwner": "data",
+          "exampleSource": "data-source.js"
         },
         {
           "type": "smart",
@@ -18613,7 +18969,8 @@
               "uid": "demo-38-source",
               "port": "loaded"
             }
-          }
+          },
+          "exampleSource": "number-to-text.js"
         },
         {
           "type": "smart",
@@ -18652,7 +19009,8 @@
               "uid": "demo-38-loaded-text",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -18692,7 +19050,8 @@
               "uid": "demo-38-source",
               "port": "failed"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "smart",
@@ -18718,7 +19077,8 @@
             "showIndicators": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -18751,7 +19111,8 @@
               "uid": "demo-38-source",
               "port": "data"
             }
-          }
+          },
+          "exampleSource": "data-table.js"
         },
         {
           "type": "text",
@@ -18804,7 +19165,8 @@
             "placeholder": ""
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "text-input.js"
         },
         {
           "type": "smart",
@@ -18827,7 +19189,8 @@
             "max": 100,
             "step": 1
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "number-control.js"
         },
         {
           "type": "smart",
@@ -18869,7 +19232,8 @@
               "uid": "demo-38-value",
               "port": "value"
             }
-          }
+          },
+          "exampleSource": "capture-row.js"
         },
         {
           "type": "smart",
@@ -18895,7 +19259,8 @@
             "showIndicators": false
           },
           "inputValues": {},
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "trigger.js"
         },
         {
           "type": "smart",
@@ -18929,7 +19294,8 @@
               "uid": "demo-38-capture",
               "port": "captured"
             }
-          }
+          },
+          "exampleSource": "number-to-text.js"
         },
         {
           "type": "smart",
@@ -18968,7 +19334,8 @@
               "uid": "demo-38-captured-text",
               "port": "text"
             }
-          }
+          },
+          "exampleSource": "memo.js"
         },
         {
           "type": "text",
@@ -19014,7 +19381,8 @@
           "inputValues": {
             "showWiring": true
           },
-          "bindings": {}
+          "bindings": {},
+          "exampleSource": "page-settings.js"
         }
       ],
       "assets": {},
@@ -19037,7 +19405,7 @@
         }
       },
       "datasets": {
-        "readings": {
+        "demo-data-demo-sketch-38-readings": {
           "name": "Event readings",
           "columns": [
             {
@@ -19068,7 +19436,8 @@
           "revision": 0,
           "nextRowId": 2
         }
-      }
+      },
+      "id": "demo-sketch-38"
     }
   ]
 }
