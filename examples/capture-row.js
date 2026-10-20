@@ -2,6 +2,9 @@
 // Fields are one columnKey:number|string|boolean entry per line. Unmapped columns stay empty.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventOutputs:{captured:{type:'number'},failed:{type:'string'}},
+  actionEvents:{appendRow:{success:'captured',failure:'failed'}},
   settings:{
     fields:{type:'string',format:'lines',default:'label:string\nvalue:number\nactive:boolean',label:'Fields (column:type)'},
     allowReaderCapture:{type:'boolean',default:false,label:'Allow capture in HTML export'}

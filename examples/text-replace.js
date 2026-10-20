@@ -2,9 +2,11 @@
 // Replacement references follow JavaScript syntax; output is bounded while it is built.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['text','count'],reprocess:'reprocess'},
   settings:{mode:{type:'string',default:'literal',options:['literal','regex'],label:'Matching mode'},occurrence:{type:'string',default:'all',options:['all','first'],label:'Replace occurrences'},caseSensitive:{type:'boolean',default:true,label:'Case-sensitive matching'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{text:{type:'string',default:''},search:{role:'control',type:'string',default:''},replacement:{role:'control',type:'string',default:''}},
-  outputs:{text:{type:'string'},count:{type:'number'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:''},search:{role:'control',type:'string',default:''},replacement:{role:'control',type:'string',default:''}},
+  outputs:{text:{event:true,type:'string'},count:{event:true,type:'number'}},
   initState(){return {mode:'literal',occurrence:'all',caseSensitive:true,showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state){

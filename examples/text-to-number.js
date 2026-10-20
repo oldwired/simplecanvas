@@ -2,9 +2,11 @@
 // The decimal separator is explicit; grouping, hexadecimal and partial matches are not accepted.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['value','valid'],reprocess:'reprocess'},
   settings:{decimalSeparator:{type:'string',default:'.',options:['.',','],label:'Decimal separator'},trimWhitespace:{type:'boolean',default:true,label:'Trim surrounding whitespace'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{text:{type:'string',default:''}},
-  outputs:{value:{type:'number'},valid:{role:'control',type:'boolean'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:''}},
+  outputs:{value:{event:true,type:'number'},valid:{event:true,role:'control',type:'boolean'}},
   initState(){return {decimalSeparator:'.',trimWhitespace:true,showIndicators:true};},
   initStyle(){return {w:300,h:112,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state=this.initState()){

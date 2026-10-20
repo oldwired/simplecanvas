@@ -1,12 +1,14 @@
-// Each accepted entry queues its value and one submitted pulse, including unchanged entries.
+// Each accepted entry emits its captured value as an event and queues one submitted pulse.
+// Repeating a value produces another event and pulse; the two connection styles remain independent.
 // The bounded inbox survives Pause; a fresh runtime retains the latest value without replaying it.
 // A 10 ms arming gap lets connected Clear signals settle before the first queued pulse.
 ({
   apiVersion:2,
+  eventApi:1,
   wakePolicy:'latest',
   settings:{maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'},required:{type:'boolean',default:false,label:'Required'},placeholder:{type:'string',default:'',label:'Placeholder'},showSubmitted:{type:'boolean',default:false,label:'Show submission state'},showHints:{type:'boolean',default:false,label:'Show hints'}},
   inputs:{clear:{role:'control',type:'boolean',default:false}},
-  outputs:{value:{type:'string'},submitted:{role:'control',type:'boolean'}},
+  outputs:{value:{type:'string',event:true},submitted:{role:'control',type:'boolean'}},
   initState(){return {values:[''],current:0,pending:[],submitted:false,press:0,entryRuntime:'',showSubmitted:false,showHints:false,maxLength:2000,required:false,placeholder:''};},
   initStyle(){return {w:320,h:72,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   _value(value){if(typeof value!=='string' || value.length>2000)throw new Error('Text must contain at most 2000 characters'); return value;},
@@ -138,6 +140,6 @@
     let index=values.indexOf(value);if(index<0){index=values.length;values.push(value);}pending.push(index);
     const next=this._compact({...state,values,current:state.submitted?state.current:pending[0],pending,press:state.press===Number.MAX_SAFE_INTEGER?0:state.press+1});
     if(JSON.stringify(next.values).length>3200 || JSON.stringify(next).length>4000)throw new Error('Submission text is too large; shorten it or wait for pending submissions');
-    this._state(next);return {state:next};
+    this._state(next);return {state:next,events:[{port:'value',payload:value}]};
   }
 })

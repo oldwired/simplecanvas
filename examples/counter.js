@@ -2,8 +2,9 @@
 // Reset/configuration changes re-prime the input; a held or restored high never invents an edge.
 ({
   apiVersion:2,
+  eventApi:1,
   inputs:{value:{role:'control',type:'boolean'},direction:{role:'control',type:'string',default:'up',options:['up','down']},start:{role:'control',type:'number',default:3},threshold:{role:'control',type:'number',default:3},reset:{role:'control',type:'boolean',default:false}},
-  outputs:{count:{type:'number'},reached:{role:'control',type:'boolean'}},
+  outputs:{count:{type:'number'},reached:{role:'control',type:'boolean',event:true}},
   initState(){return {count:0,configuredDirection:'up',configuredStart:3,configuredThreshold:3,showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _configuration(inputs={}){
@@ -31,6 +32,7 @@
     this._validate(inputs,state);
     const config=this._configuration(inputs),changed=this._changed(state,config);
     let count=this._count(state,config);
+    const previous=count;
     if(inputs.reset)count=config.direction==='down'?config.start:0;
     else if(!changed && memory?.previous===false && inputs.value){
       if(config.direction==='down')count=Math.max(0,count-1);
@@ -39,7 +41,12 @@
         count++;
       }
     }
-    return {state:{...state,count,configuredDirection:config.direction,configuredStart:config.start,configuredThreshold:inputs.threshold},memory:{previous:inputs.value},nextWakeAt:null};
+    // Only counting across the boundary completes a cycle. Reset, configuration, and
+    // restored/high inputs may change the signal but never manufacture an occurrence.
+    const completed=!changed && !inputs.reset && state.configuredThreshold===inputs.threshold &&
+      (config.direction==='down'?previous>0 && count===0:previous<inputs.threshold && count>=inputs.threshold);
+    return {state:{...state,count,configuredDirection:config.direction,configuredStart:config.start,configuredThreshold:inputs.threshold},memory:{previous:inputs.value},nextWakeAt:null,
+      ...(completed?{events:[{port:'reached',payload:true}]}:{})};
   },
   publish(state){
     const direction=state.configuredDirection??'up',threshold=state.configuredThreshold??3;

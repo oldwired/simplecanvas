@@ -184,6 +184,60 @@ test('a slow reload cannot block manual Load data and its late result cannot ove
   assert.deepEqual(await editorRows(run),[['Current file',10]]);
 }));
 
+for(const phase of ['active library drag','accepted library drop'])test('a deferred Dataset reload preserves an '+phase+' and their separate Undo steps',async()=>app(async({page,run})=>{
+  await prepare(run);await fakeFilePicker(page);
+  await editorClick(page,run,0,'loadData');await acceptFile(page);await run('smartHitSettled');
+  await run(`(()=>{const source=componentDatasetSources(items[0]).get('data');
+    source.handle.getFile=()=>new Promise(resolve=>{window.releaseDragReload=()=>resolve(
+      new File(['Name;Value\\nFresh during drag;8'],'results.csv',{type:'text/csv'}));});})()`);
+  await editorClick(page,run,2,'toggle');
+  await page.waitForFunction(()=>typeof window.releaseDragReload==='function');
+  await run('smartHitSettled');
+  const history=await run('undoStack.length'),beforeItems=await run('items.length');
+  assert.deepEqual(await editorRows(run),[['Chosen',2]],'the real file read remains pending');
+  if(phase==='accepted library drop'){
+    // Hold only placement initialization; the reload still uses its actual file
+    // handle, graph validation, dataset replacement, and history transaction.
+    await run('shapePlacementQueue=new Promise(resolve=>{window.releaseDragPlacement=resolve;});true');
+  }
+  await page.locator('#shapeLibBtn').click();await page.locator('#browseShapesBtn').click();
+  await page.locator('#libraryCollection').selectOption('builtin');await page.locator('#librarySearch').fill('Number control');
+  const button=page.locator('#libraryBrowserGrid').getByRole('button',{name:'Place Number control',exact:true});
+  const origin=await button.boundingBox(),canvas=await page.locator('#canvas').boundingBox();
+  assert.ok(origin);
+  await page.mouse.move(origin.x+origin.width/2,origin.y+origin.height/2);await page.mouse.down();
+  await page.mouse.move(canvas.x+1150,canvas.y+650,{steps:8});
+  assert.equal(await page.locator('#libraryDragPreview').isVisible(),true);
+  if(phase==='accepted library drop'){
+    await page.mouse.up();
+    assert.equal(await run('hasPendingShapePlacement()'),true,'the drop was accepted before the reload completes');
+    assert.equal(await run('items.length'),beforeItems);
+  }
+  await page.evaluate(()=>window.releaseDragReload());
+  await editorShows(page,'Fresh during drag');await run('smartHitSettled');
+  assert.equal(await run('undoStack.length'),history+1,'the reload owns one Undo step');
+  if(phase==='active library drag'){
+    assert.equal(await page.locator('#libraryDragPreview').isVisible(),true,'completing a background reload leaves the current drag active');
+    await page.mouse.up();
+  }else{
+    assert.equal(await run('hasPendingShapePlacement()'),true,'completing a background reload keeps the accepted drop valid');
+    await run('window.releaseDragPlacement();true');
+  }
+  await run('shapePlacementQueue');
+  assert.equal(await run('items.length'),beforeItems+1,'the first drag attempt places the component once');
+  const placed=await run('items.at(-1)');
+  assert.equal(placed.componentName,'Number control');
+  assert.ok(Math.abs(placed.x+placed.w/2-1150)<1 && Math.abs(placed.y+placed.h/2-650)<1,'placement remains centered at the drop');
+  assert.equal(await run('undoStack.length'),history+2,'the placement owns a separate Undo step');
+  assert.deepEqual(await editorRows(run),[['Fresh during drag',8]]);
+  await run('undo()');
+  assert.equal(await run('items.length'),beforeItems,'first Undo removes only the placed component');
+  assert.deepEqual(await editorRows(run),[['Fresh during drag',8]],'first Undo retains the completed reload');
+  await run('undo()');
+  assert.equal(await run('items.length'),beforeItems);
+  assert.deepEqual(await editorRows(run),[['Chosen',2]],'second Undo restores the data from before Reload');
+}));
+
 async function preparePair(run,shared=false){
   await seed(run,[
     {key:'dataSource',script:datasetScript,componentName:'Dataset A',x:50,y:60,state:{allowReaderImport:true},inputValues:{data:{datasetId:'baseA'}},bindings:{reload:{uid:'data-4',port:'value'}}},

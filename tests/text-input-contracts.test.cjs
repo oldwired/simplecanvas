@@ -198,7 +198,7 @@ test('Text input Submitted can append its value to Memo and clear itself in the 
   function round(now){
     // Both transitions observe one published snapshot before either state is committed.
     const snapshot=input.publish(run.state);
-    const nextMemo=memo.transition({content:'',line:snapshot.value,set:false,append:snapshot.submitted,clear:false},memoState,memoMemory);
+    const nextMemo=memo.transition({content:'',line:snapshot.value,set:false,append:snapshot.submitted,clear:false,showScrollbar:false},memoState,memoMemory);
     const nextInput=run.tick(now,false,{clear:snapshot.submitted});
     memoState=nextMemo.state;memoMemory=nextMemo.memory;
     return nextInput;

@@ -18,9 +18,10 @@ const invalid={text:'',valid:false};
 test('JSON edit declares JSON text, typed positional edit inputs, and validity output',()=>{
   const def=source();
   assert.equal(def.apiVersion,2);
-  assert.deepEqual(plain(def.outputs),{text:{type:'string'},valid:{role:'control',type:'boolean'}});
+  assert.deepEqual(plain(def.outputs),{text:{type:'string',event:true},valid:{role:'control',type:'boolean',event:true}});
   assert.deepEqual(plain(def.inputs({...def.initState(),fields:'/name:string\n/score:number\n/active:boolean\n/details:json'})),{
-    text:{type:'string',default:'{"name":""}'},
+    reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},
+    text:{type:'string',default:'{"name":""}',event:true},
     field0:{label:'/name',type:'string',default:''},
     field1:{label:'/score',type:'number',default:0},
     field2:{label:'/active',type:'boolean',default:false},

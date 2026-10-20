@@ -2,8 +2,10 @@
 // Choose the comparison in Edit. The output indicator is green for true, grey for false.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'},b:{type:'number',default:70},operation:{role:'control',type:'string',default:'>',options:['>','≥','<','≤','=','≠']}},
-  outputs:{value:{type:'boolean'}},
+  eventApi:1,
+  eventTransform:{input:'value',outputs:['value'],reprocess:'reprocess'},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{event:true,type:'number'},b:{type:'number',default:70},operation:{role:'control',type:'string',default:'>',options:['>','≥','<','≤','=','≠']}},
+  outputs:{value:{event:true,type:'boolean'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   compute(inputs){

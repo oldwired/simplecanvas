@@ -19,10 +19,10 @@ const fixed=(value,settings)=>format(value,{format:'fixed decimals',...settings}
 test('text conversion ports, settings and direct-call defaults have stable contracts',()=>{
   const parser=source('text-to-number'),formatter=source('number-to-text');
   for(const def of [parser,formatter])assert.equal(def.apiVersion,2);
-  assert.deepEqual(plain(parser.inputs),{text:{type:'string',default:''}});
-  assert.deepEqual(plain(parser.outputs),{value:{type:'number'},valid:{role:'control',type:'boolean'}});
-  assert.deepEqual(plain(formatter.inputs),{value:{type:'number',default:0}});
-  assert.deepEqual(plain(formatter.outputs),{text:{type:'string'}});
+  assert.deepEqual(plain(parser.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true}});
+  assert.deepEqual(plain(parser.outputs),{value:{type:'number',event:true},valid:{role:'control',type:'boolean',event:true}});
+  assert.deepEqual(plain(formatter.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{type:'number',default:0,event:true}});
+  assert.deepEqual(plain(formatter.outputs),{text:{type:'string',event:true}});
   assert.deepEqual(plain(parser.initState()),{decimalSeparator:'.',trimWhitespace:true,showIndicators:true});
   assert.deepEqual(plain(formatter.initState()),{format:'full precision',decimals:2,minimumIntegerDigits:1,decimalSeparator:'.',showIndicators:true});
   assert.deepEqual(plain(parser.compute({text:'12.5'})),{value:12.5,valid:true});

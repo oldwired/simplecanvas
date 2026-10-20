@@ -411,18 +411,53 @@ resolves the current connected rows and validates document/instance ownership; s
 file, DOM, storage, or download access. Pure computation, drawing, and restoration never execute
 a click action. Dataset reload uses the separate, explicitly declared trigger contract below.
 
-Dataset enables its import handle only when `allowReaderImport` is true. Replacement imports must
-retain existing column keys and types, may add columns, and must fit the normal table budgets.
-The editor records an accepted replacement in document history. HTML keeps it only in the current
-reader session. Replacement keeps the dataset ID, updates all consumers of that dataset in the sketch,
-and allocates fresh row identities. A stale read cannot overwrite a newer accepted revision.
+Dataset enables its import handle only when `allowReaderImport` is true. **Load data…** defaults to
+**Keep current columns**: the file must retain existing column keys and types, but may reorder them
+or add columns. **Use the file’s columns** replaces the column definitions as well as the records.
+This choice is available in the editor whenever file import is enabled; HTML additionally requires
+**Allow column changes in HTML export** (`allowReaderColumnChanges`, default false). This setting
+does not enable file import by itself.
+
+The preview shows column additions, removals, and type changes, alongside components affected by
+the proposed replacement. Deliberate column replacement can leave consumers with configuration
+errors; their connections and field selections are retained for correction. Dataset editor follows
+the new columns. Spreadsheet keeps its layout and formulas: positional references can read a
+different column without producing an error, so the preview also warns authors to review them.
+No automatic column mapping or type conversion is performed.
+
+Both modes retain the normal ownership, revision, and table-budget checks. The editor records an
+accepted replacement as one undoable change. HTML keeps it only in the current reader session.
+Replacement keeps the dataset ID and connections, updates all consumers of that dataset in the
+sketch, and allocates fresh row identities. A stale read cannot overwrite a newer accepted revision.
+Reload and source Replace/Append/Live actions retain their compatibility checks; selecting the
+file's columns is an explicit import-dialog choice, not a persistent schema-changing update mode.
 CSV and JSON downloads contain the selected rows in their current order, using
 column keys as field names. JSON preserves scalar types and null values. CSV uses comma-separated
 fields, CRLF records, standard doubled-quote escaping, and empty cells for nulls; it cannot preserve
 every distinction between text, numbers, empty strings, and missing values on reimport. The dialog
 previews the result before the user confirms. A paused, partially propagated graph must finish stepping or
 resume before downloading, so a file cannot mix intermediate results. These controls are a narrow
-local action contract, separate from the proposed routed-event API.
+local action contract, separate from the component-state [event API](#hybrid-valueevent-ports-event-api-1).
+
+Dataset and Capture row opt in to host-owned result notifications with `eventApi:1`, dedicated
+scalar `eventOutputs`, and an `actionEvents` declaration:
+
+```js
+// Dataset: accepted import/reload reports the resulting row count.
+actionEvents:{importDataset:{success:'loaded',failure:'failed'}},
+eventOutputs:{loaded:{type:'number'},failed:{type:'string'}}
+
+// Capture row: successful append reports the zero-based inserted row index.
+actionEvents:{appendRow:{success:'captured',failure:'failed'}},
+eventOutputs:{captured:{type:'number'},failed:{type:'string'}}
+```
+
+The host validates ownership and emits only for the accepted operation or its actionable failure.
+An accepted identical file replacement still reports success. Cancelling a dialog, stale work,
+ordinary record edits, redraws, and restoration do not emit. Source Replace/Append and Live sync
+are not completion producers in this increment. These ports use `eventBindings` when connected
+to a receiver; they do not add a current value output or change the existing table/row-count
+signals. Route numeric results through Number to text before appending to Memo.
 
 Dataset declares its reload trigger through API v2 metadata:
 
@@ -779,7 +814,7 @@ controls. Mark the controller's drawing children `editorOnly:true` to omit its b
 exports. The built-in does so while retaining labelled connection endpoints in reader wiring.
 The host changes only these presentation properties; this capability grants no DOM access.
 
-The optional API v2 `transition(inputs, state, memory, {now, historical, runtimeId})` hook adds explicit stateful,
+The optional API v2 `transition(inputs, state, memory, {now, historical, runtimeId, eventInputs})` hook adds explicit stateful,
 timed signals. It synchronously returns `{state, memory, nextWakeAt}`. `state` is the next durable
 instance state; `memory` is a transient JSON object, isolated per instance and never saved or
 exported. Both use the existing 4,000-character state limit and JSON validation. `nextWakeAt`
@@ -943,8 +978,9 @@ queued actions restored from a document. Scripts must not treat it as a secret o
 V2 `dragEdit` must return **`{state: newState}`**, optionally with **`size: {w, h}`** (either
 field may be omitted; each 20–2000) to resize the container in the same step, for example a
 spreadsheet growing by one column. The editor applies the size with the top-left corner fixed, as one
-undo step together with the state; offline HTML ignores it. No other envelope fields are supported;
-events and effects are not part of v2. `initState()` still returns the raw state object.
+undo step together with the state; offline HTML ignores it. Scripts opting into `eventApi:1` may
+also return declared `events` from accepted interactions, as described below. Other effect fields
+are unsupported. `initState()` still returns the raw state object.
 Unversioned scripts keep returning raw state from `dragEdit`, even when their state happens
 to have keys named `state`, `emit`, or `effects`. The runtime never guesses the contract from keys.
 
@@ -970,6 +1006,13 @@ an input's previous binding in one undo step. Scalar self-feedback uses the exis
 rules. Dataset ownership settings are not wireable ports. Select a link and use **Disconnect**
 or **Delete** to remove it; **Escape** cancels an unfinished drag. Edit remains the place to
 configure literals, settings, and dataset ownership.
+Double-click or double-tap a component body to enter interactive mode while its wiring stays
+visible. Separate clicks still cycle overlapping shapes; ports and links retain their wiring gestures.
+Drag a connected input's pin to move that wire to another compatible input. The original wire
+is lifted while dragging; a valid drop moves it in one Undo step, replacing an occupied destination
+if necessary. Escape, an incompatible drop, or dropping on empty canvas keeps the original connection.
+To change the source instead, drag the new output onto the occupied input. Stored Dataset associations
+keep their dataset reference when moved.
 
 Directed flow links display Boolean, Number, Text, or Table markers. A Dataset owner's output
 publishing its own records directly to a consumer, or a literal table reference to that owner's
@@ -1043,6 +1086,244 @@ on/off** control changes that instance; the saved setting affects editor and exp
 Green/grey indicators mean true/false, blue means an available number (including zero), and
 amber means unavailable. The setting does not change computation or port types.
 
+### Hybrid value/event ports (event API 1)
+
+A hybrid port has a current typed value and may carry discrete occurrences containing that same
+value type. Repeated equal submissions are separate events. API v2 scripts opt in with
+`eventApi:1`, then add `event:true` to their ordinary input/output descriptors. The same port and
+connection serve both paths; consumers without event capability read only the current value.
+
+```js
+// A submit-mode inline entry publishes a value and captures each accepted submission.
+({
+  apiVersion:2,
+  eventApi:1,
+  inputs:{},
+  outputs:{value:{type:'string',event:true}},
+  initState(){return {text:''};},
+  compute(inputs,state){return {value:state.text};},
+  children(){return [];},
+  dragEdit(state,handle,value){
+    return {state:{...state,text:value},events:[{port:'value',payload:value}]};
+  }
+})
+
+// An event receiver uses staged state; all changes in the interaction commit together.
+({
+  apiVersion:2,
+  eventApi:1,
+  inputs:{content:{type:'string',default:'',event:true}},
+  outputs:{text:{type:'string'}},
+  initState(){return {text:''};},
+  compute(inputs,state){return {text:state.text};},
+  children(){return [];},
+  onEvent(name,payload,state,io){return {state:{...state,text:payload}};}
+})
+```
+
+There is one compatible type per hybrid port: `string` (up to 2,000 UTF-16 units), finite `number`,
+or `boolean`. There are no implicit conversions; use Number to text before a numeric event feeds
+Memo. Objects, arrays, tables, and Dataset associations do not carry events in this increment.
+Ports retain their ordinary data/control sides. Wiring marks enabled reception with purple lightning
+on the existing port/link. Values-only connections show muted crossed lightning. Accepted events
+flash amber for 650 ms; rejected transactions do not flash. Selecting a wire or inspecting a port
+shows its session occurrence count and last payload (quoted and truncated to 240 characters).
+HTML wiring provides read-only click/focus inspection in a dismissible status panel. These activity
+records reset with the tab/runtime and are never persisted or exported as prior activity.
+**Edit… → Receive events** controls each capable input:
+values and events by default, or values only for a conventional sampled-value connection.
+
+The saved receiving item uses ordinary `bindings`. Optional `eventModes` selects values only:
+
+```json
+{
+  "uid":"notes",
+  "componentApi":2,
+  "bindings":{
+    "line":{"uid":"message","port":"value"},
+    "append":{"uid":"message","port":"submitted"}
+  },
+  "eventModes":{"line":"value"}
+}
+```
+
+Each input has one source and outputs may fan out. Connection identity, copying, unresolved
+external references, sketch/workspace persistence, and HTML export follow ordinary bindings.
+Setting `eventModes.line` to `"value"` prevents incoming events from appending; the separate Append
+trigger still samples the current Line value. Omitting the mode (or `"both"`) enables events.
+
+#### Pure transformations and Reprocess
+
+Pure scalar transformations declare one or more driving inputs, event-capable result outputs, and a Boolean
+Reprocess input with `event:'command'`. The host reuses `compute`, so value and event calculation
+cannot diverge:
+
+```js
+apiVersion:2,
+eventApi:1,
+inputs:{
+  text:{type:'string',default:'',event:true},
+  start:{type:'number',default:0,role:'control'},
+  length:{type:'number',default:1,role:'control'},
+  reprocess:{type:'boolean',default:false,role:'control',event:'command'}
+},
+outputs:{text:{type:'string',event:true}},
+eventTransform:{input:'text',outputs:['text'],reprocess:'reprocess'},
+compute(inputs){return {text:Array.from(inputs.text).slice(inputs.start,inputs.start+inputs.length).join('')};}
+```
+
+Use exactly one of `input:'text'` or `inputs:['a','b']` in `eventTransform`. The latter declares
+1–15 distinct existing hybrid inputs; command inputs cannot drive data events. A component with
+dynamic ports may declare `eventTransform(state)` instead of a fixed descriptor. It is evaluated
+alongside `inputs(state)`, so Text compose returns only its enabled `a` through `h` names.
+
+A driving event substitutes its captured payload into a consistent snapshot of the remaining
+inputs. When several declared driving inputs receive related results from the same source
+occurrence, the host collects those results and calls `compute` once with all their payloads.
+It forwards one occurrence on each declared result output. Inputs without a related arrival
+provide their current values; the host does not wait for every connected input to emit. Pure
+value dependencies changed by that submission are settled before they are sampled, even when
+Receive events is off on the connection. Unrelated values use the snapshot taken for the
+occurrence. Ordinary
+parameter changes recalculate the current output without emitting an occurrence. Reprocess
+samples all current inputs and emits fresh results even when they match the previous result.
+A command-capable source such as Trigger uses its event; its accompanying Boolean pulse is not a
+second request on that same command connection. Command events accept Boolean `true` or a
+payload-free `null`; Boolean `false` is ignored. Turn Receive events off to use the rising-edge
+pulse instead. A plain Boolean source also supports false → true Reprocess pulses. Initial high
+values establish a baseline; opening a drawing does not itself request reprocessing.
+
+The built-ins following this convention are Text compare/extract/replace/transform/to number,
+Number to text, Number function/inverter, Compare, Arithmetic, Clamp, Range map, Text compose,
+JSON extract/edit, and Date parse/format/difference. Every enabled Text compose text input
+(**A** through **H**, according to its input count) is hybrid: an event on any one combines that
+captured string with the current values of the other inputs and emits the composed text.
+Related arrivals from separate branches of one submission combine before Compose emits once. A plain
+value source such as Live clock can update any of these inputs without creating an event.
+Template and separator remain parameters; Reprocess explicitly emits with all current values.
+Independent submissions produce separate results, including repeated equal payloads. To combine
+independently edited fields on demand, turn Receive events off on their Compose inputs and
+connect an Apply button to Reprocess.
+Arithmetic uses **A**; Date difference
+uses **End**, with Start and Unit as parameters. Dropdown and scalar selectors use the explicit
+selection policy below. Dataset-dependent text lookup, JSON build, and table transforms await
+their own event contracts.
+
+#### Delivery and existing triggers
+
+An accepted discrete `dragEdit` interaction may return `events:[{port,payload}, ...]` alongside
+`state`. Continuous dragging does not emit. A receiver implements
+`onEvent(name,payload,state,io)` and returns `{state,events?}`, or declares `eventTransform` for the
+host's pure calculation path. The host validates payloads against the ordinary typed ports.
+Pure `compute`, `publish`, rendering, and settings changes do not spontaneously emit events.
+Reprocess is an explicit host-observed command, rather than an event inferred from output changes.
+Effects and host-action requests are not supported in the event envelope.
+
+A component may declare at most 32 event inputs and 16 event outputs, counting both dedicated
+and hybrid ports. A pure transformation still declares at most 15 driving inputs plus Reprocess.
+Each hook may emit up to 16 events and 32,000 serialized characters. One interaction permits up to
+256 emitted events, 128 receiver deliveries, 256 calculation calls, and 16 propagation hops, under normal Worker and
+state limits. Each source occurrence receives a transient host-owned origin that follows its
+branches through transformations. Delivery follows event dependencies so pure transformations
+see all related arrivals before forwarding a result. Two source occurrences remain separate
+origins even if one hook emits both, their payloads match, or they arrive close together; this is
+not a timer or debounce. A pure transform's declared result outputs keep their common origin.
+Each explicit entry in a custom receiver's returned `events` list starts a child occurrence,
+preserving deliberately emitted bursts. Origins are internal routing metadata, not payload
+fields or persisted state. A cycle in the event or pure-value dependencies needed to deliver an
+occurrence is rejected atomically. Stored state and ordinary value feedback retain their
+separate simulation rules.
+Receiver hooks see their staged state and a consistent input snapshot;
+they should use the payload for the occurrence's data rather than rereading a source signal.
+When one origin reaches several inputs of a custom `onEvent` receiver, those commands run in
+input declaration order. The receiver's own state accumulates those changes. Its stored
+`publish`/`compute` outputs remain fixed for that origin and expose the changed state to the
+next occurrence, so another branch cannot observe a partial receiver update.
+
+Delivery stages the initiating edit and receiver states before committing together. Invalid
+results, incompatible payloads, or exceeded work budgets reject the interaction. An accepted
+interaction is one editor Undo step; Undo/Redo restores outcomes without re-executing events.
+A tab switch, replaced instance, or changed wiring invalidates pending work. The dispatch queue
+is never serialized. Redraws, ordinary value settling, copying, reload, and HTML restoration do
+not re-emit submissions. Accepted user events run while signal simulation is paused; ordinary
+Boolean pulses still wait for Step or Resume.
+
+Text input and Number input emit through their hybrid **Value** output while retaining their
+queued **Submitted** Boolean pulse. Trigger emits `true` through its hybrid Value output and
+retains its timed pulse. Memo's hybrid **Content** replaces stored text on receipt; hybrid **Line**
+appends one captured string. Both also retain the current text for the separate Set/Append
+Boolean triggers. **Clear** accepts a command event or its existing Boolean trigger. These paths
+share the same bounded Memo operations. Connecting both a Line event and a separate Append
+trigger is intentionally two requests; turn Receive events off on Line to sample text only.
+
+The **Events and signals** demo compares both Memo styles. **Hybrid transformations** demonstrates
+`Hello World → llo`, then `Another Test → oth` with zero-based Start 2 / Length 3. Changing the
+range to Start 3 / Length 5 updates the current result to `"ther "` without appending. Reprocess
+then emits that current result; a separate trigger samples the same result for a values-only Memo.
+Both Memos use Log mode with a ten-line limit. Further appends roll out the oldest lines;
+the Scrollbars toggle lets readers explore retained entries.
+**Shared event origins** splits one `Anna;Berlin` submission through two extractors, then joins
+their outputs into one `Anna / Berlin` Memo line. Repeating the same submission adds another line.
+A second example disables events on Compose's Name/City inputs and uses an Apply button connected
+to Reprocess, making the boundary between independent edits and one explicit request visible.
+
+#### Selection and signal/event adapters
+
+Dropdown declares hybrid `select` plus command `reprocess`, and hybrid result outputs `index`,
+`key`, `text`, and `valid`. Accepted UI choices use the same `compute` result as incoming Select
+or Reprocess events, and the four output occurrences share one origin. Ordinary list/table
+refreshes or value-only Select changes do not emit. Dataset-backed choice calculation receives
+the same table snapshot used for that event; the emitted payloads remain scalar.
+
+Text, Number, and Boolean selectors add `selection:{input:'select',choices:['a','b']}` to their
+`eventTransform` descriptor. The Boolean Select input and both data inputs are hybrid. The host
+first collects related arrivals and resolves their current values. A data event forwards only
+when it belongs to the chosen input; Select and Reprocess events explicitly sample the chosen
+value. False is a valid Select payload, not a suppressed command. Pure Select value changes do
+not emit. Stepped Number/Boolean selectors similarly forward selected-channel events; a real
+Step edge emits the newly selected value and Reprocess samples it. Reset, channel changes, and
+restoration are silent. This does not imply waiting for unrelated inputs or event support on
+stepped distributors.
+
+[Signal → event](examples/signal-to-event.js) has setting `type:'string'|'number'|'boolean'`, typed
+plain `value`, plain Boolean `trigger`, and matching hybrid output `value`. `compute` publishes
+the current value; `transition` captures it on an observed false → true Trigger edge. A fresh
+runtime, restored high level, or type change primes the baseline without emitting.
+
+[Event → pulse](examples/event-to-pulse.js) has dedicated `eventInputs.receive` accepting
+`none`, `boolean`, `number`, and `string`, and plain Boolean output `value`. Each `onEvent`
+occurrence advances a token; `transition` consumes new tokens into a bounded queue of 64 pending
+pulses. Each pulse is 100 ms high with a minimum 10 ms low gap. Equal payloads, false, empty text,
+and null still represent occurrences. Pulse scheduling follows simulation Pause/Step; a fresh
+runtime primes the saved token and discards transient pending pulses rather than replaying them.
+Events accepted in the current runtime before its first transition, including while paused, are
+retained. `io.runtimeId` in `onEvent` and `context.runtimeId` in `transition` identify that runtime;
+restored objects receive a different identity. The host supplies both identities.
+
+`context.eventInputs` lists inputs with an active event connection. Stateful components can use
+it to avoid sampling a command's Boolean edge as well as handling its event. Value-only inputs
+are absent from the list.
+
+Counter and Timer add `event:true` to their existing `reached` output. Simulation transitions may
+return `events` alongside `state`, `memory`, and `nextWakeAt`. The host validates the same typed
+payload limits as interaction events, settles the current value graph, and then delivers captured
+occurrences one batch at a time. Changed receiver state settles before the next batch. A paused
+Step may retain pending completion batches until its signal instant settles; an edit at a later
+instant first completes already accepted batches against their original scene snapshot. All
+staged work remains subject to cancellation, and transient pending batches are never serialized.
+Counter emits `true` only on a newly
+counted completion edge; Timer emits `true` on a current observed natural deadline. Initial state,
+reset, configuration changes, inactive-tab catch-up, and restored scheduling memory do not emit
+old completions. A delayed observation in the same active runtime still emits one completion. Their existing level and tick outputs retain their earlier contracts.
+If a completion receiver rejects the occurrence, all receivers of that occurrence retain their
+prior state and the host reports the delivery failure. The accepted simulation transition
+remains intact: a full log cannot reverse a counter increment or restart a completed timer.
+
+The demo's **Selection events** tab joins a city and automatically chosen country under their
+shared origin. **Adapters and completion** shows sampled text, repeated events becoming separate
+Counter pulses, and Counter/Timer notifications. **Dataset action results** covers the host-owned
+notifications described with dataset actions. These tabs enable reader wiring for inspection.
+
 ### Saved components
 
 Sketch format 5 stores embedded datasets alongside items and assets. It retains the API marker on each component and bindings on the receiving item:
@@ -1069,7 +1350,8 @@ initialize fresh state. Undo/redo restores both state and bindings.
 
 Editor, static exports, library previews, and interactive HTML use the same validated computation
 contract. HTML keeps bindings working offline and retains changes across tabs; reopening restores
-the exported state. There are no cross-tab bindings, routed events, or external actions.
+the exported state. Typed events stay within the same sketch and do not replay after restoration.
+There are no cross-tab bindings or unrestricted external actions.
 
 ## Embedded table data
 
@@ -1333,7 +1615,10 @@ negative values. Both report bounded views without modifying the table. The **Em
 example connects a Text input to a boat-name filter, then drives a table and chart from its output.
 The **Reader data and results** example loads or reloads race results, sorts them by boat name,
 aggregates points per boat, and downloads the alphabetical report. Its chart uses automatic columns
-so the original rows also render when aggregation is bypassed.
+so the original rows also render when aggregation is bypassed. This tab also enables **Allow column
+changes in HTML export**: load a file with different columns, choose **Use the file’s columns**, and
+review the affected components before accepting. **Dataset action results** keeps the default
+restriction, so its reader only offers **Keep current columns**.
 The **Shared dataset** example connects captured scalar readings, a bound editable Spreadsheet,
 and additional views to one stored dataset. The **Dataset** component owns that table; rows are stored
 once in the document. **Source to dataset** demonstrates a separate incoming table/filter, explicit
@@ -1365,9 +1650,11 @@ unchanged, before applying their sort/group/value choices. Bypassing Aggregate t
 the original columns rather than returning grouped columns; downstream selectors must accommodate
 that schema. Their optional switches follow the Boolean input-handle contract above.
 
-Dataset's `allowReaderImport` setting enables explicit reader file replacement and its declared
-`reload` trigger. The new table must retain all existing column keys and types; extra columns are allowed. The file chooser,
-delimiter selection, preview, and acceptance belong to the host. Download table takes table `data`
+Dataset's `allowReaderImport` setting enables explicit file replacement and its declared
+`reload` trigger. **Load data…** defaults to **Keep current columns**; **Use the file’s columns**
+is also available in the editor, and in HTML when `allowReaderColumnChanges` is true. Reload
+always requires the currently accepted column keys and types; extra columns are allowed. The file chooser,
+column policy, delimiter selection, preview, and acceptance belong to the host. Download table takes table `data`
 and string `filename` inputs. Its CSV/JSON controls work in the editor and HTML reader, acting only
 on an explicit click followed by confirmation; runtime
 re-evaluation, restore, and retries never request a download. See the host-owned table action contract above.
@@ -1872,11 +2159,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 91 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 93 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 82 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 84 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -1913,17 +2200,21 @@ The built-in catalog includes 82 API v2 components, with editable sources in `ex
   views; aggregate results remain read-only. `OUTPUT(A1:C4,"results"[,type,type,...])` publishes a
   calculated table, with headers in the first row and at least one data row. Multiple outputs are
   allowed; types use `0` auto, `1` number, `2` string, `3` Boolean, or the corresponding names.
+- [Signal → event](examples/signal-to-event.js) and [Event → pulse](examples/event-to-pulse.js):
+  explicit scalar sampling and bounded event-to-Boolean pulse conversion, described above.
 - [Capture row](examples/capture-row.js): whole-table `data` input, Boolean `capture`, and 1–24
   scalar inputs declared by **Fields (column:type)**. Lines map in order to `field0` through
   `field23`; supported types are number, string, and Boolean. Each false → true pulse samples one
   row for an atomic host append. Unmapped columns become null. It publishes the table reference
   and row count. **Allow capture in HTML export** (`allowReaderCapture`) defaults off.
 - [Text input](examples/text-input.js) and [Number input](examples/number-input.js): host-owned
-  inline single-line entry and typed `value` plus Boolean `submitted` outputs. Enter/Submit validates and
+  inline single-line entry, a hybrid typed `value` output, and Boolean `submitted`
+  under `eventApi:1`. Each accepted entry immediately emits its captured text/number,
+  including while paused; repeated equal values are separate events. Enter/Submit validates and
   normally queues one 100 ms pulse per accepted value, separated by at least 10 ms low, including
   equal consecutive values. Each rising pulse carries its own submitted value. The bounded inbox holds
   at most 64 pending entries, also limited by serialized state size; rejected entries leave it intact.
-  Submissions made while paused wait for Step/Resume. Restoring, copying, and reopening preserve
+  Boolean pulses made while paused wait for Step/Resume; event delivery does not. Restoring, copying, and reopening preserve
   the latest accepted value without replaying stored submission actions. Text settings are
   `maxLength` (1–2,000 UTF-16 units; default 2,000), `required` (default false), and `placeholder` (single line,
   at most 120 characters). Whitespace-only entries fail Required. Numeric settings are `min`, `max`,
@@ -1979,6 +2270,10 @@ The built-in catalog includes 82 API v2 components, with editable sources in `ex
   (2–8, default 2), produce string `text`. `mode:join` (default) declares string `separator`;
   `mode:template` declares string `template` (default `{a}{b}`). Templates substitute enabled names
   such as `{a}`; `{{` and `}}` escape braces. Unknown names and malformed braces are errors.
+  All enabled text inputs and the text output are hybrid. Related events arriving through
+  branches of one submission emit one result with all their captured payloads and the other
+  current values. Independent submissions each emit their own result. Clock/value updates and changes to
+  separator or template update the displayed result without emitting; Reprocess emits explicitly.
   This operates on scalar strings, not lists or tables.
 - [Text transform](examples/text-transform.js): string `text` and control `operation` (`trim`,
   `lowercase`, `uppercase`) produce string `text`, numeric `length`, and Boolean `empty`.
@@ -2083,20 +2378,38 @@ The built-in catalog includes 82 API v2 components, with editable sources in `ex
   controls its background. Boolean `showName` and `showHints` (both false) optionally add its instance caption
   and empty/truncated-text guidance. Input errors remain visible.
 - [Memo](examples/memo.js): string `content`/`line` inputs (default empty), Boolean
-  `set`/`append`/`clear` inputs (default false), and stored `text`/numeric `lineCount` outputs.
-  Each action requires a false-to-true transition. A high input at startup establishes a baseline;
+  `set`/`append`/`clear` and `showScrollbar` inputs (default false), and stored `text`/numeric `lineCount` outputs.
+  Its signal commands require a false-to-true transition. A high input at startup establishes a baseline;
   it does not change saved contents. Simultaneous rising edges prioritize Clear, then Set, then Append.
   Set replaces the buffer; Append inserts a separating newline only after an existing logical line;
   Clear produces empty text and zero lines. Appending an empty string creates a blank line, so empty
   `text` may have `lineCount:1`. CRLF and lone CR normalize to LF. `maxLines` is 1–1,000 (default 100)
   and `maxLength` is 1–2,000 UTF-16 units (default 2,000). Updates exceeding either limit or the 4,000-character
-  serialized-state budget retain the complete previous buffer and show a notice. Lowering a limit
-  never truncates stored content. The preview shows the latest wrapped lines, and the full string
+  serialized-state budget retain the complete previous buffer and show a notice.
+  Optional **Log mode** (`logMode`, false) changes Append: exceeding Maximum lines drops the oldest
+  logical lines and keeps the newest ones, including when an incoming block alone exceeds the limit.
+  Character and storage limits apply to that retained text; if it still does not fit, the whole
+  append is rejected without losing existing content. Set keeps its normal limit checks.
+  Enabling Log mode or lowering a limit alone never truncates stored content.
+  The preview shows the latest wrapped lines, and the full retained string
   remains available from `text`. The compact text area uses the available height; optional Boolean
   `showCounts` and `showHints` (both false) add line/visible-character counts and empty/truncated-text
   guidance. The character count uses grapheme segmentation, separately from the storage limit;
   an older browser without `Intl.Segmenter` explicitly labels a UTF-16-unit count instead.
   Rejected-update notices and input errors stay visible when those options are off.
+  The **Show scrollbar** control input (`showScrollbar`, false) adds a vertical scrollbar when
+  the wrapped text overflows. Set its literal in Edit or connect a Boolean output to show and hide it.
+  Hiding it preserves the reading position for when it is shown again.
+  In interactive mode, drag its thumb or click the track to read earlier text; the same controls work
+  in HTML exports. Appends follow the latest text while at the bottom and preserve the reading
+  position after scrolling up. Log eviction preserves the text being read until it leaves the log,
+  then starts at the oldest retained line. Scrolling back to the bottom restores following; successful Set and
+  Clear commands reset it. Scrolling only changes the view, never the stored text, outputs, or events.
+  Text still wraps, so no horizontal scrollbar is needed.
+  Hybrid `content` and `line` ports accept captured strings to set or append immediately.
+  Hybrid `clear` accepts commands; values-only mode retains conventional trigger sampling.
+  These paths use the same bounded operations. Convert numbers through Number to text first.
+  Connecting a Line event plus a separate Append trigger requests two operations.
 - [Seven-segment display](examples/seven-segment-display.js): authoring Input mode selects
   `number` (default) or `segments`. Number mode requires integer `value` in 0–9; segments mode
   exposes boolean `a`…`g` inputs, all default false. Both modes include boolean `decimalPoint`

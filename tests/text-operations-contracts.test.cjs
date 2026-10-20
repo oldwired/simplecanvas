@@ -19,8 +19,8 @@ const extract=(text,input={},settings={})=>compute('text-extract',{text,...input
 test('Number to text converts finite numbers without rounding, grouping or locale formatting',()=>{
   const def=source('number-to-text');
   assert.equal(def.apiVersion,2);
-  assert.deepEqual(plain(def.inputs),{value:{type:'number',default:0}});
-  assert.deepEqual(plain(def.outputs),{text:{type:'string'}});
+  assert.deepEqual(plain(def.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{type:'number',default:0,event:true}});
+  assert.deepEqual(plain(def.outputs),{text:{type:'string',event:true}});
   assert.equal(def.settings.showIndicators.default,true);assert.equal(def.initState().showIndicators,true);
   for(const [value,text] of [
     [0,'0'],[-0,'0'],[42,'42'],[-2.8,'-2.8'],[1234567.89,'1234567.89'],
@@ -39,12 +39,12 @@ test('text operations declare bounded primitive ports and configurable modes',()
     assert.equal(def.apiVersion,2);assert.equal(def.settings.caseSensitive.default,true);assert.equal(def.settings.showIndicators.default,true);
     assert.equal(def.initState().showIndicators,true);assert.equal(def.initState().caseSensitive,true);
   }
-  assert.deepEqual(plain(compare.outputs),{value:{type:'boolean'}});
-  assert.deepEqual(plain(compare.inputs),{text:{type:'string',default:''},compare:{type:'string',default:''},operation:{role:'control',type:'string',default:'equals',options:['equals','not equals','starts with','ends with','contains','matches regex']}});
-  assert.deepEqual(plain(extract.outputs),{text:{type:'string'},found:{role:'control',type:'boolean'}});
-  assert.deepEqual(plain(extract.inputs(extract.initState())),{text:{type:'string',default:''},start:{role:'control',type:'number',default:0},length:{role:'control',type:'number',default:1}});
-  assert.deepEqual(plain(extract.inputs({mode:'regex match'})),{text:{type:'string',default:''},pattern:{role:'control',type:'string',default:''}});
-  assert.deepEqual(plain(extract.inputs({mode:'regex capture'})),{text:{type:'string',default:''},pattern:{role:'control',type:'string',default:''},group:{role:'control',type:'number',default:0}});
+  assert.deepEqual(plain(compare.outputs),{value:{type:'boolean',event:true}});
+  assert.deepEqual(plain(compare.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true},compare:{type:'string',default:''},operation:{role:'control',type:'string',default:'equals',options:['equals','not equals','starts with','ends with','contains','matches regex']}});
+  assert.deepEqual(plain(extract.outputs),{text:{type:'string',event:true},found:{role:'control',type:'boolean',event:true}});
+  assert.deepEqual(plain(extract.inputs(extract.initState())),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true},start:{role:'control',type:'number',default:0},length:{role:'control',type:'number',default:1}});
+  assert.deepEqual(plain(extract.inputs({mode:'regex match'})),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true},pattern:{role:'control',type:'string',default:''}});
+  assert.deepEqual(plain(extract.inputs({mode:'regex capture'})),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true},pattern:{role:'control',type:'string',default:''},group:{role:'control',type:'number',default:0}});
   assert.throws(()=>extract.inputs({mode:'unsupported'}),/extraction mode/);
 });
 

@@ -3,11 +3,12 @@
 // Reloads, inactivity, and missed boundaries never replay old tick pulses.
 ({
   apiVersion:2,
+  eventApi:1,
   wakePolicy:'latest',
   settings:{unit:{type:'string',default:'minutes',options:['minutes','seconds'],label:'Unit'},
     duration:{type:'number',default:45,min:0,max:60,step:1,label:'Starting duration'}},
   inputs:{run:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}},
-  outputs:{tick:{role:'control',type:'boolean'},reached:{role:'control',type:'boolean'}},
+  outputs:{tick:{role:'control',type:'boolean'},reached:{role:'control',type:'boolean',event:true}},
   initState(){return {unit:'minutes',duration:45,configuredUnit:'minutes',configuredDuration:45,
     remainingMs:2700000,endsAt:null,observedRun:false,tick:false,showIndicators:true};},
   initStyle(){return {w:234,h:350,fontSize:12,fillColor:'#dc2626',strokeOn:false};},
@@ -84,7 +85,12 @@
       nextWakeAt=nextWakeAt===null?wake:Math.min(nextWakeAt,wake);
     }
     if(nextWakeAt!==null && (!Number.isFinite(nextWakeAt) || nextWakeAt<=now))throw new Error('Timer wake time is outside the numeric range');
-    return {state:next,memory:{wall,now,endsAt:next.endsAt,remainingMs:next.remainingMs,unit:next.unit,duration:next.duration,until},nextWakeAt};
+    // A current observed deadline is a completion. A restored/inactive clock snapshot
+    // settles its zero signal without replaying a completion that happened away.
+    const completed=!restart && !command && !context.historical && priorEnd!==null && memory.endsAt===priorEnd &&
+      memory.remainingMs>0 && next.remainingMs===0;
+    return {state:next,memory:{wall,now,endsAt:next.endsAt,remainingMs:next.remainingMs,unit:next.unit,duration:next.duration,until},nextWakeAt,
+      ...(completed?{events:[{port:'reached',payload:true}]}:{})};
   },
   publish(state){const view=this._snapshot(state);return {tick:view.tick,reached:view.remainingMs===0};},
   compute(inputs,state){this._validateInputs(inputs);const view=this._snapshot(state);return {tick:view.tick,reached:view.remainingMs===0};},

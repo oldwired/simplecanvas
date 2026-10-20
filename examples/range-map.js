@@ -1,8 +1,10 @@
 // Range map. Configure literals or connect numeric inputs through Edit.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'},inMin:{role:'control',type:'number',default:0},inMax:{role:'control',type:'number',default:100},outMin:{role:'control',type:'number',default:0},outMax:{role:'control',type:'number',default:1},clamp:{role:'control',type:'boolean',default:true}},
-  outputs:{value:{type:'number'}},
+  eventApi:1,
+  eventTransform:{input:'value',outputs:['value'],reprocess:'reprocess'},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{event:true,type:'number'},inMin:{role:'control',type:'number',default:0},inMax:{role:'control',type:'number',default:100},outMin:{role:'control',type:'number',default:0},outMax:{role:'control',type:'number',default:1},clamp:{role:'control',type:'boolean',default:true}},
+  outputs:{value:{event:true,type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   compute(inputs){

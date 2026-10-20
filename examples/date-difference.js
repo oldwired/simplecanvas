@@ -2,9 +2,11 @@
 // This is elapsed time, not a count of calendar boundaries in a timezone.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'end',outputs:['value','valid'],reprocess:'reprocess'},
   settings:{showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{start:{type:'number',default:0},end:{type:'number',default:0},unit:{role:'control',type:'string',default:'seconds',options:['milliseconds','seconds','minutes','hours','days']}},
-  outputs:{value:{type:'number'},valid:{role:'control',type:'boolean'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},start:{type:'number',default:0},end:{event:true,type:'number',default:0},unit:{role:'control',type:'string',default:'seconds',options:['milliseconds','seconds','minutes','hours','days']}},
+  outputs:{value:{event:true,type:'number'},valid:{event:true,role:'control',type:'boolean'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:320,h:112,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs){

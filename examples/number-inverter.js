@@ -2,8 +2,10 @@
 // Blue indicators mean a numeric value is available; zero is also available.
 ({
   apiVersion:2,
-  inputs:{value:{type:'number'}},
-  outputs:{value:{type:'number'}},
+  eventApi:1,
+  eventTransform:{input:'value',outputs:['value'],reprocess:'reprocess'},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{event:true,type:'number'}},
+  outputs:{value:{event:true,type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:240,h:150,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   compute(inputs){return {value:-inputs.value};},

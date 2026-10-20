@@ -1,8 +1,10 @@
 // Boolean-controlled two-way numeric selector: false chooses A; true chooses B.
 ({
   apiVersion:2,
-  inputs:{a:{type:'number'},b:{type:'number'},select:{role:'control',type:'boolean',default:false}},
-  outputs:{value:{type:'number'}},
+  eventApi:1,
+  eventTransform:{inputs:['a','b','select'],outputs:['value'],reprocess:'reprocess',selection:{input:'select',choices:['a','b']}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},a:{event:true,type:'number'},b:{event:true,type:'number'},select:{role:'control',type:'boolean',default:false,event:true}},
+  outputs:{value:{type:'number',event:true}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:210,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _valid(value){return Number.isFinite(value);},

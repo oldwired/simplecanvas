@@ -108,8 +108,9 @@ test('capture declaration cannot append to a row selection even when custom comp
   const api=runtime(),def=source(),state=def.initState(),item=node({script:'unchecked'}),timeline=api.createComponentTimeline();
   const custom={unchecked:{inputs:def.inputs(state),outputs:{},dataActions:def.dataActions(state),compute:()=>({})}},call=caller(api,custom),options={datasets:{log:data},timeline};
   item.inputValues.data={datasetId:'log',rows:[]};await api.runComponentEvaluation([item],call,()=>true,options);item.inputValues.capture=true;
-  const records=await api.runComponentEvaluation([item],call,()=>true,options);assert.match(records.get(item).error,/whole embedded dataset/);
-  assert.equal(api.takeComponentDataActions(timeline).length,0);
+  const records=await api.runComponentEvaluation([item],call,()=>true,options);assert.equal(records.get(item).error,undefined);
+  const actions=api.takeComponentDataActions(timeline);assert.equal(actions.length,1,'the failed attempt reaches host completion handling');
+  assert.match(actions[0].error,/whole embedded dataset/);assert.equal(actions[0].row,undefined);assert.deepEqual(data.rows,[]);
 });
 
 test('cancellation rolls back sampled actions and a saturated queue fails without leaking an extra row',async()=>{

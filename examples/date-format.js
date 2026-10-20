@@ -2,9 +2,11 @@
 // ISO output is always UTC; other formats use Gregorian calendar parts in the selected IANA zone.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'timestamp',outputs:['text','valid'],reprocess:'reprocess'},
   settings:{format:{type:'string',default:'date and time',options:['ISO (UTC)','date','time','date and time'],label:'Format'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{timestamp:{type:'number',default:0},timezone:{role:'control',type:'string',default:'UTC'}},
-  outputs:{text:{type:'string'},valid:{role:'control',type:'boolean'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},timestamp:{event:true,type:'number',default:0},timezone:{role:'control',type:'string',default:'UTC'}},
+  outputs:{text:{event:true,type:'string'},valid:{event:true,role:'control',type:'boolean'}},
   initState(){return {format:'date and time',showIndicators:true};},
   initStyle(){return {w:320,h:112,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state=this.initState()){

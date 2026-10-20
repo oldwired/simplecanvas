@@ -53,7 +53,7 @@ test('Timer declares configurable minutes/seconds, run/reset, and tick/reached o
   const {component}=runtime();
   assert.equal(component.apiVersion,2);
   assert.deepEqual(plain(component.inputs),{run:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}});
-  assert.deepEqual(plain(component.outputs),{tick:{role:'control',type:'boolean'},reached:{role:'control',type:'boolean'}});
+  assert.deepEqual(plain(component.outputs),{tick:{role:'control',type:'boolean'},reached:{role:'control',type:'boolean',event:true}});
   assert.deepEqual(plain(component.settings.unit.options),['minutes','seconds']);
   assert.equal(component.settings.unit.default,'minutes');
   assert.equal(component.settings.duration.default,45);

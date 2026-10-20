@@ -3,12 +3,13 @@
 // Channels are authoring settings; a changed channel count restarts at 0 and re-primes.
 ({
   apiVersion:2,
+  eventApi:1,
   settings:{channels:{type:'number',default:4,min:2,max:16,step:1,label:'Channels'}},
   inputs(state){
-    const ports={};for(let i=0;i<this._channels(state);i++)ports['in'+i]={type:'boolean',default:false};
-    return {...ports,pulse:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}};
+    const ports={};for(let i=0;i<this._channels(state);i++)ports['in'+i]={event:true,type:'boolean',default:false};
+    return {...ports,reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},pulse:{role:'control',type:'boolean',default:false},reset:{role:'control',type:'boolean',default:false}};
   },
-  outputs(state){return {value:{type:'boolean'},position:{type:'number'}};},
+  outputs(state){return {value:{type:'boolean',event:true},position:{type:'number'}};},
   initState(){return {channels:4,configuredChannels:4,position:0,showIndicators:true};},
   initStyle(){return {w:320,h:280,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _channels(state){
@@ -24,16 +25,31 @@
   _valid(value){return typeof value==='boolean';},
   _validate(inputs,state){
     this._position(state);
-    if(typeof inputs.pulse!=='boolean' || typeof inputs.reset!=='boolean')throw new Error('Pulse and reset must be Boolean values');
+    if(typeof inputs.pulse!=='boolean' || typeof inputs.reset!=='boolean' || inputs.reprocess!==undefined && typeof inputs.reprocess!=='boolean')throw new Error('Pulse, reset, and Reprocess must be Boolean values');
     for(let i=0;i<this._channels(state);i++)if(!this._valid(inputs['in'+i]))throw new Error('Stepped selector requires Boolean channel values');
   },
-  transition(inputs,state,memory){
+  transition(inputs,state,memory,context={}){
     this._validate(inputs,state);
     const channels=this._channels(state),changed=state.configuredChannels!==channels || memory?.channels!==channels;
     let position=this._position(state);
+    const stepped=!changed && !inputs.reset && memory?.previous===false && inputs.pulse;
+    const sampled=!changed && !inputs.reset && memory?.reprocess===false && inputs.reprocess===true && !context.eventInputs?.includes('reprocess');
     if(inputs.reset)position=0;
-    else if(!changed && memory?.previous===false && inputs.pulse)position=(position+1)%channels;
-    return {state:{...state,configuredChannels:channels,position},memory:{channels,previous:inputs.pulse},nextWakeAt:null};
+    else if(stepped)position=(position+1)%channels;
+    return {state:{...state,configuredChannels:channels,position},memory:{channels,previous:inputs.pulse,reprocess:inputs.reprocess===true},nextWakeAt:null,
+      ...(stepped || sampled?{events:[{port:'value',payload:inputs['in'+position]}]}:{})};
+  },
+  onEvent(name,payload,state,io={}){
+    const selected='in'+this._position(state),inputs={...io.inputs};
+    if(name==='reprocess'){if(payload===false)return {state};}
+    else{
+      if(!Object.hasOwn(this.inputs(state),name) || !name.startsWith('in'))throw new Error('Unknown selector event input');
+      if(!this._valid(payload))throw new Error('Selector event payload has the wrong type');
+      if(name!==selected)return {state};
+      inputs[name]=payload;
+    }
+    this._validate(inputs,state);
+    return {state,events:[{port:'value',payload:inputs[selected]}]};
   },
   compute(inputs,state){
     this._validate(inputs,state);const position=this._position(state);

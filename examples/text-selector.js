@@ -1,9 +1,11 @@
 // Choose A when Select is false, or B when Select is true.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{inputs:['a','b','select'],outputs:['text'],reprocess:'reprocess',selection:{input:'select',choices:['a','b']}},
   settings:{showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{a:{type:'string',default:''},b:{type:'string',default:''},select:{role:'control',type:'boolean',default:false}},
-  outputs:{text:{type:'string'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},a:{event:true,type:'string',default:''},b:{event:true,type:'string',default:''},select:{role:'control',type:'boolean',default:false,event:true}},
+  outputs:{text:{type:'string',event:true}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs){

@@ -2,9 +2,11 @@
 // Formatting is output data; numeric calculations and the input value retain their precision.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'value',outputs:['text'],reprocess:'reprocess'},
   settings:{format:{type:'string',default:'full precision',options:['full precision','fixed decimals'],label:'Format'},decimals:{type:'number',default:2,min:0,max:20,step:1,label:'Decimal places (fixed)'},minimumIntegerDigits:{type:'number',default:1,min:1,max:20,step:1,label:'Minimum integer digits (fixed)'},decimalSeparator:{type:'string',default:'.',options:['.',','],label:'Decimal separator (fixed)'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{value:{type:'number',default:0}},
-  outputs:{text:{type:'string'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},value:{event:true,type:'number',default:0}},
+  outputs:{text:{event:true,type:'string'}},
   initState(){return {format:'full precision',decimals:2,minimumIntegerDigits:1,decimalSeparator:'.',showIndicators:true};},
   initStyle(){return {w:300,h:112,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state=this.initState()){

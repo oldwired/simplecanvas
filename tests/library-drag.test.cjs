@@ -107,6 +107,52 @@ async function assertCentered(run,indices,point){
 }
 const drawingSnapshot='JSON.stringify({items,selection,undoStack,redoStack,tool:ui.tool,pending:ui.pendingShape})';
 
+for(const source of ['working','catalog'])test(source+' first drag survives a library grid refresh after pressing its thumbnail',async()=>app(async({page,run})=>{
+  const button=await thumbnail(page,source,'Grouped drawing');
+  const canvas=await pressThumbnail(page,button),before=await run('items'),history=await run('undoStack.length');
+  // Background library updates can repaint the grid after pointerdown but before
+  // the pointer crosses the drag threshold. The definition itself has not changed.
+  await run('updateShapeLibraryUI()');
+  await page.mouse.move(canvas.x+750,canvas.y+430,{steps:8});
+  assert.equal(await page.locator('#libraryDragPreview').isVisible(),true,'the first press still starts a drag');
+  const point=await finishDrop(page,run);
+  assert.equal(await run('items.length'),before.length+2);
+  assert.equal(await run('undoStack.length'),history+1);
+  await assertCentered(run,[1,2],point);
+}));
+
+test('a delayed text alignment during a drag cannot discard a library placement',async()=>app(async({page,run})=>{
+  await run(`items[0]={type:'text',uid:'text',x:1040,y:650,w:260,h:60,text:'Alignment example',
+    font:'600 24px sans-serif',fontFamily:'sans',fontSize:24,color:'#1e293b',align:'left'};
+    selection=[0];render();save();
+    const nativeTimeout=window.setTimeout;
+    window.setTimeout=(callback,delay,...args)=>{
+      if(delay===300){window.__finishAlignment=()=>callback(...args);return nativeTimeout(()=>{},60000);}
+      return nativeTimeout(callback,delay,...args);
+    };`);
+  const canvas=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(canvas.x+1270,canvas.y+680);
+  assert.equal(await page.evaluate(()=>typeof window.__finishAlignment),'function','real text click schedules alignment');
+  await beginDrag(page,await thumbnail(page,'working','Connected drawing'));
+  await page.evaluate(()=>window.__finishAlignment());
+  assert.equal(await run('items[0].align'),'right','the preceding text edit still completes');
+  const point=await finishDrop(page,run);
+  assert.equal(await run('items.length'),4,'the same first drop adds the connected group');
+  await assertCentered(run,[1,2,3],point);
+  await run('undo()');
+  assert.equal(await run('items.length'),1);assert.equal(await run('items[0].align'),'right','placement has its own Undo step');
+  await run('undo()');assert.equal(await run('items[0].align'),'left','the preceding edit keeps its own Undo step');
+}));
+
+test('filtering a pressed catalog entry out still cancels its pending drag',async()=>app(async({page,run})=>{
+  const button=await thumbnail(page,'catalog','Grouped drawing'),before=await run(drawingSnapshot);
+  const canvas=await pressThumbnail(page,button);
+  await run('librarySearch.value="Connected drawing";renderLibraryBrowser()');
+  await page.mouse.move(canvas.x+750,canvas.y+430,{steps:8});await finishDrop(page,run);
+  assert.equal(await run('libraryDrag'),null);
+  assert.equal(await run(drawingSnapshot),before,'a replacement card for a different entry is never used');
+}));
+
 for(const source of ['working','catalog'])test(source+' thumbnail drag places an ordinary group once and preserves click placement',async()=>app(async({page,run})=>{
   const before=await run('items'),history=await run('undoStack.length'),definition=await run('JSON.stringify(shapeLibrary)');
   const button=await thumbnail(page,source,'Grouped drawing');

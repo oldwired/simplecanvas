@@ -2,9 +2,10 @@
 // Saved press tokens are primed on a fresh runtime, so reload/copy/undo never replays them.
 ({
   apiVersion:2,
+  eventApi:1,
   wakePolicy:'latest',
   inputs:{},
-  outputs:{value:{role:'control',type:'boolean'}},
+  outputs:{value:{role:'control',type:'boolean',event:true}},
   initState(){return {value:false,press:0,showIndicators:true};},
   initStyle(){return {w:280,h:190,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   _validate(state){
@@ -88,6 +89,7 @@
   dragEdit(state,handle){
     this._validate(state);
     return {state:handle==='trigger'?{...state,press:state.press===Number.MAX_SAFE_INTEGER?0:state.press+1}:
-      handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state};
+      handle==='indicators'?{...state,showIndicators:state.showIndicators===false}:state,
+      ...(handle==='trigger'?{events:[{port:'value',payload:true}]}:{})};
   }
 })

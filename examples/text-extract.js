@@ -2,15 +2,17 @@
 // Patterns have no / delimiters; all native regex evaluation runs inside compute's Worker budget.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['text','found'],reprocess:'reprocess'},
   settings:{characterMode:{type:'string',default:'visible characters',options:['visible characters','code points'],label:'Range units'},mode:{type:'string',default:'range',options:['range','regex match','regex capture'],label:'Extraction mode'},caseSensitive:{type:'boolean',default:true,label:'Case-sensitive matching'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
   inputs(state){
-    const ports={text:{type:'string',default:''}};
+    const ports={reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:''}};
     if(state.mode==='range')return {...ports,start:{role:'control',type:'number',default:0},length:{role:'control',type:'number',default:1}};
     if(state.mode==='regex match')return {...ports,pattern:{role:'control',type:'string',default:''}};
     if(state.mode==='regex capture')return {...ports,pattern:{role:'control',type:'string',default:''},group:{role:'control',type:'number',default:0}};
     throw new Error('Choose a supported extraction mode');
   },
-  outputs:{text:{type:'string'},found:{role:'control',type:'boolean'}},
+  outputs:{text:{event:true,type:'string'},found:{event:true,role:'control',type:'boolean'}},
   initState(){return {mode:'range',characterMode:'visible characters',caseSensitive:true,showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state){

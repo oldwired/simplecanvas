@@ -20,13 +20,13 @@ test('date tools expose Unix-millisecond inputs, validity and explicit format/un
   const parser=source('date-parse'),formatter=source('date-format'),diff=source('date-difference');
   for(const def of [parser,formatter,diff]){
     assert.equal(def.apiVersion,2);
-    assert.deepEqual(plain(def.outputs.valid),{role:'control',type:'boolean'});
+    assert.deepEqual(plain(def.outputs.valid),{role:'control',type:'boolean',event:true});
     assert.equal(def.initState().showIndicators,true);
     assert.equal(def.settings.showIndicators.type,'boolean');
   }
-  assert.deepEqual(plain(parser.inputs),{text:{type:'string',default:''}});
-  assert.deepEqual(plain(parser.outputs),{timestamp:{type:'number'},valid:{role:'control',type:'boolean'}});
-  assert.deepEqual(plain(formatter.inputs),{timestamp:{type:'number',default:0},timezone:{role:'control',type:'string',default:'UTC'}});
+  assert.deepEqual(plain(parser.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'',event:true}});
+  assert.deepEqual(plain(parser.outputs),{timestamp:{type:'number',event:true},valid:{role:'control',type:'boolean',event:true}});
+  assert.deepEqual(plain(formatter.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},timestamp:{type:'number',default:0,event:true},timezone:{role:'control',type:'string',default:'UTC'}});
   assert.deepEqual(plain(formatter.settings.format.options),['ISO (UTC)','date','time','date and time']);
   assert.deepEqual(plain(diff.inputs.unit.options),['milliseconds','seconds','minutes','hours','days']);
   assert.deepEqual(plain(formatter.compute({timestamp:0,timezone:'UTC'})),{text:'1970-01-01 00:00:00',valid:true});

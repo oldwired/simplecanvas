@@ -78,6 +78,11 @@ authoring, and working saved connections, copies, deployed-library placements, a
 visual wiring's typed flow/Dataset distinction and its use of existing bindings: bidirectional
 drag gestures, incompatible types, replacement/disconnection with Undo, and omission of the
 authoring overlay from exports. Page settings separately enables an optional read-only reader layer.
+Component double-click/double-tap interaction remains available with wiring visible, alongside
+overlap selection, control use, and port/link gestures.
+`tests/component-wire-reconnect-runtime.test.cjs` covers moving a wire from its connected input,
+atomic replacement and Undo/Redo, cancellation, hybrid/event inputs, stored Dataset associations,
+and stale asynchronous validation.
 They also check explicit data/control roles and side overrides, rotated four-sided port banks,
 LED matrix column placement, and self-feedback paths that stay outside the component.
 
@@ -147,6 +152,9 @@ library browser, release coordinates, grouped ordinary shapes and connected smar
 fresh initialization and wiring identities, one-step Undo/Redo, and cancellation without running
 scripts or changing the drawing. Click-to-place and keyboard placement remain available. Chromium
 touch-event coverage checks hold-to-drag placement and quick swipes for scrolling in both views.
+It also checks first drags across harmless grid refreshes and delayed text alignment, while
+filtered-out entries still cancel. Dataset reload coverage checks that a background refresh
+cannot swallow a drag or an accepted drop waiting for component initialization.
 
 `tests/library-persistence.test.cjs` checks automatic IndexedDB storage of personal definitions,
 scripts, inert previews, categories, built-in overrides, and Working collection pins across reloads.
@@ -175,6 +183,47 @@ Pause/Resume, independent instances, restoration without replay, and literal ren
 Number input entry happens in place, with Enter/Submit keeping focus and Escape/outside-click
 discarding drafts. Appearance settings control optional submission state, counts, names, and hints;
 errors remain visible when those details are hidden.
+`tests/memo-scrollbar-runtime.test.cjs` checks the optional Memo scrollbar input in Edit and a connected Toggle,
+dragging through stored text without changing outputs, persisted reading position, following
+new lines only at the bottom, and the same interactions in downloaded offline HTML with wiring visible.
+`tests/memo-log-contracts.test.cjs` covers optional rolling line retention, normalized and blank
+lines, limits checked after eviction, atomic rejection, and retained scroll anchors.
+`tests/memo-log-runtime.test.cjs` checks the Edit setting, hybrid events and Append triggers,
+Undo/reload without replay, and the same logging behavior in downloaded offline HTML.
+`tests/component-event-contracts.test.cjs` covers typed transient payloads, deterministic event
+ordering, staged atomic delivery, cancellation, and bounded feedback. Shared-origin contracts cover
+unequal branches, multiple outputs, receiver port ordering, stored-value boundaries, later occurrences,
+required value-only companions, pruning unrelated failures, and the calculation budget. `tests/component-events.test.cjs`
+uses real Workers and inline controls in the editor and offline HTML: repeated text and precise
+numeric submissions, immediate delivery while signals are paused, preserved traditional triggers,
+intentional duplicate operations when both paths are connected, one-step Undo, copy remapping,
+reload without replay, Memo limits, and receiver failures without partial edits.
+The event wiring contract/runtime suites check unified hybrid pins, typed connections, Receive events
+choices in Edit, dedicated custom event ports, and the read-only HTML wiring layer. `tests/component-event-lifecycle.test.cjs`
+covers custom click and modal input handles, error rollback with timer resumption, retained user
+Pause, and switching tabs during a committed event's refresh.
+`tests/component-hybrid-events.test.cjs` covers captured payloads through text/numeric transform chains,
+parameter changes that only update current values, Boolean/event Reprocess modes, current-value Memo
+sampling, equal-result occurrences, strict types, atomic failures, Undo/reload without replay, command
+pulse suppression, and incremental evaluation that skips unrelated or unchanged branches. The extractor
+walkthrough runs in both editor and offline HTML. Text compose tests submit through either input
+with Live clock on the other, retain repeated equal submissions, and verify that clock ticks do
+not append. Unequal branches rejoin once in both scene orders, including Pause, Undo/Redo, reload,
+and offline HTML. Inspector mode/count changes preserve hybrid inputs and individual Receive events
+choices. `tests/hybrid-builtin-contracts.test.cjs` checks each built-in's driving inputs, event
+outputs, Reprocess declaration, and pure computation contract.
+`tests/event-builtins-contracts.test.cjs` and `tests/component-event-builtins-runtime.test.cjs`
+cover Dropdown and selector events, repeated choices, dataset-backed lists, both adapters,
+paused queues, first events before initial simulation, queue limits, and Counter/Timer completion
+in editor and offline HTML. `tests/component-transition-events.test.cjs` checks captured completion
+through self-reset feedback, Step followed by a later edit, cancellation, and invalid emissions.
+Rejected completion notifications roll back their event receivers while retaining the accepted
+simulation state and downstream signals; editor and reader expose a delivery error.
+`tests/component-action-events-contracts.test.cjs` and `tests/component-action-events-runtime.test.cjs`
+cover typed Dataset import/reload and Capture row results, failures, cancellation, and Undo.
+`tests/component-wire-activity-contracts.test.cjs` checks bounded transient wire inspection records;
+the event wiring runtime tests verify committed activity, safe payload text, failure rollback,
+values-only appearance, and read-only HTML inspection.
 `tests/text-operations-contracts.test.cjs` covers all comparison modes, whole-input regex semantics,
 zero-based Unicode ranges and capture groups, empty/unmatched results, validation limits, and
 literal rendering. It verifies that capability discovery and drawing never compile user-supplied patterns,
@@ -302,6 +351,12 @@ checks manual/connected/hidden switches, Undo and independent copies, plus offli
 bounded derived-table contract, downstream propagation, and persistence through the real sandbox.
 `tests/reader-data-actions.test.cjs` checks replacement-schema rules, filename validation, and CSV/JSON
 serialization, shared dataset identity, and separate current/committed revision ownership.
+`tests/dataset-schema-replacement-contracts.test.cjs` covers explicit column replacement, retained
+dataset identity, fresh row identities, type/storage validation, reader permission, and scoped
+consumer errors while protecting the owner and unrelated components.
+`tests/dataset-schema-import-runtime.test.cjs` exercises the import-mode preview, stale asynchronous
+previews, retained links, adapted tables, Undo, and HTML author permission in Chromium and WebKit.
+Reload continues to require the last accepted structure. Demo tab 18 enables reader column changes.
 `tests/data-workflow.test.cjs` covers explicit import/download controls in the editor
 and offline HTML, including cancellation, invalid replacements, and no automatic action replay.
 `tests/phase3-closeout.test.cjs` builds a data workflow from an empty canvas through the actual
@@ -360,7 +415,7 @@ notice, and the shared 2,000,000-character snapshot budget.
 Undo/Redo without replay, self-sorting updates, visible failures, and session-local offline HTML updates.
 Run this browser suite with both Chromium and `BROWSER_ENGINE=webkit`.
 
-`tests/example-workspace.test.cjs` validates all thirty-two shipped tabs and preserves the original
+`tests/example-workspace.test.cjs` validates all thirty-eight shipped tabs and preserves the original
 control/HTML walkthrough, including the alphabetical grouped report, reader-result workflow, manual Dropdown, automatic
 dataset selection, reverse Text lookup, and a connected Spreadsheet with editable authoring cells
 and read-only live reader results, plus shared-dataset capture/editing and explicit source-to-owner
@@ -430,9 +485,13 @@ Dataset editing and calculated table checks:
 - `tab-navigation-contracts.test.cjs` and `tab-navigation-runtime.test.cjs` cover declared
   host actions, target validation, sampled pulses, initially high/revisited trigger priming,
   button navigation and invisible automatic navigation above another clickable control.
-- The workspace suite covers all 32 tabs; tabs 29–31 demonstrate the native-data workflows and
+- The workspace suite covers all 38 tabs; tabs 29–31 demonstrate the native-data workflows and
   navigate with parameters from tab 31 to the JSON example. Tab 32 covers live reader Page settings,
-  navigation with hidden tabs, and restoration of defaults on another tab.
+  navigation with hidden tabs, and restoration of defaults on another tab. Tabs 33–34 compare hybrid
+  events with traditional pulses and demonstrate Extractor → Memo, live range changes, and Reprocess.
+  Tab 35 contrasts related branches that rejoin once with separately edited fields sampled on Apply.
+  `stage4-demo.test.cjs` covers tabs 36–38: Dropdown/selector events, signal/event adapters,
+  Counter/Timer completion, and dataset action results in the editor and offline HTML reader.
 
 Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for Chromium.
 

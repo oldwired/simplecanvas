@@ -15,8 +15,8 @@ before(async()=>{browser=await ({chromium,webkit}[engine]).launch({headless:true
   ...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});});
 after(async()=>{await browser?.close();});
 
-async function app(fn,settings=null){
-  const context=await browser.newContext({viewport:{width:1500,height:1050}});
+async function app(fn,settings=null,contextOptions={}){
+  const context=await browser.newContext({viewport:{width:1500,height:1050},...contextOptions});
   try{
     const page=await context.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
@@ -369,6 +369,78 @@ test('leaving Wiring restores normal overlap selection cycling',async()=>app(asy
   assert.equal(await run('undoStack.length'),0);
 }));
 
+test('Wiring keeps component double-click interaction, overlap selection, and port dragging',async()=>app(async({page,run})=>{
+  const control=component('control',fs.readFileSync(path.join(__dirname,'..','examples','number-control.js'),'utf8'),{h:130,state:{value:7}});
+  const background={type:'rect',uid:'background',x:control.x,y:control.y,w:control.w,h:control.h,color:'#334155',strokeOn:true,size:1,fill:true,fillColor:'#ffffff'};
+  await seed(run,[background,control,target()]);await wiring(page,run);
+  const bodyClick=async(double=false)=>{
+    const box=await page.locator('#canvas').boundingBox();
+    await page.mouse[double?'dblclick':'click'](box.x+160,box.y+145);
+  };
+  for(const uid of ['control','background','control']){
+    await bodyClick();
+    assert.deepEqual(await run('selectedUids()'),[uid],'separate clicks still select the underlying shape');
+  }
+  await bodyClick(true);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  assert.deepEqual(await run('selectedUids()'),['control']);
+  assert.equal(await run('pointEditIdx'),null,'double-click does not edit the background');
+  assert.equal(await run('componentWiring.enabled'),true);
+  assert.equal(await run('undoStack.length'),0,'entering interaction does not change the document');
+  const box=await page.locator('#canvas').boundingBox();
+  await page.mouse.click(box.x+280,box.y+240);
+  await page.waitForFunction(()=>__test.run('items[1].state.value')===8);
+  await bodyClick(true);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===null);
+  assert.equal(await run('componentWiring.enabled'),true,'leaving interaction keeps wiring visible');
+  await dragPorts(page,port(page,'control','value','out'),port(page,'target','number','in'));
+  await bound(page,'target','number',{uid:'control',port:'value'});
+  assert.equal(await run('(async()=> (await ensureEditorComponentGraph()).get(items[2]).io.outputs.number)()'),8);
+  const pin=await point(port(page,'control','value','out'));
+  await page.mouse.dblclick(pin.x,pin.y);
+  assert.equal(await run('editingSmartIdx'),null,'double-clicking a pin remains a wiring gesture');
+  assert.equal(await run('items[1].state.value'),8);
+  await selectEdge(page,edge(page,'target','number'));
+  assert.ok(await run('componentWiring.selected'),'links remain selectable');
+  assert.equal(await run('editingSmartIdx'),null);
+}));
+
+test('Wiring permits touch double-tap interaction and still exits on empty canvas',async()=>app(async({page,run})=>{
+  const control=component('control',fs.readFileSync(path.join(__dirname,'..','examples','number-control.js'),'utf8'),{h:130,state:{value:7}});
+  await seed(run,[control]);await wiring(page,run);
+  const tap=async(x,y)=>{const box=await page.locator('#canvas').boundingBox();await page.touchscreen.tap(box.x+x,box.y+y);};
+  const box=await page.locator('#canvas').boundingBox();
+  await page.touchscreen.tap(box.x+160,box.y+220);
+  await page.touchscreen.tap(box.x+162,box.y+222);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===0);
+  assert.equal(await run('componentWiring.enabled'),true);
+  await tap(280,240);
+  await page.waitForFunction(()=>__test.run('items[0].state.value')===8);
+  const empty=await page.locator('#canvas').boundingBox();
+  await page.touchscreen.tap(empty.x+1100,empty.y+600);
+  await run('smartHitSettled');
+  await page.touchscreen.tap(empty.x+1100,empty.y+600);
+  await page.waitForFunction(()=>!__test.run('componentWiring.enabled'));
+  assert.equal(await run('editingSmartIdx'),null);
+},null,{hasTouch:true,isMobile:true}));
+
+test('Wiring waits for smart handles outside the component body before treating a double-click as empty canvas',async()=>app(async({page,run})=>{
+  const script=sourceScript.replace('children(state,style,w,h)',`handles(state,w,h){return [{id:'outside',x:w+40,y:40,kind:'click'}];},
+    hitEdit(state,x,y,w,h){return Math.abs(x-w-40)<12 && Math.abs(y-40)<12?'outside':null;},
+    dragEdit(state){return {state:{value:(state.value??7)+1}};},
+    children(state,style,w,h)`);
+  await seed(run,[source({script})]);await wiring(page,run);
+  let box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+160,box.y+170);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===0);
+  box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+380,box.y+170);
+  await run('smartHitSettled');
+  assert.equal(await run('items[0].state.value'),9,'both handle clicks complete');
+  assert.equal(await run('editingSmartIdx'),0);
+  assert.equal(await run('componentWiring.enabled'),true,'outside handles are not empty-canvas gestures');
+}));
+
 test('HTML and SVG exports omit editor wiring overlays while the exported reader retains the connection',async()=>app(async({page,run})=>{
   const display=`({apiVersion:2,inputs:{number:{type:'number',default:0}},outputs:{number:{type:'number'}},compute(inputs){return {number:inputs.number};},
     children(state,style,w,h,editing,io){return [{type:'text',x:0,y:0,w,h:40,text:String(io.outputs.number),strokeOn:false,color:'#334155',font:'400 18px sans-serif'}];}})`;
@@ -377,7 +449,8 @@ test('HTML and SVG exports omit editor wiring overlays while the exported reader
   await edge(page,'target','number').waitFor({state:'visible'}); // bindings commit before the async graph publishes the new overlay
   const getDownload=async expression=>{const pending=page.waitForEvent('download');await run(expression);return fs.readFileSync(await(await pending).path(),'utf8');};
   const svg=await getDownload('saveSvg()'),exported=await getDownload('exportHtml()');
-  for(const [name,body] of [['SVG',svg],['HTML',exported]])assert.doesNotMatch(body,/data-wire-(?:port|edge)|componentWiringOverlay|wire-arrow-/,name+' contains only document artwork');
+  // Reader wiring helpers are legitimately embedded as script; only the saved artwork must omit editor overlays.
+  for(const [name,body] of [['SVG',svg],['HTML',exported]])assert.doesNotMatch(body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,''),/data-wire-(?:port|edge)|componentWiringOverlay|wire-arrow-/,name+' contains only document artwork');
   assert.equal(await run('componentWiring.enabled'),true,'export does not leave the authoring mode');
   const reader=await page.context().newPage(),errors=[];reader.on('pageerror',error=>errors.push(error.message));
   await reader.route('http://component-wiring-export.test/**',route=>route.fulfill({status:200,contentType:'text/html',body:exported}));

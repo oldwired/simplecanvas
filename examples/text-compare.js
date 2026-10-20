@@ -2,9 +2,11 @@
 // Patterns are written without / delimiters. Regex evaluation stays inside compute's Worker budget.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['value'],reprocess:'reprocess'},
   settings:{caseSensitive:{type:'boolean',default:true,label:'Case-sensitive matching'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{text:{type:'string',default:''},compare:{type:'string',default:''},operation:{role:'control',type:'string',default:'equals',options:['equals','not equals','starts with','ends with','contains','matches regex']}},
-  outputs:{value:{type:'boolean'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:''},compare:{type:'string',default:''},operation:{role:'control',type:'string',default:'equals',options:['equals','not equals','starts with','ends with','contains','matches regex']}},
+  outputs:{value:{event:true,type:'boolean'}},
   initState(){return {caseSensitive:true,showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state){

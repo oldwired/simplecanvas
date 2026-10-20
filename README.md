@@ -219,11 +219,11 @@ related controls, operations, and displays together; Data covers tables and stru
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric selectors/registers, text/number conversion, Spreadsheet, Table aggregate, Gauge, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference, Page settings |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Page settings |
 | Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 91 entries, including 82 connected API v2 components. Every smart-shape
+The catalog includes 93 entries, including 84 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -316,7 +316,7 @@ Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
 ### Connected components
 
 Open [the smart-components workspace](examples/smart-components-workspace.json) with
-**File → Open workspace…** to explore thirty-two connected examples. Opening a workspace replaces
+**File → Open workspace…** to explore thirty-eight connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](examples/smart-components-workspace.html) runs offline as a reader.
 
@@ -354,6 +354,12 @@ editable. [The exported HTML](examples/smart-components-workspace.html) runs off
 | Date and time | Parse explicit dates/timestamps, format the same instant in different timezones, and calculate elapsed duration. |
 | URL inputs and visible characters | Read a name from the reader URL, compare visible-character/code-point processing, and use a button to open another tab. |
 | Page settings | Set the browser title, hide or show navigation and simulation controls, and inspect read-only wiring in the HTML reader. |
+| Events and signals | Use one hybrid value connection or separate value/pulse connections, and carry number events through Number to text. |
+| Hybrid transformations | Submit text through an extractor, change range parameters without appending, then Reprocess or sample the current result with a trigger. |
+| Shared event origins | Split one submission into name and city, then compose one complete log line; combine independent edits explicitly with Apply. |
+| Selection events | Choose a city and its automatically selected country, then forward only a selector’s chosen message. |
+| Adapters and completion | Sample values on a signal edge, turn repeated events into separate pulses, and log Counter/Timer completion. |
+| Dataset action results | Log accepted file imports/reloads and captured rows, and inspect failures without confusing them with successful updates. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
 step buttons, and clicking the displayed value to type a number. In HTML, use the controls
@@ -363,22 +369,93 @@ arrows remain ordinary drawing objects. Each tab is independent;
 timing pauses while that tab is inactive. Reader changes survive tab switches, and reloading
 the HTML restores the exported snapshot.
 
-**Text input** and **Number input** provide typed entry with a **Submitted** Boolean pulse.
+**Text input** and **Number input** provide a hybrid **Value** output: its current value and an
+event carrying each accepted text or number. Their **Submitted** Boolean pulse remains available.
 Click their entry field, type directly on the canvas, and press **Enter** or **Submit**. The field
 stays focused for the next entry. **Tab** submits and moves focus normally. Accepting the same value
-again produces another pulse. **Escape**
+again produces another event and pulse. **Escape**
 or clicking outside discards an unsubmitted draft; invalid entries stay open with an error.
 Editing leaves the simulation running unless you have paused it. Text input has maximum-length,
 required-value, and placeholder settings. Number input has minimum, maximum, and step settings;
 its output is a number, while Text input preserves a string such as `0012`. Input masks and
 additional text-validation rules are deferred. These are separate from the slider-based Number control.
 
-Connect **Text input · value** to **Text label · value** to display a string. To collect submissions,
-also connect **Text input · value** to **Memo · line**, and **Text input · submitted** to
-**Memo · append**. Each accepted entry then appends exactly once, including repeated identical text.
-The input queues up to 64 pending submissions within its storage budget, preserving their values
-and order while paused; Step or Resume processes them. Reopening, copying, or restoring history
-retains the text/number but does not replay pending submissions.
+Connect **Text input · value** to **Text label · value** to display the current string. Connect
+that same **value** output to **Memo · line** to append each accepted submission, including
+repeated identical text. The typed port carries both its current value and discrete events.
+For numbers, use **Number input → Number to text → Memo**; transformations preserve occurrences
+while converting their captured payloads.
+
+For traditional triggered sampling, turn **Receive events** off on Memo's Line input in **Edit…**.
+Connect the desired text to Line and a Boolean trigger to Append. Text input's existing Submitted
+pulse can drive Append. Its bounded queue retains up to 64 submissions and their values while
+paused; Step or Resume processes them. Connecting both event receipt and a separate Append
+trigger intentionally makes two requests. [Tab 33 · Events and signals](examples/smart-components-workspace.html?page=32)
+compares these styles in separate Memos.
+
+Scalar transformations pass a driving event through their calculation. Parameter changes only
+update the current output. Their **Reprocess** input samples the current data and parameters to
+emit a fresh result, from either a command event or a Boolean rising edge. A hybrid Trigger
+connection uses its event once, without also counting its subsequent pulse. Try
+[tab 34 · Hybrid transformations](examples/smart-components-workspace.html?page=33): submit
+`Hello World` then `Another Test` with Start 2 / Length 3 to append `llo` and `oth`. Change Start to 3
+and Length to 5: the current output becomes `"ther "`, but Memo stays unchanged until Reprocess
+or a new text submission.
+
+Text compose accepts events on every text input (A through H). **One submission remains one
+event when it travels through several branches.** If two extractors take a name and city from
+one submitted string, Compose waits for both related results and emits one complete line.
+The order or placement of those components does not change the result. Inputs that did not
+receive an event provide their current values; they do not have to emit. A values-only branch
+changed by the same submission is also updated before Compose samples it.
+
+Independent submissions remain separate, even when their text is identical or they arrive
+close together. To edit several fields before producing one result, turn **Receive events**
+off on those Compose inputs and connect an **Apply** button to **Reprocess**. Try both patterns
+in [tab 35 · Shared event origins](examples/smart-components-workspace.html?page=34):
+submit `Anna;Berlin` to append `Anna / Berlin` once, then submit it again to append another line.
+In the lower example, editing Name or City changes the preview; Apply appends their current values.
+
+Connecting Live clock to either Compose input updates the current result without appending a
+line; submitting connected Text input emits a composed line using the current time. A hybrid
+source can also supply values only by disabling Receive events on its receiving input.
+Separator and Template remain value-only parameters.
+
+User events run while simulation is paused; Boolean pulses follow simulation time. Events are
+not saved for replay: Undo/Redo restores outcomes, and reopening does not submit them again.
+
+**Wiring** distinguishes enabled event reception (purple lightning) from **Values only** (muted,
+crossed lightning). Accepted occurrences briefly glow amber. Select an event wire, or hover/focus
+a port, to inspect its occurrence count and last payload. Exported HTML offers the same read-only
+inspection when wiring is shown. Activity is session-only and is never saved or replayed.
+
+**Dropdown** sends its Index, Key, Text, and Valid results together when a choice is accepted or
+an event arrives at Select. List/dataset refreshes and value-only Select changes only update the
+current result; Reprocess explicitly sends it again. **Text, Number, and Boolean selectors** pass
+an event from the selected A/B input and ignore occurrences on the other data input. Select events
+and Reprocess send the current chosen value; a plain Select signal only changes the preview.
+Try [tab 36 · Selection events](examples/smart-components-workspace.html?page=35).
+
+Two adapters connect these workflows to traditional Boolean logic:
+
+- **Signal → event:** choose text, number, or Boolean. Trigger’s rising edge captures the current
+  Value as an event, including repeated equal values.
+- **Event → pulse:** every received event queues one 100 ms Boolean pulse, separated by at least
+  10 ms low. Paused simulation retains queued events until Step or Resume; reopening does not
+  replay them. The queue holds at most 64 pending pulses.
+
+**Counter** emits a completion event once when a counted edge first reaches its threshold or
+zero; reset re-arms it. **Timer** emits once at an observed natural finish. Both keep their Reached
+signals, and neither invents completion events on reset, configuration changes, or restoration.
+Try [tab 37 · Adapters and completion](examples/smart-components-workspace.html?page=36): submit the
+same text three times, watch three separate pulses reach the Counter, and log one completion.
+
+**Dataset** reports a successful file import/reload through **Loaded** (resulting row count) or a
+failure through **Failed** (message). **Capture row** reports the inserted row’s zero-based index
+through **Captured**, or its failure message through **Failed**. These are dedicated events;
+current dataset signals keep working as before. Cancelled dialogs, stale work, redraws, and
+reopening do not emit. Try [tab 38 · Dataset action results](examples/smart-components-workspace.html?page=37)
+with [the example CSV](examples/event-readings.csv).
 
 Text input also has a Boolean **Clear** input. A false-to-true pulse empties the field and cancels
 pending submissions without emitting Submitted. Connect a Trigger button to Clear for a separate
@@ -386,7 +463,10 @@ reset, or connect the Text input's own **submitted** output to its **clear** inp
 after submission. Memo still captures the accepted text before the field clears. A Clear input
 already high when the drawing starts establishes a baseline without erasing the saved value.
 
-**Memo** stores text until a rising edge on **Set**, **Append**, or **Clear**. Set replaces it with
+**Memo** accepts captured strings on its hybrid **Content** and **Line** inputs, plus command
+events on **Clear**, alongside its existing signal inputs. Use Number to text to append a numeric
+event. Both paths use the same bounded operations. For signals, a rising edge on **Set**,
+**Append**, or **Clear** acts once. Set replaces it with
 **Content**; Append adds **Line** as a new line; Clear empties it. If several triggers rise together,
 Clear wins over Set, then Append. Outputs are the complete **Text** and **Line count**. An empty memo
 has zero lines; appending an empty line creates one blank line. Limits default to 100 lines and
@@ -1137,7 +1217,8 @@ keep working. Component authoring also requires `smartShapeAuthoring` to be enab
 
 Components support number, string, Boolean, and table values within one sketch. See the
 [component scripting contract](SMART_SHAPES.md#connected-components-api-v2) for custom ports
-and computations. General routed events and external integrations remain future work.
+and computations, including opt-in typed events for discrete interactions. External integrations and
+event-driven host actions remain future work.
 
 ### Demo library
 

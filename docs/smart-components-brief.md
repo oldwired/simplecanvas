@@ -11,10 +11,17 @@ editing, pulse-triggered row capture, and explicit Dataset ownership with source
 Dataset editor provides record editing and paging; Spreadsheet publishes evaluated table ranges.
 Datasets can follow source publications in Live mode, overwriting local records on refresh.
 Reload, source updates, capture, and downloads use narrow host-owned actions.
+Explicit file imports can keep the current column structure or use the file's columns, with
+separate author permission for column changes in HTML exports.
 Visual wiring is brought forward into stage 3: the editor exposes typed flow links and distinct
 Dataset associations, with drag-to-connect editing over the existing bindings. Data ports default
 to left/right and control ports to top/bottom, with optional per-port side overrides.
-General routed events, the remaining stage 5 reader workflow, and stage 6 integrations remain proposals.
+Stage 4 adds typed submissions from Text/Number input and Memo event receivers alongside their
+existing signals, with shared origins to recombine related branches. Event wiring now exposes
+reception modes, recent activity, and captured payloads. Dropdown and scalar selectors support
+explicit occurrences, and signal/event adapters and completion notifications extend the workflow.
+Shared host-action dispatch, the remaining stage 5
+reader workflow, and stage 6 integrations remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -39,7 +46,13 @@ cover JSON messages, date/time conversion, and URL-driven HTML with visible-char
 Native `Intl.Segmenter` now supports visible-character extraction/counting, with explicit code-point
 options. A Page settings milestone adds a thirty-second tab and applies per-tab reader presentation
 after dependency settlement, before revealing the destination. These additions remain separate
-from later service calls and general events.
+from later service calls. Tab 33 compares hybrid event and traditional text/pulse Memo inputs.
+Tab 34 demonstrates event propagation through extraction, live parameter changes, explicit
+Reprocess, and pure text sampled by a trigger. Tab 35 demonstrates shared event origins:
+one submission splits into two transformations and recombines into one complete result;
+independently edited fields wait for an explicit Apply/Reprocess request. Tabs 36–38 demonstrate
+selection events, signal/event adapters, Counter/Timer completion, and dataset action results.
+Their HTML reader opens with wiring visible so occurrences can be inspected.
 Shared buses and multiple drivers are deferred;
 each input retains one source.
 Original discussion baseline: `main` at [`2f534db`](https://github.com/oldwired/simplecanvas/commit/2f534db0f4d1424b5c6280c88ba9d06d0bd25be9).
@@ -123,12 +136,13 @@ tab state, timing, isolation, and export fidelity.
 These boundaries describe the feature branch, including feedback, text passing, and shared datasets.
 
 - **Connections stay within one sketch.** Number, string, boolean, and table-reference ports are
-  supported. Tables resolve through a bounded per-document pool. Cross-tab connections and routed
-  events remain future work. Combinational table cycles are rejected; a Dataset owner can explicitly
+  supported. Tables resolve through a bounded per-document pool. Opt-in typed events also stay
+  within the sketch; cross-tab connections remain deferred. Combinational table cycles are rejected; a Dataset owner can explicitly
   apply a transformed view of its own records through a Replace or Append pulse.
 - **Actions are explicit and bounded.** Validated host actions support file import/reload, table
   downloads, row capture, source-table updates, and explicit internal Go to tab requests.
-  General routed events and service calls remain future work. Scripts cannot fetch data directly.
+  Typed events request bounded component-state changes; general host-action intents and service
+  calls remain future work. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
@@ -191,7 +205,9 @@ Both precede stage 3 and reuse the scalar graph.
 Stage 3 delivers the agreed data workflow, including a connected formula sheet, shared
 dataset editing/capture, and visual connection authoring brought forward from stage 5. Its
 closeout evidence and deferred extensions are recorded below. Stage 4 has a narrow host-owned download
-action plus explicitly declared dataset reloads and row capture; general events and stages 5–6 remain proposals. Shared buses are
+action plus explicitly declared dataset reloads and row capture. Its first routed-event milestone
+adds typed Text/Number submissions and Memo receivers, retaining all existing signals and triggers.
+Shared event-driven host actions and stages 5–6 remain proposals. Shared buses are
 explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -207,7 +223,7 @@ Share runtime helpers between editor and export throughout.
 | 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
 | 3T. Text operations — implemented on branch | Native regex comparison/extraction; strict Text to number; formatted Number to text; Text compose, transform, replace, and selector | Connected text/status displays respond in the editor and offline HTML; invalid numeric input has an explicit validity output; errors and Worker deadlines remain visible and bounded. |
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
-| 4. Events and local outputs — narrow local actions implemented | Host-owned CSV/JSON downloads, session-file reload triggers, declared row-capture pulses, and internal Go to tab actions; general event routing remains proposed | A reader downloads a result, reloads an accepted session file, captures one sampled row, or explicitly selects an internal tab. Page refresh, restoration, retries, and Undo do not replay actions. |
+| 4. Events and local outputs — event workflow implemented; shared actions proposed | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes enabled reception, activity, and the latest payload. Existing signals and narrow host actions remain available. | Repeated equal submissions stay distinct; related branches recombine once. Selected data events forward deliberately; current-value refreshes do not invent events. Completion and adapter behavior respects simulation lifecycle, with no restoration replay. Editor/HTML state and connections roundtrip. Shared host-action dispatch remains open. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -215,7 +231,7 @@ Stage 6 is deliberately split into reviewable deliveries:
 
 | Step | Prerequisites and deliverable | Evidence that it works |
 | --- | --- | --- |
-| 6.1 Shared integration foundation | Stage 1 value graph and stage 4's proposed general intent dispatch; add transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
+| 6.1 Shared integration foundation | Stage 1 value graph, stage 4 routed events, and its still-proposed general host-intent dispatch; add transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
 | 6.2 Manual HTTP GET | 6.1; a configured bounded JSON GET mapped to scalar ports, initiated by Refresh | The newest accepted result drives a display; errors are visible; repeated instances stay independent. Downloaded HTML works with the test endpoint and remains readable offline. |
 | 6.3 MQTT Config and Subscribe | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
 | 6.4 Automated reads | 6.2; bounded HTTP timer, value-change, and edge triggers | One permitted trigger causes one request; initial/restored values do not replay edges, rapid changes settle correctly, and hidden documents pause polling. |
@@ -303,7 +319,7 @@ only under Logic; data-backed charts and grids also appear under Displays.
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric routing/storage, text/number conversion, Spreadsheet, Table aggregate, numeric displays, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, clocks, Stopwatch, Timer |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Date parse, Date format, Date difference, Page settings |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Page settings |
 | Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank, and categorized user shapes/icons |
 
@@ -326,8 +342,8 @@ Text compare, Text extract, and Number to text bring it to 77 entries / 68 API v
 Text to number, Text compose, Text transform, Text replace, and Text selector bring it to
 82 entries / 73 API v2 components. JSON extract, JSON build, Date parse, Date format, Date difference,
 URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
-catalog to 90 entries / 81 API v2 components. Page settings brings the current catalog to
-**91 entries / 82 API v2 components**.
+catalog to 90 entries / 81 API v2 components. Page settings brings it to 91 entries / 82 API v2
+components. Signal → event and Event → pulse bring the current catalog to **93 entries / 84 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -345,7 +361,7 @@ import; flat libraries remain valid, and unassigned entries appear under Uncateg
 Bundled defaults remain defaults when a built-in is pinned, exported, or restored. Explicit user
 overrides (including an empty array) take precedence. The catalog audit also normalizes search
 keywords and covers arithmetic verbs, regex aliases, Unicode segmentation, JSON serialization,
-dataset import/export, and URL navigation. All 91 entries have valid, nonempty default memberships.
+dataset import/export, and URL navigation. All 93 entries have valid, nonempty default memberships.
 All category organization survives browser reloads and library export/import. Keep library-entry identity separate from
 display names and from the UIDs of placed instances, so naming and organization do not change
 existing connections. Live clock's connected signals use explicit state transitions; presentation
@@ -865,7 +881,7 @@ and **Decoded decade counter (4017-style)**. Existing timed components publish s
 Boolean gates support X; both Shift registers use simultaneous shared-edge sampling. Canvas
 copies, save/reload, and exported readers retain the chosen feedback state without inventing edges.
 
-The feedback milestone contributed fifteen tabs to the [current thirty-two-tab workspace](../examples/smart-components-workspace.json):
+The feedback milestone contributed fifteen tabs to the [current thirty-eight-tab workspace](../examples/smart-components-workspace.json):
 the original eight examples and the seven feedback/sequential tabs described above. That subset includes all three
 practical counter loops, dedicated and gate-built latches, a shared-edge flip-flop chain, a resettable
 ring, an inspectable Johnson feedback register, a decoded decade, and positive-delay feedback.
@@ -957,9 +973,9 @@ error policy remains a proposal, not an implicit behavior of ordinary connection
 ## Text passing: implemented milestone before stage 3
 
 String ports already belonged to API v2; this milestone makes them useful through ready-to-place
-controls and displays. It follows feedback and precedes embedded datasets. Text passing does not
-introduce routed events, downloads, or network effects: submission is an ordinary bounded Boolean
-pulse connected through the existing graph.
+controls and displays. It follows feedback and precedes embedded datasets. This original milestone
+used ordinary bounded Boolean submission pulses through the existing graph; stage 4 now adds a
+parallel event API without replacing those pulses or Memo triggers.
 
 - **Text input** exposes string `value` and Boolean `submitted`. Its host-owned field appears directly
   on the control and accepts Enter or Submit, with maximum length, required-value, and placeholder settings. It preserves
@@ -998,12 +1014,23 @@ pulse connected through the existing graph.
   empty line creates one blank line. CRLF and lone CR normalize to LF. Initial high commands
   establish baselines without changing saved contents. A compact inset leaves most of its area
   for the stored text. Show counts and Show hints start off; rejected-update notices and input
-  errors always remain visible.
+  errors always remain visible. The Boolean **Show scrollbar** control input defaults to false;
+  set a literal in Edit or connect a signal to show and hide a vertical scrollbar for overflow.
+  Dragging the thumb or clicking its track scrolls wrapped text in editor interactive mode and
+  HTML. Scrolling up preserves the reading position as lines arrive; returning to the bottom
+  follows new lines. Hiding the scrollbar preserves that position; successful Set/Clear resets it.
+  Scrolling changes no text, line count, or events.
+  Optional **Log mode** starts off. When enabled, Append keeps the newest Maximum lines logical
+  lines, removing the oldest ones as needed; this also handles multiline incoming blocks.
+  Both hybrid Line events and conventional Append triggers use this behavior. Set remains a
+  replacement subject to normal limits. Scrolled-back views stay anchored to the retained text,
+  or the oldest remaining line when the text being read is removed.
 - **Bounds** remain explicit: strings use at most 2,000 UTF-16 code units and state at most 4,000
   serialized JSON characters. Memo defaults to 100 lines and 2,000 UTF-16 units. Its optional
   character count measures visible characters separately from this storage limit. Rejected updates
-  preserve the old buffer atomically and show a notice; lowering limits never truncates existing
-  content. Long buffers show their latest wrapped lines while retaining the complete output.
+  preserve the old buffer atomically and show a notice. Log-mode appends check character and
+  storage limits after removing excess lines. Enabling Log mode or lowering limits alone never
+  truncates existing content. Long buffers show their latest wrapped lines while retaining the complete output.
 
 The **Text and notes** workspace tab connects Text input `value` to Text label `value` and Memo
 `line`, and Text input `submitted` to Memo `append`. Separate buttons demonstrate Set and Clear;
@@ -1101,8 +1128,8 @@ children(state, style, w, h, editing, io) {
 ```
 
 The first milestone is limited to values. V2 `dragEdit` requires an explicit `{state}` envelope
-from its first release, while legacy `dragEdit` continues to return bare state. Later `emit`
-and `effects` fields would require an explicitly supported contract revision. Never infer an
+from its first release, while legacy `dragEdit` continues to return bare state. Stage 4 explicitly
+opts into `{state, events?}` with `eventApi:1`; future effect fields still require a supported contract revision. Never infer an
 envelope from its keys: an existing valid state object can already contain fields named
 `state`, `emit`, or `effects`.
 
@@ -1111,14 +1138,20 @@ runtime reports incompatibility rather than silently downgrading the script. Old
 cannot be assumed to preserve the new fields.
 
 Stage 3 explicitly extends port types with compact table references and bounded runtime tables.
-The narrow local-action slice adds declared host action handles. General event/effect envelopes,
+The narrow local-action slice adds declared host action handles. Stage 4 adds the explicit
+`eventApi:1` envelope and typed hybrid value/event ports. General effect envelopes,
 transient host sources, sensitive values, and connection references still need supported schema/API
 extensions before implementation; do not infer them from v2 scalar values or the `{state}` envelope.
 
 ### Change-driven evaluation
 
 Inputs and state determine computed outputs. Changes to component state, scripts, bindings, or
-literal inputs invalidate the sketch's graph. Stored-output `publish(state)` hooks expose state
+literal inputs invalidate the sketch's graph. During ordinary live evaluation, unchanged
+script/wiring/state/query/input snapshots reuse previous outputs, including table revision
+checks. Pure compute skips unaffected branches and downstream components whose inputs remain
+equal; stored-output publish is likewise reused when its state is unchanged. Graph traversal
+and validation still occur. Paused pure inspections may recompute, and Dataset owners remain
+fresh sources. Event occurrences bypass equality suppression even when their payloads match. Stored-output `publish(state)` hooks expose state
 without first resolving current inputs; pure combinational `compute` hooks resolve the remaining
 signals. Each transition round reads one consistent snapshot and commits all accepted changes
 together. Shared-clock storage therefore samples old values together. Every observed output change
@@ -1210,6 +1243,11 @@ one source. A compatible drop on a connected input replaces its binding in one u
 self-feedback is allowed under the existing settling rules. Owned dataset configuration is not
 exposed as a wireable input. Select a link and use Disconnect or Delete to remove it; Escape cancels
 an unfinished drag. Edit remains available for literals, settings, and the existing source picker.
+Dragging an already-connected input lifts its existing wire so its destination can be moved to
+another compatible input. The move and any destination replacement commit together in one Undo;
+Escape, an invalid drop, or empty-canvas release retains the original connection. Dataset
+associations keep their stored reference, including any row selection, when moved. Double-click
+or double-tap still enters component interaction while wiring remains visible.
 
 The former **Inputs…** command is now **Edit…**, reflecting its role as the component inspector.
 The dialog separates naming and configuration, data inputs, control inputs, and output preview.
@@ -1291,14 +1329,29 @@ per Boat into an alphabetical report. Readers can replace the results with the m
 [CSV](../examples/sailing-results-updated.csv) or [TSV](../examples/sailing-results-updated.tsv), then
 download the calculated `sailing-report`. Both transform switches can be bypassed: the table
 adapts to the available columns and the chart selects its columns automatically. A **Reload file**
-Trigger connects to Dataset's reload input.
+Trigger connects to Dataset's reload input. This eighteenth tab enables **Allow column changes in
+HTML export** and its fourth instruction demonstrates loading different columns with **Use the file’s
+columns**, reviewing the affected components before acceptance. The **Dataset action results** tab
+retains the default restriction, providing a reader example that only permits compatible replacement.
 
-- **Reader imports** are enabled per Dataset through **Allow file import and reload**. A reader deliberately
-  chooses a local file, inspects delimiter/type/row previews, and accepts it. Replacement data must
-  contain the previous column keys with the same types; extra columns are permitted. It keeps the
-  dataset ID and updates all consumers of that dataset in the sketch. Failure,
-  cancellation, or a stale dialog leaves accepted data unchanged. Replacements stay within that
-  document's reader session, survive tab switches, and are discarded when the HTML page reloads.
+- **File imports** are enabled per Dataset through **Allow file import and reload**. The user chooses
+  a local file, inspects delimiter/type/row previews, and accepts it. **Keep current columns** is the
+  default: replacement data must contain the previous column keys with the same types; reordering and
+  additional columns are permitted. **Use the file’s columns** explicitly replaces the structure
+  as well as the records. It is available in the editor when file import is enabled; HTML requires
+  the additional **Allow column changes in HTML export** setting (`allowReaderColumnChanges`,
+  default false). This permission does not enable file import on its own.
+- **Column replacement** previews additions, removals, type changes, and affected components.
+  The Dataset keeps its ID and connections, assigns fresh row IDs, and publishes the new structure
+  to its consumers. Dataset editor follows the new columns; configured filters, sorts, aggregates,
+  charts, captures, and other consumers retain their field choices for correction. A deliberate
+  structure change can therefore be accepted even when it introduces downstream errors. Spreadsheet
+  retains its layout and formulas; positional references may silently read a different column,
+  so the preview warns authors to review them. There is no automatic field mapping or type coercion.
+  Column mapping remains deferred.
+- Accepted file replacements are one undoable editor change. Failure, cancellation, or a stale
+  dialog leaves accepted data unchanged. Replacements in HTML stay within that reader session,
+  survive tab switches, and are discarded when the HTML page reloads.
 - **Dataset reload** uses a declared Boolean input, default false. A fresh false → true pulse can
   reread the last accepted Load data file using its remembered delimiter, with the same schema and
   size validation. It requires Allow file import and reload and a reusable browser file handle. Safari or
@@ -1307,6 +1360,8 @@ Trigger connects to Dataset's reload input.
   First-high, opening, Undo, rewiring, unavailable recovery, historical replay, and pure evaluation
   never replay a read. A transient queue holds at most 64 requests and dispatches only after a live
   evaluation fully settles; canceled work and unfinished Step rounds do not dispatch.
+  Reload always checks the currently accepted structure, including after an explicit column replacement;
+  **Allow column changes in HTML export** does not authorize schema changes during reload.
 - **Table sort** uses one selected column, ascending or descending. Ties retain their input order;
   nulls sort last in both directions. Blank Column preserves the incoming order. String comparison
   is case-insensitive by default, with an optional Case sensitive setting.
@@ -1683,7 +1738,11 @@ network access, or new event model is introduced.
 - **Text compose:** two to eight string inputs `a` through `h`, producing string `text`.
   **Join** combines the enabled inputs with a connected or literal `separator`. **Template**
   substitutes `{a}` and other enabled input names in `template`; `{{` and `}}` escape braces.
-  Unknown placeholders or malformed braces produce an error.
+  Unknown placeholders or malformed braces produce an error. Every enabled text input is hybrid:
+  an event on any one emits the composition of its captured payload and the other current inputs.
+  Related arrivals on several inputs from one upstream submission produce one complete result.
+  A plain value source such as Live clock changes the current result without emitting. Separator
+  and template remain parameters, with Reprocess available to emit from all current values.
 - **Text transform:** string `text` and selectable `operation` (`trim`, `lowercase`, `uppercase`)
   produce transformed `text`, numeric `length`, and Boolean `empty`. **Character counting**
   selects visible characters (default) or Unicode code points after transformation.
@@ -1864,7 +1923,7 @@ This makes a teaching/debugging view possible without granting reader authoring 
 the simulation panel is purely presentational and does not pause or reset the simulation.
 Authors who hide the tab bar should provide their own Go to tab buttons.
 
-The catalog now contains **91 entries / 82 API v2 components**. Tab 32, **Page settings**, connects
+Page settings brought the catalog to **91 entries / 82 API v2 components** at that milestone. Tab 32, **Page settings**, connects
 an editable title and three visibility toggles, demonstrates a numeric flow, and includes **Open
 Basics** as navigation that remains available with the tab bar hidden. Basics has no controller,
 so it restores the reader defaults. The editable JSON and exported HTML contain the same example.
@@ -1891,42 +1950,249 @@ versions, and source fingerprints. Each exported document must retain the exact 
 it uses. Library changes should become explicit upgrades with compatible state migrations;
 they must not silently change existing drawings. Source fingerprints identify content, not trust.
 
-## Events and local actions — narrow stage 4 local actions implemented
+## Events and local actions — event workflow implemented; shared actions remain open
 
-The implemented Download table control provides a narrow local action from an explicit click.
-Dataset additionally declares a bounded reload trigger for a file chosen in the current session,
-explicit Replace/Append actions for an incoming table, and Capture row declares an append action
-for sampled scalar fields driven by a Boolean edge. Bound dataset cell edits use
-the same host command service. Go to tab additionally supports explicit internal tab selection
-through a button or primed rising edge, with bounded scalar query-parameter updates. It does not
-expose arbitrary URL navigation. These do not
-introduce general script effects; routed events and
-other actions remain proposed. An event needs a declared name/payload and a receiving
-contract, such as `onEvent(name, payload, state, io)`. The receiver returns a validated state
-transition and optional further events or action requests. Bound propagation depth and work per
-interaction so event cycles cannot run indefinitely.
+Events complement the existing value graph. A value describes the current signal; an event
+records one accepted occurrence with its payload. Repeating the same submission twice produces
+two events. There is no pulse width or requirement for an intervening false signal. The existing
+Boolean pulses remain useful for clocking, sampling, counting, and logic; adding events does not
+replace Text/Number input's value or Submitted outputs, or Memo's text and trigger inputs.
 
-In this stage, user interactions originate events and action intents. Dispatch each accepted
-intent at most once; Worker retries, redraws, recomputation, undo/redo, opening a document,
-and restoring an HTML snapshot must not replay it. Stage 6 adds separately enabled host triggers
-for network reads and connection lifecycle. Track their cause and revision so an input change can
-produce one authorized request without treating every derived recomputation as a new action.
-Pending actions need document/instance ownership checks just like pending state changes.
+### Hybrid ports, transformations, and Reprocess
 
-The implemented host-owned action downloads a connected table as JSON or CSV. The runtime checks
-the declared action, current table, instance ownership, and originating click before preparing it.
-General script-returned intents require the separate event/action contract described above. Browser user-activation
-rules may require a host download control after asynchronous
-preparation. Downloads and navigation should not receive unrestricted permission simply because
-they are local operations.
+API v2 scripts explicitly opt in with `eventApi:1`. Ordinary scalar ports may declare `event:true`:
+one typed port and one `bindings` connection carries a current value plus discrete captured
+occurrences. There are no implicit conversions. A consumer without event support reads the value;
+an event-capable input receives both by default. **Edit → Receive events** can select values only,
+saved as `eventModes[input]='value'`. Wiring marks capability on the existing pin and link.
+No duplicate event pin or separate event binding is needed for these built-ins.
 
-Preserve the current network restriction. Remote data and service calls belong to a later,
-explicit integration design covering allowed destinations, credentials, consent, failures, and
-offline behavior. Credentials are session-only by default; an author may explicitly include
-selected credentials in a saved document or HTML export for a ready-to-use deployment, under
-the shared policy below. Importing a document does not enable its external operations. Prepared
-deployment exports need a separate, explicit startup policy. Component scripts keep their
-current lack of direct DOM, storage, and network access.
+- **Text/Number input:** each accepted entry emits through hybrid `value` with its exact typed
+  payload. The existing current value and queued Boolean `submitted` output remain available.
+- **Memo:** hybrid Content replaces stored text when an event arrives; hybrid Line appends one
+  captured string. Values-only mode retains that text for the existing Set/Append trigger. Clear
+  is a hybrid Boolean command. Both APIs call the same bounded operations, retaining newline,
+  length, line-count, and state-budget behavior. Numbers pass through Number to text first.
+- **Trigger:** a completed press emits `true` through hybrid Value and retains its existing pulse.
+  A hybrid command connection consumes the event once, without also counting that pulse.
+  Values-only mode deliberately selects the pulse path.
+- **Transformations:** a declared driving input processes its captured event using one consistent
+  snapshot of supporting inputs. Each declared result output forwards one typed occurrence, even
+  when equal to its previous value. A component may declare several driving inputs; related
+  arrivals from one source occurrence are combined before emitting once. Independent source
+  occurrences remain separate. Parameter changes recalculate values without generating events.
+- **Reprocess:** an explicit Boolean rising edge or command event samples all current inputs and
+  emits a fresh result. An initially high signal only establishes a baseline. The host reuses the
+  component's pure `compute` function; scripts do not duplicate conversion/extraction logic.
+
+The first transformation group includes Text compare/extract/replace/transform/to number, Number
+to text/function/inverter, Compare, Arithmetic, Clamp, Range map, Text compose, JSON extract/edit,
+and Date parse/format/difference. All enabled Text compose text inputs (A through H) can drive
+events. Related arrivals are combined, and other inputs provide their current values; separator
+and template remain parameters.
+Live clock's plain time value updates the composition without appending to a downstream Memo.
+Arithmetic uses A; Date difference uses End. Dropdown and scalar selectors use the selection
+contracts below. JSON build, dataset-dependent text lookup, and table operations still need
+their own event contracts.
+
+### One submission, one origin
+
+One submission remains one event when it travels through several branches. A source occurrence
+gets a transient host-owned origin that transformations preserve. In a Text input → two
+extractors → Compose → Memo drawing, submitting `Anna;Berlin` sends the related `Anna` and
+`Berlin` results to Compose. Compose processes both before emitting one `Anna / Berlin` line.
+Moving components or changing branch evaluation order must not change that result.
+
+This does not mean waiting for every connected input. A constant, clock, or input with Receive
+events disabled provides its current value and does not need to emit. Pure value dependencies
+changed by the same submission are updated before being sampled, including a branch with event
+reception disabled. Unrelated inputs use the occurrence's input snapshot. It also does not mean
+merging events within a time window: independent submissions remain separate, even when they
+arrive close together or contain identical values. Each source emission is a separate occurrence,
+including several emissions returned by one interaction. Pure transformations preserve an origin
+across all their declared result outputs. Explicit entries emitted by a custom receiver start
+child occurrences so deliberately produced bursts remain distinct. Repeated Enter therefore
+appends repeated lines. Origin identity belongs to the host's in-memory dispatch; it is not a user payload field,
+saved state, or a queue to replay after reopening.
+
+For separately edited fields, authors can disable Receive events on Compose's data inputs and
+connect an Apply button to Reprocess. Changes update the preview immediately, and Apply requests
+one result from all current values. A dedicated “wait for an occurrence from every independent
+source” component is a possible later addition; normal composition does not imply that policy.
+
+### Delivery and persistence
+
+An accepted interaction returns `{state,events?}`. State-changing receivers implement
+`onEvent(name,payload,state,io)`. Pure transformations instead declare
+`eventTransform:{input,outputs,reprocess}` or `{inputs,outputs,reprocess}`, with exactly one of
+`input` or `inputs`. The latter accepts 1–15 distinct declared hybrid data inputs. A dynamic
+`eventTransform(state)` can return the descriptor alongside dynamic port declarations, as Text
+compose does for its enabled inputs. The host calls `compute`, replacing all inputs receiving
+related arrivals with their captured payloads. General signal updates,
+settings changes, and rendering never manufacture events. Connecting both a Memo Line event and
+a separate Append trigger is two independent requests; values-only Line avoids that combination.
+
+Delivery follows the active event dependencies, is bounded, and is atomic for the initiating edit and affected
+states. A receiver uses staged state and a consistent input snapshot; a transformed event uses
+its captured payload rather than a later source value. Bad results or exceeded budgets reject the
+interaction without partial writes. Limits remain 16 events per hook, 256 emitted events, 128
+receiver deliveries, and 16 hops per interaction, with an additional 256 calculation-call budget
+for each transaction, within existing Worker/state budgets.
+Related commands reaching several inputs of a custom `onEvent` receiver run in input declaration
+order and update its staged state. Its stored `publish`/`compute` outputs stay fixed within that
+origin; changed receiver state becomes visible through those outputs at the next occurrence.
+This keeps other branches from sampling partially updated receiver state.
+Cycles in the event or pure-value dependencies needed to deliver an occurrence are rejected
+atomically. Stored state and ordinary value feedback keep their established simulation semantics.
+
+Accepted user events work while simulation is paused; signal-origin Reprocess follows signal
+Pause/Step behavior. Existing Boolean submission queues retain their timing. No event queue is
+persisted: redraw, ordinary settling, Undo/Redo, reopening, copying, or restoring HTML never
+re-emits a submission. Undo restores stored outcomes. Stale tab/instance work is discarded; this
+contract does not permit external effects or network access.
+
+**Tab 33 · Events and signals** compares a single hybrid Text→Memo connection with values-only
+Line plus a separate Submitted→Append pulse. Number input goes through Number to text before
+Memo. Clear works as a hybrid command, including while paused. Earlier Memo demos explicitly
+select values-only inputs to preserve their triggered-sampling examples.
+
+**Tab 34 · Hybrid transformations** covers the agreed extractor behavior: Start 2 / Length 3,
+submit `Hello World` then `Another Test` to append `llo` and `oth`. Changing to Start 3 / Length 5
+updates the live Label to `"ther "` without adding a Memo line. Reprocess emits that new result;
+a second Memo receives pure text and appends only on its own trigger. Repeated equal submissions
+and paused delivery remain demonstrable in both editor and offline HTML.
+Both Memos enable Log mode with Maximum lines set to 10, demonstrating rolling retention after
+further appends. A shared Scrollbars toggle controls access to earlier retained text.
+
+**Tab 35 · Shared event origins** starts with `Bob;Paris` and splits each new submission through
+two regex captures into Compose. Submitting `Anna;Berlin` appends exactly one `Anna / Berlin`
+line; repeating it appends another identical line. A second example keeps Name and City as
+independently edited current values, with Receive events off on their Compose inputs and one
+Apply/Reprocess button. Both examples work while paused and in the offline HTML reader.
+
+### Selection, adapters, and completion
+
+**Dropdown** exposes hybrid Select, Index, Key, Text, and Valid ports plus Reprocess. An accepted
+on-canvas choice or incoming Select event captures all four result outputs under one origin.
+Related downstream branches therefore compose one complete selection. Ordinary Select value
+changes, editing the list, and dataset refreshes update current outputs without selecting again.
+Reprocess explicitly emits the current selection. Dataset-backed choices use the table snapshot
+for that occurrence; the event payloads are bounded scalar values, not table references.
+
+**Text, Number, and Boolean selectors** forward events only from the selected A/B input. An event
+from the unselected data input updates its current value without emitting a result. An explicit
+Select event, including Boolean false, samples and emits the newly chosen value; a value-only
+Select change simply changes the live output. Reprocess samples the current choice. The host
+settles related arrivals before applying this selection policy. Stepped Number/Boolean selectors
+also forward their selected channel’s event; a real Step edge emits the newly selected value,
+and Reprocess samples it explicitly. Reset, channel-count changes, and restoration stay silent.
+Stepped distributors, dataset row selection, and joins that wait for independent sources remain
+separate contracts.
+
+**Signal → event** has a configurable text/number/Boolean Value input, a plain Boolean Trigger,
+and a matching hybrid Value output. Its current output follows the input. Each observed false →
+true Trigger edge captures one event, including an unchanged value. Initial/restored high inputs
+and value-type changes establish a baseline without emitting. It follows simulation Pause/Step.
+
+**Event → pulse** accepts text, number, Boolean, or payload-free occurrences on its dedicated
+Receive event input. Every occurrence, including false, empty text, or an equal repeated payload,
+queues one 100 ms Boolean pulse with at least a 10 ms low gap. The bounded queue holds at most
+64 pending pulses. While paused, accepted events queue until Step/Resume; reopening does not
+replay old pulses. This adapter provides a deliberate bridge to ordinary Boolean counters and
+logic, without making their inputs event receivers.
+
+**Counter and Timer** retain their existing Reached signals and add captured `true` occurrences
+to that same port. Counter emits only when a newly counted edge first reaches its threshold
+(or zero in down mode); reset re-arms it. Initial state, configuration changes, and a held Reached
+level do not emit. Timer emits once for an observed natural countdown completion; reset,
+configuration changes, reopening, and inactive-tab catch-up do not replay old completions. Their
+completion notifications originate in simulation transitions, so Pause/Step and the existing
+Timer wall-clock policy still apply. A Reached event can drive Reprocess on a text composer to
+create a labelled log entry without also consuming the accompanying Boolean signal.
+Rejected completion delivery leaves all its event receivers unchanged and reports an error.
+It does not reverse the accepted count/timer transition or its already-observed signals.
+
+**Dataset action results** are dedicated scalar events emitted by the host after an accepted
+operation. Dataset exposes `loaded:number` with the resulting row count for import/reload, and
+`failed:string` with an error message. Capture row exposes `captured:number` with the appended
+row’s zero-based index, plus `failed:string`. The current table and row-count signals remain
+unchanged. Accepted replacements emit even when file contents are identical; cancellation,
+stale work, redraws, restoration, and ordinary record edits do not. Source Replace/Append and
+Live synchronization remain outside this narrow completion contract. These notifications do
+not add table/record event payloads or a general script effects API.
+
+### Event wiring feedback
+
+Purple lightning identifies enabled event reception on hybrid ports and links. A muted crossed
+lightning mark and **Values only · Receive events off** distinguish a connection whose current
+value is still active but whose event reception is disabled. Successful occurrences briefly glow
+amber on the source port, receiving port, and link. A rejected or cancelled transaction does not
+flash. These indicators report accepted events, not animation of every value recomputation.
+
+Select an event wire in the editor, or inspect a port, to see its session occurrence count and
+safely quoted last payload. Reader wiring offers the same inspection without editing connections.
+Activity records are transient: tab/runtime changes clear them, and they are never saved in a
+sketch, exported as prior activity, or replayed by Undo/Redo.
+
+**Tab 36 · Selection events** chains a city Dropdown's index into a country Dropdown and joins
+their text results into one Memo entry. Its second example forwards only the chosen Text selector
+input, with an explicit Reprocess button. **Tab 37 · Adapters and completion** samples a current
+string on a trigger edge, converts repeated submissions into separate Counter pulses, and logs
+Counter and Timer completion. **Tab 38 · Dataset action results** demonstrates the host-owned
+completion/failure events described above. Each reader tab shows wiring by default.
+
+Validation for this increment (2026-10-20): **422 contract tests passed**, with focused editor
+and exported-HTML acceptance in Chromium and WebKit. All 38 workspace tabs passed import and
+offline-reader traversal checks. The three new walkthroughs passed in both engines after layout
+refinement. Coverage includes repeated choices, selected-input suppression, fresh paused adapters,
+queue limits, completion through self-reset feedback, cancellation, Undo/reload, and notification
+rejection without reversing an accepted simulation or dataset change. See the
+[event built-in tests](../tests/component-event-builtins-runtime.test.cjs),
+[transition tests](../tests/component-transition-events.test.cjs),
+[action-result tests](../tests/component-action-events-runtime.test.cjs), and
+[demo walkthroughs](../tests/stage4-demo.test.cjs). This is focused increment validation, not a
+new full-project release certification.
+
+### Remaining stage 4 work and candidate components
+
+Stage 4 remains open for shared local action dispatch and a final closeout pass. Prefer
+occurrences with captured data over automatic change events on every output. Dependency-based
+value invalidation and event routing remain separate: unchanged values may stop propagation,
+but equal event payloads must never collapse into one occurrence.
+
+| Candidate | Useful event | Work still to settle |
+| --- | --- | --- |
+| Dataset row selection and lookup | Accepted row identity or matched result | Define record/table identity and lifetime before structured events. |
+| Stepped distributors and joins of independent sources | Routed or combined payload | Define routing changes, suppression, and explicit waiting policy for unrelated origins. |
+| JSON build | One captured object string from several inputs | Define which changes request a new message and which only update its current fields. |
+| Navigation, downloads, and dataset commands | Command with captured parameters | Shared host action dispatcher, ownership, user activation, permissions, and at-most-once dispatch; no direct Worker side effects. |
+
+Ordinary live value evaluation skips unchanged computations, while graph traversal and validation
+remain intact; this is not a scheduler rewrite. Shared host-action dispatch is its own increment.
+HTTP/MQTT remain stage 6; Run/Preview and reader result saving remain stage 5.
+
+### Existing narrow host actions and future effect boundaries
+
+Download table provides a host-owned CSV/JSON action from an explicit click. Dataset declares a
+bounded session-file reload trigger and explicit Replace/Append actions; Capture row appends
+sampled scalar fields on a Boolean edge. Bound dataset edits use the same mutation service.
+Go to tab supports an explicit button or primed rising edge with bounded scalar query-parameter
+updates. These narrow capabilities remain separate from the new component-state event contract.
+There is no general script-returned effect or arbitrary URL navigation in this milestone.
+
+The runtime validates each existing host action against the declared capability, current data,
+instance ownership, and its allowed origin. General event-driven host intents need their own
+contract and must not replay on redraw, recomputation, retry, Undo/Redo, or restoration. Browser
+user-activation rules may require a host download control after asynchronous preparation.
+Stage 6 adds separately enabled host triggers for network reads and connection lifecycle; track
+their cause and revision so a derived recomputation cannot become another authorized request.
+
+Preserve the current network restriction. Remote data and service calls require the later
+integration design covering destinations, credentials, consent, failures, and offline behavior.
+Credentials are session-only by default; an author may explicitly include selected credentials
+in a saved document or HTML export under the shared policy below. Importing a document does not
+enable its external operations. Prepared deployment exports need a separate startup policy.
+Component scripts retain their lack of direct DOM, storage, and network access.
 
 ## Authoring and reader workflow — proposed stage 5
 
@@ -2230,11 +2496,13 @@ handling are tested separately from broker delivery.
    policies are explicit. Visual wiring distinguishes typed flows from Dataset associations and
    edits the existing bindings; access-permission metadata remains deferred. Coordinated current-record controls and record-wise calculated columns
    remain follow-ups.
-3. **Stage 4 — narrow local actions established:** Explicit host controls download current table
-   results, reload triggers reread a session-selected file, and capture triggers append sampled rows
-   under the rules above. Go to tab selects internal tabs and passes bounded scalar query parameters.
-   Record controls and Live source synchronization share the same bounded mutation service. Define a supported revision for general event/action envelopes, receiving hooks, dispatch
-   identity, and propagation limits before adding routed events or further action types.
+3. **Stage 4 — event workflow established; shared actions still open:** `eventApi:1` declares typed
+   hybrid ports, unified bindings, captured occurrences, receiving hooks, scalar transformations,
+   shared origins, Reprocess, and bounded atomic dispatch. Wiring feedback, selection events,
+   signal/event adapters, and completion notifications extend the workflow while retaining existing
+   signal APIs. Downloads, reload/capture triggers, tab navigation, and dataset commands remain
+   narrow host actions. Define host-effect permissions, dispatch identity, and browser activation
+   rules before unifying actions; then perform the stage 4 closeout pass.
 4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,

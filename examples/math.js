@@ -2,8 +2,10 @@
 // Numeric indicators show availability, including zero; unavailable values stay blank.
 ({
   apiVersion:2,
-  inputs:{a:{type:'number'},b:{type:'number'},operation:{role:'control',type:'string',default:'+',options:['+','−','×','÷','min','max']}},
-  outputs:{value:{type:'number'}},
+  eventApi:1,
+  eventTransform:{input:'a',outputs:['value'],reprocess:'reprocess'},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},a:{event:true,type:'number'},b:{type:'number'},operation:{role:'control',type:'string',default:'+',options:['+','−','×','÷','min','max']}},
+  outputs:{value:{event:true,type:'number'}},
   initState(){return {showIndicators:true};},
   initStyle(){return {w:300,h:180,fontSize:18,fill:true,fillColor:'#f8fafc',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},
   compute(inputs){

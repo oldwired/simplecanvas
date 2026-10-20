@@ -38,11 +38,13 @@ test('Text Label and Memo declare string ports, explicit trigger inputs, and bou
   assert.deepEqual(plain(label.inputs),{value:{type:'string',default:''}});assert.deepEqual(plain(label.outputs),{value:{type:'string'}});
   assert.deepEqual(plain(label.initState()),{showName:false,showHints:false});
   assert.deepEqual(plain(r.component.inputs),{
-    content:{type:'string',default:''},line:{type:'string',default:''},
-    set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false}
+    content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},
+    set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},
+    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}
   });
   assert.deepEqual(plain(r.component.outputs),{text:{type:'string'},lineCount:{type:'number'}});
-  assert.deepEqual(r.state,{text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false});
+  assert.deepEqual(r.state,{text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1});
+  assert.equal(r.component.settings.showScrollbar,undefined,'Show scrollbar is one literal-or-connected input, not a duplicate setting');
   for(const [key,maximum,defaultValue]of [['maxLines',1000,100],['maxLength',2000,2000]]){
     const setting=r.component.settings[key];
     assert.equal(setting.type,'number');assert.equal(setting.default,defaultValue);assert.equal(setting.min,1);assert.equal(setting.max,maximum);assert.equal(setting.step,1);
@@ -203,7 +205,7 @@ test('Memo publication needs no current inputs and rendering retains the tail wh
 
 test('invalid input types, settings, or stored counts fail explicitly instead of coercing or discarding text',()=>{
   const c=source('memo'),state=c.initState(),defaults=Object.fromEntries(Object.entries(c.inputs).map(([key,port])=>[key,port.default]));
-  for(const key of ['set','append','clear'])for(const value of [0,1,'true','X',null])assert.throws(()=>c.transition({...defaults,[key]:value},state,null),/Boolean/);
+  for(const key of ['set','append','clear','showScrollbar'])for(const value of [0,1,'true','X',null])assert.throws(()=>c.transition({...defaults,[key]:value},state,null),/Boolean/);
   for(const key of ['content','line'])for(const value of [42,false,null,'x'.repeat(2001)])assert.throws(()=>c.transition({...defaults,[key]:value},state,null),/string of at most 2000/);
   for(const patch of [{maxLines:0},{maxLines:1001},{maxLines:1.5},{maxLength:0},{maxLength:2001},{maxLength:1.5},
     {text:'abc',lineCount:0},{text:'abc\nxyz',lineCount:1},{text:'',lineCount:2},{text:'a\rb',lineCount:1}])assert.throws(()=>c.publish({...state,...patch}));
@@ -222,6 +224,94 @@ test('Memo gives stored text most of its area and only reserves optional footer 
   assert.ok(withFooter.filter(item=>/^Line /.test(item.text||'')).length<defaultLines.length);
   r.edit({showCounts:false,showHints:false,maxLength:1});r.step();
   assert.ok(r.children().some(item=>/configured limit/.test(item.text||'')),'actual errors stay visible with all hints disabled');
+});
+
+test('Memo optional scrollbar reveals earlier wrapped text without changing contents or emitting events',()=>{
+  const c=source('memo'),style=c.initStyle(),text=Array.from({length:40},(_,i)=>'Line '+i).join('\n'),io={inputs:{showScrollbar:true}};
+  let state=c._operate(c.initState(),'set',text);
+  assert.deepEqual(plain(c.handles(state,style.w,style.h,style)),[]);
+  assert.equal(c._layout(state,style,style.w,style.h).scrollbar,null);
+  const before=JSON.stringify(state),layout=c._layout(state,style,style.w,style.h,io),bar=layout.scrollbar;
+  assert.ok(bar);assert.ok(layout.bodyWidth<layout.width);
+  assert.ok(layout.view.lines.includes('Line 39'));
+  assert.deepEqual(plain(c.handles(state,style.w,style.h,style,io)),[{id:'scroll',x:bar.x+bar.w/2,y:bar.thumbY+bar.thumbH/2}]);
+  assert.equal(c.hitEdit(state,bar.x+bar.w/2,bar.y,style.w,style.h,style,io),'scroll');
+  assert.equal(c.hitEdit(state,8,bar.y,style.w,style.h,style,io),null);
+  const result=c.dragEdit(state,'scroll',bar.x+bar.w/2,bar.y,style.w,style.h,style,io);
+  assert.deepEqual(Object.keys(result),['state'],'scrolling cannot emit events');
+  assert.equal(JSON.stringify(state),before,'scrolling does not mutate the original state');
+  assert.equal(result.state.scrollOffset,0);assert.deepEqual(plain(c.publish(result.state)),{text,lineCount:40});
+  const atTop=c._layout(result.state,style,style.w,style.h,io);
+  assert.equal(atTop.view.lines[0],'Line 0');assert.equal(atTop.scrollbar.thumbY,atTop.scrollbar.y);
+  assert.ok(!atTop.view.lines.includes('Line 39'));
+  assert.deepEqual(plain(c.publish(c.dragEdit(state,'unknown',0,0,style.w,style.h,style,io).state)),{text,lineCount:40});
+  const short=c.initState();
+  assert.deepEqual(plain(c.handles(short,style.w,style.h,style,io)),[],'no inactive scrollbar when all text fits');
+});
+
+test('Memo follows the tail, preserves earlier reading positions on append, and resets on Set or Clear',()=>{
+  const c=source('memo'),style=c.initStyle(),text=Array.from({length:40},(_,i)=>'Line '+i).join('\n'),io={inputs:{showScrollbar:true}};
+  const tail=c._operate(c.initState(),'set',text);
+  const first=c._layout(tail,style,style.w,style.h,io),bar=first.scrollbar;
+  const middle=c.dragEdit(tail,'scroll',bar.x,bar.y+bar.h*.25,style.w,style.h,style,io).state;
+  assert.ok(middle.scrollOffset>0 && middle.scrollOffset<first.view.offsets[first.view.maxStart]);
+  const oldTop=c._layout(middle,style,style.w,style.h,io).view.lines[0];
+  const appended=c.onEvent('line','Newest line',middle,{}).state;
+  assert.equal(appended.scrollOffset,middle.scrollOffset);
+  assert.equal(c._layout(appended,style,style.w,style.h,io).view.lines[0],oldTop);
+  const latest=c.onEvent('line','Newest line',tail,{}).state;
+  assert.equal(latest.scrollOffset,-1);assert.equal(c._layout(latest,style,style.w,style.h,io).view.lines.at(-1),'Newest line');
+  const end=c.dragEdit(appended,'scroll',bar.x,bar.y+bar.h,style.w,style.h,style,io).state;
+  assert.equal(end.scrollOffset,-1,'dragging to the end restores automatic tail-follow');
+  assert.equal(c._layout(c._operate(end,'append','Another line'),style,style.w,style.h,io).view.lines.at(-1),'Another line');
+  for(const operation of ['set','clear'])assert.equal(c._operate(middle,operation,'Replacement').scrollOffset,-1);
+  const rejected=c._operate({...middle,maxLength:1},'set','Rejected');
+  assert.equal(rejected.scrollOffset,middle.scrollOffset,'a rejected command preserves the reading position');
+});
+
+test('Memo Show scrollbar control changes only presentation and retains the reading position',()=>{
+  const r=memo();r.step();r.pulse('set',{content:Array.from({length:40},(_,i)=>'Line '+i).join('\n')});
+  r.edit({scrollOffset:21});const before=r.output,style=r.component.initStyle();
+  const view=showScrollbar=>r.component._layout(r.state,style,style.w,style.h,{inputs:{showScrollbar}});
+  for(const value of [true,false,true]){
+    assert.deepEqual(r.step({showScrollbar:value}),before);
+    assert.equal(r.state.scrollOffset,21);assert.equal(Boolean(view(value).scrollbar),value);
+  }
+  assert.equal(view(true).view.lines[0],'Line 3');
+  assert.equal(view(false).view.lines.at(-1),'Line 39');
+  assert.ok(!Object.hasOwn(r.state,'showScrollbar'),'presentation control is not mirrored into component state');
+});
+
+test('Memo scrollbar geometry clamps after resizing and wrapping keeps whole graphemes',()=>{
+  const c=source('memo'),style=c.initStyle(),graphemes=['👨‍👩‍👧‍👦','a\u0308','🇩🇪'],io={inputs:{showScrollbar:true}};
+  const text=Array.from({length:30},()=>graphemes.join('')).join('\n');
+  let state={...c._operate(c.initState(),'set',text),scrollOffset:8000};
+  for(const [w,h] of [[360,280],[180,140],[720,900],[12,12]]){
+    const before=JSON.stringify(state),L=c._layout(state,style,w,h,io);
+    assert.equal(L.view.start,L.view.maxStart);assert.equal(JSON.stringify(state),before);
+    if(L.scrollbar){
+      const b=L.scrollbar;
+      assert.ok(b.thumbY>=b.y && b.thumbY+b.thumbH<=b.y+b.h+1e-9);
+      assert.ok(b.x>=0 && b.x+b.w<=w);
+    }
+    assert.ok(L.view.lines.every(line=>c._graphemes(line).every(value=>graphemes.includes(value))),'wrapping does not split emoji or combining marks');
+  }
+  const hiddenIo={inputs:{showScrollbar:false}};
+  assert.equal(c._layout(state,style,360,280,hiddenIo).scrollbar,null);
+  assert.deepEqual(plain(c.handles(state,360,280,style,hiddenIo)),[]);
+  for(const scrollOffset of [-2,0.5,Infinity,8001,'0'])assert.throws(()=>c.publish({...state,scrollOffset}),/scroll position/);
+});
+
+test('Memo reserves scrollbar fields within the escaped-text storage limit',()=>{
+  const c=source('memo'),style=c.initStyle(),io={inputs:{showScrollbar:true}};
+  let safe=0;while(c._fits('\u0000'.repeat(safe+1)))safe++;
+  const text='\u0000'.repeat(safe),state={...c._operate(c.initState(),'set',text),scrollOffset:8000,showCounts:true,showHints:true,maxLines:1000};
+  const rejected=c._operate(state,'append','\u0000');
+  assert.match(rejected.notice,/Storage limit reached/);assert.ok(JSON.stringify(rejected).length<=4000);
+  const L=c._layout(rejected,style,80,140,io);
+  const result=c.dragEdit(rejected,'scroll',L.scrollbar.x,L.scrollbar.y,80,140,style,io);
+  assert.ok(JSON.stringify(result.state).length<=4000);
+  assert.deepEqual(plain(c.publish(result.state)),{text,lineCount:1});
 });
 
 test('Text Label honors optional outline and fill styles while keeping plain text as the default',()=>{

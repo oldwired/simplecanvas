@@ -4,6 +4,8 @@
 // JSON is parsed and serialized again: untouched values remain, but whitespace formatting is not retained.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['text','valid'],reprocess:'reprocess'},
   settings:{fields:{type:'string',format:'lines',default:'/name:string',label:'Edits, in port order (JSON Pointer:type)'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
   _fields(state){
     if(typeof state.fields!=='string' || state.fields.length>2000)throw new Error('Edits must fit within 2000 characters');
@@ -19,11 +21,11 @@
     });
   },
   inputs(state){
-    const ports={text:{type:'string',default:'{"name":""}'}};
+    const ports={reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:'{"name":""}'}};
     for(const {pointer,type,port} of this._fields(state))ports[port]={label:pointer||'Root',type:type==='json'?'string':type,default:type==='number'?0:type==='boolean'?false:type==='json'?'null':''};
     return ports;
   },
-  outputs:{text:{type:'string'},valid:{role:'control',type:'boolean'}},
+  outputs:{text:{event:true,type:'string'},valid:{event:true,role:'control',type:'boolean'}},
   initState(){return {fields:'/name:string',showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   _finite(value){

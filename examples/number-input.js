@@ -1,11 +1,13 @@
-// Each accepted entry queues its value and one submitted pulse, including unchanged entries.
+// Each accepted entry emits its captured value as an event and queues one submitted pulse.
+// Repeating a value produces another event and pulse; the two connection styles remain independent.
 // The bounded inbox survives Pause; a fresh runtime retains the latest value without replaying it.
 ({
   apiVersion:2,
+  eventApi:1,
   wakePolicy:'latest',
   settings:{min:{type:'number',default:0,label:'Minimum'},max:{type:'number',default:100,label:'Maximum'},step:{type:'number',default:1,label:'Step'},showSubmitted:{type:'boolean',default:false,label:'Show submission state'},showHints:{type:'boolean',default:false,label:'Show hints'}},
   inputs:{},
-  outputs:{value:{type:'number'},submitted:{role:'control',type:'boolean'}},
+  outputs:{value:{type:'number',event:true},submitted:{role:'control',type:'boolean'}},
   initState(){return {values:[0],current:0,pending:[],submitted:false,press:0,entryRuntime:'',showSubmitted:false,showHints:false,min:0,max:100,step:1};},
   initStyle(){return {w:280,h:72,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   _value(value){if(typeof value!=='number' || !Number.isFinite(value))throw new Error('Enter a finite number'); return value;},
@@ -124,6 +126,6 @@
     let index=values.indexOf(value);if(index<0){index=values.length;values.push(value);}pending.push(index);
     const next=this._compact({...state,values,current:state.submitted?state.current:pending[0],pending,press:state.press===Number.MAX_SAFE_INTEGER?0:state.press+1});
     if(JSON.stringify(next.values).length>3200 || JSON.stringify(next).length>4000)throw new Error('Submission text is too large; shorten it or wait for pending submissions');
-    this._state(next);return {state:next};
+    this._state(next);return {state:next,events:[{port:'value',payload:value}]};
   }
 })

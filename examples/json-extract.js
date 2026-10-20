@@ -2,11 +2,13 @@
 // Pointer keys escape ~ as ~0 and / as ~1. Found describes existence; Valid also requires the chosen type.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['value','found','valid'],reprocess:'reprocess'},
   settings:{resultType:{type:'string',default:'string',options:['string','number','boolean','JSON'],label:'Result type'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{text:{type:'string',default:'""'},pointer:{role:'control',type:'string',default:''}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:'""'},pointer:{role:'control',type:'string',default:''}},
   outputs(state){
     if(!['string','number','boolean','JSON'].includes(state.resultType))throw new Error('Choose string, number, boolean, or JSON as result type');
-    return {value:{type:state.resultType==='JSON'?'string':state.resultType},found:{role:'control',type:'boolean'},valid:{role:'control',type:'boolean'}};
+    return {value:{event:true,type:state.resultType==='JSON'?'string':state.resultType},found:{event:true,role:'control',type:'boolean'},valid:{event:true,role:'control',type:'boolean'}};
   },
   initState(){return {resultType:'string',showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},

@@ -71,7 +71,7 @@ async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }
 
-test('shipped workspace imports all thirty-two tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
+test('shipped workspace imports all thirty-eight tabs with valid local bindings and current component sources',async()=>app(async({page,run})=>{
   await importExample(page,run);
   const checked=await run(`(async()=>{
     const sourceKeys=new Map(BUILTIN_LIBRARY_DEFINITIONS.filter(definition=>definition.items[0].type==='smart').map(definition=>[definition.items[0].script.trim(),definition.key]));
@@ -81,7 +81,7 @@ test('shipped workspace imports all thirty-two tabs with valid local bindings an
       const smart=document.items.filter(item=>item.componentApi===2),ids=new Set(smart.map(item=>item.uid));
       result.push({name:tab.name,count:smart.length,pure:before===JSON.stringify(document.items),
         sources:smart.map(item=>sourceKeys.get(item.script.trim())||null),
-        bindings:smart.flatMap(item=>Object.values(item.bindings||{})).every(binding=>ids.has(binding.uid)),
+        bindings:smart.flatMap(item=>[...Object.values(item.bindings||{}),...Object.values(item.eventBindings||{})]).every(binding=>ids.has(binding.uid)),
         errors:[...graph.values()].map(record=>record.error||'')});
     }
     return result;
@@ -189,7 +189,7 @@ async function readerText(page,tab,id,text){
   await page.waitForFunction(({host,text})=>[...host.querySelectorAll('text')].some(node=>node.textContent===text),{host:await readerHost(page,tab,id).elementHandle(),text});
 }
 
-test('shipped offline HTML has thirty-two working tabs and needs no HTTP dependencies',async()=>{
+test('shipped offline HTML has thirty-eight working tabs and needs no HTTP dependencies',async()=>{
   assert.ok(fs.existsSync(readerPath),'the shipped HTML companion exists');
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
@@ -283,10 +283,12 @@ test('shipped choice example maps manual choices and shared dataset values in bo
   assert.deepEqual(await outputs(run,19,'automatic'),{index:-1,key:'',text:'',valid:false});
   assert.equal((await outputs(run,19,'valid')).value,false);
   const enter=async value=>{
-    await editorHandle(page,run,19,'query','entry');await page.locator('#smartTextValue').fill(value);
-    await page.locator('#smartTextValue').press('Enter');
-    await page.waitForFunction(()=>Number(document.querySelector('[data-smart-inline-input]')?.dataset.submissions)>0);
-    await run('smartHitSettled');
+    await editorHandle(page,run,19,'query','entry');
+    const field=page.locator('[data-smart-inline-input]'),input=page.locator('#smartTextValue'),before=Number(await field.getAttribute('data-submissions')||0);
+    await input.fill(value);await input.press('Enter');
+    await page.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});
+    await run('smartHitSettled');await input.press('Escape');
+    await waitState(page,19,'query','state.submitted===false && state.pending.length===0');
   };
   await enter('Paused');assert.deepEqual(await outputs(run,19,'lookup'),{index:2,key:'paused',found:true});
   await enter('Missing');assert.deepEqual(await outputs(run,19,'lookup'),{index:-1,key:'',found:false});
@@ -802,3 +804,127 @@ test('page settings demo updates reader chrome and restores defaults through its
     assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
   }finally{await context.close();}
 });
+
+test('event demo contrasts immediate captured payloads with paused signal triggers in the editor and shipped HTML',async()=>app(async({page,run,context})=>{
+  await importExample(page,run);await activate(run,33);
+  await page.locator('#componentPauseBtn').click();await run('smartGestureQueue');
+  const submitEditor=async(id,value)=>{
+    await editorHandle(page,run,33,id,'entry');const field=page.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await page.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});
+    await run('smartHitSettled');await input.press('Escape');
+  };
+  for(let i=0;i<2;i++)await submitEditor('entry','Anna');
+  assert.deepEqual(await outputs(run,33,'events'),{text:'Anna\nAnna',lineCount:2});
+  assert.deepEqual(await outputs(run,33,'signals'),{text:'',lineCount:0});
+  await submitEditor('number','2.8');assert.deepEqual(await outputs(run,33,'numbers'),{text:'2.8',lineCount:1});
+  await page.locator('#componentPauseBtn').click();await run('smartGestureQueue');
+  await waitState(page,33,'signals','state.lineCount===2');
+  assert.deepEqual(await outputs(run,33,'signals'),{text:'Anna\nAnna',lineCount:2});
+
+  const reader=await context.newPage(),errors=[],requests=[];
+  reader.on('pageerror',error=>errors.push(error.message));reader.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  await reader.goto(pathToFileURL(readerPath).href+'?page=32');await readerTab(reader,33);
+  await reader.locator('#feedbackPause').click();
+  const submitReader=async(id,value)=>{
+    await readerHandle(reader,33,id,'entry');const field=reader.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await reader.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});
+    await input.press('Escape');
+  };
+  await submitReader('entry','Anna');await submitReader('entry','Anna');
+  await reader.waitForFunction(host=>[...host.querySelectorAll('text')].filter(node=>node.textContent==='Anna').length===2,await readerHost(reader,33,'events').elementHandle());
+  assert.equal(await readerHost(reader,33,'signals').locator('text').evaluateAll(nodes=>nodes.filter(node=>node.textContent==='Anna').length),0);
+  await submitReader('number','2.8');await readerText(reader,33,'numbers','2.8');
+  await reader.locator('#feedbackPause').click();
+  await reader.waitForFunction(host=>[...host.querySelectorAll('text')].filter(node=>node.textContent==='Anna').length===2,await readerHost(reader,33,'signals').elementHandle());
+  assert.equal(await reader.locator('[data-component-error]').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
+
+test('hybrid demo shows changing range without appending, Reprocess events, and independent sampled Memo in editor and HTML',async()=>app(async({page,run,context})=>{
+  await importExample(page,run);await activate(run,34);
+  const submitEditor=async value=>{
+    await editorHandle(page,run,34,'entry','entry');const field=page.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await page.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});await run('smartHitSettled');await input.press('Escape');
+  };
+  await submitEditor('Hello World');await submitEditor('Another Test');await waitState(page,34,'entry','state.submitted===false && state.pending.length===0');
+  assert.deepEqual(await outputs(run,34,'events'),{text:'llo\noth',lineCount:2});
+  assert.equal((await outputs(run,34,'signals')).lineCount,0);
+  await editorHandle(page,run,34,'start','plus');await editorHandle(page,run,34,'length','plus');await editorHandle(page,run,34,'length','plus');
+  assert.equal((await outputs(run,34,'live')).value,'ther ');assert.equal((await outputs(run,34,'events')).lineCount,2);
+  await editorHandle(page,run,34,'reprocess','trigger');assert.deepEqual(await outputs(run,34,'events'),{text:'llo\noth\nther ',lineCount:3});
+  await editorHandle(page,run,34,'append','trigger');await waitState(page,34,'signals','state.lineCount===1');
+  assert.deepEqual(await outputs(run,34,'signals'),{text:'ther ',lineCount:1});
+
+  const reader=await context.newPage(),errors=[],requests=[];reader.on('pageerror',error=>errors.push(error.message));
+  reader.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  await reader.goto(pathToFileURL(readerPath).href+'?page=33');await readerTab(reader,34);
+  const submitReader=async value=>{
+    await readerHandle(reader,34,'entry','entry');const field=reader.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await reader.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});await input.press('Escape');
+  };
+  await submitReader('Hello World');await readerText(reader,34,'events','llo');
+  await submitReader('Another Test');await readerText(reader,34,'events','oth');await readerText(reader,34,'live','oth');
+  await readerHandle(reader,34,'start','plus');await readerHandle(reader,34,'length','plus');await readerHandle(reader,34,'length','plus');
+  await readerText(reader,34,'live','ther ');
+  assert.equal(await readerHost(reader,34,'events').locator('text').evaluateAll(nodes=>nodes.filter(node=>node.textContent==='ther ').length),0);
+  await readerHandle(reader,34,'reprocess','trigger');await readerText(reader,34,'events','ther ');
+  await readerHandle(reader,34,'append','trigger');await readerText(reader,34,'signals','ther ');
+  assert.equal(await reader.locator('[data-component-error]').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));
+
+test('shared origin demo rejoins related branches once and samples independent edits on Apply in editor and HTML',async()=>app(async({page,run,context})=>{
+  await importExample(page,run);await activate(run,35);
+  await page.locator('#componentPauseBtn').click();await run('smartGestureQueue');
+  const submitEditor=async(id,value)=>{
+    await editorHandle(page,run,35,id,'entry');const field=page.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await page.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});
+    await run('smartHitSettled');await input.press('Escape');
+  };
+  assert.equal((await outputs(run,35,'compose')).text,'Bob / Paris');
+  await submitEditor('entry','Anna;Berlin');
+  assert.deepEqual(await outputs(run,35,'events'),{text:'Anna / Berlin',lineCount:1});
+  await submitEditor('entry','Anna;Berlin');
+  assert.deepEqual(await outputs(run,35,'events'),{text:'Anna / Berlin\nAnna / Berlin',lineCount:2});
+  await submitEditor('manual-name','Cara');
+  assert.equal((await outputs(run,35,'manual-compose')).text,'Cara / Berlin');
+  assert.deepEqual(await outputs(run,35,'manual-events'),{text:'',lineCount:0});
+  await submitEditor('manual-city','Rome');
+  assert.equal((await outputs(run,35,'manual-compose')).text,'Cara / Rome');
+  assert.deepEqual(await outputs(run,35,'manual-events'),{text:'',lineCount:0});
+  await editorHandle(page,run,35,'apply','trigger');
+  assert.deepEqual(await outputs(run,35,'manual-events'),{text:'Cara / Rome',lineCount:1});
+  await editorHandle(page,run,35,'apply','trigger');
+  assert.deepEqual(await outputs(run,35,'manual-events'),{text:'Cara / Rome\nCara / Rome',lineCount:2});
+  assert.equal((await outputs(run,35,'events')).lineCount,2,'independent edits do not affect the split-branch example');
+
+  const reader=await context.newPage(),errors=[],requests=[];
+  reader.on('pageerror',error=>errors.push(error.message));reader.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+  await reader.goto(pathToFileURL(readerPath).href+'?page=34');await readerTab(reader,35);
+  await reader.locator('#feedbackPause').click();
+  const submitReader=async(id,value)=>{
+    await readerHandle(reader,35,id,'entry');const field=reader.locator('[data-smart-inline-input]'),input=field.locator('input');
+    const before=Number(await field.getAttribute('data-submissions')||0);await input.fill(value);await input.press('Enter');
+    await reader.waitForFunction(({field,before})=>Number(field.dataset.submissions)>before,{field:await field.elementHandle(),before});await input.press('Escape');
+  };
+  const readerMemo=async(id,text,count)=>{
+    await reader.waitForFunction(({host,text,count})=>{
+      const labels=[...host.querySelectorAll('text')].map(node=>node.textContent);
+      return labels.filter(label=>label===text).length===count &&
+        labels.some(label=>label.startsWith(count+' '+(count===1?'line':'lines')+' · '));
+    },{host:await readerHost(reader,35,id).elementHandle(),text,count});
+  };
+  await submitReader('entry','Anna;Berlin');await readerMemo('events','Anna / Berlin',1);
+  await submitReader('entry','Anna;Berlin');await readerMemo('events','Anna / Berlin',2);
+  await submitReader('manual-name','Cara');await readerText(reader,35,'manual-compose','Cara / Berlin');
+  await readerMemo('manual-events','Cara / Berlin',0);
+  await submitReader('manual-city','Rome');await readerText(reader,35,'manual-compose','Cara / Rome');
+  await readerMemo('manual-events','Cara / Rome',0);
+  await readerHandle(reader,35,'apply','trigger');await readerMemo('manual-events','Cara / Rome',1);
+  await readerHandle(reader,35,'apply','trigger');await readerMemo('manual-events','Cara / Rome',2);
+  await readerMemo('events','Anna / Berlin',2);
+  assert.equal(await reader.locator('[data-component-error]').count(),0);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+}));

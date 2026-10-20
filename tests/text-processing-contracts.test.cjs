@@ -26,13 +26,13 @@ test('new text processors expose typed primitive ports and healthy defaults',()=
     assert.equal(compute(name).text,'');
   }
   const compose=source('text-compose'),state=compose.initState();
-  assert.deepEqual(plain(compose.inputs(state)),{a:{type:'string',default:''},b:{type:'string',default:''},separator:{role:'control',type:'string',default:''}});
+  assert.deepEqual(plain(compose.inputs(state)),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},a:{type:'string',default:'',event:true},b:{type:'string',default:'',event:true},separator:{role:'control',type:'string',default:''}});
   const many=plain(compose.inputs({...state,inputCount:8,mode:'template'}));
-  assert.deepEqual(Object.keys(many),['a','b','c','d','e','f','g','h','template']);
+  assert.deepEqual(Object.keys(many),['reprocess','a','b','c','d','e','f','g','h','template']);
   assert.deepEqual(many.template,{role:'control',type:'string',default:'{a}{b}'});
-  assert.deepEqual(plain(source('text-transform').outputs),{text:{type:'string'},length:{type:'number'},empty:{role:'control',type:'boolean'}});
-  assert.deepEqual(plain(source('text-replace').outputs),{text:{type:'string'},count:{type:'number'}});
-  assert.deepEqual(plain(source('text-selector').inputs),{a:{type:'string',default:''},b:{type:'string',default:''},select:{role:'control',type:'boolean',default:false}});
+  assert.deepEqual(plain(source('text-transform').outputs),{text:{type:'string',event:true},length:{type:'number',event:true},empty:{role:'control',type:'boolean',event:true}});
+  assert.deepEqual(plain(source('text-replace').outputs),{text:{type:'string',event:true},count:{type:'number',event:true}});
+  assert.deepEqual(plain(source('text-selector').inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},a:{type:'string',default:'',event:true},b:{type:'string',default:'',event:true},select:{role:'control',type:'boolean',default:false,event:true}});
 });
 
 test('Text compose joins all configured slots including empty strings and preserves literal content',()=>{

@@ -19,9 +19,9 @@ const build=(fields,input={})=>compute('json-build',input,{fields});
 test('JSON components declare typed ports and all configured builder inputs are independent',()=>{
   const extractDef=source('json-extract'),buildDef=source('json-build');
   assert.equal(extractDef.apiVersion,2);assert.equal(buildDef.apiVersion,2);
-  assert.deepEqual(plain(extractDef.inputs),{text:{type:'string',default:'""'},pointer:{role:'control',type:'string',default:''}});
+  assert.deepEqual(plain(extractDef.inputs),{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{type:'string',default:'""',event:true},pointer:{role:'control',type:'string',default:''}});
   for(const resultType of ['string','number','boolean','JSON'])assert.deepEqual(plain(extractDef.outputs({resultType})),{
-    value:{type:resultType==='JSON'?'string':resultType},found:{role:'control',type:'boolean'},valid:{role:'control',type:'boolean'}
+    value:{type:resultType==='JSON'?'string':resultType,event:true},found:{role:'control',type:'boolean',event:true},valid:{role:'control',type:'boolean',event:true}
   });
   assert.deepEqual(plain(buildDef.inputs({fields:'name:string\ncount:number\nactive:boolean\nitems:json'})),{
     field0:{label:'name',type:'string',default:''},field1:{label:'count',type:'number',default:0},field2:{label:'active',type:'boolean',default:false},field3:{label:'items',type:'string',default:'null'}

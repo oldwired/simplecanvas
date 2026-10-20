@@ -1,12 +1,15 @@
 // A zero-based choice list. Keys remain stable when rows are reordered.
 ({
   apiVersion:2,
+  eventApi:1,
+  tablePresentation:'full',
+  eventTransform:{input:'select',outputs:['index','key','text','valid'],reprocess:'reprocess'},
   settings:{source:{type:'string',default:'list',options:['list','dataset'],label:'Choices from'},choices:{type:'string',default:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',format:'choices',label:'Editable list'},showArrow:{type:'boolean',default:true,label:'Show dropdown'}},
   inputs(state){
-    const ports={select:{role:'control',type:'number',default:0}};
+    const ports={select:{role:'control',type:'number',default:0,event:true},reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'}};
     return this._source(state)==='dataset'?{...ports,data:{type:'table'},textColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'},keyColumn:{role:'control',type:'string',default:'',columnOf:'data',columnType:'string'}}:ports;
   },
-  outputs:{index:{type:'number'},key:{type:'string'},text:{type:'string'},valid:{role:'control',type:'boolean'}},
+  outputs:{index:{type:'number',event:true},key:{type:'string',event:true},text:{type:'string',event:true},valid:{role:'control',type:'boolean',event:true}},
   initState(){return {source:'list',choices:'[{"text":"Idle","key":"idle"},{"text":"Running","key":"running"},{"text":"Stopped","key":"stopped"}]',showArrow:true};},
   initStyle(){return {w:280,h:78,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state,context={}){

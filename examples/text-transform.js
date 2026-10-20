@@ -1,9 +1,11 @@
 // Trim or change case without locale-dependent collation. Length counts visible characters or code points.
 ({
   apiVersion:2,
+  eventApi:1,
+  eventTransform:{input:'text',outputs:['text','length','empty'],reprocess:'reprocess'},
   settings:{characterMode:{type:'string',default:'visible characters',options:['visible characters','code points'],label:'Character counting'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},
-  inputs:{text:{type:'string',default:''},operation:{role:'control',type:'string',default:'trim',options:['trim','lowercase','uppercase']}},
-  outputs:{text:{type:'string'},length:{type:'number'},empty:{role:'control',type:'boolean'}},
+  inputs:{reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Reprocess'},text:{event:true,type:'string',default:''},operation:{role:'control',type:'string',default:'trim',options:['trim','lowercase','uppercase']}},
+  outputs:{text:{event:true,type:'string'},length:{event:true,type:'number'},empty:{event:true,role:'control',type:'boolean'}},
   initState(){return {characterMode:'visible characters',showIndicators:true};},
   initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state={}){

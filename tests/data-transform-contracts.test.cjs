@@ -175,7 +175,7 @@ test('immutable table versions prevent sorted aliases from emitting a spurious p
       }
       if(timeline.pendingTime===null)break;
     }
-    assert.equal(timeline.pendingTime,null);assert.deepEqual([...new Set(seen)],[1,2],'the probe observes coherent old/new sorted data, never the unsorted 10');
+    assert.equal(timeline.pendingTime,null);assert.deepEqual([...new Set(seen)],[2],'the probe reuses the old result and only computes coherent new sorted data, never the unsorted 10');
     assert.equal(latch.state.seen,false,'there is no intermediate pulse to latch');
     assert.equal(records.get(probe).io.tables.inputs.data.rows[0][0],2);
     assert.equal(Object.keys(timeline.derivedTables).length,1,'old versions are released after downstream references advance');

@@ -99,7 +99,7 @@ async function openExport(page,run,context){
   return {reader,errors,requests};
 }
 const textCircuit=[{key:'textInput',componentName:'Message'},
-  {key:'memo',componentName:'Messages',bindings:{line:{uid:'text-0',port:'value'},append:{uid:'text-0',port:'submitted'}}},
+  {key:'memo',componentName:'Messages',eventModes:{line:'value'},bindings:{line:{uid:'text-0',port:'value'},append:{uid:'text-0',port:'submitted'}}},
   {key:'textLabel',componentName:'Latest log',bindings:{value:{uid:'text-1',port:'text'}}},
   {key:'counter',componentName:'Submissions',bindings:{value:{uid:'text-0',port:'submitted'}}}];
 
@@ -221,7 +221,7 @@ test('Memo primes existing highs, honors Clear over Set over Append, and rejects
 
 test('independent input and Memo instances retain their data through reload without replaying submissions',async()=>app(async({page,run})=>{
   await seed(run,[...textCircuit,{key:'textInput',componentName:'Other message'},
-    {key:'memo',componentName:'Other log',bindings:{line:{uid:'text-4',port:'value'},append:{uid:'text-4',port:'submitted'}}}]);
+    {key:'memo',componentName:'Other log',eventModes:{line:'value'},bindings:{line:{uid:'text-4',port:'value'},append:{uid:'text-4',port:'submitted'}}}]);
   await submit(page,run,0,'first');await waitOutput(page,1,'text','first');await idle(page);
   await submit(page,run,4,'second');await waitOutput(page,5,'text','second');await idle(page,4);
   await submit(page,run,0,'first');await waitOutput(page,1,'text','first\nfirst');await idle(page);
