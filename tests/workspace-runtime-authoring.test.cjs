@@ -1,7 +1,9 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const os=require('node:os');
 const path=require('node:path');
+const {pathToFileURL}=require('node:url');
 const {chromium,webkit}=require('playwright');
 const root=path.join(__dirname,'..'),example=path.join(root,'examples','workspace-runtime.json');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace('\n})();','\nwindow.__test={run:source=>eval(source)};\n})();');
@@ -18,7 +20,7 @@ async function app(fn){
     const run=source=>page.evaluate(async source=>{await __test.run('appReady');return __test.run(source);},source);
     await run('appStarted');await run(`openWorkspaceFile(new File([${JSON.stringify(fs.readFileSync(example,'utf8'))}],'workspace-runtime.json',{type:'application/json'}))`);
     await page.waitForFunction(()=>__test.run('tabs.length===3 && tabs.some(tab=>tab.id==="runtime-services")'));
-    await run('ensureEditorComponentGraph()');await fn({page,run});assert.deepEqual(errors,[],'no uncaught authoring errors');
+    await run('ensureEditorComponentGraph()');await fn({page,run,context});assert.deepEqual(errors,[],'no uncaught authoring errors');
   }finally{await context.close();}
 }
 async function open(page,run,sketchId,uid){
@@ -166,4 +168,81 @@ test('Wiring exposes Publish inputs and Receive outputs only; Active sketch mode
   await open(page,run,'runtime-dashboard','runtime-dashboard-clock');
   assert.ok((await page.getByRole('combobox',{name:'Published endpoint 1',exact:true}).locator('option').allTextContents()).includes('Services / Publish time / UTC time · Text'),'authoring still lets an inactive connection be configured');
   await save(page);
+}));
+
+test('authored cross-sketch endpoints and shared records survive save, reopen and offline export without replaying submissions',async()=>app(async({page,run,context})=>{
+  await open(page,run,'runtime-editor','runtime-editor-messages');
+  await page.getByRole('button',{name:'Add imported endpoint',exact:true}).click();await settled(page);
+  const reference={sketchId:'runtime-dashboard',componentUid:'runtime-publish-message',port:'quantity'};
+  await page.getByRole('combobox',{name:'Published endpoint 2',exact:true}).selectOption(JSON.stringify(reference));await settled(page);
+  await page.getByRole('textbox',{name:'Output name 2',exact:true}).fill('Stock quantity');
+  const localId=await run('componentDialogSession.proposal.state.endpoints[1].id');await save(page);
+
+  // Exercise the actual text field and host-owned shared-record edit before saving.
+  const clickEditorHandle=async(uid,id)=>{
+    const point=await run(`(async()=>{
+      await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);
+      const index=items.findIndex(item=>item.uid===${JSON.stringify(uid)}),item=items[index];
+      setTool('select');selection=[index];editingSmartIdx=index;render();
+      const io=await resolveSmartComponentIo(item),handles=await requestSmartCall(item,'handles',[item.state,item.w,item.h,smartResolvedStyle(item),io]);
+      const handle=handles.find(handle=>handle.id===${JSON.stringify(id)});
+      return {x:item.x+handle.x,y:item.y+handle.y};
+    })()`);
+    const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+point.x,box.y+point.y);
+  };
+  const input=page.locator('[data-smart-inline-input] #smartTextValue');
+  await clickEditorHandle('runtime-stock-editor','cell-0-1');await input.waitFor();await input.fill('77');await input.press('Enter');await input.waitFor({state:'detached'});
+  await run("enterTab('runtime-dashboard')");
+  await clickEditorHandle('runtime-message','entry');await input.waitFor();await input.fill('Pear');await input.press('Enter');
+  await page.waitForFunction(()=>__test.run("editorRuntimeContext().scene.find(item=>item.uid==='runtime-service-log').state.text")==='Pear');
+  await page.waitForFunction(()=>__test.run("editorRuntimeContext().pool['workspace-stock'].rows.length")===3);await input.press('Escape');
+  const download=page.waitForEvent('download');await run('exportWorkspace()');
+  const saved=fs.readFileSync(await(await download).path(),'utf8'),data=JSON.parse(saved);
+  const stock=data.tabs.find(tab=>tab.id==='runtime-services').datasets['workspace-stock'];
+  assert.deepEqual(stock.rows,[['Apples',77],['Oranges',8],['Pear',1]]);
+  const receiver=data.tabs.find(tab=>tab.id==='runtime-editor').items.find(item=>item.uid==='runtime-editor-messages');
+  assert.deepEqual(receiver.workspaceReceive[localId],reference);assert.equal(receiver.state.endpoints[1].name,'Stock quantity');
+
+  await page.reload();await run('appStarted');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');
+  assert.deepEqual(await run("editorRuntimeContext().pool['workspace-stock'].rows"),stock.rows,'autosave reload does not replay submitted events');
+  const generation=await run('workspaceGeneration');
+  await run('pendingFileAction="openWorkspace"');
+  await page.locator('#projectInput').setInputFiles({name:'authored-workspace.json',mimeType:'application/json',buffer:Buffer.from(saved)});
+  await page.waitForFunction(before=>__test.run('workspaceGeneration')>before,generation);
+  await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');
+  assert.deepEqual(await run("editorRuntimeContext().pool['workspace-stock'].rows"),stock.rows,'file reopen preserves the shared records without replay');
+  assert.equal(await run(`(async()=>{const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true),item=editorRuntimeContext().scene.find(item=>item.uid==='runtime-editor-messages');return graph.get(item).io.outputs[${JSON.stringify(localId)}];})()`),1);
+
+  const htmlDownload=page.waitForEvent('download');await run('exportHtml()');
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-phase4-closeout-'));
+  try{
+    const file=path.join(directory,'workspace.html');
+    fs.writeFileSync(file,fs.readFileSync(await(await htmlDownload).path(),'utf8').replace('    void activate(initial);','    window.__reader={run:source=>eval(source)};void activate(initial);'));
+    const reader=await context.newPage(),errors=[],requests=[];
+    reader.on('pageerror',error=>errors.push(error.message));reader.on('request',request=>{if(/^https?:/.test(request.url()))requests.push(request.url());});
+    await reader.goto(pathToFileURL(file).href);await reader.waitForFunction(()=>!document.documentElement.classList.contains('sc-reader-starting'));
+    const read=source=>reader.evaluate(source=>__reader.run(source),source);
+    const rowExpression="datasets['workspace-stock'].rows";
+    assert.deepEqual(await read(rowExpression),stock.rows,'HTML startup preserves stored rows without replay');
+    assert.equal(await read(`(async()=>{const graph=await resolveComponentGraph(),item=items.find(item=>item.uid==='runtime-editor-messages');return graph.get(item).io.outputs[${JSON.stringify(localId)}];})()`),1);
+    const point=await read(`(async()=>{
+      const entry=entryFor(items.find(item=>item.uid==='runtime-message'));
+      const handles=await requestSmartCall(entry.item,'handles',[entry.item.state,entry.item.w,entry.item.h,smartResolvedStyle(entry.item)]);
+      const handle=handles.find(handle=>handle.id==='entry'),p=new DOMPoint(handle.x,handle.y).matrixTransform(entry.local.getScreenCTM());return {x:p.x,y:p.y};
+    })()`);
+    await reader.mouse.click(point.x,point.y);
+    const field=reader.locator('[data-smart-inline-input] #smartTextValue');await field.waitFor();await field.fill('Pear');
+    for(let count=4;count<=5;count++){
+      await field.press('Enter');await reader.waitForFunction(({expression,count})=>__reader.run(expression).length===count,{expression:rowExpression,count});
+      await reader.waitForFunction(()=>!document.querySelector('[data-smart-inline-input] #smartTextValue')?.readOnly);
+    }
+    await field.press('Escape');
+    await reader.locator('.tab-select[data-tab-id="runtime-editor"]').click();
+    await reader.waitForFunction(()=>document.title==='Edit fruit stock · Workspace example');
+    assert.deepEqual(await read(rowExpression),[...stock.rows,['Pear',1],['Pear',1]]);
+    assert.equal(await read("items.find(item=>item.uid==='runtime-editor-log').state.text"),'Pear\nPear\nPear');
+    assert.equal(await reader.locator('.tab-select[data-tab-id="runtime-services"]').isVisible(),false);
+    assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+    await reader.close();
+  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }));

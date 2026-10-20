@@ -5310,6 +5310,19 @@ self.onmessage = function(e){
   // then finds every answer already waiting via smartChildrenFor's identity check above and never asks
   // the sandbox itself. Child validation forbids nested smart shapes and asset-referencing images.
   let smartExportCache = null;
+  const smartExportSnapshotFallbacks=new WeakMap();
+  function snapshotSmartExportItems(itemList){
+    const snapshot=attachComponentWorkspace(clone(itemList),componentWorkspace(itemList));
+    itemList.forEach((item,index)=>{
+      if(item.type!=='smart' || item.componentApi!==undefined)return;
+      const cached=smartChildrenCache.get(item.uid),owner=smartCacheOwners.get(item.uid);
+      // Legacy drawings may depend on private execution state. Preserve only this
+      // exact live instance's matching non-editing fallback, never a copied UID.
+      if(owner && smartCacheOwnerCurrent(item,owner) && cached?.sig===smartSig(item))
+        smartExportSnapshotFallbacks.set(snapshot[index],clone(cached.kids));
+    });
+    return snapshot;
+  }
   async function warmSmartExportCache(itemList,strict=false,componentContext=itemList,dataPool=datasets,query,includeEditorOnly=false){
     // A clipboard image paints only the selection, but resolves its original inputs from a
     // frozen whole-document context. Editable clipboard data keeps separate, remapped IDs.
@@ -5356,7 +5369,9 @@ self.onmessage = function(e){
           if(strict)throw err;
           reportSmartError(it.script,'export',err.message);
           const cached=smartChildrenCache.get(it.uid),owner=smartCacheOwners.get(it.uid);
+          const fallback=smartExportSnapshotFallbacks.get(it);
           map.set(it,it.componentApi!==undefined ? componentStatusChildren(it,err.message || 'Component unavailable')
+            : fallback?fallback.filter(child=>includeEditorOnly || !child.editorOnly)
             : owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids.filter(child=>includeEditorOnly || !child.editorOnly):[]);
         }
       }
@@ -6142,10 +6157,10 @@ self.onmessage = function(e){
       }
     }
   }
-  function drawItem(it, skipCell){
+  function drawItem(it, skipCell, sceneItems=items){
     ctx.save();
     if(it.group!=null && it.groupRotation){
-      const piv = groupPivot(it.group);
+      const piv = groupPivot(it.group,sceneItems);
       ctx.translate(piv.cx,piv.cy); ctx.rotate(it.groupRotation); ctx.translate(-piv.cx,-piv.cy);
     }
     if(it.rotation){
@@ -9066,14 +9081,11 @@ self.onmessage = function(e){
     }catch(error){if(current() && !error.cancelled)toast('Completion event was not delivered: '+error.message);return false;}
   }
   async function commitEditorDatasetCommand(intent,valid){
-    let accepted=false;
-    try{
-      const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,valid);if(!valid())return false;
-      const command=prepareDatasetAppend(intent,graph.get(intent.item),graph.datasets||datasets);
-      const result=commitEditorDatasetChange(command,valid);accepted=true;
-      await emitEditorComponentActionEvent(intent.item,'appendRow','success',result.table.rows.length-1,valid);
-      await ensureEditorComponentGraph();return true;
-    }catch(error){if(!accepted)await emitEditorComponentActionEvent(intent.item,'appendRow','failure',error,valid);throw error;}
+    const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,valid);if(!valid())return false;
+    const command=prepareDatasetAppend(intent,graph.get(intent.item),graph.datasets||datasets);
+    const result=commitEditorDatasetChange(command,valid);intent.applied=true;
+    await emitEditorComponentActionEvent(intent.item,'appendRow','success',result.table.rows.length-1,valid);
+    await ensureEditorComponentGraph();return true;
   }
   async function commitEditorDatasetTableAction(intent,valid){
     const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,valid);if(!valid())return false;
@@ -9223,7 +9235,9 @@ self.onmessage = function(e){
         else await commitEditorDatasetTableAction(intent,current);
       },
       failure:async(intent,error,current)=>{
-        if(intent.type!=='appendRow')await emitEditorComponentActionEvent(intent.item,intent.type,'failure',error,current);
+        // Rejections can occur before execution (captured errors or queue limits), so
+        // every unapplied action reports here. A committed capture cannot fail retroactively.
+        if(!intent.applied)await emitEditorComponentActionEvent(intent.item,intent.type,'failure',error,current);
         if(current())toast(error.message);
       }
     });
@@ -11223,6 +11237,10 @@ self.onmessage = function(e){
   // (background off, so pasting a selection into another app's canvas doesn't carry an opaque backdrop).
   async function itemsToSVGMarkup(itemList, opts){
     opts = opts || {};
+    // Smart evaluation awaits Worker replies. Freeze state and geometry together so a
+    // running signal or edit cannot invalidate the export or change its measured bounds.
+    itemList=snapshotSmartExportItems(itemList);
+    const assetPool=opts.assets || assets;
     // Resolve children before measuring as well as painting, so both use the same export result.
     // A portable HTML's initial SVG uses defaults; its own URL is read when it opens.
     const cache=await warmSmartExportCache(itemList,false,itemList,opts.datasets??datasets,opts.liveSmart?'':undefined);
@@ -11249,7 +11267,7 @@ self.onmessage = function(e){
         ox = -minX + m; oy = -minY + m;
       }
       let body = '';
-      itemList.forEach((it,i)=>{body += itemToSVG(it,itemList,opts.assets || assets,opts.liveSmart?i:null);});
+      itemList.forEach((it,i)=>{body += itemToSVG(it,itemList,assetPool,opts.liveSmart?i:null);});
       const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
       return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
         + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
@@ -11261,12 +11279,15 @@ self.onmessage = function(e){
   // cannot render an SVG clipboard entry.
   async function itemsToPngBlob(itemList, opts){
     opts = opts || {};
+    itemList=snapshotSmartExportItems(itemList);
+    const componentContext=opts.componentContext
+      ?attachComponentWorkspace(clone(opts.componentContext),componentWorkspace(opts.componentContext)):itemList;
     const m = opts.margin!=null ? opts.margin : 24, scale = opts.scale!=null ? opts.scale : 2;
     // Resolve every smart item's children() BEFORE touching `ctx` at all: once it's swapped to the
     // offscreen canvas below, nothing may yield back to the event loop until it's restored, or a live
     // render() triggered by something else entirely (e.g. an unrelated mouse move) could interleave
     // and paint to the wrong canvas. See warmSmartExportCache's own comment.
-    const cache=await warmSmartExportCache(itemList,false,opts.componentContext || itemList);
+    const cache=await warmSmartExportCache(itemList,false,componentContext);
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
     try{
@@ -11286,7 +11307,7 @@ self.onmessage = function(e){
       if(opts.background !== false){ octx.fillStyle = BG; octx.fillRect(minX - m, minY - m, w, h); }
       const real = ctx;
       ctx = octx;
-      try { for(const it of itemList) drawItem(it); }
+      try { for(const it of itemList) drawItem(it,null,itemList); }
       finally { ctx = real; }
       return new Promise(resolve=>off.toBlob(blob=>resolve(blob), 'image/png'));
     } finally { smartExportCache = prevExportCache; }
@@ -12902,6 +12923,8 @@ self.onmessage = function(e){
     const tabButtons=()=>Array.from(strip.querySelectorAll('.tab-select')).filter(button=>!button.hidden);
     const activeButton=()=>strip.querySelector('.tab-select.active');
     const focus=node=>node?.focus({preventScroll:true});
+    let scrollFrame=null;
+    function stopScroll(){if(scrollFrame!==null)cancelAnimationFrame(scrollFrame);scrollFrame=null;}
     function closeMenu(restoreFocus=false){
       menu.hidden=true;toggle.setAttribute('aria-expanded','false');
       if(restoreFocus)focus(toggle.hidden?activeButton():toggle);
@@ -12913,14 +12936,13 @@ self.onmessage = function(e){
       viewport.classList.toggle('has-after',after);
     }
     function reveal(node=activeButton()){
+      stopScroll();
       if(!node || bar.hidden)return;
       const tab=node.closest('.tab')||node,rect=tab.getBoundingClientRect(),view=strip.getBoundingClientRect();
       // Only move the strip; scrollIntoView would also move the exported drawing's page.
       let left=strip.scrollLeft;
       if(rect.left<view.left)left-=view.left-rect.left;
       else if(rect.right>view.right)left+=rect.right-view.right;
-      // Cancel an arrow's in-flight smooth scroll even if this tab is already visible.
-      // Otherwise that animation can carry the newly selected tab out of view again.
       strip.scrollTo({left,behavior:'instant'});
       updateEdges();
     }
@@ -12951,7 +12973,7 @@ self.onmessage = function(e){
       const overflow=!bar.hidden && width>available+1;
       const controlsFocused=[prev,next,toggle].includes(document.activeElement)||menu.contains(document.activeElement);
       prev.hidden=next.hidden=toggle.hidden=!overflow;bar.dataset.overflow=String(overflow);
-      if(!overflow){closeMenu();strip.scrollLeft=0;if(controlsFocused)focus(activeButton());}
+      if(!overflow){stopScroll();closeMenu();strip.scrollLeft=0;if(controlsFocused)focus(activeButton());}
       else if(!menu.hidden)fillMenu();
       if(showActive)reveal();
       updateEdges();
@@ -12962,9 +12984,25 @@ self.onmessage = function(e){
       focus(selected);selected?.scrollIntoView({block:'nearest'});
     }
     function scroll(direction){
-      strip.scrollBy({left:direction*Math.max(120,strip.clientWidth*.8),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+      stopScroll();
+      const start=strip.scrollLeft,target=Math.max(0,Math.min(strip.scrollWidth-strip.clientWidth,start+direction*Math.max(120,strip.clientWidth*.8)));
+      if(matchMedia('(prefers-reduced-motion: reduce)').matches){strip.scrollTo({left:target,behavior:'instant'});updateEdges();return;}
+      // Own the animation so selecting a tab can cancel every pending frame. A native
+      // smooth scroll can apply a stale compositor step after an instant reveal.
+      const started=performance.now();let previous=start;
+      const step=now=>{
+        scrollFrame=null;
+        if(Math.abs(strip.scrollLeft-previous)>1)return; // Native/user scrolling takes over.
+        const progress=Math.min(1,(now-started)/180);
+        strip.scrollTo({left:start+(target-start)*(1-Math.pow(1-progress,3)),behavior:'instant'});
+        previous=strip.scrollLeft;updateEdges();
+        if(progress<1)scrollFrame=requestAnimationFrame(step);
+      };
+      scrollFrame=requestAnimationFrame(step);
     }
     prev.addEventListener('click',()=>scroll(-1));next.addEventListener('click',()=>scroll(1));
+    strip.addEventListener('wheel',stopScroll,{passive:true});
+    strip.addEventListener('pointerdown',stopScroll,{passive:true});
     strip.addEventListener('scroll',updateEdges,{passive:true});
     strip.addEventListener('click',event=>{if(event.target.closest('.tab-select')){closeMenu();refresh(true);}});
     strip.addEventListener('keydown',event=>{

@@ -1,7 +1,8 @@
 # From smart shapes to connected components
 
-Status: stages 1, 2, and 3 are complete on `feature/smart-components`, based on `main`,
-with the stage 3 closeout validated 2026-10-18. Stage 2 includes the expanded library, logic, routing, timed signals,
+Status: stages 1–4 are complete on `feature/smart-components`, based on `main`,
+with the stage 3 closeout validated 2026-10-18 and stage 4 closed out 2026-10-20.
+Stage 2 includes the expanded library, logic, routing, timed signals,
 an editable eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
 Stage 3's embedded-data workflow is implemented on the branch, including reader imports, sorting,
@@ -20,9 +21,9 @@ Stage 4 adds typed submissions from Text/Number input and Memo event receivers a
 existing signals, with shared origins to recombine related branches. Event wiring now exposes
 reception modes, recent activity, and captured payloads. Dropdown and scalar selectors support
 explicit occurrences, and signal/event adapters and completion notifications extend the workflow.
-Shared host-action dispatch and workspace execution are delivered as the current stage 4 increment,
-with final verification and stage closeout pending. The remaining stage 5 reader workflow and stage 6 integrations
-remain proposals.
+Shared host-action dispatch and workspace execution complete stage 4, with the acceptance workflow,
+closeout fixes, and verification evidence recorded below. The stage 5 reader workflow and stage 6
+integrations remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -134,16 +135,21 @@ tab state, timing, isolation, and export fidelity.
 
 ## Current boundaries
 
-These boundaries describe the feature branch, including feedback, text passing, and shared datasets.
+These boundaries describe the feature branch, including feedback, shared datasets, events, and
+workspace execution.
 
-- **Connections stay within one sketch.** Number, string, boolean, and table-reference ports are
-  supported. Tables resolve through a bounded per-document pool. Opt-in typed events also stay
-  within the sketch; cross-tab connections remain deferred. Combinational table cycles are rejected; a Dataset owner can explicitly
-  apply a transformed view of its own records through a Replace or Append pulse.
+- **Cross-sketch connections are explicit.** Ordinary number, string, Boolean, and table-reference
+  bindings stay local. In Whole workspace mode, Publish/Receive exposes selected values and events
+  across sketches, and Dataset owners can appear in a shared catalog. Active sketch only remains
+  the default; cross-sketch sources are unavailable in that mode. Tables resolve through bounded
+  sketch-owned pools, with stable references preserving shared ownership. Combinational table cycles
+  are rejected; a Dataset owner can explicitly apply a transformed view of its own records through
+  a Replace or Append command.
 - **Actions are explicit and bounded.** Validated host actions support file import/reload, table
   downloads, row capture, source-table updates, and explicit internal Go to tab requests.
-  Typed events request bounded component-state changes; general host-action intents and service
-  calls remain future work. Scripts cannot fetch data directly.
+  Typed events request bounded component-state changes or declared commands through a shared
+  host-action dispatcher. Arbitrary script effects and network service calls remain outside the
+  current contract. Scripts cannot fetch data directly.
 - **Reader changes are temporary.** Exported HTML retains changes across its tab switches, but
   reopening restores the exported state. There is no reader save-changes facility or HTML import
   path back into the editor. Sketch/workspace JSON remains the editable format.
@@ -200,16 +206,17 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stages 1, 2, and 3, including their example workspaces and authoring closeouts, are complete on the feature
+Stages 1–4, including their example workspaces and authoring closeouts, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
 Stage 3 delivers the agreed data workflow, including a connected formula sheet, shared
 dataset editing/capture, and visual connection authoring brought forward from stage 5. Its
-closeout evidence and deferred extensions are recorded below. Stage 4 has a narrow host-owned download
-action plus explicitly declared dataset reloads and row capture. Its first routed-event milestone
-adds typed Text/Number submissions and Memo receivers, retaining all existing signals and triggers.
-Shared event-driven host actions and stages 5–6 remain proposals. Shared buses are
-explicitly outside the feedback milestone.
+closeout evidence and deferred extensions are recorded below. Stage 4 delivers hybrid value/event
+ports, shared-origin routing, explicit Reprocess, selection and completion events, adapters, and
+declared local actions through a shared dispatcher. Whole-workspace execution, explicit
+Publish/Receive endpoints, shared Dataset discovery, and workspace/sketch settings extend that
+contract across sketches while retaining all existing signals and triggers. Stages 5–6 remain
+proposals. Shared buses are explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -224,7 +231,7 @@ Share runtime helpers between editor and export throughout.
 | 3. Embedded data and visual connections — complete on branch | Bounded datasets, CSV/TSV/JSON import, empty typed tables, stable row identities and revisions, filtering/sorting/aggregation, table/chart built-ins, choice mappings, spreadsheet formulas and table outputs, record editing, Manual/Live source policies, and visual wiring over existing bindings | A blank-canvas workflow is authored through the library, Edit, and visual ports, then saved, reloaded, and used in downloaded offline HTML. Shared edits, independent copies, Live refresh, result downloads, and typed connections follow the accepted lifecycle rules; closeout evidence is below. |
 | 3T. Text operations — implemented on branch | Native regex comparison/extraction; strict Text to number; formatted Number to text; Text compose, transform, replace, and selector | Connected text/status displays respond in the editor and offline HTML; invalid numeric input has an explicit validity output; errors and Worker deadlines remain visible and bounded. |
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
-| 4. Events and local outputs — workspace/action increment pending closeout | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes enabled reception, activity, and the latest payload. Existing signals and narrow host actions remain available. | Repeated equal submissions stay distinct; related branches recombine once. Selected data events forward deliberately; current-value refreshes do not invent events. Completion and adapter behavior respects simulation lifecycle, with no restoration replay. Editor/HTML state and connections roundtrip. Workspace-aware host-action dispatch and lifecycle acceptance remain in progress. |
+| 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
 | 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
@@ -232,10 +239,10 @@ Stage 6 is deliberately split into reviewable deliveries:
 
 | Step | Prerequisites and deliverable | Evidence that it works |
 | --- | --- | --- |
-| 6.1 Shared integration foundation | Stage 1 value graph, stage 4 routed events, and its still-proposed general host-intent dispatch; add transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
+| 6.1 Shared integration foundation | Stage 1 value graph and stage 4 routed events/shared dispatcher; add declared network operations, transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
 | 6.2 Manual HTTP GET | 6.1; a configured bounded JSON GET mapped to scalar ports, initiated by Refresh | The newest accepted result drives a display; errors are visible; repeated instances stay independent. Downloaded HTML works with the test endpoint and remains readable offline. |
 | 6.3 MQTT Config and Subscribe | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
-| 6.4 Automated reads | 6.2; bounded HTTP timer, value-change, and edge triggers | One permitted trigger causes one request; initial/restored values do not replay edges, rapid changes settle correctly, and hidden documents pause polling. |
+| 6.4 Automated reads | 6.2; bounded HTTP timer, value-change, and edge triggers | One permitted trigger causes one request; initial/restored values do not replay edges, rapid changes settle correctly, and suspended execution pauses polling. |
 | 6.5 Explicit external writes | 6.1 and the relevant transport; user-triggered HTTP POST and MQTT Publish | One accepted Submit/Send produces one host intent; redraw, undo, reload, and reconnect do not replay it. Failure and duplicate handling distinguish host dispatch, transport delivery, and application acknowledgement. |
 
 Implement 6.2 and 6.3 independently after 6.1; starting with manual GET is the proposed default.
@@ -275,8 +282,9 @@ outputs feed the column-driven matrix's matching inputs, reproducing the same im
 
 Double-click controls in the editor; use them directly in HTML. Number controls also accept typed
 values by clicking their displayed number. **Edit…** and **Wiring** expose the actual saved bindings;
-the examples' illustrative arrows remain ordinary drawing objects. Countdown starts at 9 with **Run** off. Each
-tab has independent state and timing pauses while it is inactive. Reader tab switches retain
+the examples' illustrative arrows remain ordinary drawing objects. Countdown starts at 9 with **Run** off.
+This catalog uses the default **Active sketch only** execution mode: each tab has independent state
+and timing pauses while it is inactive. Reader tab switches retain
 changes; reloading restores the exported snapshot. JSON remains the editable source.
 
 Step 2.3 and the focused authoring pass are complete. Component discovery, placement, input
@@ -633,8 +641,8 @@ their user-facing timing behavior while giving all of them the shared settling c
   alone never starts. At zero, the timer stops with `reached=true`. Explicit Start or a new run
   rising edge refills/restarts once; held run never loops. `tick` emits a nominal 100 ms boolean
   pulse for each observed whole configured unit elapsed. Running wall time survives inactivity
-  and reload; missed ticks never replay, stale tick state clears on fresh observation, and hidden
-  expiry becomes reached on return. Pure compute/rendering keep the last settled snapshot;
+  and reload; missed ticks never replay, stale tick state clears on fresh observation, and expiry
+  during suspended execution becomes reached on return. Pure compute/rendering keep the last settled snapshot;
   transitions update the dial roughly once per second without `refreshMs`. The name caption and
   optional LEDs remain visible in editor and HTML.
 - **Trigger:** a pushbutton in Controls with a boolean `value` output, normally false. Each
@@ -676,14 +684,17 @@ have the same 4 KB limit. Only current successful nodes commit; failed branches 
 An accepted control change settles before the next accepted change; drag previews do not consume
 edges until released. Timed changes do not create an undo entry for every tick.
 
-Interval clocks use active-document time and pause for hidden/inactive documents and the Edit dialog.
+Interval clocks use simulation time within the active execution scope. In **Active sketch only**
+mode, leaving a sketch pauses its timeline; **Whole workspace** keeps all sketches running,
+including those hidden from the tab bar. Hiding the browser page or pausing simulation suspends
+the scope's timeline. The editor also pauses for Edit and blocking input/import dialogs.
 Delay preserves its pending queue across those pauses. Random and Sample & hold sample once after
 a late wake, without replaying missed intervals. For these interval and edge components, current
 outputs/counts persist, while queues, deadlines, and previous-input observations do not. Reload,
 copy, undo, script/binding replacement,
 or unavailable-input recovery re-primes observations without creating a false initial count.
 Static exports and previews use pure computation; offline HTML uses the same temporal contract.
-Live clock updates while active and realigns to current wall time after inactivity. Its pure
+Live clock updates while executing and realigns to current wall time after suspension. Its pure
 computation keeps the last settled snapshot for static exports; the HTML reader runs it live.
 Stopwatch likewise follows wall time while running, but only commands change its durable timing
 state and published result. It saves the last observed `run` level so reopening preserves manual
@@ -1148,7 +1159,8 @@ extensions before implementation; do not infer them from v2 scalar values or the
 ### Change-driven evaluation
 
 Inputs and state determine computed outputs. Changes to component state, scripts, bindings, or
-literal inputs invalidate the sketch's graph. During ordinary live evaluation, unchanged
+literal inputs invalidate the active execution graph: one sketch by default, or the connected
+workspace in Whole workspace mode. During ordinary live evaluation, unchanged
 script/wiring/state/query/input snapshots reuse previous outputs, including table revision
 checks. Pure compute skips unaffected branches and downstream components whose inputs remain
 equal; stored-output publish is likewise reused when its state is unchanged. Graph traversal
@@ -1174,28 +1186,32 @@ feedback is supported. Unknown-aware Boolean gate cycles start X until definite 
 a result; accepted combinational feedback signals are saved separately as host-owned `signalState`
 to preserve gate-built memory on reload, copy, and undo. This is not a new user-script state hook.
 A loop that does not settle within 256 rounds reports an error for its path/dependents without
-blocking unrelated branches. Positive delays schedule later active-document events; zero-delay
+blocking unrelated branches. Positive delays schedule later simulation events; zero-delay
 loops remain subject to the settling budget.
 
-Computation crosses the asynchronous Worker bridge. Document/item ownership, graph signatures,
-and timeline revisions discard replies superseded by edits, undo, deletion, or tab changes.
+Computation crosses the asynchronous Worker bridge. Workspace/sketch/item ownership, graph
+signatures, and timeline revisions discard replies superseded by edits, undo, deletion, or a
+change of execution scope. Merely changing the visible sketch in Whole workspace mode does not
+invalidate its owned work.
 Preserve these guarantees and accepted interaction order when optimizing evaluation. Do not
 depend on Worker residency or completion order. `compute` and `publish` stay pure; rendering,
 Edit dialog previews, and static exports do not consume edges or trigger external actions.
 `refreshMs` remains presentation refresh. Stateful/timed execution belongs in `transition`.
 
-**Pause / Step / Resume** is per document and lasts for the current session. Pause retains the
+**Pause / Step / Resume** controls the active execution scope and lasts for the current session.
+Whole workspace mode shares one timeline across sketches. Pause retains the
 current signal snapshot and stops active simulation time. Step advances one propagation round;
 when already settled, it advances to the next scheduled signal event. The status reports active
 simulation time, the settling round, and a recent signal change. Resume settles pending work and
-continues scheduling. Step advances logical active-document time; Live clock, Stopwatch, and Timer
+continues scheduling. Step advances logical simulation time; Live clock, Stopwatch, and Timer
 still read actual wall time and are not fast-forwarded. Editor and exported HTML share the same
 behavior; this is smaller than the later full Run/Preview workflow.
 
 Apply execution and value-size budgets to all hooks. If a producer fails, mark its outputs
 unavailable and identify affected bindings. A last valid drawing may remain visible, but stale
-values must not silently drive later behavior. Shared-bus resolution, multiple drivers, external
-actions, and a routed-event API remain outside this milestone.
+values must not silently drive later behavior. Shared-bus resolution and multiple drivers remain
+deferred. Routed events and declared local host actions extend this value contract in stage 4;
+network actions remain stage 6.
 
 ### Connections and authoring
 
@@ -1209,14 +1225,18 @@ Bindings are semantic records on each receiving item, for example:
 }
 ```
 
-IDs and bindings are scoped to one sketch. Cross-tab connections remain future work.
+Ordinary bindings use sketch-local component IDs. Stage 4 adds explicit cross-sketch references
+through Publish/Receive, and workspace-visible Dataset owners retain their originating sketch's
+identity and records. Ordinary source pickers remain local; remote endpoints must be imported
+through Receive.
 Stage 3 brings the first visual connection editor forward from stage 5. **Wiring** starts off and
 is available only when smart-component authoring is enabled. Ports and links are visible only
 while Wiring is on. It adds an editor overlay derived
 from identities, current port declarations, bindings, and dataset ownership. Ordinary drawing
 arrows keep their existing meaning. The overlay follows component geometry without adding drawing
 items or persisted wire paths; PNG, SVG, and print omit it. HTML hides wiring by default; the
-later Page settings milestone adds an optional read-only reader layer using the same conventions.
+Sketch settings and inherited Workspace settings provide an optional read-only reader layer
+using the same conventions.
 Saved connections execute in exported HTML independently of wiring visibility.
 
 The first visual vocabulary separates two relationships without relying on color alone:
@@ -1389,9 +1409,11 @@ retains the default restriction, providing a reader example that only permits co
   apply. Source and derived pools have separate budgets; budget failures remain recoverable.
 - **Download table** offers explicit CSV and JSON buttons for its connected table. The host snapshots
   the current selected rows and order, validates ownership, and prepares the file. A paused graph
-  must finish any incomplete propagation step before downloading. No computation,
-  repaint, restore, retry, Undo, or automatic trigger requests a download. This is the narrow stage 4
-  local-action slice; it does not introduce generic events or unrestricted file/network access.
+  must finish any incomplete propagation step before downloading. Stage 4 also accepts declared
+  command events and trigger edges to prepare a result for an explicit Download button.
+  Computation, repaint, restore, retry, and Undo never request a download. Preparation does not
+  claim that a file was saved, and the host retains browser user-activation requirements.
+  Neither path grants unrestricted file/network access.
 
 **Dropdown and Text lookup** extend the data workflow with a shared choice-list model:
 
@@ -1956,7 +1978,7 @@ versions, and source fingerprints. Each exported document must retain the exact 
 it uses. Library changes should become explicit upgrades with compatible state migrations;
 they must not silently change existing drawings. Source fingerprints identify content, not trust.
 
-## Events and local actions — implementation in progress; closeout pending
+## Events and local actions — stage 4 complete on the feature branch
 
 Events complement the existing value graph. A value describes the current signal; an event
 records one accepted occurrence with its payload. Repeating the same submission twice produces
@@ -2162,10 +2184,10 @@ rejection without reversing an accepted simulation or dataset change. See the
 [demo walkthroughs](../tests/stage4-demo.test.cjs). This is focused increment validation, not a
 new full-project release certification.
 
-### Remaining stage 4 work and candidate components
+### Deferred event extensions
 
-Stage 4 remains open for final acceptance of shared local actions/workspace execution and a closeout pass. Prefer
-occurrences with captured data over automatic change events on every output. Dependency-based
+These candidates are later extensions, not unfinished stage 4 requirements. Prefer occurrences
+with captured data over automatic change events on every output. Dependency-based
 value invalidation and event routing remain separate: unchanged values may stop propagation,
 but equal event payloads must never collapse into one occurrence.
 
@@ -2173,11 +2195,10 @@ but equal event payloads must never collapse into one occurrence.
 | --- | --- | --- |
 | Dataset row selection and lookup | Accepted row identity or matched result | Define record/table identity and lifetime before structured events. |
 | Stepped distributors and joins of independent sources | Routed or combined payload | Define routing changes, suppression, and explicit waiting policy for unrelated origins. |
-| JSON build | One captured object string from several inputs | Explicit Emit/Reprocess implemented; fields remain value-only parameters. Final acceptance remains. |
-| Navigation, downloads, and dataset commands | Command with captured parameters | Shared host action dispatcher implemented with ownership, user activation, permissions, and at-most-once dispatch; final acceptance remains. |
 
 Ordinary live value evaluation skips unchanged computations, while graph traversal and validation
-remain intact; this is not a scheduler rewrite. Shared host-action dispatch is its own increment.
+remain intact; this is not a scheduler rewrite. JSON build's explicit Emit/Reprocess and the
+shared dispatcher for navigation, downloads, and dataset commands are delivered below.
 HTTP/MQTT remain stage 6; Run/Preview and reader result saving remain stage 5.
 
 ### Accepted workspace execution and cross-sketch contract
@@ -2237,7 +2258,7 @@ The host reports `loaded`, `replaced`, `appended`, `captured`, `arrived`, `prepa
 through the corresponding declared component outputs. An automatic download prepares content and
 offers an explicit Download button; `prepared` never claims that a file was saved. JSON build uses
 an explicit Emit/Reprocess command to capture its value-only fields, avoiding implicit submissions
-while the author edits separate values. Stage 4 remains pending its final verification/closeout.
+while the author edits separate values.
 
 Lifecycle rules follow copying a group of components. Deleting a sketch breaks external references
 visibly. Duplicating a sketch assigns a new sketch ID and new component IDs, remaps its internal
@@ -2260,8 +2281,8 @@ engine. The main demo's 29 Chromium checks and both engines' built-in source/pre
 Independent-row tests cover reconvergence, genuine feedback faults, broken-import isolation,
 healthy feedback-state retention, Live Dataset source revisions, and large table previews.
 The separate demo has been exercised in the editor and offline reader and visually checked
-in all three sketches. This closes the workspace increment;
-the overall stage 4 closeout remains separate.
+in all three sketches. These results close the workspace increment and precede the overall
+stage 4 closeout evidence below.
 
 The workspace runtime has its own small
 [editable example](../examples/workspace-runtime.json) and
@@ -2273,6 +2294,57 @@ second ticks in another. Services captures the latest quantity when the submissi
 records and receives the same submissions. Startup opens Dashboard, and the Data editor overrides
 the title while inheriting workspace presentation defaults. A private scratch Dataset demonstrates
 catalog opt-in. Regenerate the pair with `node tools/update-workspace-runtime-example.cjs`.
+
+### Stage 4 closeout acceptance — 2026-10-20
+
+The integrated acceptance workflow uses the actual editor controls to import another published
+endpoint into Receive, edit a shared Dataset record, and submit a new captured row. It then saves
+workspace JSON, reloads browser autosave, reopens the saved workspace, and produces a fresh
+standalone HTML export. Restored documents retain the edited records and endpoint identities
+without replaying prior events. In the offline reader, repeated equal submissions append distinct
+rows and Memo entries across sketches; hidden Services keeps processing, inherited presentation
+settings apply, and no network requests are needed. See the
+[workspace authoring acceptance](../tests/workspace-runtime-authoring.test.cjs).
+
+The closeout also fixes Capture row's editor-side dispatcher rejection path: a request rejected
+by the action queue now emits its declared Failed event without appending a record. The regression
+queues 65 requests and verifies 64 accepted appends plus one failure, rather than silently losing
+the rejection. The [action-result tests](../tests/component-action-events-runtime.test.cjs)
+cover this alongside accepted completion and failure notification behavior.
+
+The closeout fixes a tab-bar scrolling race in the editor and HTML reader. Arrow scrolling now
+uses cancellable animation frames so an earlier scroll cannot later move a newly selected tab
+partly out of view. Selecting a tab reveals it fully, and pointer or wheel scrolling takes over
+from the animation. The [tab-bar tests](../tests/tabbar-overflow.test.cjs) cover interruption and
+selected-tab visibility in both runtimes. Both bundled HTML workspaces were regenerated through
+the real exporter after the fix.
+
+Static SVG and PNG exports now freeze the source state and geometry before asynchronous rendering.
+A clock tick or other live update during export can no longer invalidate the captured scene or
+mix its earlier values with later geometry. The [workspace runtime tests](../tests/workspace-runtime.test.cjs)
+exercise the actual downloads while the live source changes, including the PNG's captured pixels.
+
+The closeout validation combines full-suite runs with focused reruns after the final corrections:
+
+- **Chromium full suite:** 1,399 passed and one test failed because its observation read was
+  cancelled by a running clock. The test now uses the bounded accepted-graph read helper;
+  it never retries the action. The affected workspace-action suite then passed **3/3 in both
+  Chromium and WebKit**.
+- **WebKit full suite:** 1,396 passed, one static-SVG test exposed the live-source export race
+  fixed above, and three Chromium-only CDP touch tests were skipped.
+- **Final export/workspace regressions after that fix:** **181/181 passed in Chromium**;
+  **179 passed and two expected CDP touch tests skipped in WebKit**, with no failures. These
+  checks include actual SVG/PNG downloads during source updates, rotated groups, isolated copies
+  and legacy component instances, clipboard, geometry, the offline reader, and hidden-sketch exports.
+- The integrated author/save/reopen/offline-HTML workflow passed in both engines. Capture row's
+  affected action-result checks passed **8/8 in each engine**; tab-bar checks passed **5/5 in each**,
+  with a further **16/16 repeated Chromium checks**. Main-demo acceptance passed **29/29 in each**.
+
+These are the recorded broad runs and subsequent verification of affected paths, not a claim that
+the full suite was rerun cleanly after every correction. Physical iPad Safari, native Office paste,
+and physical print behavior remain manual checks; browser automation does not certify them.
+Stage 4's agreed scope is complete. Structured dataset events, stepped-distributor event policy,
+and joins waiting for independent origins remain the deferred extensions listed above.
 
 ### Existing narrow host actions and future effect boundaries
 
@@ -2329,8 +2401,8 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
   reading. Availability and freshness must be enforced by the runtime, not depend on authors
   wiring an optional status output correctly. A labelled last-known display may remain visible;
   an unavailable or stale reading cannot silently become an input to an external write.
-- **Intents and triggers.** Extend stage 4 beyond its implemented download/reload controls with the
-  proposed general intent dispatch before reusing it here. Record whether a change
+- **Intents and triggers.** Extend stage 4's shared dispatcher with declared network operations
+  and their authorization/lifecycle rules. Record whether a change
   came from a user, an enabled timer/input trigger, a live response, or restoration. Initialization,
   undo, reconnection, and retained readings establish baselines rather than replay actions.
   Define the supported API/schema extensions before exposing host sources or new trigger types.
@@ -2428,9 +2500,10 @@ fire requests. Undo restores local configuration and values; it cannot undo a re
 processed by a remote service.
 
 `compute()` stays a pure function. The existing `refreshMs` hook remains a presentation refresh
-and does not schedule network traffic. Timers belong to the host and start only when document
-execution and the requested operation are enabled. Pause polling for hidden or inactive
-documents, cancel obsolete work when possible, and avoid a burst of missed polls on resume.
+and does not schedule network traffic. Timers belong to the host and start only when their
+execution scope and the requested operation are enabled. Pause polling while that scope is
+suspended or the browser page is hidden; changing visible sketches in Whole workspace mode
+does not itself suspend a source. Cancel obsolete work when possible and avoid a burst of missed polls on resume.
 Bound requests and propagation so a response feeding a trigger cannot create an uncontrolled loop.
 
 ### Results and asynchronous behavior
@@ -2535,10 +2608,12 @@ field should not reconnect after every character. Support **Connect automaticall
 as a separate policy for unattended displays, subject to step 6.1's deployment execution rules.
 Configuration changes retire the old connection generation; messages arriving from it must not
 update the replacement configuration or another
-document. Start with connections active only for the visible, active document: retire pending
-delivery when switching away or closing it, and reconnect under the chosen policy on return.
-Use bounded reconnect backoff and visible connected/reconnecting/error status; background
-telemetry for inactive documents needs a separate later policy.
+document. Define connection lifetime against the selected workspace execution mode in step 6.1.
+Whole workspace mode must not retire an enabled source merely because another sketch becomes
+visible; Active sketch only needs an explicit suspend/reconnect and freshness policy for inactive
+sources. Closing or replacing the owning workspace retires its connections. Use bounded reconnect
+backoff and visible connected/reconnecting/error status. These transport policies do not authorize
+network startup on their own.
 
 Incoming messages use the shared transient-source contract and invalidate downstream computations.
 They do not add undo entries or autosave the sketch on every message. Start with bounded text
@@ -2599,14 +2674,16 @@ handling are tested separately from broker delivery.
    policies are explicit. Visual wiring distinguishes typed flows from Dataset associations and
    edits the existing bindings; access-permission metadata remains deferred. Coordinated current-record controls and record-wise calculated columns
    remain follow-ups.
-3. **Stage 4 — workspace increment delivered; closeout pending:** `eventApi:1` declares typed
+3. **Stage 4 — complete on branch:** `eventApi:1` declares typed
    hybrid ports, unified bindings, captured occurrences, receiving hooks, scalar transformations,
    shared origins, Reprocess, and bounded atomic dispatch. Wiring feedback, selection events,
    signal/event adapters, and completion notifications extend the workflow while retaining existing
    signal APIs. The shared dispatcher unifies declared downloads, reload/capture triggers, tab
    navigation and dataset commands. Whole-workspace execution, explicit Publish/Receive endpoints,
    settings inheritance and shared Dataset discovery extend their ownership across sketches.
-   The workspace lifecycle/browser acceptance is complete; run the overall stage 4 closeout pass next.
+   The 2026-10-20 closeout covers the authored save/reopen/offline workflow, lifecycle regressions,
+   and corrected action rejection, tab scrolling, and static export behavior. Deferred event
+   extensions are outside this completed scope.
 4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
    state retention and reader result saving. A full HTML-to-editor round trip remains separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,

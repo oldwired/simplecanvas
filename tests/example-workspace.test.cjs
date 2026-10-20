@@ -83,7 +83,12 @@ async function editorHandle(page,run,tab,id,handleId){
   await page.mouse.click(box.x+item.x+handle.x,box.y+item.y+handle.y);
   if(!['text','number','action'].includes(handle.kind))await run('smartHitSettled');
 }
-const outputs=(run,tab,id)=>run(`(async()=> (await resolveSmartComponentIo(items.find(item=>item.uid===${JSON.stringify(uid(tab,id))}))).outputs)()`);
+const outputs=(run,tab,id)=>run(`(async()=>{
+  const item=items.find(item=>item.uid===${JSON.stringify(uid(tab,id))});
+  // A trigger's reset deadline may supersede this read while its Worker is running.
+  // Retry only the read; never repeat the click, capture, or any other accepted action.
+  return (await resolveAcceptedComponentGraph(()=>resolveSmartComponentIo(item),()=>items.includes(item))).outputs;
+})()`);
 async function waitState(page,tab,id,expression){
   await page.waitForFunction(({target,expression})=>__test.run(`(()=>{const state=items.find(item=>item.uid===${JSON.stringify(target)})?.state;return !!state && (${expression});})()`),{target:uid(tab,id),expression});
 }

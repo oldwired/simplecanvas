@@ -79,6 +79,8 @@
     const tabButtons=()=>Array.from(strip.querySelectorAll('.tab-select')).filter(button=>!button.hidden);
     const activeButton=()=>strip.querySelector('.tab-select.active');
     const focus=node=>node?.focus({preventScroll:true});
+    let scrollFrame=null;
+    function stopScroll(){if(scrollFrame!==null)cancelAnimationFrame(scrollFrame);scrollFrame=null;}
     function closeMenu(restoreFocus=false){
       menu.hidden=true;toggle.setAttribute('aria-expanded','false');
       if(restoreFocus)focus(toggle.hidden?activeButton():toggle);
@@ -90,14 +92,13 @@
       viewport.classList.toggle('has-after',after);
     }
     function reveal(node=activeButton()){
+      stopScroll();
       if(!node || bar.hidden)return;
       const tab=node.closest('.tab')||node,rect=tab.getBoundingClientRect(),view=strip.getBoundingClientRect();
       // Only move the strip; scrollIntoView would also move the exported drawing's page.
       let left=strip.scrollLeft;
       if(rect.left<view.left)left-=view.left-rect.left;
       else if(rect.right>view.right)left+=rect.right-view.right;
-      // Cancel an arrow's in-flight smooth scroll even if this tab is already visible.
-      // Otherwise that animation can carry the newly selected tab out of view again.
       strip.scrollTo({left,behavior:'instant'});
       updateEdges();
     }
@@ -128,7 +129,7 @@
       const overflow=!bar.hidden && width>available+1;
       const controlsFocused=[prev,next,toggle].includes(document.activeElement)||menu.contains(document.activeElement);
       prev.hidden=next.hidden=toggle.hidden=!overflow;bar.dataset.overflow=String(overflow);
-      if(!overflow){closeMenu();strip.scrollLeft=0;if(controlsFocused)focus(activeButton());}
+      if(!overflow){stopScroll();closeMenu();strip.scrollLeft=0;if(controlsFocused)focus(activeButton());}
       else if(!menu.hidden)fillMenu();
       if(showActive)reveal();
       updateEdges();
@@ -139,9 +140,25 @@
       focus(selected);selected?.scrollIntoView({block:'nearest'});
     }
     function scroll(direction){
-      strip.scrollBy({left:direction*Math.max(120,strip.clientWidth*.8),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+      stopScroll();
+      const start=strip.scrollLeft,target=Math.max(0,Math.min(strip.scrollWidth-strip.clientWidth,start+direction*Math.max(120,strip.clientWidth*.8)));
+      if(matchMedia('(prefers-reduced-motion: reduce)').matches){strip.scrollTo({left:target,behavior:'instant'});updateEdges();return;}
+      // Own the animation so selecting a tab can cancel every pending frame. A native
+      // smooth scroll can apply a stale compositor step after an instant reveal.
+      const started=performance.now();let previous=start;
+      const step=now=>{
+        scrollFrame=null;
+        if(Math.abs(strip.scrollLeft-previous)>1)return; // Native/user scrolling takes over.
+        const progress=Math.min(1,(now-started)/180);
+        strip.scrollTo({left:start+(target-start)*(1-Math.pow(1-progress,3)),behavior:'instant'});
+        previous=strip.scrollLeft;updateEdges();
+        if(progress<1)scrollFrame=requestAnimationFrame(step);
+      };
+      scrollFrame=requestAnimationFrame(step);
     }
     prev.addEventListener('click',()=>scroll(-1));next.addEventListener('click',()=>scroll(1));
+    strip.addEventListener('wheel',stopScroll,{passive:true});
+    strip.addEventListener('pointerdown',stopScroll,{passive:true});
     strip.addEventListener('scroll',updateEdges,{passive:true});
     strip.addEventListener('click',event=>{if(event.target.closest('.tab-select')){closeMenu();refresh(true);}});
     strip.addEventListener('keydown',event=>{

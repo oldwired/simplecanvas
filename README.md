@@ -1242,10 +1242,13 @@ Set `features.smartComponents` to `false` in `settings.json` to hide component t
 the input picker and disable component authoring. Existing connected drawings and HTML exports
 keep working. Component authoring also requires `smartShapeAuthoring` to be enabled.
 
-Components support number, string, Boolean, and table values within one sketch. See the
+Components support number, string, Boolean, and table values. In **Whole workspace** mode,
+explicit **Publish** and **Receive** endpoints connect sketches, and shared Datasets keep
+their records available across sketches. Declared local actions support navigation, dataset
+commands and downloads, including event-driven requests. See the
 [component scripting contract](SMART_SHAPES.md#connected-components-api-v2) for custom ports
-and computations, including opt-in typed events for discrete interactions. External integrations and
-event-driven host actions remain future work.
+and computations, including opt-in typed events for discrete interactions. HTTP/MQTT
+integrations remain future work.
 
 ### Demo library
 

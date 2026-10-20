@@ -24,11 +24,13 @@ async function app(fn){
     await run('appStarted');await fn({page,run,context});assert.deepEqual(errors,[]);
   }finally{await context.close();}
 }
+// The hidden clock can supersede an observation while a Worker reply is pending.
+// Retry graph reads only; each accepted reload/capture is still issued exactly once.
 async function loadWorkspace(run,page){
   const data=fs.readFileSync(path.join(__dirname,'..','examples','workspace-runtime.json'),'utf8');
   await run(`openWorkspaceFile(new File([${JSON.stringify(data)}],'workspace.json',{type:'application/json'}))`);
   await page.waitForFunction(()=>__test.run("tabs.length===3 && activeTabId==='runtime-dashboard'"));
-  return run('ensureEditorComponentGraph().then(graph=>[...graph].filter(([,r])=>r.error).map(([i,r])=>({uid:i.uid,error:r.error})))');
+  return run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true).then(graph=>[...graph].filter(([,r])=>r.error).map(([i,r])=>({uid:i.uid,error:r.error})))');
 }
 
 test('accepted hidden-service Reload survives switching sketches and preserves simulation time',async()=>app(async({run,page})=>{
@@ -37,14 +39,14 @@ test('accepted hidden-service Reload survives switching sketches and preserves s
     const context=editorRuntimeContext(),owner=context.scene.find(i=>i.uid==='runtime-stock-owner');
     window.reloadRequested=false;window.releaseReload=null;
     rememberComponentDatasetSource(owner,'data',{name:'stock.csv',delimiter:',',handle:{getFile:()=>new Promise(resolve=>{window.reloadRequested=true;window.releaseReload=()=>resolve(new File(['fruit,quantity\\nGrapes,19\\n'],'stock.csv'));})}});
-    const graph=await ensureEditorComponentGraph(),name=Object.keys(graph.get(owner).caps.dataActions).find(name=>graph.get(owner).caps.dataActions[name].type==='reloadDataset');
+    const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true),name=Object.keys(graph.get(owner).caps.dataActions).find(name=>graph.get(owner).caps.dataActions[name].type==='reloadDataset');
     queueEditorComponentActionIntents([captureComponentActionIntent(owner,name,graph.get(owner),graph.datasets)]);
   })()`);
   await page.waitForFunction(()=>window.reloadRequested);
-  await run("activateTab('runtime-editor');ensureEditorComponentGraph()");
+  await run("activateTab('runtime-editor');resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)");
   await page.evaluate(()=>window.releaseReload());
   await page.waitForFunction(()=>__test.run('!editorActionDispatcher.running'));
-  const result=await run(`(async()=>{const graph=await ensureEditorComponentGraph();return {rows:graph.get(items.find(i=>i.uid==='runtime-stock-editor')).io.tables.inputs.data.rows,active:activeTabId,error:toastEl.textContent};})()`);
+  const result=await run(`(async()=>{const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);return {rows:graph.get(items.find(i=>i.uid==='runtime-stock-editor')).io.tables.inputs.data.rows,active:activeTabId,error:toastEl.textContent};})()`);
   assert.deepEqual(result.rows,[['Grapes',19]],result.error);assert.equal(result.active,'runtime-editor');
 }));
 
@@ -53,10 +55,10 @@ test('separate equal event commands append two captured rows while their source 
   await run(`(async()=>{
     const source=items.find(i=>i.uid==='runtime-message');
     const next=Object.defineProperty({...source.state},Symbol.for('simplecanvas.events'),{value:[{port:'value',payload:'Kiwi'},{port:'value',payload:'Kiwi'}]});
-    await commitEditorSmartEvents(source,next,()=>true);activateTab('runtime-editor');await ensureEditorComponentGraph();
+    await commitEditorSmartEvents(source,next,()=>true);activateTab('runtime-editor');await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);
   })()`);
   await page.waitForFunction(()=>__test.run('!editorActionDispatcher.running'));
-  const result=await run(`(async()=>{const graph=await ensureEditorComponentGraph();return {rows:graph.get(items.find(i=>i.uid==='runtime-stock-editor')).io.tables.inputs.data.rows,error:toastEl.textContent};})()`);
+  const result=await run(`(async()=>{const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);return {rows:graph.get(items.find(i=>i.uid==='runtime-stock-editor')).io.tables.inputs.data.rows,error:toastEl.textContent};})()`);
   assert.deepEqual(result.rows.slice(-2),[['Kiwi',1],['Kiwi',1]],result.error);
 }));
 
@@ -65,7 +67,7 @@ test('deleting an action owner while a file is pending cancels its accepted relo
   await run(`(async()=>{
     const owner=editorRuntimeContext().scene.find(i=>i.uid==='runtime-stock-owner');
     window.reloadRequested=false;rememberComponentDatasetSource(owner,'data',{name:'stock.csv',delimiter:',',handle:{getFile:()=>new Promise(resolve=>{window.reloadRequested=true;window.releaseReload=()=>resolve(new File(['fruit,quantity\\nGrapes,19\\n'],'stock.csv'));})}});
-    const graph=await ensureEditorComponentGraph(),name=Object.keys(graph.get(owner).caps.dataActions).find(name=>graph.get(owner).caps.dataActions[name].type==='reloadDataset');
+    const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true),name=Object.keys(graph.get(owner).caps.dataActions).find(name=>graph.get(owner).caps.dataActions[name].type==='reloadDataset');
     queueEditorComponentActionIntents([captureComponentActionIntent(owner,name,graph.get(owner),graph.datasets)]);
   })()`);
   await page.waitForFunction(()=>window.reloadRequested);

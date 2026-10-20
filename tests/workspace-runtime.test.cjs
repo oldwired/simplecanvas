@@ -60,6 +60,56 @@ test('hidden services publish current values and receive equal submissions witho
   for(const state of result.logs)assert.equal(state.text,'Pear\nPear');
 }));
 
+for(const {format,grouped} of [{format:'svg'},{format:'png'},{format:'png',grouped:true}])test(format.toUpperCase()+' download freezes '+(grouped?'rotated group':'smart')+' state and geometry before asynchronous rendering',async()=>app(async({run,page})=>{
+  const source=`({
+    apiVersion:2,inputs:{},outputs:{value:{type:'string'}},
+    compute(inputs,state){return {value:state.value};},
+    children(state,style,w,h){return [
+      {type:'rect',x:0,y:0,w,h,fill:true,fillColor:state.value==='Before'?'#00ff00':'#ff0000',strokeOn:false},
+      {type:'text',x:10,y:10,w:100,h:24,text:state.value,font:'16px sans-serif',color:'#000000',strokeOn:false}
+    ];}
+  })`;
+  await run(`(async()=>{items=[{uid:'export-snapshot',type:'smart',componentApi:2,script:${JSON.stringify(source)},
+    state:{value:'Before'},x:100,y:100,w:120,h:50,size:2,fill:true,fillColor:'#00ff00',strokeOn:false}];
+    ${grouped?"items[0].group='export-group';items[0].groupRotation=Math.PI/2;items.push({uid:'group-sibling',type:'rect',group:'export-group',groupRotation:Math.PI/2,x:260,y:100,w:40,h:50,size:2,fill:true,fillColor:'#0000ff',strokeOn:false});":""}
+    render();await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);})()`);
+  // Hold the actual export between capture and Worker evaluation, then make a live
+  // update. Retrying the export would incorrectly save the updated value and size.
+  await run(`(()=>{
+    const warm=warmSmartExportCache;
+    warmSmartExportCache=async(...args)=>{
+      window.exportWaiting=true;
+      await new Promise(resolve=>window.releaseExport=resolve);
+      return warm(...args);
+    };
+    window.exportFailure=null;
+    window.exportCompletion=${format==='svg'?'saveSvg':'savePng'}().catch(error=>{window.exportFailure=error.message;});
+  })()`);
+  await page.waitForFunction(()=>window.exportWaiting);
+  await run("items[0].state={value:'After'};items[0].w=300;items[0].h=100;if(items[1]){items[1].x=600;items[1].y=400;}render();");
+  const pending=page.waitForEvent('download');
+  await page.evaluate(()=>window.releaseExport());
+  const download=await pending;await page.evaluate(()=>window.exportCompletion);
+  assert.equal(await page.evaluate(()=>window.exportFailure),null);
+  const contents=fs.readFileSync(await download.path());
+  if(format==='svg'){
+    const svg=contents.toString('utf8');
+    assert.match(svg,/>Before</);assert.doesNotMatch(svg,/>After</);
+    assert.match(svg,/<svg[^>]*width="174" height="104"/);
+  }else{
+    assert.equal(contents.subarray(1,4).toString(),'PNG');
+    assert.equal(contents.readUInt32BE(16),grouped?208:348);assert.equal(contents.readUInt32BE(20),grouped?508:208);
+    const pixel=await page.evaluate(async ({encoded,grouped})=>{
+      const image=new Image();image.src='data:image/png;base64,'+encoded;await image.decode();
+      const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
+      const context=canvas.getContext('2d');context.drawImage(image,0,0);
+      return Array.from(context.getImageData(grouped?65:200,grouped?250:140,1,1).data);
+    },{encoded:contents.toString('base64'),grouped});
+    assert.deepEqual(pixel,[0,255,0,255],'PNG paints the captured state');
+  }
+  assert.deepEqual(await run('({value:items[0].state.value,w:items[0].w,h:items[0].h})'),{value:'After',w:300,h:100},'export keeps the live update intact');
+}));
+
 test('shared data edits update the owner, undo across sketches, and keep pause on navigation/history',async()=>app(async({run,page})=>{
   assert.deepEqual(await loadWorkspace(run,page),[]);
   const result=await run(`(async()=>{

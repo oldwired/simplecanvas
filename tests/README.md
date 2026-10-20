@@ -530,10 +530,14 @@ Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for C
   fixture and atomic JSON/HTML publication, including failed exports and concurrent edits.
 - `workspace-runtime.test.cjs` exercises hidden processing, repeated cross-sketch events, static
   exports, shared edits/history, queued Worker ownership, table endpoints, and offline operations
-  with more datasets across the workspace than one sketch's limit.
+  with more datasets across the workspace than one sketch's limit. Actual SVG/PNG downloads
+  retain captured state and geometry during live updates, including rotated-group PNG pixels.
 - `workspace-runtime-authoring.test.cjs` exercises settings inheritance, endpoint selection,
   endpoint addition/reordering/removal with stable references, dataset catalog visibility,
-  and the editor's actual wiring overlay.
+  and the editor's actual wiring overlay. Its integrated acceptance check authors an imported
+  endpoint, edits a shared record, and submits a captured row through the actual controls, then
+  verifies autosave reload, workspace JSON reopening, and a freshly exported offline HTML file.
+  Restoring does not replay prior submissions; repeated equal submissions still append separate rows.
 - `workspace-actions.test.cjs` checks captured service actions across navigation, repeated
   equal event commands, and cancellation when their owner is deleted.
 - `workspace-multi-endpoints.test.cjs` checks mixed scalar/table/event rows, imports from several

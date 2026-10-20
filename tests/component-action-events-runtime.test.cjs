@@ -71,3 +71,18 @@ test('Capture row emits zero-based inserted indices and row-limit failure in edi
  const {reader,errors}=await exported(page,run,context);await clickReader(reader,3,trigger);await readerLog(reader,'failed:');assert.match(await reader.locator('[data-smart-index="4"]').textContent(),/1000/);assert.equal((await reader.locator('[data-smart-index="4"]').textContent()).includes('captured:'),false);
  await clickEditor(page,run,3,'trigger');assert.match((await logs(page,run,1))[0],/^failed:.*1000/);assert.equal(await run('datasets.log.rows.length'),1000);assert.deepEqual(errors,[]);
 }));
+
+test('Capture row reports dispatcher queue rejection through its Failed output without adding a row',async()=>app(async({page,run})=>{
+ await seed(run);
+ await run(`(async()=>{
+  items[4].eventBindings={failed:{uid:'capture',port:'failed'}};
+  editorComponentEvaluation=null;
+  const graph=await ensureEditorComponentGraph(),capture=items[2],record=graph.get(capture);
+  queueEditorComponentActionIntents(Array.from({length:65},()=>captureComponentActionIntent(capture,'capture',record,graph.datasets)));
+ })()`);
+ await page.waitForFunction(()=>__test.run('!editorActionDispatcher.running'),null,{timeout:60000});
+ assert.equal(await run('datasets.log.rows.length'),64,'only accepted captures may append records');
+ const messages=await run('items[4].state.entries');
+ assert.equal(messages.length,1,'the rejected occurrence must reach the connected Failed output');
+ assert.match(messages[0],/^failed:.*queue is full/);
+}));

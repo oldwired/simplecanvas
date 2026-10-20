@@ -308,8 +308,14 @@ test('transformed event changes share one Undo step and restoration never emits 
 }));
 
 test('a transform error atomically rejects the submitted event instead of committing partial source or Memo state',async()=>app(async({page,run})=>{
-  await seed(run,extractorCircuit);await pause(page,run);await submit(page,run,0,'Hello World');
+  await seed(run,extractorCircuit);await pause(page,run);
+  assert.equal(await run('editorTimeline.pausedByUser'),true,'simulation is paused before checking atomic state');
+  await submit(page,run,0,'Hello World');
+  assert.equal(await run('editorTimeline.pausedByUser'),true,'submission retains Pause');
+  await page.waitForTimeout(250);
+  assert.equal(await run('items[0].state.submitted'),false,'paused submission does not run its Boolean pulse');
   await run("items[1].state={...items[1].state,mode:'regex match'};items[1].bindings={text:items[1].bindings.text};items[1].inputValues={pattern:'['};render();ensureEditorComponentGraph()");
+  assert.equal(await run('editorTimeline.pausedByUser'),true,'configuration retains Pause');
   const before=await run('JSON.stringify(items.map(item=>item.state))');
   const {field,input}=await openEntry(page,run,0);await input.fill('Rejected');await input.press('Enter');await run('smartHitSettled');
   assert.equal(await run('JSON.stringify(items.map(item=>item.state))'),before);

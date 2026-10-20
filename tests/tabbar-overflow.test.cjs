@@ -188,3 +188,25 @@ for(const withSmart of [false,true])test(`downloaded ${withSmart?'smart':'plain'
   if(withSmart)await reader.waitForFunction(()=>document.querySelectorAll('.tab-panel')[0].querySelector('[data-smart-index]')?.dataset.smartReady==='true');
   assert.deepEqual(errors,[],'no uncaught offline-reader errors');assert.deepEqual(requests,[],'the export has no HTTP dependencies');
 }));
+
+test('choosing a reader tab cancels arrow scrolling without a later frame clipping the selection',async()=>app(async({page,run,context})=>{
+  await seed(run);const {reader,errors}=await openExport(page,run,context);await overflow(reader);
+  await reader.locator('.tab-scroll-next').click();
+  await reader.waitForFunction(()=>document.querySelector('.tabbar-scroll').scrollLeft>0);
+  const samples=await reader.evaluate(async()=>{
+    document.querySelector('.tab-list-toggle').click();
+    document.querySelectorAll('.tab-list-item')[9].click();
+    const strip=document.querySelector('.tabbar-scroll'),tab=document.querySelector('.tab-select.active'),samples=[];
+    // Observe every paint across the interrupted animation, rather than accepting an
+    // instant reveal that an already queued scrolling frame can later overwrite.
+    const until=performance.now()+250;
+    do{
+      await new Promise(requestAnimationFrame);
+      const view=strip.getBoundingClientRect(),box=tab.getBoundingClientRect();
+      samples.push(box.left>=view.left-1&&box.right<=view.right+1);
+    }while(performance.now()<until);
+    return samples;
+  });
+  assert.ok(samples.every(Boolean),'the selected tab stays completely visible after every paint');
+  await active(reader,9,{focus:true});assert.deepEqual(errors,[]);
+}));
