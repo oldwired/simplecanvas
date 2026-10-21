@@ -610,7 +610,21 @@ parent editor to reader code. Delayed alignment, header paste, pending image/ske
 image decodes released after Return must leave the source and its history unchanged.
 An HTTPS preview uses a regular file input without attempting the sandbox-denied native picker;
 Markdown links open in a separate page with no opener. Cancelling startup aborts its build signal,
-and a later Run starts with a fresh signal.
+and a later Run starts with a fresh signal. Escape during a held reader slider drag cancels that
+interaction locally, native reader dialogs still dismiss with Escape, and Escape from the outer
+preview header returns to editing.
+
+`component-inspector-ux.test.cjs` exercises integrated filtering dropdowns with pointer/keyboard
+selection, Escape/Tab cancellation, retained connections and compact tooltip icons. It covers
+source values and diagnostics, draft disconnection, missing/incompatible source repair,
+Go to source with unsaved-change protection, Receiver jumps to another sketch and persistence
+after reload, table/event inputs, accessible field errors, narrow layouts, and Spreadsheet's
+compact inspector.
+
+`phase5-closeout.test.cjs` authors components through the library and Edit, then operates Run,
+returns and verifies discard, reloads browser autosave, reopens a workspace file, and uses an
+offline HTML export. Its second workflow preserves Spreadsheet's inline formulas and declared
+input/output bindings through the same round trip.
 
 `reader-slider.test.cjs` keeps pointer movement continuous while Worker drawing calls run, checking
 that slider thumbs and values repaint before movement stops in Run and exported HTML. A delayed

@@ -52,8 +52,9 @@ test('Receive explicitly imports individual published endpoints and traces to th
   await picker.selectOption(JSON.stringify(reference));await settled(page);await save(page);
   assert.deepEqual(await run('items.find(item=>item.uid==="runtime-dashboard-clock").workspaceReceive'),{value:reference,tick:{sketchId:'runtime-services',componentUid:'runtime-publish-time',port:'tick'}});
   await open(page,run,'runtime-dashboard','runtime-dashboard-clock');
-  await page.locator('[data-workspace-endpoint-row="value"]').getByRole('button',{name:'Go to source',exact:true}).click();
+  await page.locator('[data-workspace-endpoint-row="value"]').getByRole('button',{name:'Go to source for Published endpoint 1',exact:true}).click();
   await page.waitForFunction(()=>__test.run('componentDialogSession===null'));
+  assert.equal(await run('activeTabId'),'runtime-services');
   assert.equal(await run('items[selection[0]].uid'),'runtime-publish-time');
   await open(page,run,'runtime-services','runtime-publish-time');
   assert.ok((await page.locator('[data-workspace-endpoint-row="tick"]').textContent()).includes('Dashboard / Receive service time / Second tick'),'publisher lists its explicit receivers by local endpoint name');

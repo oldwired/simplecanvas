@@ -5077,7 +5077,9 @@ const opToSVG=function opToSVG(op, assetPool=assets){
           e.error=null;delete e.host.dataset.componentError;e.kids=[];e.handles=[];
           e.behavior={move:false,rotate:false,resizeWidth:false,resizeHeight:false};paint(e);ready();return;
         }
-        if(!fresh()){if(current(e))e.dirty=true;return;}
+        // Settling inputs may update this component's state without changing the
+        // graph revision. Recheck the snapshot before reusing cached artwork.
+        if(!fresh() || !sameView(io)){if(current(e))e.dirty=true;return;}
         const drawingSignature=JSON.stringify([state,style,w,h,io]);
         // A clock or unrelated event can advance the graph without changing this view. Keep
         // its validated artwork and handles, but still honor the script's drawing deadline.
@@ -5526,6 +5528,9 @@ const opToSVG=function opToSVG(op, assetPool=assets){
         host.addEventListener('pointerdown',event=>{
           if(event.button!==0 || currentPress || document.hidden || e.error || event.target.closest('a'))return;
           event.preventDefault();
+          // Suppressed pointer defaults must still hand keyboard focus to the
+          // reader so Escape cancels this gesture, not the enclosing Run dialog.
+          window.focus();
           const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
             resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
             rotate:!!event.target.closest('[data-rotate]'),released:false};
@@ -5560,7 +5565,12 @@ const opToSVG=function opToSVG(op, assetPool=assets){
     window.addEventListener('pointercancel',event=>{
       if(currentPress?.pointerId===event.pointerId)cancelPresses();
     });
-    window.addEventListener('keydown',event=>{if(event.key==='Escape'){cancelPresses();select(null);}});
+    window.addEventListener('keydown',event=>{
+      if(event.key!=='Escape' || document.querySelector('dialog:modal'))return;
+      // Keep gesture cancellation inside the reader, including when it lives in
+      // the editor's modal Run frame. Reader dialogs retain their native Escape.
+      event.preventDefault();cancelPresses();select(null);
+    });
     document.addEventListener('visibilitychange',()=>{
       invalidateComponentGraph();
       clearTimeout(timelineTimer);timelineTimer=null;

@@ -188,6 +188,41 @@ test('keyboard Run and Return work, and cancellation cannot reopen a late previe
   await page.locator('#runPreviewPanel').waitFor({state:'hidden'});assert.deepEqual(await sourceState(run),before);
 }));
 
+test('Escape cancels a held reader drag locally, closes reader dialogs locally, and exits only from the Preview header',async()=>app(async({page,run})=>{
+  await seedControls(run);
+  const before=await sourceState(run),plus=await handle(run,0,'plus'),csv=await handle(run,4,'csv');
+  const size=await run('({w:items[0].w,h:items[0].h})'),frame=await preview(page);
+  await readerText(frame,0,'50');
+  const point=async value=>{
+    const local=await frame.locator('[data-smart-index="0"]').evaluate((host,{value,w,h})=>{
+      const pad=Math.min(20*Math.min(w/240,h/130),w*.15);
+      const p=new DOMPoint(pad+(w-pad*2)*value/100,h*.55).matrixTransform(host.firstElementChild.getScreenCTM());
+      return {x:p.x,y:p.y};
+    },{value,...size});
+    const box=await page.locator('#runPreviewFrame').boundingBox();return {x:box.x+local.x,y:box.y+local.y};
+  };
+  try{
+    const start=await point(50);await page.mouse.move(start.x,start.y);await page.mouse.down();
+    const moved=await point(80);await page.mouse.move(moved.x,moved.y);await readerText(frame,0,'80');
+    const focus=await page.evaluate(()=>({tag:document.activeElement.tagName,id:document.activeElement.id}));
+    await page.keyboard.press('Escape');
+    assert.equal(frame.isDetached(),false,'cancelling a reader gesture must not remove the Run iframe: '+JSON.stringify(focus));
+    assert.equal(await page.locator('#runPreviewPanel').evaluate(panel=>panel.open),true,'reader Escape leaves Run open');
+    await readerText(frame,0,'50');await page.mouse.up();
+    await clickHandle(page,frame,0,plus);await readerText(frame,0,'51');
+    assert.deepEqual(await sourceState(run),before,'cancelled and subsequent reader edits remain isolated');
+
+    await clickHandle(page,frame,4,csv);
+    const dialog=frame.locator('dialog[data-component-data-action]');await dialog.waitFor();
+    await dialog.getByRole('button',{name:'Cancel',exact:true}).focus();await page.keyboard.press('Escape');
+    await dialog.waitFor({state:'detached'});
+    assert.equal(await page.locator('#runPreviewPanel').evaluate(panel=>panel.open),true,'Escape still dismisses the reader’s own modal without exiting Run');
+    await page.locator('#exitPreviewBtn').focus();await page.keyboard.press('Escape');
+    await page.locator('#runPreviewPanel').waitFor({state:'hidden'});
+    assert.deepEqual(await sourceState(run),before,'header Escape returns to the unchanged authored workspace');
+  }finally{await page.mouse.up();}
+}));
+
 test('a failed Preview build leaves a visible error and a working return path without changing the source',async()=>app(async({page,run})=>{
   await seedControls(run);const before=await sourceState(run),saved=await run('readSavedWorkspace()');
   await run(`window.originalPreviewBuild=buildWorkspaceHtml;buildWorkspaceHtml=async()=>{throw new Error('Deliberate preview build failure');};`);

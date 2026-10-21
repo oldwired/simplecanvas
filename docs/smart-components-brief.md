@@ -1,7 +1,7 @@
 # From smart shapes to connected components
 
-Status: stages 1–4 are complete on `feature/smart-components`, based on `main`,
-with the stage 3 closeout validated 2026-10-18 and stage 4 closed out 2026-10-20.
+Status: stages 1–5 are complete on `feature/smart-components`, based on `main`,
+with stage 3 validated 2026-10-18, stage 4 closed out 2026-10-20, and stage 5 closed out 2026-10-21.
 Stage 2 includes the expanded library, logic, routing, timed signals,
 the initial eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
@@ -22,8 +22,10 @@ existing signals, with shared origins to recombine related branches. Event wirin
 reception modes, recent activity, and captured payloads. Dropdown and scalar selectors support
 explicit occurrences, and signal/event adapters and completion notifications extend the workflow.
 Shared host-action dispatch and workspace execution complete stage 4, with the acceptance workflow,
-closeout fixes, and verification evidence recorded below. The first stage 5 milestone implements
-Run preview with a disposable workspace copy; broader stage 5 polish and stage 6 integrations remain proposals.
+closeout fixes, and verification evidence recorded below. Stage 5 completes Run preview with a
+disposable workspace copy and the Edit/binding workflow, preserving Spreadsheet's specialized
+editor. Returning to editing discards preview changes; explicit result downloads remain available.
+Optional authoring extensions and stage 6 integrations remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -179,8 +181,9 @@ workspace execution.
 - **Ports remain explicitly typed.** Text input and Text label carry strings; Number input,
   Constant, and Value label carry numbers. Compare accepts two numbers and a selectable relation;
   routing has separate numeric and Boolean variants with fixed channel types.
-- **Editor interaction still uses edit mode.** Direct reader interaction exists in HTML; a
-  document-wide Run/Preview mode inside the editor would be an additional feature.
+- **Authoring and Run are separate.** Double-click a component to use its controls while
+  authoring. **Run** operates a disposable workspace copy through the same reader as HTML export;
+  returning to editing discards that copy's changes.
 
 ## Component index convention
 
@@ -216,7 +219,7 @@ Keep these checks as the regression baseline for subsequent stages.
 
 ## Delivery stages
 
-Stages 1–4, including their example workspaces and authoring closeouts, are complete on the feature
+Stages 1–5, including their example workspaces and authoring closeouts, are complete on the feature
 branch. The feedback milestone below follows stage 2; the text-passing milestone follows feedback.
 Both precede stage 3 and reuse the scalar graph.
 Stage 3 delivers the agreed data workflow, including a connected formula sheet, shared
@@ -225,8 +228,9 @@ closeout evidence and deferred extensions are recorded below. Stage 4 delivers h
 ports, shared-origin routing, explicit Reprocess, selection and completion events, adapters, and
 declared local actions through a shared dispatcher. Whole-workspace execution, explicit
 Publish/Receive endpoints, shared Dataset discovery, and workspace/sketch settings extend that
-contract across sketches while retaining all existing signals and triggers. Stages 5–6 remain
-proposals. Shared buses are explicitly outside the feedback milestone.
+contract across sketches while retaining all existing signals and triggers. Stage 5 completes
+isolated Run preview and the Edit/binding workflow with an explicit discard/download policy.
+Stage 6 remains proposed. Shared buses are explicitly outside the feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -242,7 +246,7 @@ Share runtime helpers between editor and export throughout.
 | 3T. Text operations — implemented on branch | Native regex comparison/extraction; strict Text to number; formatted Number to text; Text compose, transform, replace, and selector | Connected text/status displays respond in the editor and offline HTML; invalid numeric input has an explicit validity output; errors and Worker deadlines remain visible and bounded. |
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
 | 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
-| 5. Authoring and reader workflow | Run/Preview mode, reusable property controls, further binding refinements, and an explicit results-saving policy; initial visual wiring is delivered in stage 3 | An author previews an existing example, operates its controls with layout tools hidden, and returns to authoring. State retention and any Save results action follow the chosen policy. |
+| 5. Authoring and reader workflow — complete on branch | Isolated Run preview, reusable property controls, searchable binding sources with repair feedback, and discard-on-return with explicit result downloads; initial visual wiring is delivered in stage 3 | An author places, configures and connects components, operates a preview with layout tools hidden, returns without changing the source, then saves, reopens and exports the workspace. Spreadsheet retains its specialized editor. |
 | 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
@@ -300,7 +304,7 @@ changes; reloading restores the exported snapshot. JSON remains the editable sou
 Step 2.3 and the focused authoring pass are complete. Component discovery, placement, input
 configuration, and error recovery have been checked through the workflow recorded below.
 The feedback milestone extends these examples and adds Pause/Step/Resume; the text milestone
-adds typed entry and stored notes. Neither requires the proposed full Run/Preview authoring mode.
+adds typed entry and stored notes. Both remain usable while authoring and in Run preview.
 
 ### Preserve the working popup
 
@@ -848,7 +852,7 @@ Detect a circuit that does not settle within a finite round budget, highlight th
 stop that loop, and keep unrelated components and the editor usable. A self-connected NOT gate
 must never hang the app or quietly depend on item order. Bring forward minimal **Pause / Step /
 Resume** simulation controls so otherwise invisible feedback transitions can be inspected. These
-controls are not the later full Run/Preview authoring mode.
+controls operate the simulation independently of the document-wide Run preview workflow.
 Pause and simulation time belong to the tab and survive Undo/Redo; restored objects re-prime
 transient edge/deadline observation. Dependency tracking retains each script definition once and
 uses compact revision keys for transitive wiring changes.
@@ -1215,7 +1219,7 @@ when already settled, it advances to the next scheduled signal event. The status
 simulation time, the settling round, and a recent signal change. Resume settles pending work and
 continues scheduling. Step advances logical simulation time; Live clock, Stopwatch, and Timer
 still read actual wall time and are not fast-forwarded. Editor and exported HTML share the same
-behavior; this is smaller than the later full Run/Preview workflow.
+behavior. Run preview additionally isolates interaction in a disposable workspace copy.
 
 Apply execution and value-size budgets to all hooks. If a producer fails, mark its outputs
 unavailable and identify affected bindings. A last valid drawing may remain visible, but stale
@@ -1312,8 +1316,9 @@ The Edit inspector's fixed header shows a read-only component type separately fr
 instance name. Exact built-in scripts use their canonical catalog name even after an instance is
 renamed. A unique custom-library match uses its entry name; other scripts show **Custom component**.
 
-An editor Run/Preview mode can later reuse the exported reader interaction behavior. Wiring
-and authoring controls stay hidden there. Existing smart editing remains usable in the first slice.
+**Run** reuses exported-reader interaction in a separate workspace copy. Authoring controls stay
+hidden, while Sketch/Workspace settings determine read-only wiring and simulation-control visibility.
+Existing smart editing remains available in the authoring workspace.
 
 ### Embedded data and persistence — stage 3 implemented workflow
 
@@ -2538,9 +2543,9 @@ in a saved document or HTML export under the shared policy below. Importing a do
 enable its external operations. Prepared deployment exports need a separate startup policy.
 Component scripts retain their lack of direct DOM, storage, and network access.
 
-## Authoring and reader workflow — implemented stage 5 Run preview milestone
+## Authoring and reader workflow — stage 5 complete on branch
 
-The first milestone reuses the exported reader to operate a separate copy of the current workspace.
+Run reuses the exported reader to operate a separate copy of the current workspace.
 Authoring is suspended while that copy runs. Returning to editing discards preview changes and
 restores the authoring workspace; there is no implicit merge or **Keep results** action. A fresh
 preview starts from a fresh authoring snapshot. The toolbar's **Run** action opens **Workspace
@@ -2593,7 +2598,7 @@ They cover copy/discard and downloads, source history/autosave isolation, simula
 read-only and feature-disabled sources, hidden-sketch navigation, query/title isolation, cancelled
 startup and late imports, regular file import on HTTPS, and separate Markdown links. Startup
 cancellation also aborts the old build signal; a later Run uses a fresh signal. Preview layout was
-visually checked. Broader stage 5 work below remains open.
+visually checked. The Edit/binding pass and closeout below complete the stage.
 
 The interaction follow-up covers continuous slider painting, connected displays and unrelated
 timer activity in Run and HTML, plus smart-shape resizing in the editor. Completed intermediate
@@ -2601,17 +2606,69 @@ frames remain distinct from a drawing verified against the latest graph. Dropdow
 finish before a queued next click proceeds; leaving the editing context still cancels pending
 work. Regression coverage includes cancellation, final values, and resize Undo/Redo.
 
-### Remaining stage 5 work
+### Edit and binding workflow
 
-Broader authoring polish remains separate: improve binding discovery and reusable property controls
-while retaining Edit and visual wiring. If read, write, or read/write Dataset markers are added,
-first define explicit access metadata and account for per-instance editing and reader permissions.
-The existing neutral Dataset association does not promise any of those rights.
+The existing **Edit…** inspector and visual wiring remain the two ways to author connections.
+Input rows identify their source, paused value or diagnostic, and hybrid value/event mode.
+Source dropdowns filter compatible outputs within their opened menu. Typing or cancelling
+retains the current choice; choosing a result updates the draft. Broken components, missing outputs and incompatible types have local repair feedback.
+**Disconnect** stages removal of a binding; scalar inputs return to their local values. Save applies
+the draft and Cancel discards it. Dataset references report their table and offer navigation to an
+owning component when available.
+
+**Go to source** and **Disconnect** are compact square icons with tooltips beside the dropdown.
+A Receiver uses the same controls for its imported endpoints; its source icon switches to the
+publishing sketch, selects the Publish component and remembers that sketch across reloads.
+**Go to source** closes Edit and selects the producer. If the inspector has unsaved changes, it
+asks before discarding them; **Used by** navigation follows the same rule. Configuration and
+literal inputs share typed property controls, including declared choices, Boolean values,
+numeric bounds/steps and multiline fields. Errors appear beside their fields and Save focuses
+the first invalid field. The preview remains paused and does not trigger timers, events or actions.
+
+Spreadsheet retains its specialized cell/formula editor and cell context menu. Its compact
+inspector identifies the component, edits the instance name, binds declared inputs and previews
+outputs. It does not duplicate formula, range or layout authoring.
+
+### Stage 5 closeout
+
+Closed on 2026-10-21 with the disposable Run copy and explicit result-download policy. The
+[authored workflow regressions](../tests/phase5-closeout.test.cjs) cover library placement,
+configuration and binding through Edit, Run interaction and discard, autosave reload, workspace
+file reopen and self-contained offline HTML. The second workflow exercises Spreadsheet's
+inline formulas and compact inspector throughout the same sequence. Both workflows pass in
+Chromium and WebKit.
+
+The initial closeout's full Chromium suite passed **1,533/1,533** after its fixes. The
+[inspector UX regressions](../tests/component-inspector-ux.test.cjs) pass in each browser,
+covering source search and stable selection, disconnection, broken-source repair, guarded
+navigation, table/event inputs, accessible validation and narrow layouts. The focused WebKit
+inspector checks, including Spreadsheet, workspace bindings and export dependencies, pass 37/37.
+Stopwatch, Run preview, reader-slider and authored workflow checks pass 24/24 in each browser.
+The closeout fixes Escape during a held reader drag: focus enters the reader and Escape cancels
+the interaction locally, while native reader dialogs still dismiss and the outer preview header
+still returns to editing. It also fixes stale reader artwork after graph settlement changes a
+component's state without changing the graph revision: cache reuse now checks the current view
+snapshot. The existing Stopwatch regression caught this restart/display mismatch and passes
+without a timeout increase. Desktop and 390-pixel inspector layouts were visually checked. Both
+self-contained demo HTML files were regenerated successfully, with 38 catalog sketches and
+three workspace-runtime sketches.
+
+The compact-dropdown follow-up passes all 15 inspector and workspace-authoring checks in both
+Chromium and WebKit, including pointer/keyboard filtering, cancellation without changing a
+connection, tooltip icons, Receiver disconnection and cross-sketch source navigation that
+persists after reload. Existing binding, Spreadsheet and authored Run/export checks also pass.
+
+### Deferred after stage 5
+
+The completed results policy is discard-on-return with explicit downloads. Keeping or selectively
+merging preview results, and saving a modified reader as an editable workspace or HTML, remain
+separate extensions. There is no HTML-to-editor round trip in this stage.
 
 Sketch settings already applies title, tab bar, read-only wiring and simulation-control visibility
-before tab reveal. Page background, initial fit/zoom and initial keyboard focus remain possible
-extensions. Keeping or selectively merging preview results and saving a modified reader as an
-editable workspace/HTML remain deferred. This first milestone does not close all of stage 5.
+before tab reveal. Page background, initial fit/zoom and initial keyboard focus remain optional
+extensions. Read, write or read/write Dataset markers first need explicit access metadata and
+rules for per-instance editing and reader permissions; the existing neutral Dataset association
+does not promise any of those rights. These additions are outside the closed stage 5 scope.
 
 ## Shared integration foundations — proposed step 6.1
 
@@ -2636,7 +2693,7 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
 - **Reusable input fields.** Text and number entry already share host-owned keyboard, commit/cancel,
   and validation behavior in editor and exported HTML; Toggle is also available. Reuse those
   contracts for configurable connections, and design password entry and sensitive-value handling
-  separately. This does not need to wait for full Run/Preview.
+  separately from ordinary property editing and Run preview.
   Sensitive values use a host-managed session store and restricted references to approved
   configuration consumers, not ordinary persisted string outputs visible to arbitrary scripts.
 - **Execution policy.** Keep network execution separate from `smartComponents`, which only hides
@@ -2908,9 +2965,12 @@ handling are tested separately from broker delivery.
    The 2026-10-20 closeout covers the authored save/reopen/offline workflow, lifecycle regressions,
    and corrected action rejection, tab scrolling, and static export behavior. Deferred event
    extensions are outside this completed scope.
-4. **Stage 5:** Run preview uses a separate workspace copy and discards it on return, with explicit
-   result downloads still available. Broader authoring polish, Keep results/merging, and a full
-   HTML-to-editor round trip remain separate.
+4. **Stage 5 — complete on branch:** Run preview uses a separate workspace copy and discards it
+   on return, with explicit result downloads still available. Edit provides source discovery,
+   repair feedback, shared typed controls and guarded navigation while preserving Spreadsheet's
+   specialized editor. The 2026-10-21 closeout covers authored configuration/binding, Run/discard,
+   save/reopen and offline export. Optional settings, Dataset access metadata, Keep results/merging
+   and a full HTML-to-editor round trip remain outside this completed scope.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
    connection identity, and artifact-specific credential/startup policy before either transport.
    These require explicit contract extensions, not implicit additions to the value/table API v2.

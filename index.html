@@ -294,6 +294,27 @@
   .component-port-controls.connected,.component-port-controls.owned,.component-port-controls.table{grid-template-columns:minmax(0,1fr)}
   .component-port-extra{grid-column:2;min-width:0}
   .component-port-extra:empty{display:none}
+  .component-source-picker{display:flex;align-items:center;gap:5px;min-width:0}
+  #componentBindingsDialog .component-source-picker>select{flex:1;width:0;min-width:0}
+  .component-source-popup{position:fixed;inset:auto;margin:0;box-sizing:border-box;padding:6px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);box-shadow:0 8px 28px #0f172a26;overflow:hidden}
+  .component-source-popup input{margin:0 0 5px;padding:7px 9px;border:1px solid var(--line);border-radius:5px}
+  .component-source-options{overflow:auto;overscroll-behavior:contain;max-height:240px}
+  .component-source-options [role=option]{padding:8px 9px;font:13px system-ui;line-height:1.4;overflow-wrap:anywhere;cursor:pointer;border-radius:4px}
+  .component-source-options [role=option][aria-selected=true]{font-weight:600}
+  .component-source-options [role=option].active{background:#eef2ff;color:#3730a3}
+  .component-source-options [aria-disabled=true]{color:var(--muted);cursor:default}
+  .component-source-empty{padding:10px;font-size:12px;color:var(--muted)}
+  .component-connection-actions{display:flex;gap:4px;flex:none}
+  #componentBindingsDialog .component-connection-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
+  .component-connection-icon svg{width:16px;height:16px;pointer-events:none}
+  .component-connection-icon:hover{background:#f1f5f9}
+  .component-connection-icon:disabled{opacity:.4;cursor:default}
+  .component-connection{margin:5px 0 8px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;color:var(--muted)}
+  .component-connection[data-tone="error"],.component-field-error{color:#b91c1c}
+  .component-field-error{font-size:12px;margin:5px 0 0;line-height:1.4}
+  .component-field-hint{display:block;margin:5px 0 0;font-size:11px;color:var(--muted);line-height:1.4}
+  #componentBindingsDialog [aria-invalid="true"]{border-color:#dc2626;outline-color:#dc2626}
+  #componentBindingsDialog :is(input,select,textarea,button):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .component-data-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
   .component-data-actions .btn{font-size:12px;font-weight:500;height:auto;min-height:32px;white-space:normal;text-align:left;padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:#fff}
   #componentInputsHelp{font-size:12px;color:var(--muted);line-height:1.5;margin-top:20px}
@@ -986,7 +1007,7 @@
 <div id="toast"></div>
 <div id="workspaceOwnership" role="status" hidden><span id="workspaceOwnershipMessage"></span><button class="btn" id="takeWorkspaceOwnership" type="button">Take over editing</button><button class="btn" id="downloadWorkspaceRecovery" type="button">Download workspace</button><button class="btn" id="resetWorkspaceRecovery" type="button" hidden>Start fresh</button></div>
 <dialog class="library-dialog" id="componentBindingsDialog" aria-labelledby="componentBindingsTitle" aria-describedby="componentTypeDescription">
-  <form id="componentBindingsForm">
+  <form id="componentBindingsForm" novalidate>
     <header class="component-edit-header">
       <h2 id="componentBindingsTitle">Edit component</h2>
       <p id="componentTypeDescription">Component: <strong id="componentTypeName"></strong></p>
@@ -13075,7 +13096,9 @@ self.onmessage = function(e){
           e.error=null;delete e.host.dataset.componentError;e.kids=[];e.handles=[];
           e.behavior={move:false,rotate:false,resizeWidth:false,resizeHeight:false};paint(e);ready();return;
         }
-        if(!fresh()){if(current(e))e.dirty=true;return;}
+        // Settling inputs may update this component's state without changing the
+        // graph revision. Recheck the snapshot before reusing cached artwork.
+        if(!fresh() || !sameView(io)){if(current(e))e.dirty=true;return;}
         const drawingSignature=JSON.stringify([state,style,w,h,io]);
         // A clock or unrelated event can advance the graph without changing this view. Keep
         // its validated artwork and handles, but still honor the script's drawing deadline.
@@ -13524,6 +13547,9 @@ self.onmessage = function(e){
         host.addEventListener('pointerdown',event=>{
           if(event.button!==0 || currentPress || document.hidden || e.error || event.target.closest('a'))return;
           event.preventDefault();
+          // Suppressed pointer defaults must still hand keyboard focus to the
+          // reader so Escape cancels this gesture, not the enclosing Run dialog.
+          window.focus();
           const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
             resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
             rotate:!!event.target.closest('[data-rotate]'),released:false};
@@ -13558,7 +13584,12 @@ self.onmessage = function(e){
     window.addEventListener('pointercancel',event=>{
       if(currentPress?.pointerId===event.pointerId)cancelPresses();
     });
-    window.addEventListener('keydown',event=>{if(event.key==='Escape'){cancelPresses();select(null);}});
+    window.addEventListener('keydown',event=>{
+      if(event.key!=='Escape' || document.querySelector('dialog:modal'))return;
+      // Keep gesture cancellation inside the reader, including when it lives in
+      // the editor's modal Run frame. Reader dialogs retain their native Escape.
+      event.preventDefault();cancelPresses();select(null);
+    });
     document.addEventListener('visibilitychange',()=>{
       invalidateComponentGraph();
       clearTimeout(timelineTimer);timelineTimer=null;
@@ -21788,6 +21819,184 @@ self.onmessage = function(e){
     }
     return labels;
   }
+  function createComponentPropertyControl(field,value,{id,label,optionLabel=String,booleanLabels=['True','False']}={}){
+    const input=document.createElement(field.options || field.type==='boolean'?'select':field.format==='lines'?'textarea':'input');
+    if(id)input.id=id;if(label)input.setAttribute('aria-label',label);
+    if(field.options){input.className='select';for(const option of field.options)input.add(new Option(optionLabel(option),option));}
+    else if(field.type==='boolean'){input.className='select';input.add(new Option(booleanLabels[0],'true'));input.add(new Option(booleanLabels[1],'false'));}
+    else if(field.format==='lines'){input.rows=5;input.maxLength=2000;input.spellcheck=false;input.style.cssText='resize:vertical;font:13px monospace;padding:8px';}
+    else{input.type=field.type==='number'?'number':'text';if(field.type!=='number')input.maxLength=2000;}
+    if(field.type==='number'){
+      input.step=String(field.step??'any');
+      if(field.min!==undefined)input.min=String(field.min);
+      if(field.max!==undefined)input.max=String(field.max);
+    }
+    input.value=String(value??'');return input;
+  }
+  function componentFieldFeedback(input,message=''){
+    if(!input || input.type==='hidden')return;
+    let error=document.getElementById(input.id+'-error');
+    if(message && !error){
+      error=document.createElement('p');error.className='component-field-error';error.dataset.componentFieldError=input.id;error.id=input.id+'-error';
+      const host=input.closest('.component-port-controls') || input.parentElement;
+      host.append(error);error.style.gridColumn='1 / -1';
+    }
+    if(error){
+      error.textContent=message;error.hidden=!message;
+      const described=new Set((input.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean));
+      if(message)described.add(error.id);else described.delete(error.id);
+      if(described.size)input.setAttribute('aria-describedby',[...described].join(' '));else input.removeAttribute('aria-describedby');
+    }
+    if(message)input.setAttribute('aria-invalid','true');else input.removeAttribute('aria-invalid');
+  }
+  function focusComponentInvalidField(){
+    const input=[...componentBindingsDialog.querySelectorAll('[aria-invalid="true"]')].find(input=>!input.hidden && !input.disabled && input.getClientRects().length);
+    if(input){input.scrollIntoView({block:'nearest'});input.focus();}
+  }
+  let componentSourceDropdown=null;
+  function createComponentConnectionIcon(kind,label,title){
+    const button=document.createElement('button');button.type='button';button.className='component-connection-icon';
+    button.setAttribute('aria-label',label);button.title=title||label;
+    const paths=kind==='go'?'<path d="M14 4h6v6M20 4l-9 9M10 5H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-5"/>':'<path d="m9 15 6-6M7 17l-1 1a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0m4 4a3 3 0 0 0 4 0l4-4a3 3 0 0 0-4-4l-1 1M3 3l18 18"/>';
+    button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths+'</svg>';
+    return button;
+  }
+  function createComponentSourceDropdown(select,label){
+    const picker=document.createElement('div'),popup=document.createElement('div'),filter=document.createElement('input'),list=document.createElement('div');
+    picker.className='component-source-picker';select.replaceWith(picker);picker.append(select,popup);
+    popup.className='component-source-popup';popup.popover='manual';popup.hidden=true;
+    filter.type='search';filter.placeholder='Type to filter…';filter.autocomplete='off';filter.setAttribute('aria-label','Filter sources for '+label);
+    filter.setAttribute('role','combobox');filter.setAttribute('aria-autocomplete','list');filter.setAttribute('aria-expanded','false');
+    list.id=select.id+'-options';list.className='component-source-options';list.setAttribute('role','listbox');list.setAttribute('aria-label',label+' sources');
+    select.setAttribute('aria-controls',list.id);select.setAttribute('aria-expanded','false');filter.setAttribute('aria-controls',list.id);
+    popup.append(filter,list);
+    let opened=false,shown=[],active=-1;
+    const position=()=>{
+      if(!opened)return;
+      const rect=select.getBoundingClientRect(),width=Math.min(Math.max(rect.width,280),innerWidth-16);
+      const body=select.closest('.component-edit-body')?.getBoundingClientRect();
+      if(!select.isConnected || body && (rect.bottom<body.top || rect.top>body.bottom)){close();return;}
+      const below=innerHeight-rect.bottom-10,above=rect.top-10,up=below<220 && above>below,room=Math.max(80,up?above:below);
+      popup.style.width=width+'px';list.style.maxHeight=Math.min(240,room-54)+'px';
+      popup.style.left=Math.max(8,Math.min(rect.left,innerWidth-width-8))+'px';
+      const top=up?rect.top-popup.offsetHeight-4:rect.bottom+4;
+      popup.style.top=Math.max(8,Math.min(top,innerHeight-popup.offsetHeight-8))+'px';
+    };
+    const mark=index=>{
+      active=index;
+      for(const [i,entry] of shown.entries())entry.node.classList.toggle('active',i===active);
+      const node=shown[active]?.node;
+      if(node){filter.setAttribute('aria-activedescendant',node.id);node.scrollIntoView({block:'nearest'});}
+      else filter.removeAttribute('aria-activedescendant');
+    };
+    const draw=()=>{
+      const query=filter.value.trim().toLocaleLowerCase();list.replaceChildren();shown=[];
+      for(const [index,option] of [...select.options].entries()){
+        if(query && !option.textContent.toLocaleLowerCase().includes(query))continue;
+        const node=document.createElement('div');node.id=list.id+'-'+index;node.setAttribute('role','option');node.setAttribute('aria-selected',String(option.selected));
+        node.setAttribute('aria-disabled',String(option.disabled));node.textContent=option.textContent;
+        node.addEventListener('pointerdown',event=>event.preventDefault());
+        node.addEventListener('click',event=>{event.preventDefault();if(!option.disabled)choose(option.value);});
+        if(!option.disabled){const at=shown.length;shown.push({node,option});node.addEventListener('pointermove',()=>mark(at));}
+        list.append(node);
+      }
+      if(!list.childElementCount){const empty=document.createElement('div');empty.className='component-source-empty';empty.setAttribute('role','status');empty.textContent='No matching sources';list.append(empty);}
+      mark(query?-1:shown.findIndex(entry=>entry.option.selected));position();
+    };
+    const outside=event=>{if(!picker.contains(event.target))close();};
+    const close=(focus=false)=>{
+      if(!opened)return;
+      opened=false;if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;
+      select.setAttribute('aria-expanded','false');filter.setAttribute('aria-expanded','false');filter.removeAttribute('aria-activedescendant');
+      document.removeEventListener('pointerdown',outside,true);window.removeEventListener('resize',position);componentBindingsDialog.removeEventListener('scroll',position,true);
+      if(componentSourceDropdown?.select===select)componentSourceDropdown=null;
+      if(focus && select.isConnected)select.focus({preventScroll:true});
+    };
+    const choose=value=>{
+      close(true);if(select.value===value)return;
+      select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+    const open=(query='')=>{
+      if(select.matches(':disabled'))return;
+      if(opened){filter.focus();return;}
+      componentSourceDropdown?.close();componentSourceDropdown={select,close};opened=true;filter.value=query;
+      popup.hidden=false;popup.showPopover();select.setAttribute('aria-expanded','true');filter.setAttribute('aria-expanded','true');
+      draw();filter.focus({preventScroll:true});
+      document.addEventListener('pointerdown',outside,true);window.addEventListener('resize',position);componentBindingsDialog.addEventListener('scroll',position,true);
+    };
+    select.addEventListener('pointerdown',event=>{if(event.button===0){event.preventDefault();open();}});
+    select.addEventListener('mousedown',event=>event.preventDefault());
+    select.addEventListener('click',event=>{event.preventDefault();open();});
+    select.addEventListener('keydown',event=>{
+      if(event.isComposing)return;
+      if(['ArrowDown','ArrowUp','Enter',' '].includes(event.key)){event.preventDefault();open();}
+      else if(event.key.length===1 && !event.ctrlKey && !event.metaKey && !event.altKey){event.preventDefault();open(event.key);}
+    });
+    select.addEventListener('change',()=>close());
+    filter.addEventListener('input',draw);
+    filter.addEventListener('keydown',event=>{
+      if(event.isComposing)return;
+      if(event.key==='ArrowDown' || event.key==='ArrowUp'){
+        event.preventDefault();mark(shown.length?(active+(event.key==='ArrowDown'?1:active<0?0:-1)+shown.length)%shown.length:-1);
+      }else if(event.key==='Enter'){
+        event.preventDefault();if(shown[active])choose(shown[active].option.value);else if(shown.length===1)choose(shown[0].option.value);
+      }else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);}
+      else if(event.key==='Tab'){
+        event.preventDefault();close(true);
+        const fields=[...componentBindingsDialog.querySelectorAll('button,input,select,textarea,[tabindex]')].filter(field=>field.tabIndex>=0 && !field.matches(':disabled') && field.getClientRects().length);
+        const index=fields.indexOf(select),next=fields[(index+(event.shiftKey?-1:1)+fields.length)%fields.length];next?.focus();
+      }
+    });
+    return picker;
+  }
+  function addComponentSourceTools(session,entry,extra,label,{eventOnly=false}={}){
+    const select=entry.select,picker=createComponentSourceDropdown(select,label);
+    const status=document.createElement('p'),actions=document.createElement('div');
+    const go=createComponentConnectionIcon('go','Go to source for '+label,'Go to source'),disconnect=createComponentConnectionIcon('disconnect','Disconnect '+label,'Disconnect');
+    status.className='component-connection';status.dataset.componentConnection=entry.name;status.id=select.id+'-connection';select.setAttribute('aria-describedby',status.id);
+    actions.className='component-connection-actions';
+    let target=null;
+    go.addEventListener('click',()=>{if(target)componentWorkspaceJump(target.sketchId,target.uid);});
+    disconnect.addEventListener('click',()=>{componentSourceDropdown?.close();select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));(entry.input && !entry.input.hidden?entry.input:select).focus();});
+    actions.append(go,disconnect);picker.append(actions);extra.prepend(status);
+    entry.updateConnection=()=>{
+      target=null;let message='',invalid=false;
+      const graph=session.bindingGraph,ref=select.value?JSON.parse(select.value):null;
+      if(ref){
+        const source=session.scene.find(item=>item.uid===ref.uid),record=[...(graph||[])].find(([item])=>item.uid===ref.uid)?.[1];
+        const isEvent=eventOnly || ref.event,descriptor=(isEvent?record?.caps?.eventOutputs:record?.caps?.outputs)?.[ref.port];
+        if(source)target={sketchId:session.tab,uid:source.uid};
+        if(!source){message='Source component is missing. Choose a replacement or disconnect.';invalid=true;}
+        else if(ref.unresolved){message='This copied connection is unresolved. Choose its source again.';invalid=true;}
+        else if(!descriptor){message='Output “'+ref.port+'” is unavailable. Choose another output or disconnect.';invalid=true;}
+        else if(isEvent?!descriptor.types.every(type=>(entry.eventPort||entry.port).types?.includes(type) || entry.port.type===type):descriptor.type!==entry.port.type){message='Source type does not match this input. Choose a compatible output.';invalid=true;}
+        else{
+          message=(session.sourceLabels.get(source)||source.componentName||'Component')+' → '+(descriptor.label||ref.port);
+          if(isEvent)message+=' · Captured events';
+          else if(record.error)message+=' · '+record.error;
+          else if(Object.hasOwn(record.io?.outputs||{},ref.port))message+=' · Current value: '+componentOutputSummary(record.io.outputs[ref.port],graph.datasets||componentInspectorPool(session),record.io.tables?.outputs?.[ref.port]);
+          else message+=' · Value unavailable';
+          if(entry.receiveEvents)message+=entry.receiveEvents.checked && record.caps.eventOutputs?.[ref.port]?.hybrid?' · Values and events':' · Values only';
+        }
+      }else if(entry.port.type==='table' && entry.input?.value){
+        try{
+          const reference=JSON.parse(entry.input.value),pool=componentInspectorPool(session),table=componentTableSnapshot(reference,pool,0);
+          message='Dataset: '+table.name+' · '+table.rowCount+' rows × '+table.columns.length+' columns';
+          const sketchId=reference.sketchId||session.tab,doc=editorRuntimeDocuments().find(doc=>doc.id===sketchId);
+          const owner=doc?.items.find(item=>item.datasetOwner && item.inputValues?.[item.datasetOwner]?.datasetId===reference.datasetId);
+          if(owner)target={sketchId,uid:owner.uid};
+        }catch{message='Dataset is unavailable. Choose or import a replacement.';}
+      }else message=eventOnly?'No events connected.':select.options.length>1?'':'No compatible outputs on this sketch. '+(entry.port.type==='table'?'Choose or import a dataset.':'Use a value or add a compatible source.');
+      status.textContent=message;status.hidden=!message;status.dataset.tone=invalid?'error':'normal';
+      go.hidden=!target;disconnect.hidden=!ref;actions.hidden=!target && !ref;
+      extra.style.display=extra.children.length===1 && !message?'none':'';
+      componentFieldFeedback(select,invalid?message:'');
+    };
+    select.addEventListener('change',()=>entry.updateConnection());
+    entry.input?.addEventListener('change',()=>entry.updateConnection());
+    entry.receiveEvents?.addEventListener('change',()=>entry.updateConnection());
+    entry.updateConnection();
+  }
   async function inspectComponentGraph(list,valid,owners=new Map(),dataPool=datasets){
     if(!componentWorkspace(list)){
       const documents=editorRuntimeDocuments().map(doc=>doc.id===activeTabId?{...doc,items:list,datasets:dataPool}:doc);
@@ -21839,7 +22048,9 @@ self.onmessage = function(e){
     // repairs the declaration; a successful configuration will prune genuinely removed ports.
     proposal.bindings=session.configurationError?{...proposal.bindings}:{};proposal.inputValues=session.configurationError?{...proposal.inputValues}:{};
     proposal.eventBindings=session.configurationError?{...proposal.eventBindings}:{};proposal.eventModes=session.configurationError?{...proposal.eventModes}:{};
+    let failure=null;
     for(const {name,port,select,input,receiveEvents} of session.rows){
+      componentFieldFeedback(input);
       try{
         delete proposal.bindings[name];delete proposal.inputValues[name];
         if(receiveEvents && !receiveEvents.checked)proposal.eventModes[name]='value';
@@ -21853,19 +22064,25 @@ self.onmessage = function(e){
           if(port.type==='number' && (!input.value.trim() || !Number.isFinite(value)))throw new Error((port.label||name)+' needs a finite number.');
           proposal.inputValues[name]=componentValue(value,port.type,componentInspectorPool(session));
         }
-      }catch(err){if(!partial)throw err;}
+      }catch(err){componentFieldFeedback(select.value?select:input,err.message);failure ||= err;}
     }
     for(const {name,select} of session.eventRows||[]){
       try{delete proposal.eventBindings[name];if(select.value)proposal.eventBindings[name]=JSON.parse(select.value);}
       catch(err){if(!partial)throw err;}
     }
+    if(failure && !partial)throw failure;
   }
   function readComponentSettingRows(session,proposal){
+    let failure=null;
     for(const {name,field,input} of session.settings){
-      const value=field.type==='number'?Number(input.value):field.type==='boolean'?input.value==='true':input.value;
-      if(field.type==='number' && !input.value.trim())throw new Error(name+' needs a number.');
-      proposal.state[name]=componentSettingValue(value,field,name);
+      componentFieldFeedback(input);
+      try{
+        const value=field.type==='number'?Number(input.value):field.type==='boolean'?input.value==='true':input.value;
+        if(field.type==='number' && !input.value.trim())throw new Error((field.label||name)+' needs a number.');
+        proposal.state[name]=componentSettingValue(value,field,field.label||name);
+      }catch(err){componentFieldFeedback(input,err.message);failure ||= err;}
     }
+    if(failure)throw failure;
     readComponentWorkspaceFields(session,proposal);
     proposal.state=normalizeSmartState(proposal.state);
   }
@@ -22177,6 +22394,7 @@ self.onmessage = function(e){
     }
     componentBindingsError.textContent=session.importDraft?.failed?session.importDraft.error:record?.error||'';
     if(record)updateComponentColumnChoices(session,record);
+    for(const row of [...session.rows,...(session.eventRows||[])])row.updateConnection?.();
   }
   function queueComponentInputFeedback(session,delay=100){
     if(!session.current() || session.rendering || session.saving || session.importing || session.importDraft?.failed)return;
@@ -22205,7 +22423,7 @@ self.onmessage = function(e){
       try{
         // Inspection runs caps/compute only: no transitions, temporal memory, history, or canvas edits.
         const graph=await inspectComponentGraph(scene,valid,owners,session.datasets);
-        if(valid())showComponentInputFeedback(session,graph.get(proposal));
+        if(valid()){session.bindingGraph=graph;showComponentInputFeedback(session,graph.get(proposal));}
       }catch(err){
         if(valid() && !err.cancelled)showComponentInputFeedback(session,{error:err.message});
         else if(session.current() && session.feedbackSeq===seq && !session.valid()){
@@ -22262,9 +22480,20 @@ self.onmessage = function(e){
     }
     if(session.datasetSharedCheckbox)proposal.datasetShared=session.datasetSharedCheckbox.checked;
   }
+  function componentInspectorDraftSignature(session){
+    // Compare authoring controls, not computed output or search text. Reconfiguration and
+    // imported records are drafts too, even when they do not currently expose a control.
+    const fields=[...componentBindingFields.querySelectorAll('input,select,textarea')]
+      .filter(input=>input.type!=='file' && input.type!=='search')
+      .map(input=>[input.id||input.getAttribute('aria-label'),input.type==='checkbox'?input.checked:input.value]);
+    return JSON.stringify([componentNameInput.value,fields,session.proposal,session.datasets]);
+  }
   function componentWorkspaceJump(sketchId,uid){
     const tab=tabs.find(tab=>tab.id===sketchId);if(!tab){toast('This sketch no longer exists');return;}
-    componentBindingsDialog.close();if(activeTabId!==sketchId)enterTab(sketchId);
+    const session=componentDialogSession;
+    if(session?.initialDraftSignature && componentInspectorDraftSignature(session)!==session.initialDraftSignature &&
+      !confirm('Discard unsaved changes and go to this component?'))return;
+    componentBindingsDialog.close();if(activeTabId!==sketchId)activateTab(sketchId);else cancelGesture();
     const index=items.findIndex(item=>item.uid===uid);if(index<0){toast('This component no longer exists');return;}
     selection=[index];setTool('select');render();
   }
@@ -22338,10 +22567,21 @@ self.onmessage = function(e){
         const sourceFor=value=>endpoints.find(source=>JSON.stringify({sketchId:source.sketchId,componentUid:source.componentUid,port:source.port})===value);
         let previousSource=sourceFor(value);select.addEventListener('change',()=>{
           const source=sourceFor(select.value);if(source){if(name.value===(previousSource?.name||'Value'))name.value=source.name;type.value=source.type;record.endpointDescription=source.description;}
-          previousSource=source;void changeComponentWorkspaceEndpoints(session,()=>{});
-        });sourceLabel.append(select);row.append(sourceLabel);
+          previousSource=source;
+          const restoreFocus=select.parentElement.contains(document.activeElement);
+          void changeComponentWorkspaceEndpoints(session,()=>{}).then(()=>{
+            if(restoreFocus && session.current() && (document.activeElement===document.body || document.activeElement===componentBindingsDialog))
+              document.getElementById(select.id)?.focus({preventScroll:true});
+          });
+        });sourceLabel.htmlFor=select.id;sourceLabel.append(select);row.append(sourceLabel);
+        const picker=createComponentSourceDropdown(select,'Published endpoint '+(index+1)),connectionActions=document.createElement('div');connectionActions.className='component-connection-actions';picker.append(connectionActions);
         if(previousSource?.description){const description=document.createElement('p');description.className='component-section-note';description.textContent=previousSource.description;description.style.gridColumn='1 / -1';row.append(description);}
-        const go=document.createElement('button');go.type='button';go.className='btn';go.textContent='Go to source';go.title='Close Edit without saving and go to the source';go.disabled=!value;go.addEventListener('click',()=>{if(select.value){const reference=JSON.parse(select.value);componentWorkspaceJump(reference.sketchId,reference.componentUid);}});row.append(go);
+        const go=createComponentConnectionIcon('go','Go to source for Published endpoint '+(index+1),'Go to source in its sketch');
+        const disconnect=createComponentConnectionIcon('disconnect','Disconnect Published endpoint '+(index+1),'Disconnect');
+        go.disabled=disconnect.disabled=!value;
+        go.addEventListener('click',()=>{if(select.value){const reference=JSON.parse(select.value);componentWorkspaceJump(reference.sketchId,reference.componentUid);}});
+        disconnect.addEventListener('click',()=>{componentSourceDropdown?.close();select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));});
+        connectionActions.append(go,disconnect);
       }else{
         const typeLabel=document.createElement('label');typeLabel.textContent='Type';typeLabel.append(type);row.append(typeLabel);
         const descriptionLabel=document.createElement('label'),description=document.createElement('input');descriptionLabel.textContent='Description (optional)';descriptionLabel.style.gridColumn='1 / -1';description.type='text';description.maxLength=200;description.value=endpoint.description;description.setAttribute('aria-label','Endpoint description '+(index+1));descriptionLabel.append(description);record.description=description;row.append(descriptionLabel);description.addEventListener('input',()=>queueComponentInputFeedback(session));
@@ -22397,7 +22637,7 @@ self.onmessage = function(e){
     }
   }
   async function renderComponentPortFields(session,drafts=null){
-    cancelComponentInputFeedback(session);
+    componentSourceDropdown?.close();cancelComponentInputFeedback(session);
     const seq=++session.renderSeq,valid=()=>session.valid() && session.renderSeq===seq;
     session.rendering=true;
     componentBindingsSave.disabled=true;componentBindingFields.disabled=true;
@@ -22428,7 +22668,7 @@ self.onmessage = function(e){
     const scene=session.scene.map(it=>it===session.it?proposal:clone(it));
     const graph=await inspectComponentGraph(scene,valid,new Map(),session.datasets);
     if(!valid())throw smartCancelled();
-    session.proposal=proposal;session.datasetOwners=graph.datasetOwners;
+    session.proposal=proposal;session.datasetOwners=graph.datasetOwners;session.bindingGraph=graph;session.sourceLabels=componentSourceLabels(session.scene);
     const record=graph.get(proposal);session.outputNames=Object.keys(caps.outputs).filter(name=>!caps.outputs[name].internal);session.outputPorts=caps.outputs;session.eventOutputPorts=Object.fromEntries(Object.entries(caps.eventOutputs||{}).filter(([,port])=>!port.internal));
     showComponentInputFeedback(session,record);
     componentSettingFields.replaceChildren();session.settings=[];
@@ -22446,20 +22686,13 @@ self.onmessage = function(e){
       const row=document.createElement('div');row.className='component-setting'+(field.format==='lines'?' wide':'');
       const label=document.createElement('label'),id='component-setting-'+name;
       label.htmlFor=id;label.textContent=field.label||name;
-      const input=field.type==='boolean' || field.options?document.createElement('select'):document.createElement(field.format==='lines'?'textarea':'input');
-      input.id=id;input.setAttribute('aria-label',field.label||name);
-      if(field.options){input.className='select';for(const option of field.options){const text=caps.workspaceSettings && name==='executionMode'?({'active sketch':'Active sketch only','whole workspace':'Whole workspace'})[option]:caps.workspaceEndpoint && name==='type'?({string:'Text',number:'Number',boolean:'Boolean',table:'Table',event:'Events only'})[option]:option;input.add(new Option(text||option,option));}}
-      else if(field.type==='boolean'){input.className='select';input.add(new Option('On','true'));input.add(new Option('Off','false'));}
-      else if(field.format==='lines'){input.rows=5;input.maxLength=2000;input.spellcheck=false;input.style.cssText='min-width:0;resize:vertical;font:13px monospace;padding:8px';}
-      else{input.type=field.type==='number'?'number':'text';input.maxLength=2000;}
-      if(field.type==='number'){
-        input.step=String(field.step??'any');
-        if(field.min!==undefined)input.min=String(field.min);
-        if(field.max!==undefined)input.max=String(field.max);
-      }
-      input.value=String(proposal.state[name]??field.default);
+      const optionLabel=option=>caps.workspaceSettings && name==='executionMode'?({'active sketch':'Active sketch only','whole workspace':'Whole workspace'})[option]||option:caps.workspaceEndpoint && name==='type'?({string:'Text',number:'Number',boolean:'Boolean',table:'Table',event:'Events only'})[option]||option:option;
+      const input=createComponentPropertyControl(field,proposal.state[name]??field.default,{id,label:field.label||name,optionLabel,booleanLabels:['On','Off']});
       input.addEventListener('change',()=>changeComponentConfiguration(session));
-      row.append(label,input);componentSettingFields.append(row);session.settings.push({name,field,input});
+      row.append(label,input);
+      const limits=[field.min!==undefined?'Minimum '+field.min:'',field.max!==undefined?'maximum '+field.max:'',field.step!==undefined?'step '+field.step:''].filter(Boolean);
+      if(limits.length){const hint=document.createElement('small');hint.className='component-field-hint';hint.id=id+'-hint';hint.textContent=limits.join(' · ');hint.style.gridColumn='1 / -1';input.setAttribute('aria-describedby',hint.id);row.append(hint);}
+      componentSettingFields.append(row);session.settings.push({name,field,input});
     }
     if(componentSettingFields.childElementCount && !caps.workspaceSettings && !caps.workspaceEndpoint && !caps.sketchSettingsOverrides){
       const note=document.createElement('p');note.className='component-section-note';note.textContent='Mode and size changes can reset stored values or change the available ports.';
@@ -22509,23 +22742,21 @@ self.onmessage = function(e){
         if(draft.source && !Array.from(select.options).some(o=>o.value===draft.source))select.add(new Option('Unavailable source — choose a replacement',draft.source));
         select.value=draft.source;
       }
-      const input=port.type==='table' || port.type==='boolean' || port.options || port.columnOf?document.createElement('select'):document.createElement('input');
-      if(ownsDataset){select.hidden=true;input.id=id+'-dataset';}
+      const input=port.type==='table' || port.columnOf?document.createElement('select'):createComponentPropertyControl(port,'');
+      input.id=id+(ownsDataset?'-dataset':'-value');
+      if(ownsDataset)select.hidden=true;
       input.setAttribute('aria-label',portLabel+(port.type==='table'?' dataset':' value'));
       if(port.type==='table'){
         input.className='select';input.add(new Option(port.optional?'None — connect a source when needed':'Choose or import a dataset',''));
         addComponentDatasetChoices(input,session,ownsDataset,proposal);
       }else if(port.columnOf){input.className='select';input.add(new Option('Use default',''));}
-      else if(port.options){input.className='select';for(const option of port.options)input.add(new Option(option,option));}
-      else if(port.type==='boolean'){input.className='select';input.add(new Option('True','true'));input.add(new Option('False','false'));}
-      else{input.type=port.type==='number'?'number':'text';if(port.type==='number')input.step='any';else input.maxLength=2000;}
       const initial=preserveDraft?draft.value:port.type==='table'?(proposal.inputValues?.[name]?JSON.stringify(proposal.inputValues[name]):''):
         String(proposal.inputValues?.[name]??port.default??port.options?.[0]??(port.type==='number'?0:port.type==='boolean'?false:''));
       if(port.type==='table' && initial && !Array.from(input.options).some(option=>option.value===initial))input.add(new Option('Saved row selection',initial));
       if(port.columnOf && initial)input.add(new Option(initial,initial));
       if(port.options && !port.options.includes(initial))input.add(new Option('Unavailable value — choose a replacement',initial));
       input.value=initial;
-      const entry={name,port,select,input,ownsDataset};
+      const entry={name,port,eventPort,select,input,ownsDataset};
       const controls=document.createElement('div'),extra=document.createElement('div');controls.className='component-port-controls';extra.className='component-port-extra';
       controls.classList.toggle('owned',ownsDataset);controls.classList.toggle('table',port.type==='table');controls.append(select,input);
       const toggle=()=>{controls.classList.toggle('connected',select.value!=='');input.hidden=select.value!=='';input.disabled=select.value!=='';if(entry.importButton)entry.importButton.hidden=!!select.value;if(entry.newButton)entry.newButton.hidden=!!select.value;if(select.value && entry.builder)entry.builder.hidden=true;showDatasetPreview(session,entry);};
@@ -22590,6 +22821,7 @@ self.onmessage = function(e){
         }
       }
       const group=groups[port.role==='control'?'control':'data'];group.section.hidden=false;
+      if(!ownsDataset)addComponentSourceTools(session,entry,extra,portLabel);
       toggle();group.fields.append(row);session.rows.push(entry);
     }
     const separateEventInputs=Object.entries(caps.eventInputs||{}).filter(([,port])=>!port.hybrid && !port.internal);
@@ -22612,22 +22844,23 @@ self.onmessage = function(e){
           if(!Array.from(select.options).some(option=>option.value===value))select.add(new Option('Unavailable event source — choose a replacement',value));
           select.value=value;
         }
-        const warning=document.createElement('p');warning.className='component-section-note';warning.setAttribute('role','status');
-        const updateWarning=()=>{warning.textContent=select.selectedOptions[0]?.textContent.startsWith('Unavailable event source')?'This event connection is unavailable. Choose a compatible event source or disconnect it. Signal inputs still work.':'';warning.hidden=!warning.textContent;};
-        select.addEventListener('change',()=>{updateWarning();queueComponentInputFeedback(session);});updateWarning();
-        controls.className='component-port-controls connected';controls.append(select,warning);row.append(label,controls);section.append(row);session.eventRows.push({name,port,select});
+        const extra=document.createElement('div');extra.className='component-port-extra';
+        select.addEventListener('change',()=>queueComponentInputFeedback(session));
+        controls.className='component-port-controls connected';controls.append(select);row.append(label,controls,extra);section.append(row);
+        const entry={name,port,select};addComponentSourceTools(session,entry,extra,port.label||name,{eventOnly:true});session.eventRows.push(entry);
       }
     }
     updateComponentColumnChoices(session,record);
     if(session.importDraft && !session.rows.some(row=>row.name===session.importDraft.name && row.port.type==='table'))session.importDraft=null;
     componentBindingsSave.disabled=!!session.importDraft?.failed;
+    session.initialDraftSignature ??= componentInspectorDraftSignature(session);
     }finally{if(session.current() && session.renderSeq===seq){session.rendering=false;componentBindingFields.disabled=false;}}
   }
   document.getElementById('componentBindingsBtn').addEventListener('click',openComponentBindings);
   document.getElementById('componentBindingsCancel').addEventListener('click',()=>componentBindingsDialog.close());
   componentBindingsDialog.addEventListener('close',()=>{
     if(componentBindingsDialog.open)return;
-    cancelComponentInputFeedback(componentDialogSession);
+    componentSourceDropdown?.close();cancelComponentInputFeedback(componentDialogSession);
     if(componentDialogSession)componentDialogSession.renderSeq++;
     document.getElementById('componentOutputs').setAttribute('aria-busy','false');
     componentDialogSession=null;componentDialogSeq++;editorComponentEvaluation=null;render();
@@ -22647,7 +22880,7 @@ self.onmessage = function(e){
         if(session.settings.some(({name,field})=>pending.state[name]!== (session.proposal.state[name]??field.default))){
           await changeComponentConfiguration(session);return;
         }
-      }catch(err){showComponentInputFeedback(session,{error:err.message});return;}
+      }catch(err){showComponentInputFeedback(session,{error:err.message});focusComponentInvalidField();return;}
     }
     cancelComponentInputFeedback(session);session.saving=true;
     const seq=++session.renderSeq,valid=()=>session.valid() && session.renderSeq===seq;
@@ -22679,7 +22912,7 @@ self.onmessage = function(e){
     }catch(err){if(session.current() && session.renderSeq===seq)showComponentInputFeedback(session,{error:session.valid()?err.message:session.changedMessage});}
     finally{
       session.saving=false;
-      if(valid()){componentBindingsSave.disabled=false;componentBindingFields.disabled=false;}
+      if(valid()){componentBindingsSave.disabled=false;componentBindingFields.disabled=false;focusComponentInvalidField();}
     }
   });
 

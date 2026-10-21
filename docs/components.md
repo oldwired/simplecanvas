@@ -66,13 +66,30 @@ the editor. This example is separate from the component-by-component catalog bel
 | Dataset action results | Log accepted file imports/reloads and captured rows, and inspect failures without confusing them with successful updates. |
 
 In the editor, double-click a component to use its controls. Number controls support a slider,
-step buttons, and clicking the displayed value to type a number. In HTML, use the controls
+step buttons, and clicking the displayed value to type a number. In Run and HTML, use the controls
 directly. Select a component and open **Edit…** in the editor to inspect or change its actual
 bindings, or enable **Wiring** to see and edit them on the canvas. The examples' illustrative
 arrows remain ordinary drawing objects. The main catalog uses **Active sketch only** execution:
 each tab is independent and its interval timing pauses while inactive. **Whole workspace** execution,
 used by the separate workspace-runtime example, keeps every sketch processing. Reader changes survive tab switches, and reloading
 the HTML restores the exported snapshot.
+
+The **Edit…** inspector separates the component type from its editable instance name, then groups
+configuration, data inputs, control inputs, and a paused output preview. Input rows identify the
+selected source, current value, and whether a hybrid connection receives values only or values
+and events. A missing component, unavailable output, or incompatible type is explained beside
+the affected input. Open the source dropdown and type to filter by component or output name.
+Typing or cancelling leaves the current choice intact; choose a result to change the draft.
+Compact **Go to source** and **Disconnect** icons include tooltips. **Disconnect** changes the
+draft; Save is required to apply it.
+**Go to source** closes the inspector and selects the connected component, or an owning Dataset
+when available. A Receiver's source icon opens the publishing sketch and selects its Publish
+component. The destination sketch is remembered across reloads. If the draft has changed, it
+asks before discarding those edits. **Used by**
+navigation follows the same rule.
+Configuration and literal fields share typed controls and field-level errors; Save focuses the
+first invalid field. Preview remains paused and does not trigger timers, events, or actions.
+Spreadsheet retains its specialized cell/formula editor and the inspector for its declared ports.
 
 **Text input** and **Number input** provide a hybrid **Value** output: its current value and an
 event carrying each accepted text or number. Their **Submitted** Boolean pulse remains available.

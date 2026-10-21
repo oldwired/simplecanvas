@@ -1016,6 +1016,20 @@ Boolean values are not automatically controls. The scrollable body keeps **Save*
 available, with fields stacked on narrow screens. This presentation does not change port names,
 binding identity, or the paused draft-preview contract.
 
+Configuration and literal inputs share typed property controls, including declared choices,
+Boolean values, numeric bounds/steps, and multiline fields. Validation messages are attached to
+their fields; Save focuses the first invalid field. Source rows report their selected producer,
+paused value or diagnostic, and hybrid value/event mode. Source dropdowns include a filter in
+their opened menu. Typing or cancelling preserves the committed source, including a broken
+selection that needs repair; choosing a result changes the draft.
+Compact **Go to source** and **Disconnect** icons have tooltips; Receiver endpoints use the same
+controls. **Disconnect** stages a binding removal. **Go to source** and **Used by** navigation select the
+referenced component and ask before discarding a modified inspector draft. Dataset references
+identify the table and offer navigation to its owning component when one exists. These helpers
+do not change port identity, the single-source rule, or source/value precedence.
+Spreadsheet continues to author formulas, ranges, and layout in cells and the cell context menu;
+its inspector only binds declared ports and previews their results.
+
 The editor's **Wiring** toggle exposes those same bindings as ports and links only while enabled. It starts off;
 drag an output to an input or an input to an output. The host requires exact `boolean`, `number`,
 `string`, or `table` type compatibility, permits one output to supply several inputs, and replaces

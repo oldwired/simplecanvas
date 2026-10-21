@@ -372,6 +372,17 @@ Smart components turn a sketch into a small interactive application. Typed conne
 numbers, text, Boolean signals, events and table views. Controls, logic, text tools, spreadsheets
 and dataset editors work in the editor and in self-contained HTML exports.
 
+Select a component and open **Edit…** to change its name, settings, or connections. Each input
+shows its source and a paused value or diagnostic. Open a source dropdown and type to filter
+compatible outputs by component or output name. The current selection changes only when you
+choose a result. Compact **Go to source** and **Disconnect** icons have tooltips. **Disconnect** stages removal of a
+connection; **Save** applies the draft and **Cancel** discards it. **Go to source** selects the
+source component, switching to its publishing sketch for a Receiver and asking before discarding
+any unsaved inspector changes. Invalid values are
+identified beside their fields, and Save focuses the first invalid field.
+Spreadsheet keeps its cell and formula editor; its inspector binds already-declared inputs and
+previews outputs without adding a second formula or layout editor.
+
 - [Component reference](docs/components.md): built-ins, ports, configuration, timing and data behavior.
 - [Editable catalog workspace](examples/smart-components-workspace.json) and
   [offline HTML](examples/smart-components-workspace.html): thirty-eight examples to explore.
