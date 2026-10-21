@@ -1933,6 +1933,23 @@ even though it renders fine on canvas.
 
 ## HTML export behavior
 
+The editor's **Run** toolbar button uses this same reader on an isolated workspace copy. It is
+not another script execution mode: `editorOnly`, `exportBehavior`, bound-cell access, Dataset
+reader permissions, Workspace/Sketch settings, event delivery, and result downloads follow the
+HTML contract below. The authoring simulation is suspended while preview runs. **Return to editing**
+destroys the copy without adopting its state, data, layout or query changes; each run captures a
+fresh snapshot. Result files explicitly downloaded during preview remain available.
+
+Preview initially receives the editor URL's query parameters and follows the same initial-sketch
+precedence as export. Navigation updates preview-local parameters, never the editor's browser URL.
+Reader title changes appear in the preview header without changing the editor's browser title.
+The preview frame has a separate opaque origin and cannot read the authoring page's DOM or storage.
+The persistent return control belongs to the editor outside that frame, so a reader cannot hide it
+through Sketch settings. No preview state is written back through the component API.
+Preview imports use a regular file chooser; choose the file again to read subsequent disk changes.
+Native reload handles are unavailable in the isolated frame, while a standalone export can retain
+them where supported. Markdown links open separately with `noopener`.
+
 Multi-tab readers accept `?page=N` to select the opening tab, using a zero-based index. Missing,
 invalid, or out-of-range values use the configured Workspace settings initial sketch when available,
 otherwise the first tab. Plain exports use the first tab as their fallback.

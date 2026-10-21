@@ -52,8 +52,8 @@ async function openExport(page,run,context,{holdRefresh=false}={}){
   if(holdRefresh){
     // Hold exactly the first post-event graph refresh, after durable states have committed.
     // A real tab click must cancel any unfinished gesture without rolling back that accepted source.
-    const hook='    function refreshComponents(){';assert.ok(body.includes(hook));
-    body=body.replace(hook,`    function refreshComponents(){
+    const hook=/function refreshComponents\([^)]*\)\{/;assert.match(body,hook);
+    body=body.replace(hook,match=>match+`
       if(window.__holdEventRefresh && items.find(item=>item.uid==='event-source')?.state.count===1 && items.find(item=>item.uid==='event-memo')?.state.lineCount===1){
         window.__holdEventRefresh=false;window.__eventRefreshHeld=true;
         return new Promise(resolve=>{window.__releaseEventRefresh=()=>resolve(null);});

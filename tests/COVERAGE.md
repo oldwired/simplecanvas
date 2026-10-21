@@ -598,6 +598,39 @@ Compare the document for content assertions; compare the whole record, including
 checking that presentation-only redraws did not autosave. Intentional localStorage sandbox sentinels
 and legacy-import fixtures remain localStorage checks.
 
+## Run preview
+
+`run-preview.test.cjs` operates the actual toolbar and isolated HTML reader. It checks scalar,
+text and Dataset edits, explicit result downloads, fresh reruns, preserved source history,
+selection and IndexedDB records, parent simulation suspension/resumption, hidden Services and
+Whole workspace navigation. Plain drawings, `file:` execution, disabled workspace/component
+features and read-only source windows keep a usable preview path. Keyboard return/startup
+cancellation, failure recovery and the opaque-origin boundary are covered without exposing the
+parent editor to reader code. Delayed alignment, header paste, pending image/sketch file reads and
+image decodes released after Return must leave the source and its history unchanged.
+An HTTPS preview uses a regular file input without attempting the sandbox-denied native picker;
+Markdown links open in a separate page with no opener. Cancelling startup aborts its build signal,
+and a later Run starts with a fresh signal.
+
+`reader-slider.test.cjs` keeps pointer movement continuous while Worker drawing calls run, checking
+that slider thumbs and values repaint before movement stops in Run and exported HTML. A delayed
+drawing fixture verifies live downstream values, release-only stateful edges, cancellation rollback
+and unchanged source state; the shipped fruit workspace covers the same drag on its Dashboard.
+
+`reader-paint-progress.test.cjs` covers slower connected displays during continuous input,
+independent displays under unrelated timer activity, and counters driven by rapid pulses in both Run and HTML. Completed
+intermediate frames must not claim readiness for a newer graph. `editor-paint-progress.test.cjs`
+checks actual canvas progress during smart-shape resizing, final dimensions, Undo/Redo, and
+rejection of stale state/style replies. `choice-acceptance.test.cjs` checks that a quick next click
+does not cancel a pending dropdown selection, including lifecycle and pointer cancellation.
+
+`workspace-performance.cjs` is an observational benchmark, outside the correctness suite. Its
+deterministic 119 components span three sketches with 256 shared records, numeric/data pipelines
+and cross-sketch event receivers. It reports graph and Worker work alongside timings for authoring,
+submission, storage, actual exports, reader startup and Run preview when available. It does not
+increase runtime budgets or impose hardware-dependent pass/fail thresholds. See the
+[benchmark commands](README.md#generated-examples-and-benchmarks).
+
 ## Structural review and export contracts
 
 - `export-dependencies.test.cjs` parses the actual fresh export and both shipped HTML readers. It

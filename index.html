@@ -533,7 +533,7 @@
   #autosaveWarning[hidden],#libraryStorageWarning[hidden]{display:none}
   #workspaceOwnership{position:fixed;left:16px;right:16px;bottom:16px;z-index:10000;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;padding:14px;background:#fffbeb;color:#78350f;border:1px solid #d97706;border-radius:12px;box-shadow:var(--shadow)}
   #workspaceOwnership[hidden]{display:none}
-  body.workspace-readonly .toolbar{opacity:.55}
+  body.workspace-readonly .toolbar > :not(#runPreviewGroup){opacity:.55}
   body.workspace-readonly .hint{display:none}
   @media print{#workspaceOwnership{display:none!important}}
   #autosaveWarning button,#libraryStorageWarning button{font:inherit;min-height:44px;padding:8px 12px;background:#fff;border:1px solid #d97706;border-radius:7px;color:inherit;cursor:pointer}
@@ -546,6 +546,15 @@
     .stage{padding:0}
     .wrap{box-shadow:none;border-radius:0;background:#fff}
   }
+  #runPreviewPanel{position:fixed;inset:0;margin:0;padding:0;border:0;width:100vw;height:100dvh;max-width:none;max-height:none;background:#fff;color:#182230}
+  #runPreviewPanel[open]{display:flex;flex-direction:column}
+  #runPreviewPanel::backdrop{background:#fff}
+  .run-preview-header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid #dbe1e8;background:#f8fafc;flex:none}
+  .run-preview-header strong{font-size:15px}
+  .run-preview-header p{margin:0;flex:1;font-size:13px;color:#526174}
+  #runPreviewStatus{padding:16px;margin:0;color:#526174}
+  #runPreviewStatus[hidden]{display:none}
+  #runPreviewFrame{display:block;border:0;width:100%;min-height:0;flex:1;background:#fff}
 </style>
 <!-- Shared with standalone HTML exports. Keep the tab bar usable without canvas styles. -->
 <style id="workspaceTabStyles">
@@ -930,7 +939,23 @@
     </button>
   </div>
 
+  <div class="sep"></div>
+  <div class="group" id="runPreviewGroup">
+    <button class="btn" id="runPreviewBtn" type="button" title="Run a separate preview; changes are discarded when you return to editing">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 4 12 8-12 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      Run
+    </button>
+  </div>
 </header>
+
+<dialog id="runPreviewPanel" aria-labelledby="runPreviewTitle" aria-describedby="runPreviewNote">
+  <div class="run-preview-header">
+    <strong id="runPreviewTitle">Workspace preview</strong>
+    <p id="runPreviewNote">Preview changes are discarded when you return to editing. Result downloads are kept.</p>
+    <button class="btn" id="exitPreviewBtn" type="button" autofocus>Return to editing</button>
+  </div>
+  <p id="runPreviewStatus" role="status" aria-live="polite"></p>
+</dialog>
 
 <div class="tabbar" id="tabbar" hidden>
   <div class="tabbar-scroll" id="tabbarScroll" role="tablist" aria-label="Open sketches"></div>
@@ -1291,6 +1316,8 @@
   let smartHitPending = null;
   // Includes all replies and history commits for completed presses, in their input order.
   let smartHitSettled = null;
+  let runPreview = null;
+  let editorInputEpoch = 0;
   let smartGestureEpoch = 0;
   let smartGestureQueue = Promise.resolve();
   let smartCurrentPress = null;
@@ -2165,7 +2192,7 @@
   function workspaceStorageNotice(){
     const readOnly=workspaceStorage.ready && !workspaceStorage.writable;
     document.body.classList.toggle('workspace-readonly',readOnly);
-    document.querySelector('.toolbar').inert=readOnly;
+    for(const child of document.querySelector('.toolbar').children)child.inert=readOnly && child.id!=='runPreviewGroup';
     document.querySelectorAll('.tab-close').forEach(button=>{button.disabled=readOnly;});
     const notice=document.getElementById('workspaceOwnership');notice.hidden=!readOnly;
     document.getElementById('workspaceOwnershipMessage').textContent=workspaceStorage.protected
@@ -2429,6 +2456,7 @@
   document.getElementById('resetWorkspaceRecovery').addEventListener('click',()=>void resetWorkspaceRecovery());
   // Keep the saved scene browsable while preventing every input path into mutation.
   for(const type of ['pointerdown','click','dblclick','keydown','keyup','paste','drop','contextmenu','input','change'])window.addEventListener(type,event=>{
+    if(event.target.closest?.('#runPreviewPanel,#runPreviewBtn'))return;
     if(!workspaceStorage.ready || workspaceStorage.writable)return;
     if(type==='keydown' && (event.metaKey||event.ctrlKey) && event.key.toLowerCase()==='s'){event.preventDefault();event.stopImmediatePropagation();exportWorkspace({recovery:true});return;}
     const navigationKey=!event.metaKey&&!event.ctrlKey&&!event.altKey && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','Enter',' ','Escape','Tab'].includes(event.key);
@@ -4031,10 +4059,54 @@ self.onmessage = function(e){
     }
     for(const choice of snapshot.options){const option=document.createElement('option');option.value=String(choice.value);option.textContent=choice.label || '(empty)';option.selected=choice.value===snapshot.value;select.append(option);}
     select.size=Math.max(2,Math.min(8,select.options.length));document.body.append(select);
-    let closed=false,busy=false,keyboardSelection=false,frame;
+    let closed=false,busy=false,keyboardSelection=false,frame,pendingOutside=null;
     const current=()=>!closed && valid() && !document.hidden;
-    const close=()=>{if(closed)return;closed=true;cancelAnimationFrame(frame);select.remove();document.removeEventListener('pointerdown',outside,true);};
-    const outside=event=>{if(event.target!==select && !select.contains(event.target))close();};
+    const stop=event=>{event.preventDefault();event.stopPropagation();};
+    const close=()=>{
+      if(closed)return;closed=true;cancelAnimationFrame(frame);select.remove();
+      document.removeEventListener('pointerdown',outside,true);
+      document.removeEventListener('pointermove',outsideMove,true);document.removeEventListener('pointerup',outsideUp,true);
+      document.removeEventListener('pointercancel',outsideCancel,true);document.removeEventListener('contextmenu',outsideContext,true);
+      for(const type of ['mousedown','click','dblclick'])document.removeEventListener(type,lateOutside,true);
+    };
+    const outside=event=>{
+      if(event.target===select || select.contains(event.target))return;
+      if(busy && current()){
+        // Like an inline submission, accepting a choice must finish before the next
+        // pointer gesture changes selection or closes its still-valid edit context.
+        stop(event);
+        pendingOutside ||= {pointerId:event.pointerId,target:event.target,targetHost:event.target.closest?.('[data-smart-index]'),down:event,move:null,up:null,cancelled:false};
+      }else close();
+    };
+    const outsideMove=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.move=event;stop(event);}};
+    const outsideUp=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.up=event;stop(event);}};
+    const outsideCancel=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.cancelled=true;stop(event);}};
+    const outsideContext=event=>{if(pendingOutside){pendingOutside.context=event;stop(event);}};
+    const lateOutside=event=>{if(pendingOutside)stop(event);};
+    const replayOutside=press=>{
+      if(press.cancelled || !valid() || document.hidden)return;
+      let target=press.target;
+      if(!target.isConnected){
+        const current=document.elementFromPoint(press.down.clientX,press.down.clientY);
+        if(!press.targetHost?.isConnected || !current || !press.targetHost.contains(current))return;
+        target=current;
+      }
+      const fire=(type,event)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,composed:true,
+        pointerId:event.pointerId,pointerType:event.pointerType,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,
+        button:event.button,buttons:event.buttons,pressure:event.pressure,shiftKey:event.shiftKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey,altKey:event.altKey}));
+      target.closest?.('button,input,select,textarea,a[href],[tabindex]')?.focus();
+      fire('pointerdown',press.down);
+      if(press.context)target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,composed:true,
+        clientX:press.context.clientX,clientY:press.context.clientY,button:press.context.button,
+        shiftKey:press.context.shiftKey,ctrlKey:press.context.ctrlKey,metaKey:press.context.metaKey,altKey:press.context.altKey}));
+      if(press.move)fire('pointermove',press.move);
+      if(press.up){
+        fire('pointerup',press.up);
+        if(!press.context && press.down.button===0)target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true,
+          clientX:press.up.clientX,clientY:press.up.clientY,button:press.up.button,
+          shiftKey:press.up.shiftKey,ctrlKey:press.up.ctrlKey,metaKey:press.up.metaKey,altKey:press.up.altKey}));
+      }
+    };
     const update=()=>{
       if(!current()){close();return;}
       const view=read(),box=initial.inline,m=view?.matrix;
@@ -4048,11 +4120,14 @@ self.onmessage = function(e){
     };
     const submit=async()=>{
       if(busy || !current() || select.value==='')return;
-      busy=true;select.disabled=true;
-      try{await accept(Number(select.value),current);}catch(error){if(!error.cancelled)console.warn(error.message);}
-      finally{close();}
+      busy=true;select.disabled=true;let accepted=false;
+      try{accepted=await accept(Number(select.value),current);}catch(error){if(!error.cancelled)console.warn(error.message);}
+      finally{const press=pendingOutside;close();if(accepted && press)replayOutside(press);}
     };
     document.addEventListener('pointerdown',outside,true);select.addEventListener('smartcancel',close);
+    document.addEventListener('pointermove',outsideMove,true);document.addEventListener('pointerup',outsideUp,true);
+    document.addEventListener('pointercancel',outsideCancel,true);document.addEventListener('contextmenu',outsideContext,true);
+    for(const type of ['mousedown','click','dblclick'])document.addEventListener(type,lateOutside,true);
     for(const type of ['pointerdown','pointerup','click','dblclick'])select.addEventListener(type,event=>event.stopPropagation());
     select.addEventListener('pointerdown',()=>{keyboardSelection=false;});
     select.addEventListener('change',()=>{if(!keyboardSelection)void submit();});
@@ -5044,7 +5119,7 @@ self.onmessage = function(e){
   }
   let editorComponentEvaluation=null,editorTimeline=null,editorTimelineScene=null,editorTimelineTab=null,componentTimelineTimer=null,editorEventEpoch=0;
   const editorTimelines=new Map();
-  function editorTimelinePaused(){return !workspaceStorage.writable || document.hidden || editorTimeline?.pausedByUser || !!document.getElementById('componentBindingsDialog')?.open || !!document.getElementById('newWorkspaceDialog')?.open || !!document.querySelector('dialog[data-smart-number-input][open],dialog[data-smart-text-input][open],dialog[data-component-data-action][open]');}
+  function editorTimelinePaused(){return !!runPreview || !workspaceStorage.writable || document.hidden || editorTimeline?.pausedByUser || !!document.getElementById('componentBindingsDialog')?.open || !!document.getElementById('newWorkspaceDialog')?.open || !!document.querySelector('dialog[data-smart-number-input][open],dialog[data-smart-text-input][open],dialog[data-component-data-action][open]');}
   function syncEditorTimeline(){
     const context=editorRuntimeContext(),runtimeScene=context.scene,runtimeTab=context.whole?'workspace:'+workspaceGeneration:activeTabId;
     if(editorTimelineScene!==runtimeScene || editorTimelineTab!==runtimeTab){
@@ -5084,13 +5159,14 @@ self.onmessage = function(e){
     },Math.min(2147483647,Math.max(10,owner.deadline-componentTimelineNow(owner))));
   }
   function ensureEditorComponentGraph(){
+    if(runPreview?.suspended)return Promise.reject(smartCancelled());
     const timeline=syncEditorTimeline(),context=editorRuntimeContext(),scene=context.scene,tab=context.whole?'workspace':activeTabId,signature=componentGraphSignature(scene),dataPool=context.pool,queryRevision=componentQueryRevision;
     // Drag previews may be rolled back by Escape. Only released changes enter the signal timeline.
     const live=timeline.active && ![...smartGestureRecords].some(p=>p.sd && !p.cancelled);
     if(editorComponentEvaluation?.scene===scene && editorComponentEvaluation.tab===tab &&
        editorComponentEvaluation.signature===signature && editorComponentEvaluation.live===live && editorComponentEvaluation.dataPool===dataPool && editorComponentEvaluation.queryRevision===queryRevision)return editorComponentEvaluation.promise;
     const entry={scene,tab,signature,live,dataPool,queryRevision,records:null,promise:null};editorComponentEvaluation=entry;
-    const valid=()=>editorComponentEvaluation===entry && queryRevision===componentQueryRevision && editorRuntimeContext()===context && componentGraphSignature(scene)===entry.signature;
+    const valid=()=>!runPreview?.suspended && editorComponentEvaluation===entry && queryRevision===componentQueryRevision && editorRuntimeContext()===context && componentGraphSignature(scene)===entry.signature;
     const call=(it,fn,args)=>fn==='caps'?requestSmartCaps(it,null,args[0]):requestSmartCall(it,fn,args);
     entry.promise=Promise.resolve().then(()=>live?settleComponentTimeline(scene,call,valid,timeline,{datasets:dataPool}):evaluateComponentGraph(scene,call,valid,{datasets:dataPool}))
       .then(records=>{
@@ -5642,7 +5718,7 @@ self.onmessage = function(e){
   let smartRefreshTimer = null;
   function scheduleSmartRefresh(){
     clearTimeout(smartRefreshTimer);smartRefreshTimer=null;
-    if(document.hidden) return;
+    if(document.hidden || runPreview) return;
     let due=Infinity;
     for(const [uid,cached] of smartChildrenCache){
       const owner=smartCacheOwners.get(uid);
@@ -5651,7 +5727,7 @@ self.onmessage = function(e){
     if(!Number.isFinite(due)) return;
     smartRefreshTimer=setTimeout(()=>{
       smartRefreshTimer=null;
-      if(document.hidden) return;
+      if(document.hidden || runPreview) return;
       const now=performance.now();
       for(const [uid,cached] of smartChildrenCache){
         if(cached.nextRefresh<=now){
@@ -5720,9 +5796,9 @@ self.onmessage = function(e){
     return owner;
   }
   function smartCacheOwnerCurrent(it,owner){
-    return smartCacheOwners.get(it.uid)===owner && it.script===owner.script && items.includes(it);
+    return !runPreview?.suspended && smartCacheOwners.get(it.uid)===owner && it.script===owner.script && items.includes(it);
   }
-  function smartSig(it, extra, pendingComponent=null){
+  function smartSig(it, extra, pendingComponent=null, dimensions=it){
     const style=smartResolvedStyle(it);
     let cached=smartSignatureCache.get(it);
     if(!cached || cached.script!==it.script || cached.style!==style){
@@ -5732,7 +5808,7 @@ self.onmessage = function(e){
     // 50 KB source: serialize state, but retain source/style behind an instance-local revision.
     const component=editorComponentEvaluation?.records?.get(it) || pendingComponent;
     const io=it.componentApi!==undefined?JSON.stringify(componentViewIo(it,component?{...component.io,error:component.error}:{})):'';
-    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+'|'+io+(extra?'|'+extra:'');
+    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+dimensions.w+','+dimensions.h+'|'+io+(extra?'|'+extra:'');
   }
   function componentDrawingError(it){
     const error=smartDrawingErrors.get(it.uid);
@@ -5757,6 +5833,7 @@ self.onmessage = function(e){
       smartInFlight.add(it.uid);
       const unavailable=!!component?.error;
       const io=component?componentViewIo(it,unavailable?{inputs:{},outputs:{},error:component.error}:component.io):null;
+      const dimensions={w:it.w,h:it.h};
       requestSmartSandbox({method:'call', src:scriptOf(it), fn:unavailable?'unavailableChildren':'children',refresh:!unavailable,
         args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing,...(component?[io]:[])]},it)
         .then(r=>{
@@ -5764,7 +5841,14 @@ self.onmessage = function(e){
           // A newer graph can be queued behind this drawing. Its temporarily absent records
           // do not change these accepted inputs. Keep that frame until the graph supplies new
           // values; state, source, geometry, style and instance ownership are still checked.
-          if(smartSig(it,editing?'E':'',component)!==sig){smartInFlight.delete(it.uid);render();return;}
+          const currentSig=smartSig(it,editing?'E':'',component);
+          // A pointer can resize faster than a drawing hook finishes. Publish completed
+          // dimension-only intermediate frames for that resize, retaining the old signature
+          // so the next render requests the latest size. State, style and input changes must
+          // still reject stale replies; handles and graph readiness stay strictly current.
+          const resizeFrame=resizing?.snapshots.some(({idx})=>items[idx]===it) &&
+            smartSig(it,editing?'E':'',component,dimensions)===sig;
+          if(currentSig!==sig && !resizeFrame){smartInFlight.delete(it.uid);render();return;}
           smartChildrenCache.set(it.uid,{sig,kids:r.result,refreshMs:r.refreshMs,nextRefresh:r.refreshMs?performance.now()+r.refreshMs:Infinity});
           smartDrawingErrors.delete(it.uid);
           smartInFlight.delete(it.uid);clearSmartRetry(it.uid);render();scheduleSmartRefresh();
@@ -5824,7 +5908,8 @@ self.onmessage = function(e){
     });
     return snapshot;
   }
-  async function warmSmartExportCache(itemList,strict=false,componentContext=itemList,dataPool=datasets,query,includeEditorOnly=false){
+  async function warmSmartExportCache(itemList,strict=false,componentContext=itemList,dataPool=datasets,query,includeEditorOnly=false,signal){
+    if(signal?.aborted)throw smartCancelled();
     // A clipboard image paints only the selection, but resolves its original inputs from a
     // frozen whole-document context. Editable clipboard data keeps separate, remapped IDs.
     if(!strict && !componentWorkspace(componentContext)?.whole){
@@ -5838,7 +5923,10 @@ self.onmessage = function(e){
     const paintedByUid=new Map(itemList.map(it=>[it.uid,it]));
     const scene=attachComponentWorkspace(componentContext===itemList?itemList:componentContext.map(it=>paintedByUid.get(it.uid)||it),componentWorkspace(componentContext));
     const map=new Map(),executions=new Map(),temporary=new Set(),signature=componentGraphSignature(scene);
+    const abort=()=>{for(const owner of temporary)disposeSmartExecution(owner);};
+    signal?.addEventListener('abort',abort,{once:true});
     const ownerFor=it=>{
+      if(signal?.aborted)throw smartCancelled();
       if(!executions.has(it)){
         const isTemporary=!items.includes(it),owner=isTemporary?createSmartExecution(it):smartItemExecution(it);
         executions.set(it,owner);if(isTemporary)temporary.add(owner);
@@ -5849,7 +5937,7 @@ self.onmessage = function(e){
       const graph=await evaluateComponentGraph(scene,async(it,fn,args)=>{
         const reply=await requestSmartSandbox({method:fn==='caps'?'caps':'call',src:it.script,fn,args},it,ownerFor(it));
         return fn==='caps'?reply.caps:reply.result;
-      },()=>componentGraphSignature(scene)===signature,{datasets:dataPool,query});
+      },()=>!signal?.aborted && componentGraphSignature(scene)===signature,{datasets:dataPool,query});
       for(const it of itemList){
         if(it.type!=='smart')continue;
         try{
@@ -5867,7 +5955,7 @@ self.onmessage = function(e){
             args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false,...(component?[io]:[])]},it,ownerFor(it));
           map.set(it,r.result.filter(child=>includeEditorOnly || !child.editorOnly));
         }catch(err){
-          if(strict)throw err;
+          if(strict || signal?.aborted)throw err;
           reportSmartError(it.script,'export',err.message);
           const cached=smartChildrenCache.get(it.uid),owner=smartCacheOwners.get(it.uid);
           const fallback=smartExportSnapshotFallbacks.get(it);
@@ -5877,7 +5965,7 @@ self.onmessage = function(e){
         }
       }
       return map;
-    }finally{for(const owner of temporary)disposeSmartExecution(owner);}
+    }finally{signal?.removeEventListener('abort',abort);abort();}
   }
   // The plain, resolved style a script's children() receives -- exactly the fields the toolbar's
   // Fill/Stroke/Stroke-width/Text-color dropdowns already write onto the container itself. A child
@@ -8382,6 +8470,7 @@ self.onmessage = function(e){
 
   // ---------- render ----------
   function render(){
+    if(runPreview?.suspended)return;
     syncEditorTimeline();
     pruneSmartCaches();
     syncPointEdit();
@@ -9481,10 +9570,10 @@ self.onmessage = function(e){
   async function commitEditorSmartEvents(it,next,current,options={}){
     if(!componentReplyEvents(next).length)return false;
     const context=editorRuntimeContext(),scene=context.scene,source=it.script,generation=workspaceGeneration,tab=activeTabId,eventEpoch=editorEventEpoch;
-    const preparing=()=>current() && workspaceStorage.writable && editorRuntimeContext()===context && it.script===source && !document.hidden;
+    const preparing=()=>!runPreview?.suspended && current() && workspaceStorage.writable && editorRuntimeContext()===context && it.script===source && !document.hidden;
     const records=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,preparing);
     if(!preparing())throw smartCancelled();
-    const valid=()=>workspaceStorage.writable && workspaceGeneration===generation && editorEventEpoch===eventEpoch && (context.whole || activeTabId===tab) &&
+    const valid=()=>!runPreview?.suspended && workspaceStorage.writable && workspaceGeneration===generation && editorEventEpoch===eventEpoch && (context.whole || activeTabId===tab) &&
       editorRuntimeContext()===context && it.script===source;
     let changes;
     try{changes=await prepareAcceptedComponentEvents(scene,it,next,valid,records);}
@@ -9650,7 +9739,7 @@ self.onmessage = function(e){
     }
     if(dispatcher.running)return;
     dispatcher.running=true;
-    void (async()=>{
+    dispatcher.promise=(async()=>{
       let count=0,batchGeneration=dispatcher.generation;
       const report=async(host,intent,error,current)=>{
         try{await host.failure?.(intent,error,current);}
@@ -9730,10 +9819,10 @@ self.onmessage = function(e){
     }
     dispatchComponentActions(editorActionDispatcher,intents,{
       generation:()=>workspaceGeneration+':'+editorEventEpoch,
-      paused:()=>document.hidden || !workspaceStorage.writable,
+      paused:()=>!!runPreview?.suspended || document.hidden || !workspaceStorage.writable,
       valid:intent=>{
         const context=editorRuntimeContext(),it=intent.item;
-        return intent.workspaceGeneration===workspaceGeneration && context.scene.includes(it) &&
+        return !runPreview?.suspended && intent.workspaceGeneration===workspaceGeneration && context.scene.includes(it) &&
           (intent.type!=='reloadDataset' || componentDatasetSources(it).get(intent.input)===intent.datasetSource) &&
           context.sketchByUid.get(it.uid)===intent.sketchId && it.script===intent.script &&
           componentRuntimeId(it)===intent.runtimeId && JSON.stringify(it.bindings||{})===intent.bindings && JSON.stringify(it.eventBindings||{})===intent.eventBindings;
@@ -10443,12 +10532,12 @@ self.onmessage = function(e){
 
   // ---------- images (insert / paste / drop) ----------
   function importImage(srcURL, place, tabId=activeTabId){
-    if(!workspaceStorage.writable)return;
+    if(runPreview || !workspaceStorage.writable)return;
     if(imageDataBytes(srcURL)>MAX_IMAGE_BYTES){toast('That image exceeds the 16 MiB limit');return;}
-    const generation=workspaceGeneration;
+    const generation=workspaceGeneration,inputEpoch=editorInputEpoch;
     const probe = new Image();
     probe.onload = ()=>{
-      if(!workspaceStorage.writable || generation!==workspaceGeneration || !tabs.some(t=>t.id===tabId)) return;   // the destination/owner may have changed during decoding
+      if(runPreview || inputEpoch!==editorInputEpoch || !workspaceStorage.writable || generation!==workspaceGeneration || !tabs.some(t=>t.id===tabId)) return;
       const maxDim = 1800;                       // cap stored resolution to keep storage sane
       let nw = probe.naturalWidth, nh = probe.naturalHeight, src = srcURL;
       if(!nw || !nh || nw*nh>40000000){toast('That image exceeds the 40 megapixel limit');return;}
@@ -10499,11 +10588,12 @@ self.onmessage = function(e){
     probe.src = srcURL;
   }
   function readFile(file, place){
+    if(runPreview)return;
     if(!file || file.type.indexOf('image')!==0){ toast('That file is not an image'); return; }
     if(file.size>MAX_IMAGE_BYTES){toast('That image exceeds the 16 MiB limit');return;}
     const r = new FileReader();
-    const tabId = activeTabId,generation=workspaceGeneration;
-    r.onload = ()=>{if(workspaceStorage.writable && generation===workspaceGeneration)importImage(r.result, place, tabId);};
+    const tabId = activeTabId,generation=workspaceGeneration,inputEpoch=editorInputEpoch;
+    r.onload = ()=>{if(!runPreview && inputEpoch===editorInputEpoch && workspaceStorage.writable && generation===workspaceGeneration)importImage(r.result, place, tabId);};
     r.onerror = ()=>toast('Could not read that file');
     r.readAsDataURL(file);
   }
@@ -10524,7 +10614,7 @@ self.onmessage = function(e){
     lastInsert=null;insertHover=null;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
     if(alignClickTimer){ clearTimeout(alignClickTimer); alignClickTimer=null; }
-    clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;
+    clickCycle=null; polygonClosedByClickAt=-Infinity; lastTap=null; lastTouchEndForZoom=null;handledTouchDoubleTap=null;
     selectionPress=null;firstMouseSelectionPress=null;
     historyBefore=null;
   }
@@ -11803,7 +11893,8 @@ self.onmessage = function(e){
     const assetPool=opts.assets || assets;
     // Resolve children before measuring as well as painting, so both use the same export result.
     // A portable HTML's initial SVG uses defaults; its own URL is read when it opens.
-    const cache=await warmSmartExportCache(itemList,false,itemList,opts.datasets??datasets,opts.liveSmart?'':undefined);
+    const cache=await warmSmartExportCache(itemList,false,itemList,opts.datasets??datasets,opts.liveSmart?'':undefined,false,opts.signal);
+    if(opts.signal?.aborted)throw smartCancelled();
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
     try{
@@ -12121,13 +12212,13 @@ self.onmessage = function(e){
     if(query.length>16000 || [...parameters].length>128)throw new Error('URL query exceeds 16000 characters or 128 parameters');
     return query;
   }
-  function updateComponentNavigationQuery(page,action,record,sampledParameters){
+  function updateComponentNavigationQuery(page,action,record,sampledParameters,updateHistory=true){
     const parameters=sampledParameters??(action.parameters?record.io?.inputs?.[action.parameters]:'{}');
     const query=prepareComponentNavigationQuery(page,parameters,componentPageQuery);
     const url=new URL(globalThis.location.href);url.search=query;
     // Validate and change the browser URL before publishing anything to components. A denied
     // History change is an actionable error, never a half-applied navigation.
-    if(url.href!==globalThis.location.href){
+    if(updateHistory && url.href!==globalThis.location.href){
       try{globalThis.history.replaceState(globalThis.history.state,'',url.href);}
       catch{throw new Error('This browser cannot update this document URL; open it from a web server to pass parameters');}
     }
@@ -12439,7 +12530,7 @@ self.onmessage = function(e){
         columnMode.add(new Option('Keep current columns','keep'));columnMode.add(new Option('Use the file’s columns','file'));
       }
       fileInput=field('CSV, TSV, or JSON file',document.createElement('input'));fileInput.type='file';fileInput.accept='.csv,.tsv,.json,text/csv,text/tab-separated-values,application/json';fileInput.dataset.dataActionFile='';
-      const supportsReload=typeof window.showOpenFilePicker==='function';
+      const supportsReload=host.nativeFilePicker!==false && typeof window.showOpenFilePicker==='function';
       if(supportsReload){
         fileInput.parentElement.hidden=true;fileInput.parentElement.style.display='none';
         chooseFile=field('CSV, TSV, or JSON file',document.createElement('button'));chooseFile.type='button';chooseFile.textContent='Choose file…';chooseFile.dataset.dataActionChooseFile='';
@@ -12581,8 +12672,9 @@ self.onmessage = function(e){
 
   // This function is shipped into HTML exports. Shared trusted helpers are inserted into its
   // lexical scope below; shape source is JSON data and is evaluated only by the existing sandbox.
-  function htmlSmartRuntime(documents){
+  function htmlSmartRuntime(documents,options){
     'use strict';
+    options=options||{};
     /* shared smart runtime */
     if(!Array.isArray(documents)){
       const packed=documents;
@@ -12590,7 +12682,7 @@ self.onmessage = function(e){
       const restored=unpackSmartScriptLists(packed.documents.map(doc=>doc.shapes.map(shape=>shape.item)),packed.scripts);
       documents=packed.documents.map((doc,index)=>({...doc,shapes:doc.shapes.map((shape,shapeIndex)=>({...shape,item:restored[index][shapeIndex]}))}));
     }
-    let componentPageQuery=(globalThis.location?.search || '').slice(0,16001),componentQueryRevision=0;
+    let componentPageQuery=(options.query ?? globalThis.location?.search ?? '').slice(0,16001),componentQueryRevision=0;
     let items=[],datasets={},activeTabId=null;
     const assets={},ctx=document.createElement('canvas').getContext('2d');
     let smartSandboxFrame=null,smartSandboxPort=null,smartSandboxGeneration=0,smartSandboxReady=null;
@@ -12648,7 +12740,7 @@ self.onmessage = function(e){
             if(intent.type==='goToTab'){
               const graph=await resolveAcceptedComponentGraph(resolveComponentGraph,current);if(!current())return;
               const page=prepareComponentTabNavigation(intent,graph.get(intent.item),documents.length,intent.page);
-              const queryChanged=updateComponentNavigationQuery(page,intent,graph.get(intent.item),intent.parametersText);
+              const queryChanged=updateComponentNavigationQuery(page,intent,graph.get(intent.item),intent.parametersText,!options.preview);
               if(documents[page].id!==activeTabId)await activate(documents[page].id);
               else if(queryChanged)await refreshComponents();
               await emitReaderComponentActionEvent(entry,'goToTab','success',page,current);
@@ -12847,11 +12939,14 @@ self.onmessage = function(e){
       const note=document.createElementNS('http://www.w3.org/2000/svg','title');
       note.textContent=message;if(!e.caps?.pageSettings)e.local.prepend(note);
     }
-    function refreshComponents(){
+    function refreshComponents(paintEntry=null){
       invalidateComponentGraph();
       const settled=resolveComponentGraph().catch(()=>null);
-      for(const e of entries)if(e.item.componentApi!==undefined)void refresh(e);
-      return settled;
+      // A live drag must get a visible frame before the next coalesced position can
+      // invalidate it. Start the active control first; unrelated views remain asynchronous.
+      const painted=paintEntry?refresh(paintEntry):null;
+      for(const e of entries)if(e!==paintEntry && e.item.componentApi!==undefined)void refresh(e);
+      return painted?Promise.all([settled,painted]).then(([graph])=>graph):settled;
     }
     function select(entry){
       if(selected===entry)return;
@@ -12942,13 +13037,31 @@ self.onmessage = function(e){
       position(e);
       e.host.style.cursor=e.behavior.move?'grab':'default';
     }
-    async function refresh(e){
+    function refresh(e){
       if(!current(e))return;
       markReaderPaintPending(e);
-      if(e.busy){e.dirty=true;return;}
-      e.busy=true;e.dirty=false;e.next=Infinity;
-      const it=e.item,state=it.state,w=it.w,h=it.h,generation=epoch,revision=componentRevision,paintRevision=e.paintRevision;
+      if(e.busy){e.dirty=true;return e.paintPromise;}
+      e.busy=true;
+      e.paintPromise=(async()=>{
+        try{
+          // Keep one shared job even when newer graph revisions require another paint.
+          do{
+            e.dirty=false;e.next=Infinity;
+            await paintReaderEntry(e);
+          }while(current(e) && e.dirty);
+        }finally{e.busy=false;schedule();}
+      })();
+      return e.paintPromise;
+    }
+    async function paintReaderEntry(e){
+      const it=e.item,state=it.state,w=it.w,h=it.h,source=it.script,style=smartResolvedStyle(it),generation=epoch,revision=componentRevision,paintRevision=e.paintRevision;
       const fresh=()=>current(e) && generation===epoch && paintRevision===e.paintRevision && (it.componentApi===undefined || revision===componentRevision);
+      const sameView=io=>{
+        if(!current(e) || generation!==epoch || it.script!==source || it.state!==state || it.w!==w || it.h!==h || smartResolvedStyle(it)!==style)return false;
+        if(it.componentApi!==2 || fresh())return true;
+        const record=currentGraph?.get(it);
+        return record && !record.error && JSON.stringify(componentViewIo(it,record.io))===JSON.stringify(io);
+      };
       const ready=()=>{e.host.dataset.smartGraphRevision=String(revision);e.host.dataset.smartReady='true';};
       try{
         if(it.componentInvalid)throw Object.assign(new Error(it.componentInvalid),{componentPermanent:true});
@@ -12963,22 +13076,29 @@ self.onmessage = function(e){
           e.behavior={move:false,rotate:false,resizeWidth:false,resizeHeight:false};paint(e);ready();return;
         }
         if(!fresh()){if(current(e))e.dirty=true;return;}
-        const style=smartResolvedStyle(it),drawingSignature=JSON.stringify([state,style,w,h,io]);
+        const drawingSignature=JSON.stringify([state,style,w,h,io]);
         // A clock or unrelated event can advance the graph without changing this view. Keep
         // its validated artwork and handles, but still honor the script's drawing deadline.
         if(!e.error && e.drawingSource===it.script && e.drawingSignature===drawingSignature && performance.now()<e.drawingDeadline){
           e.next=e.drawingDeadline;ready();return;
         }
-        const behavior=(caps.exportBehavior ? await requestSmartCall(it,'exportBehavior',[state]) : null) || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};
         const args=[state,style,w,h,true];if(io)args.push(io);
-        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args},it);
-        const handles=caps.handles ? await requestSmartCall(it,'handles',[state,w,h,smartResolvedStyle(it)]) || [] : [];
-        if(!fresh()){if(current(e))e.dirty=true;return;}
-        if(it.state!==state || it.w!==w || it.h!==h){e.dirty=true;return;}
+        // These hooks read the same snapshot. Queue them together so another control's
+        // next drag update cannot repeatedly overtake this view's final handles request.
+        const call=(fn,args)=>requestSmartSandbox({method:'call',src:source,fn,args},it).then(reply=>reply.result).catch(()=>null);
+        const [behavior,drawing,handles]=await Promise.all([
+          caps.exportBehavior?call('exportBehavior',[state,...(io?[io]:[])]):null,
+          requestSmartSandbox({method:'call',src:source,fn:'children',refresh:true,args},it),
+          caps.handles?call('handles',[state,w,h,style,...(io?[io]:[])]):null
+        ]);
+        if(!sameView(io)){if(current(e))e.dirty=true;return;}
         e.error=null;delete e.host.dataset.componentError;
-        e.behavior=behavior;e.kids=drawing.result.filter(c=>!c.editorOnly);
-        e.handles=handles.filter(h=>!h.editorOnly);paint(e);
-        ready();
+        e.behavior=behavior || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};e.kids=drawing.result.filter(c=>!c.editorOnly);
+        e.handles=(handles || []).filter(h=>!h.editorOnly);paint(e);
+        // An unrelated clock may advance the graph while these unchanged view inputs
+        // are painting. Show the completed frame, but acknowledge readiness only after
+        // the newest graph has been checked (the retry can reuse this drawing).
+        if(fresh())ready();else e.dirty=true;
         e.next=drawing.refreshMs?performance.now()+drawing.refreshMs:Infinity;
         e.drawingSource=it.script;e.drawingSignature=drawingSignature.length<=64000?drawingSignature:null;e.drawingDeadline=e.next;
       }catch(err){
@@ -13000,11 +13120,6 @@ self.onmessage = function(e){
             e.next=err.componentPermanent?Infinity:performance.now()+SMART_BACKOFF_MS;
           }
         }
-      }
-      finally{
-        e.busy=false;
-        if(current(e) && e.dirty)void refresh(e);
-        schedule();
       }
     }
     function point(e,event,parent=false){
@@ -13080,7 +13195,7 @@ self.onmessage = function(e){
           finally{for(const execution of owners.values())disposeSmartExecution(execution);}
         };
         const host={
-          valid:currentAction,read,event:notify,reader:true,inspectReplacement,
+          valid:currentAction,read,event:notify,reader:true,inspectReplacement,nativeFilePicker:!options.preview,
           command:async action=>{
             const snapshot=await read();if(!currentAction())return false;
             const command=prepareDatasetRecordAction(it,action,snapshot.record,snapshot.pool,true);
@@ -13208,7 +13323,7 @@ self.onmessage = function(e){
           const halfW=(it.w-p.original.w)/2,halfH=(it.h-p.original.h)/2;
           e.offset={x:p.original.offset.x+(c-1)*halfW-s*halfH,y:p.original.offset.y+s*halfW+(c-1)*halfH};
           position(e);
-          void refresh(e);
+          await refresh(e);
         }else{
           const state=it.state,revision=componentRevision;
           const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,at.x,at.y,it.w,it.h,smartResolvedStyle(it)]);
@@ -13216,7 +13331,7 @@ self.onmessage = function(e){
             if(componentReplyEvents(next).length && handle.kind==='drag')throw new Error('Events require a submission or completed click, not a live drag');
             if(await applyReaderSmartEvents(e,next,()=>valid(p)))p.finished=true;
             else applyReaderSmartDragResult(e,next);
-            if(it.componentApi!==undefined)await refreshComponents();else void refresh(e);
+            if(it.componentApi!==undefined)await refreshComponents(e);else await refresh(e);
           }
         }
       };
@@ -13471,7 +13586,7 @@ self.onmessage = function(e){
     const initial=requestedPage || documents.find(doc=>doc.id===initialConfig.initialSketchId)?.id || document.querySelector('.tab-select.active')?.dataset.tabId || documents[0].id;
     void activate(initial);
   }
-  function htmlSmartSource(documents){
+  function htmlSmartSource(documents,options){
     // Share the actual sandbox, validators and drawing primitives. No second implementation of
     // the script contract, text layout, arcs or style inheritance is maintained for exports.
     const values={SMART_MAX_REPLY,SMART_WORKER_SRC,SMART_CALL_TIMEOUT_MS,SMART_STARTUP_TIMEOUT_MS,SMART_MAX_RESIDENT_WORKERS,SMART_BACKOFF_MS,
@@ -13498,7 +13613,8 @@ self.onmessage = function(e){
     const packed=packSmartScriptLists(documents.map(doc=>doc.shapes.map(shape=>shape.item)));
     const payload={scripts:packed.scripts,documents:documents.map((doc,index)=>({...doc,shapes:doc.shapes.map((shape,shapeIndex)=>({...shape,item:packed.lists[index][shapeIndex]}))}))};
     const data=JSON.stringify(payload).replace(/</g,'\\u003c');
-    return `(${htmlSmartRuntime.toString().replace('/* shared smart runtime */',()=>source)})(${data});`.replace(/<\/script/gi,'<\\/script');
+    const runtimeOptions=options?','+JSON.stringify(options).replace(/</g,'\\u003c'):'';
+    return `(${htmlSmartRuntime.toString().replace('/* shared smart runtime */',()=>source)})(${data}${runtimeOptions});`.replace(/<\/script/gi,'<\\/script');
   }
 
   // Reader deep links use zero-based tab positions. Query data remains available to components.
@@ -13662,22 +13778,17 @@ self.onmessage = function(e){
   // Read each working document just like exportWorkspace(): browser storage can be stale or unavailable.
   // Pass its own items/assets through serialization without modifying the active document's state.
   // Current-sketch export (also used when workspace controls are disabled) includes only the active tab. cssW/cssH are shared.
-  async function exportHtml({currentSketch=false}={}){
-    const targetTabId=activeTabId;
-    if(textInput.style.display==='block') commitText();
-    cancelSmartGestures(true);
-    await smartHitSettled;await shapePlacementQueue;
-    rememberActiveTab();
+  function captureWorkspaceHtml({currentSketch=false,targetTabId=activeTabId}={}){
     const exportTabs=features.workspace && !currentSketch ? tabs : tabs.filter(t=>t.id===targetTabId);
-    const tabData = await Promise.all(exportTabs.map(async t=>{
-      const doc = tabDocument(t.id),scene=clone(doc.items);
-      const data=datasetsUsedBy(scene,doc.datasets);
-      const svg = await itemsToSVGMarkup(scene, {width:cssW, height:cssH, assets:doc.assets,datasets:data,liveSmart:true});
-      return { id:t.id, name:t.name, items:scene, datasets:data, svg };
-    }));
-
-    if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
-
+    return {width:cssW,height:cssH,documents:exportTabs.map(t=>{
+      const doc=tabDocument(t.id),scene=clone(doc.items);
+      return {id:t.id,name:t.name,items:scene,assets:clone(doc.assets),datasets:clone(datasetsUsedBy(scene,doc.datasets))};
+    })};
+  }
+  async function buildWorkspaceHtml(snapshot,options={}){
+    const tabData=await Promise.all(snapshot.documents.map(async doc=>({
+      ...doc,svg:await itemsToSVGMarkup(doc.items,{width:snapshot.width,height:snapshot.height,assets:doc.assets,datasets:doc.datasets,liveSmart:true,signal:options.signal})
+    })));
     let html;
     if(tabData.length < 2){
       // A single sketch needs no tab bar. Its SVG also provides the no-JavaScript fallback.
@@ -13697,7 +13808,7 @@ self.onmessage = function(e){
           document.querySelectorAll('.tab-select').forEach(function(b){ b.classList.toggle('active', b===btn); });
         });
       });\n(${setupWorkspaceTabBar.toString()})(document.querySelector('.tabbar'));
-      var initialPage=(${htmlInitialTabIndex.toString()})(${tabData.length},location.search);
+      var initialPage=(${htmlInitialTabIndex.toString()})(${tabData.length},${options.preview?JSON.stringify(options.query||'').replace(/</g,'\\u003c'):'location.search'});
       document.querySelectorAll('.tab-select')[initialPage].click();`;
       html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
     }
@@ -13706,8 +13817,19 @@ self.onmessage = function(e){
       // the static SVG fallback remains readable. Runtime clears it after the first settlement.
       html=html.replace('</head>','<style>html.sc-reader-starting body{visibility:hidden}</style><script>document.documentElement.classList.add("sc-reader-starting");<\/script></head>');
       const data=tabData.map(t=>({id:t.id,name:t.name,datasets:t.datasets,shapes:t.items.flatMap((item,index)=>item.type==='smart'?[{index,item}]:[])}));
-      html=html.replace('</body>',()=>`<script>${htmlSmartSource(data)}<\/script></body>`);
+      html=html.replace('</body>',()=>`<script>${htmlSmartSource(data,options.preview?{preview:true,query:options.query||''}:undefined)}<\/script></body>`);
     }
+    return html;
+  }
+  async function exportHtml({currentSketch=false}={}){
+    const targetTabId=activeTabId;
+    if(textInput.style.display==='block')commitText();
+    cancelSmartGestures(true);
+    await smartHitSettled;await shapePlacementQueue;
+    rememberActiveTab();
+    const snapshot=captureWorkspaceHtml({currentSketch,targetTabId});
+    if(snapshot.documents.every(t=>t.items.length===0)){toast('Nothing to export yet');return;}
+    const html=await buildWorkspaceHtml(snapshot);
     const blob = new Blob([html], {type:'text/html'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -13717,6 +13839,95 @@ self.onmessage = function(e){
     URL.revokeObjectURL(url);
     toast('Saved HTML');
   }
+  // The preview runs the exported application in a separate, opaque-origin browsing context.
+  // Only readiness and the displayed title cross back; component state never crosses this boundary.
+  function runPreviewBridge(token){
+    let lastTitle=null,ready=false;
+    const send=(type,extra={})=>parent.postMessage({simplecanvasPreview:token,type,...extra},'*');
+    const check=()=>{
+      if(lastTitle!==document.title){lastTitle=document.title;send('title',{title:lastTitle});}
+      if(!ready && !document.documentElement.classList.contains('sc-reader-starting')){ready=true;send('ready');}
+    };
+    new MutationObserver(check).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+    new MutationObserver(check).observe(document.head,{childList:true,subtree:true,characterData:true});
+    window.addEventListener('unhandledrejection',event=>{if(!ready)send('error',{message:String(event.reason?.message||event.reason||'The reader could not start')});});
+    check();
+  }
+  async function startRunPreview(){
+    if(runPreview || !appStarted)return;
+    if(hasActivePointerGesture() || polyDraft){toast('Finish or cancel the current drawing before running a preview');return;}
+    if(document.querySelector('dialog[open]'))return;
+    if(textInput.style.display==='block')commitText();
+    if(nudging){nudging=false;unbakeAfterGesture();commitHistory();}
+    // Native file reads are not accepted component events. Cancel their old callbacks,
+    // including decodes that might finish after returning from this preview.
+    editorInputEpoch++;workspaceReadSeq++;shapeLibraryImportSeq++;
+    const panel=document.getElementById('runPreviewPanel'),status=document.getElementById('runPreviewStatus');
+    const token=Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,'0')).join('');
+    const session={suspended:false,focus:document.getElementById('runPreviewBtn'),token,frame:null,abort:new AbortController()};
+    runPreview=session;
+    panel.dataset.state='preparing';status.hidden=false;status.textContent='Preparing workspace preview…';
+    document.getElementById('runPreviewTitle').textContent='Workspace preview';
+    panel.showModal();document.getElementById('exitPreviewBtn').focus();
+    const current=()=>runPreview===session;
+    try{
+      // Finish already released controls/placements before copying. New timer ticks stop now;
+      // accepted event transactions and their follow-up actions may finish this boundary.
+      cancelAlignmentClick();cancelSmartGestures(true);syncEditorTimeline();scheduleSmartRefresh();
+      await smartHitSettled;await shapePlacementQueue;
+      for(let attempt=0;attempt<8;attempt++){
+        if(!current())return;
+        const gestures=smartGestureQueue,actions=editorActionDispatcher.promise;
+        await gestures;await actions;
+        if(gestures===smartGestureQueue && actions===editorActionDispatcher.promise)break;
+        if(attempt===7)throw new Error('The workspace is still processing actions. Try Run again when they finish.');
+      }
+      if(!current())return;
+      session.suspended=true;editorEventEpoch++;editorComponentEvaluation=null;
+      for(const item of editorRuntimeContext().scene)disposeSmartExecution(smartItemExecutions.get(item));
+      rememberActiveTab();
+      const snapshot=captureWorkspaceHtml(),query=componentPageQuery;
+      const html=await buildWorkspaceHtml(snapshot,{preview:true,query,signal:session.abort.signal});
+      if(!current())return;
+      const frame=document.createElement('iframe');frame.id='runPreviewFrame';frame.title='Workspace preview';
+      frame.setAttribute('sandbox','allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox');session.frame=frame;
+      panel.dataset.state='loading';status.textContent='Starting workspace preview…';
+      const bridge=`<script>(${runPreviewBridge.toString()})(${JSON.stringify(session.token)});<\/script>`;
+      frame.srcdoc=html.replace('</body>',()=>bridge+'</body>');panel.append(frame);
+    }catch(error){
+      if(!current())return;
+      panel.dataset.state='error';status.hidden=false;
+      status.textContent='Could not start preview: '+(error.message||String(error))+'. Return to editing to try again.';
+    }
+  }
+  function stopRunPreview({resume=true}={}){
+    const session=runPreview;if(!session)return;
+    runPreview=null;
+    session.abort.abort();
+    session.frame?.remove();session.frame=null;
+    const panel=document.getElementById('runPreviewPanel');panel.close();delete panel.dataset.state;
+    if(resume){
+      // Pause is a user setting, not a preview side effect. Keep its existing value while
+      // resuming the monotonic timeline only for sketches that were running before Run.
+      for(const cached of smartChildrenCache.values())if(cached.refreshMs){cached.expired=true;cached.nextRefresh=Infinity;}
+      syncEditorTimeline();render();scheduleSmartRefresh();queueEditorComponentActionIntents([]);
+      (session.focus?.isConnected?session.focus:document.getElementById('runPreviewBtn')).focus();
+    }
+  }
+  document.getElementById('runPreviewBtn').addEventListener('click',()=>void startRunPreview());
+  document.getElementById('exitPreviewBtn').addEventListener('click',()=>stopRunPreview());
+  document.getElementById('runPreviewPanel').addEventListener('cancel',event=>{event.preventDefault();stopRunPreview();});
+  document.getElementById('runPreviewPanel').addEventListener('close',event=>{if(!event.target.open)stopRunPreview();});
+  window.addEventListener('pagehide',()=>stopRunPreview({resume:false}));
+  window.addEventListener('message',event=>{
+    const session=runPreview,data=event.data;
+    if(!session?.frame || event.source!==session.frame.contentWindow || data?.simplecanvasPreview!==session.token)return;
+    const panel=document.getElementById('runPreviewPanel'),status=document.getElementById('runPreviewStatus');
+    if(data.type==='ready'){panel.dataset.state='ready';status.hidden=true;}
+    else if(data.type==='error' && panel.dataset.state==='loading'){
+      panel.dataset.state='error';status.hidden=false;status.textContent='Could not start preview: '+String(data.message).slice(0,500)+'. Return to editing to try again.';
+    }else if(data.type==='title')document.getElementById('runPreviewTitle').textContent='Workspace preview'+(data.title?' — '+String(data.title).slice(0,200):'');
+  });
   // ---------- save / open the sketch as a file (our own JSON format) ----------
   function exportProject(){
     const packed=packSmartScriptLists([items]);
@@ -13781,9 +13992,9 @@ self.onmessage = function(e){
   // "Open Workspace…" — accepts either a workspace or a single-sketch file, always REPLACES the
   // whole current set of open tabs (a picked single-sketch file becomes the one resulting tab).
   function openWorkspaceFile(file){
-    if(!workspaceStorage.writable || !features.workspace) return;
+    if(runPreview || !workspaceStorage.writable || !features.workspace) return;
     const generation=workspaceGeneration,request=++workspaceReadSeq;
-    const current=()=>workspaceStorage.writable && generation===workspaceGeneration && request===workspaceReadSeq && !newWorkspaceDialog.open;
+    const current=()=>!runPreview && workspaceStorage.writable && generation===workspaceGeneration && request===workspaceReadSeq && !newWorkspaceDialog.open;
     const r = new FileReader();
     r.onload = ()=>{
       if(!current())return;
@@ -13836,8 +14047,8 @@ self.onmessage = function(e){
     return false;
   }
   function importProject(file, targetTabId=activeTabId){
-    const generation=workspaceGeneration;
-    const current=()=>generation===workspaceGeneration && sketchImportTargetCurrent(targetTabId);
+    const generation=workspaceGeneration,inputEpoch=editorInputEpoch;
+    const current=()=>!runPreview && inputEpoch===editorInputEpoch && generation===workspaceGeneration && sketchImportTargetCurrent(targetTabId);
     if(!current()) return;
     const r = new FileReader();
     r.onload = async ()=>{
@@ -23543,7 +23754,7 @@ self.onmessage = function(e){
   fileInput.addEventListener('change', e=>{ if(e.target.files[0]) readFile(e.target.files[0]); e.target.value=''; });
 
   window.addEventListener('paste', e=>{
-    if(!appStarted) return;
+    if(!appStarted || runPreview) return;
     if(textInput.style.display==='block') return;     // let the text editor handle pastes
     if(hasActivePointerGesture()){e.preventDefault();return;}
     const text=e.clipboardData && e.clipboardData.getData('text/plain');
@@ -23587,7 +23798,7 @@ self.onmessage = function(e){
       (smartCurrentPress && !smartCurrentPress.released) || smartDrag || libraryDrag?.active || componentWiring.drag);
   }
   window.addEventListener('keydown', e=>{
-    if(!appStarted) return;
+    if(!appStarted || runPreview) return;
     if(textInput.style.display==='block' || isTextTarget(e.target)) return;
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.target?.tagName==='SELECT' && !e.metaKey && !e.ctrlKey && e.key.length===1)return;
@@ -23692,6 +23903,7 @@ self.onmessage = function(e){
   // iOS Safari does not turn two taps into a dblclick, so recognise a double tap ourselves (two lifts
   // within 300ms and 25px, touch or pen) and hand it to the very same handler the mouse uses
   let lastTap = null;
+  let handledTouchDoubleTap = null;
   async function onTapUp(e){
     // Registered after onUp, so the second tap's own vertex/selection has landed first.
     if(e.pointerType==='mouse' || ignoredSmartPointerUps.has(e)) return;
@@ -23703,7 +23915,7 @@ self.onmessage = function(e){
     lastTap=doubleTap ? null : tap;
     // Recognise the second lift before waiting: replayed clicks must not arm an alignment timer
     // while this double-tap is waiting for its own smart hit tests.
-    if(doubleTap){await onDoubleClick(e,firstPress);return;}
+    if(doubleTap){handledTouchDoubleTap={t:now,x:e.clientX,y:e.clientY};await onDoubleClick(e,firstPress);return;}
     // handledPointerUp may still be settling (a smart object's own hitEdit crossing the sandbox
     // asynchronously -- see onDoubleClick's own identical await) -- wait for that before reading it.
     if(smartHitSettled) await smartHitSettled;
@@ -23712,7 +23924,14 @@ self.onmessage = function(e){
   canvas.addEventListener('click', e=>{
     if(e.detail===1 && (!e.pointerType || e.pointerType==='mouse')) firstMouseSelectionPress=selectionPress;
   });
-  canvas.addEventListener('dblclick', onDoubleClick);
+  canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')handledTouchDoubleTap=null;},true);
+  canvas.addEventListener('dblclick',e=>{
+    // Some browsers emit a native mouse dblclick after our pointer-based double-tap.
+    // Handling both would immediately undo the first action (for example leave edit mode).
+    const tap=handledTouchDoubleTap;
+    if(tap && e.sourceCapabilities?.firesTouchEvents!==false && performance.now()-tap.t<500 && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<25){e.preventDefault();return;}
+    void onDoubleClick(e);
+  });
   // touch-action:none on canvas/textInput doesn't reliably stop Safari's native double-tap-to-zoom
   // on iPadOS — recognise the same "two quick taps" pattern as onTapUp above, directly on the raw
   // touch event, and cancel it there; that's the only level low enough to reliably override it.

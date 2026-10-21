@@ -54,6 +54,20 @@ ownership loss, invalidated participants, or leaving an Active sketch only execu
 cancel pending work. Both editor and HTML reader follow these rules; see
 [event visibility tests](tests/event-visibility.test.cjs).
 
+**Run** opens a disposable workspace copy in an isolated iframe using the HTML export reader.
+The parent editor is inert and its simulation pauses until **Return to editing**; returning
+destroys the reader and restores authoring rather than merging reader state/history/data.
+Result downloads remain explicit reader actions. Keep the return control outside the reader,
+including during export failure or startup cancellation. Preview starts with the editor query,
+but reader navigation must never rewrite the parent URL. Current-sketch scope applies when
+workspace controls are disabled; read-only authoring can still be previewed. See
+[Run preview](README.md#run-a-workspace-preview) before adding a second reader path or state merge.
+At the Run boundary, cancel deferred editor clicks and unfinished native file imports, including
+late image decodes; already accepted component actions and released placements settle before copying.
+Keep parent keyboard, paste and import callbacks from mutating the suspended source.
+Preview startup cancellation must also abort snapshot rendering jobs and release temporary script
+executions; ordinary PNG/SVG/HTML exports retain their independent lifetimes.
+
 **Duplicate sketch** creates a new sketch with independent component and owned-dataset IDs.
 Connections within the copy follow its copied objects; references to other sketches remain external.
 The singleton Workspace settings component stays in the original sketch. Export/import uses the same

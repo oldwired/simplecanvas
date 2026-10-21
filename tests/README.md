@@ -93,6 +93,39 @@ Replace the revision to compare another baseline. It measures warmed paints, pre
 reopens; timings are hardware-dependent observations, not pass/fail limits. Synthetic preview jobs
 isolate picker work; browser regressions separately verify real sandbox execution and rasterization.
 
+For a larger connected workspace, including real Run preview startup:
+
+```sh
+node tests/workspace-performance.cjs 0e557fe 5
+BROWSER_ENGINE=webkit node tests/workspace-performance.cjs working-only 5
+```
+
+This benchmark uses the same deterministic 119-component, three-sketch fixture in each version,
+including shared data, numeric chains and cross-sketch events. JSONL output separates initial load,
+unchanged/changed evaluation and Worker counts, real submission acceptance/paint, storage, actual
+exports and reader startup. Preview startup is measured only when that version supports Run.
+`working-only` omits a baseline; the final argument selects 1–20 updates. Timing and storage-character
+counts are observations, not CI thresholds or physical on-disk allocation measurements.
+
+A local macOS/arm64 run on 2026-10-21 compared `0e557fe` with the Run preview working tree,
+using Chromium 151 and WebKit 26.5. The table shows medians across five updates; startup values
+are single measurements. These are hardware-dependent observations from one run per engine,
+with the baseline measured first, rather than performance guarantees.
+
+| Measurement | Chromium, baseline → working | WebKit, baseline → working |
+| --- | --- | --- |
+| Unchanged graph evaluation | 285 → 66 ms | 316 → 101 ms |
+| Changed graph and visible paint | 361 → 137 ms | 416 → 216 ms |
+| Sandbox calls per unchanged / changed update | 120 / 131 → 1 / 13 | 120 / 131 → 1 / 13 |
+| Exported reader startup, including visible paint | 815 → 591 ms | 929 → 780 ms |
+| Run preview startup, public ready signal | unavailable → 2.04 s | unavailable → 2.60 s |
+
+The actual native export shrank from 693,528 to about 196,976 bytes; the Chromium HTML export
+from 1,286,218 to 800,539 bytes. These changes include earlier declaration caching and script
+pooling work, not just Run preview. Reduced request counts provide firmer evidence of avoided
+work than one local timing run. The benchmark reports its public preview-ready signal separately
+from exported-reader startup, which also waits for completed visible paints.
+
 ## CI and remaining manual checks
 
 [Browser tests](../.github/workflows/browser-tests.yml) run for feature-branch pushes and pull

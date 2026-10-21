@@ -10,6 +10,7 @@ app with all optional features disabled and the page title **Really SimpleCanvas
 - [Get started](#get-started)
 - [Draw and edit](#draw-and-edit)
 - [Save and reopen](#save-and-reopen)
+- [Run a workspace preview](#run-a-workspace-preview)
 - [Export and print](#export-and-print)
 - [Shape libraries and smart shapes](#shape-libraries-and-smart-shapes)
 - [Deployment and settings](#deployment-and-settings)
@@ -147,6 +148,39 @@ offers **Save workspace…** if automatic saving fails; save the file before lea
 Library changes are saved separately in this browser, including the Working collection and
 categories. If that save is pending or fails, the app warns before leaving; a visible failure banner
 offers **Retry** and **Export library…**. Export also provides a backup if browser data is cleared.
+
+## Run a workspace preview
+
+Click **Run** in the toolbar to use a separate copy of your workspace with the same interaction
+and permissions as an HTML export. Controls work directly; dataset imports, permitted edits,
+navigation and result downloads work inside the preview. With workspace controls disabled, Run
+previews only the current sketch. It is also available when component authoring is disabled or
+the authoring workspace is read-only.
+
+Preview uses a regular file chooser for dataset imports. To read later disk changes, choose the
+file again; its isolated frame cannot retain native reload handles. Standalone HTML exports can
+use those handles in browsers that support them. Markdown links still open in a separate tab.
+
+Finish or cancel an active drawing first. Run commits ordinary text editing, cancels unsubmitted
+smart-input drafts and unfinished file imports, and waits for already accepted component actions
+or placements before capturing the copy.
+
+**Return to editing** discards the preview copy. Its changes do not merge into your drawings,
+history or autosave; authoring simulation pauses during preview and resumes its previous
+running/paused status afterward. Existing wall-clock behavior is preserved: a running stopwatch
+still measures real elapsed time. Each Run starts fresh from the authoring workspace. Use the
+preview's **Download table** controls to keep results as CSV or JSON before returning; downloaded
+files remain available after the copy is discarded.
+
+The opening sketch follows HTML export rules: a valid zero-based `?page=N` parameter wins,
+otherwise Workspace settings chooses the initial sketch, falling back to the first. Preview
+starts with the editor URL's query parameters. Go to tab changes them inside the preview without
+rewriting the editor's browser URL. The reader's window title appears in the preview header; the
+editor's browser title stays unchanged.
+
+Return to editing stays above the reader even when Sketch settings hides its navigation. Escape
+in that header returns to editing or cancels startup; Escape inside the reader keeps its ordinary
+control behavior. If startup fails, the header remains available to return safely.
 
 ## Export and print
 

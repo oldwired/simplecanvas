@@ -22,8 +22,8 @@ existing signals, with shared origins to recombine related branches. Event wirin
 reception modes, recent activity, and captured payloads. Dropdown and scalar selectors support
 explicit occurrences, and signal/event adapters and completion notifications extend the workflow.
 Shared host-action dispatch and workspace execution complete stage 4, with the acceptance workflow,
-closeout fixes, and verification evidence recorded below. The stage 5 reader workflow and stage 6
-integrations remain proposals.
+closeout fixes, and verification evidence recorded below. The first stage 5 milestone implements
+Run preview with a disposable workspace copy; broader stage 5 polish and stage 6 integrations remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -1306,7 +1306,7 @@ after a short debounce; stale replies cannot replace the latest edit, and the fi
 Pending or unavailable results replace stale output values. Preview is bounded,
 pure inspection of a temporary proposal: it does not run transitions, consume edges, advance
 timed state, or mutate the drawing. Save validates and commits; Cancel discards the proposal.
-This does not add the future document-wide Run/Preview mode.
+The document-wide Run preview workflow is a separate stage 5 milestone, described below.
 
 The Edit inspector's fixed header shows a read-only component type separately from the editable
 instance name. Exact built-in scripts use their canonical catalog name even after an instance is
@@ -2214,7 +2214,8 @@ but equal event payloads must never collapse into one occurrence.
 Ordinary live value evaluation skips unchanged computations, while graph traversal and validation
 remain intact; this is not a scheduler rewrite. JSON build's explicit Emit/Reprocess and the
 shared dispatcher for navigation, downloads, and dataset commands are delivered below.
-HTTP/MQTT remain stage 6; Run/Preview and reader result saving remain stage 5.
+HTTP/MQTT remain stage 6. Run preview is delivered by the stage 5 milestone below;
+broader reader result saving remains deferred.
 
 ### Accepted workspace execution and cross-sketch contract
 
@@ -2537,25 +2538,80 @@ in a saved document or HTML export under the shared policy below. Importing a do
 enable its external operations. Prepared deployment exports need a separate startup policy.
 Component scripts retain their lack of direct DOM, storage, and network access.
 
-## Authoring and reader workflow — proposed stage 5
+## Authoring and reader workflow — implemented stage 5 Run preview milestone
 
-Use the library-and-logic example to improve binding discovery and reusable property controls.
-Add a document-wide Run/Preview mode that reuses exported reader interaction, with layout and
-authoring controls hidden. Initial visual wiring is now a stage 3 milestone; this stage can refine
-its discovery and controls while retaining Edit as an alternative. If read, write, or read/write
-markers are added, first define explicit access metadata and account for per-instance editing and
-reader permissions. The existing neutral Dataset association does not promise any of those rights.
-Sketch settings is already implemented as a focused reader addition: title, tab bar, read-only wiring,
-and simulation-control visibility apply before tab reveal. Possible extensions remain page
-background, initial fit/zoom, and initial keyboard focus; these do not replace Run/Preview or the
-results-saving policy.
+The first milestone reuses the exported reader to operate a separate copy of the current workspace.
+Authoring is suspended while that copy runs. Returning to editing discards preview changes and
+restores the authoring workspace; there is no implicit merge or **Keep results** action. A fresh
+preview starts from a fresh authoring snapshot. The toolbar's **Run** action opens **Workspace
+preview**, with a visible discard notice and **Return to editing** outside the reader's own chrome.
+Run remains available when component authoring is disabled or the source is read-only; disabling
+workspace controls narrows it to the current sketch.
+An active pointer gesture or unfinished polygon must be finished or cancelled first. Ordinary
+text editing commits and unsubmitted smart-input drafts cancel before capture. Unfinished native
+file imports, late image decodes and deferred editor clicks are cancelled at the Run boundary;
+parent paste cannot change the suspended source. Already released component actions and placements
+settle before the authoring runtime is suspended. Those accepted authoring edits remain authoring
+edits, distinct from the subsequent disposable preview session.
 
-Decide how preview state is retained or discarded on return to authoring before implementing
-the mode, and make that choice visible. Distinguish this editor behavior from reader persistence:
-HTML currently keeps changes only for its open session. The implemented result controls export table rows as
-CSV or JSON through stage 4's host-owned actions. Do not imply that a
-result download is an editable HTML round trip. Acceptance covers entering preview, operating
-the example, returning to authoring, and verifying the chosen state/result-saving policy.
+The reader runs in an opaque-origin iframe using the same self-contained HTML output. It cannot
+access the parent editor's DOM or storage. The parent editor is inert while preview is open, and
+its simulation retains its prior running/paused status for return. Escape in the outer header
+returns or cancels startup; Escape inside the reader remains a local interaction. Wall-clock
+components retain their existing real-time semantics; pausing evaluation does not freeze wall time.
+Startup failures
+show an error while keeping Return to editing available. Cancelling startup stops its temporary
+rendering jobs as well as preventing a late reader from reopening.
+
+Preview follows exported-reader permissions and execution settings: components work directly,
+authoring-only controls stay hidden, and changes to data or layout require their existing reader
+permissions. Result controls can still download CSV or JSON through the existing host actions.
+Downloaded files survive returning to editing; the preview's component and dataset changes do not.
+A result download is not an editable workspace or HTML round trip. Reader behavior, including
+Whole workspace processing, explicit cross-sketch endpoints, and session-local file selection,
+uses the same component contracts as a fresh HTML export. The isolated frame uses a regular file
+chooser: disk changes require choosing the file again, because native file handles are unavailable
+there. Standalone exports retain native Reload support where the browser permits it. Existing
+Markdown links open separately with `noopener`, outside the preview sandbox.
+
+The initial query is copied from the editor URL. A valid zero-based `page` parameter selects the
+opening sketch, otherwise the configured initial sketch applies, with the first sketch as fallback.
+Go to tab can update preview-local parameters without changing the editor's browser URL. Preview
+navigation and hidden-tab settings never remove the outer Return to editing control. Reader title
+changes appear in that header, without changing the editor's browser title.
+
+Acceptance covers entering preview, interacting with controls and shared data, navigating sketches,
+downloading results, returning without altering authoring history or autosave, and starting another
+fresh copy. The benchmark records snapshot/launch cost and steady reader behavior separately;
+timings are observations rather than hardware-independent limits. The
+[benchmark guide](../tests/README.md#generated-examples-and-benchmarks) records the fixture,
+commands and measured comparison with `0e557fe`.
+
+Milestone verification on 2026-10-21: all 15
+[Run preview regressions](../tests/run-preview.test.cjs) passed in both Chromium and WebKit.
+They cover copy/discard and downloads, source history/autosave isolation, simulation pause/resume,
+read-only and feature-disabled sources, hidden-sketch navigation, query/title isolation, cancelled
+startup and late imports, regular file import on HTTPS, and separate Markdown links. Startup
+cancellation also aborts the old build signal; a later Run uses a fresh signal. Preview layout was
+visually checked. Broader stage 5 work below remains open.
+
+The interaction follow-up covers continuous slider painting, connected displays and unrelated
+timer activity in Run and HTML, plus smart-shape resizing in the editor. Completed intermediate
+frames remain distinct from a drawing verified against the latest graph. Dropdown selections
+finish before a queued next click proceeds; leaving the editing context still cancels pending
+work. Regression coverage includes cancellation, final values, and resize Undo/Redo.
+
+### Remaining stage 5 work
+
+Broader authoring polish remains separate: improve binding discovery and reusable property controls
+while retaining Edit and visual wiring. If read, write, or read/write Dataset markers are added,
+first define explicit access metadata and account for per-instance editing and reader permissions.
+The existing neutral Dataset association does not promise any of those rights.
+
+Sketch settings already applies title, tab bar, read-only wiring and simulation-control visibility
+before tab reveal. Page background, initial fit/zoom and initial keyboard focus remain possible
+extensions. Keeping or selectively merging preview results and saving a modified reader as an
+editable workspace/HTML remain deferred. This first milestone does not close all of stage 5.
 
 ## Shared integration foundations — proposed step 6.1
 
@@ -2852,8 +2908,9 @@ handling are tested separately from broker delivery.
    The 2026-10-20 closeout covers the authored save/reopen/offline workflow, lifecycle regressions,
    and corrected action rejection, tab scrolling, and static export behavior. Deferred event
    extensions are outside this completed scope.
-4. **Stage 5:** Build on stage 3's visual wiring to refine authoring controls and define preview
-   state retention and reader result saving. A full HTML-to-editor round trip remains separate.
+4. **Stage 5:** Run preview uses a separate workspace copy and discards it on return, with explicit
+   result downloads still available. Broader authoring polish, Keep results/merging, and a full
+   HTML-to-editor round trip remain separate.
 5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
    connection identity, and artifact-specific credential/startup policy before either transport.
    These require explicit contract extensions, not implicit additions to the value/table API v2.

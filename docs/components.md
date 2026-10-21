@@ -6,6 +6,11 @@ Open [the smart-components workspace](../examples/smart-components-workspace.jso
 **File → Open workspace…** to explore thirty-eight connected examples. Opening a workspace replaces
 all current tabs; use **Save workspace…** first if you want to keep them. The JSON workspace is
 editable. [The exported HTML](../examples/smart-components-workspace.html) runs offline as a reader.
+You can also click **Run** in the editor toolbar to try a fresh workspace copy using that same
+reader. Controls work directly and reader edit/import permissions apply. **Return to editing**
+discards the copy; the authoring drawing, data and history are preserved. Download result tables
+as CSV or JSON inside preview if you want to keep them. See the
+[preview guide](../README.md#run-a-workspace-preview) for startup and navigation behavior.
 
 For a small application spanning sketches, use the separate
 [workspace-runtime example](../examples/workspace-runtime.json) and its

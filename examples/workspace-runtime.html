@@ -207,8 +207,9 @@
     const index=Number(page);
     return Number.isSafeInteger(index) && index<count?index:0;
   })(3,location.search);
-      document.querySelectorAll('.tab-select')[initialPage].click();</script><script>(function htmlSmartRuntime(documents){
+      document.querySelectorAll('.tab-select')[initialPage].click();</script><script>(function htmlSmartRuntime(documents,options){
     'use strict';
+    options=options||{};
     const SMART_MAX_REPLY=524288;
 const SMART_WORKER_SRC="\n\"use strict\";\nconst stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);\nconst encoder = new TextEncoder();\nconst send = value => {\n  const json = stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});\n  transmit(encoder.encode(json).length <= 524288 ? json : stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));\n};\nsend({ready:true});\nfor(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){\n  try{ delete self[g]; }catch(e){}\n  try{ self[g] = undefined; }catch(e){}\n}\ntry{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}\nlet source, compiled;\nfunction compile(src){\n  if(source!==undefined){if(source!==src)throw new Error('Worker source changed');return compiled;}\n  source=src;\n  var def = null;\n  try{\n    def = new Function('\"use strict\";return ('+src+');')();\n    if(!def || typeof def.children !== 'function') def = null;\n  }catch(e){ def = null; }\n  return compiled=def;\n}\nself.onmessage = function(e){\n  var msg = e.data || {};\n  var id = msg.id;\n  try{ var def = compile(msg.src || '');\n  const apiVersion=def && def.apiVersion===undefined ? 1 : def && def.apiVersion;\n  if(def && apiVersion!==1 && apiVersion!==2){send({id,ok:false,error:'Unsupported component API version'});return;}\n  if(def && msg.componentApi!==undefined && msg.componentApi!==apiVersion){send({id,ok:false,error:'Component API marker does not match script'});return;}\n  if(def && msg.method==='call' && apiVersion===2 && msg.componentApi!==2){send({id,ok:false,error:'Component API 2 requires a saved componentApi marker'});return;}\n  if(msg.method === 'caps'){\n    const state=msg.args && msg.args[0] || (def && (typeof def.inputs==='function' || typeof def.outputs==='function' || typeof def.eventTransform==='function' || typeof def.actionEvents==='function') && typeof def.initState==='function' ? def.initState() : {});\n    send({id:id, ok:!!def, caps: def ? {\n      children: typeof def.children==='function', unavailableChildren: apiVersion===2 && typeof def.unavailableChildren==='function', handles: typeof def.handles==='function',\n      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function', contextMenu: typeof def.contextMenu==='function',\n      initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',\n      importTable: apiVersion===2 && typeof def.importTable==='function',\n      configure: apiVersion===2 && typeof def.configure==='function',\n      configurationError: apiVersion===2 && typeof def.configurationError==='function' ? def.configurationError(state) : null,\n      refreshMs: typeof def.refreshMs==='function', compute: typeof def.compute==='function',\n      transition: apiVersion===2 && typeof def.transition==='function',\n      publish: apiVersion===2 && typeof def.publish==='function',\n      onEvent: apiVersion===2 && typeof def.onEvent==='function',\n      eventApi:apiVersion===2 ? def.eventApi : undefined,\n      eventTransform:apiVersion===2 ? (typeof def.eventTransform==='function' ? def.eventTransform(state) : def.eventTransform) : undefined,\n      eventInputs:apiVersion===2 ? (typeof def.eventInputs==='function' ? def.eventInputs(state) : def.eventInputs) : undefined,\n      eventOutputs:apiVersion===2 ? (typeof def.eventOutputs==='function' ? def.eventOutputs(state) : def.eventOutputs) : undefined,\n      wakePolicy:apiVersion===2 ? def.wakePolicy : undefined,\n      queryParameters:apiVersion===2 ? def.queryParameters : undefined,\n      tablePresentation:apiVersion===2 ? def.tablePresentation : undefined,\n      datasetOwner:apiVersion===2 ? def.datasetOwner : undefined,\n      pageSettings:apiVersion===2 ? def.pageSettings : undefined,\n      sketchSettingsOverrides:apiVersion===2 ? def.sketchSettingsOverrides : undefined,\n      workspaceSettings:apiVersion===2 ? def.workspaceSettings : undefined,\n      workspaceEndpoint:apiVersion===2 ? (typeof def.workspaceEndpoint==='function' ? def.workspaceEndpoint(state) : def.workspaceEndpoint) : undefined,\n      apiVersion, inputs:apiVersion===2 ? (typeof def.inputs==='function' ? def.inputs(state) : def.inputs) : undefined,\n      outputs:apiVersion===2 ? (typeof def.outputs==='function' ? def.outputs(state) : def.outputs) : undefined,\n      settings:apiVersion===2 ? def.settings : undefined,\n      dataActions:apiVersion===2 ? (typeof def.dataActions==='function' ? def.dataActions(state) : def.dataActions) : undefined,\n      actionEvents:apiVersion===2 ? (typeof def.actionEvents==='function' ? def.actionEvents(state) : def.actionEvents) : undefined,\n      exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')\n    } : null});\n    return;\n  }\n  if(msg.method === 'call'){\n    const hook=def && def[msg.fn];\n    const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook\n      : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;\n    const reply={id:id, ok:true, apiVersion, result:result===undefined ? null : result};\n    if(msg.fn==='children' && msg.refresh===true){\n      const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;\n      // Invalid intervals must not prevent valid children from crossing the JSON-only transport.\n      reply.refreshMs=interval==null ? null : typeof interval==='number' && Number.isFinite(interval) ? interval : 'invalid';\n    }\n    send(reply);\n    return;\n  }\n  }catch(e){ send({id:id,ok:false,error:['compute','transition','publish','importTable','onEvent'].includes(msg.fn) && typeof e?.message==='string' && e.message\n    ? (msg.fn==='importTable'?'Table import failed: ':'Computation failed: ')+e.message.slice(0,160) : 'Script hook failed'}); }\n};\n";
 const SMART_CALL_TIMEOUT_MS=250;
@@ -1001,7 +1002,7 @@ const openComponentDataAction=async function openComponentDataAction(raw,host){
         columnMode.add(new Option('Keep current columns','keep'));columnMode.add(new Option('Use the file’s columns','file'));
       }
       fileInput=field('CSV, TSV, or JSON file',document.createElement('input'));fileInput.type='file';fileInput.accept='.csv,.tsv,.json,text/csv,text/tab-separated-values,application/json';fileInput.dataset.dataActionFile='';
-      const supportsReload=typeof window.showOpenFilePicker==='function';
+      const supportsReload=host.nativeFilePicker!==false && typeof window.showOpenFilePicker==='function';
       if(supportsReload){
         fileInput.parentElement.hidden=true;fileInput.parentElement.style.display='none';
         chooseFile=field('CSV, TSV, or JSON file',document.createElement('button'));chooseFile.type='button';chooseFile.textContent='Choose file…';chooseFile.dataset.dataActionChooseFile='';
@@ -1229,7 +1230,7 @@ const dispatchComponentActions=function dispatchComponentActions(dispatcher,inte
     }
     if(dispatcher.running)return;
     dispatcher.running=true;
-    void (async()=>{
+    dispatcher.promise=(async()=>{
       let count=0,batchGeneration=dispatcher.generation;
       const report=async(host,intent,error,current)=>{
         try{await host.failure?.(intent,error,current);}
@@ -2633,10 +2634,54 @@ const openSmartChoice=function openSmartChoice(initial,name,snapshot,read,valid,
     }
     for(const choice of snapshot.options){const option=document.createElement('option');option.value=String(choice.value);option.textContent=choice.label || '(empty)';option.selected=choice.value===snapshot.value;select.append(option);}
     select.size=Math.max(2,Math.min(8,select.options.length));document.body.append(select);
-    let closed=false,busy=false,keyboardSelection=false,frame;
+    let closed=false,busy=false,keyboardSelection=false,frame,pendingOutside=null;
     const current=()=>!closed && valid() && !document.hidden;
-    const close=()=>{if(closed)return;closed=true;cancelAnimationFrame(frame);select.remove();document.removeEventListener('pointerdown',outside,true);};
-    const outside=event=>{if(event.target!==select && !select.contains(event.target))close();};
+    const stop=event=>{event.preventDefault();event.stopPropagation();};
+    const close=()=>{
+      if(closed)return;closed=true;cancelAnimationFrame(frame);select.remove();
+      document.removeEventListener('pointerdown',outside,true);
+      document.removeEventListener('pointermove',outsideMove,true);document.removeEventListener('pointerup',outsideUp,true);
+      document.removeEventListener('pointercancel',outsideCancel,true);document.removeEventListener('contextmenu',outsideContext,true);
+      for(const type of ['mousedown','click','dblclick'])document.removeEventListener(type,lateOutside,true);
+    };
+    const outside=event=>{
+      if(event.target===select || select.contains(event.target))return;
+      if(busy && current()){
+        // Like an inline submission, accepting a choice must finish before the next
+        // pointer gesture changes selection or closes its still-valid edit context.
+        stop(event);
+        pendingOutside ||= {pointerId:event.pointerId,target:event.target,targetHost:event.target.closest?.('[data-smart-index]'),down:event,move:null,up:null,cancelled:false};
+      }else close();
+    };
+    const outsideMove=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.move=event;stop(event);}};
+    const outsideUp=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.up=event;stop(event);}};
+    const outsideCancel=event=>{if(pendingOutside?.pointerId===event.pointerId){pendingOutside.cancelled=true;stop(event);}};
+    const outsideContext=event=>{if(pendingOutside){pendingOutside.context=event;stop(event);}};
+    const lateOutside=event=>{if(pendingOutside)stop(event);};
+    const replayOutside=press=>{
+      if(press.cancelled || !valid() || document.hidden)return;
+      let target=press.target;
+      if(!target.isConnected){
+        const current=document.elementFromPoint(press.down.clientX,press.down.clientY);
+        if(!press.targetHost?.isConnected || !current || !press.targetHost.contains(current))return;
+        target=current;
+      }
+      const fire=(type,event)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,composed:true,
+        pointerId:event.pointerId,pointerType:event.pointerType,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,
+        button:event.button,buttons:event.buttons,pressure:event.pressure,shiftKey:event.shiftKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey,altKey:event.altKey}));
+      target.closest?.('button,input,select,textarea,a[href],[tabindex]')?.focus();
+      fire('pointerdown',press.down);
+      if(press.context)target.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,composed:true,
+        clientX:press.context.clientX,clientY:press.context.clientY,button:press.context.button,
+        shiftKey:press.context.shiftKey,ctrlKey:press.context.ctrlKey,metaKey:press.context.metaKey,altKey:press.context.altKey}));
+      if(press.move)fire('pointermove',press.move);
+      if(press.up){
+        fire('pointerup',press.up);
+        if(!press.context && press.down.button===0)target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true,
+          clientX:press.up.clientX,clientY:press.up.clientY,button:press.up.button,
+          shiftKey:press.up.shiftKey,ctrlKey:press.up.ctrlKey,metaKey:press.up.metaKey,altKey:press.up.altKey}));
+      }
+    };
     const update=()=>{
       if(!current()){close();return;}
       const view=read(),box=initial.inline,m=view?.matrix;
@@ -2650,11 +2695,14 @@ const openSmartChoice=function openSmartChoice(initial,name,snapshot,read,valid,
     };
     const submit=async()=>{
       if(busy || !current() || select.value==='')return;
-      busy=true;select.disabled=true;
-      try{await accept(Number(select.value),current);}catch(error){if(!error.cancelled)console.warn(error.message);}
-      finally{close();}
+      busy=true;select.disabled=true;let accepted=false;
+      try{accepted=await accept(Number(select.value),current);}catch(error){if(!error.cancelled)console.warn(error.message);}
+      finally{const press=pendingOutside;close();if(accepted && press)replayOutside(press);}
     };
     document.addEventListener('pointerdown',outside,true);select.addEventListener('smartcancel',close);
+    document.addEventListener('pointermove',outsideMove,true);document.addEventListener('pointerup',outsideUp,true);
+    document.addEventListener('pointercancel',outsideCancel,true);document.addEventListener('contextmenu',outsideContext,true);
+    for(const type of ['mousedown','click','dblclick'])document.addEventListener(type,lateOutside,true);
     for(const type of ['pointerdown','pointerup','click','dblclick'])select.addEventListener(type,event=>event.stopPropagation());
     select.addEventListener('pointerdown',()=>{keyboardSelection=false;});
     select.addEventListener('change',()=>{if(!keyboardSelection)void submit();});
@@ -3457,13 +3505,13 @@ const prepareComponentNavigationQuery=function prepareComponentNavigationQuery(p
     if(query.length>16000 || [...parameters].length>128)throw new Error('URL query exceeds 16000 characters or 128 parameters');
     return query;
   };
-const updateComponentNavigationQuery=function updateComponentNavigationQuery(page,action,record,sampledParameters){
+const updateComponentNavigationQuery=function updateComponentNavigationQuery(page,action,record,sampledParameters,updateHistory=true){
     const parameters=sampledParameters??(action.parameters?record.io?.inputs?.[action.parameters]:'{}');
     const query=prepareComponentNavigationQuery(page,parameters,componentPageQuery);
     const url=new URL(globalThis.location.href);url.search=query;
     // Validate and change the browser URL before publishing anything to components. A denied
     // History change is an actionable error, never a half-applied navigation.
-    if(url.href!==globalThis.location.href){
+    if(updateHistory && url.href!==globalThis.location.href){
       try{globalThis.history.replaceState(globalThis.history.state,'',url.href);}
       catch{throw new Error('This browser cannot update this document URL; open it from a web server to pass parameters');}
     }
@@ -4636,7 +4684,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       const restored=unpackSmartScriptLists(packed.documents.map(doc=>doc.shapes.map(shape=>shape.item)),packed.scripts);
       documents=packed.documents.map((doc,index)=>({...doc,shapes:doc.shapes.map((shape,shapeIndex)=>({...shape,item:restored[index][shapeIndex]}))}));
     }
-    let componentPageQuery=(globalThis.location?.search || '').slice(0,16001),componentQueryRevision=0;
+    let componentPageQuery=(options.query ?? globalThis.location?.search ?? '').slice(0,16001),componentQueryRevision=0;
     let items=[],datasets={},activeTabId=null;
     const assets={},ctx=document.createElement('canvas').getContext('2d');
     let smartSandboxFrame=null,smartSandboxPort=null,smartSandboxGeneration=0,smartSandboxReady=null;
@@ -4694,7 +4742,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
             if(intent.type==='goToTab'){
               const graph=await resolveAcceptedComponentGraph(resolveComponentGraph,current);if(!current())return;
               const page=prepareComponentTabNavigation(intent,graph.get(intent.item),documents.length,intent.page);
-              const queryChanged=updateComponentNavigationQuery(page,intent,graph.get(intent.item),intent.parametersText);
+              const queryChanged=updateComponentNavigationQuery(page,intent,graph.get(intent.item),intent.parametersText,!options.preview);
               if(documents[page].id!==activeTabId)await activate(documents[page].id);
               else if(queryChanged)await refreshComponents();
               await emitReaderComponentActionEvent(entry,'goToTab','success',page,current);
@@ -4893,11 +4941,14 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       const note=document.createElementNS('http://www.w3.org/2000/svg','title');
       note.textContent=message;if(!e.caps?.pageSettings)e.local.prepend(note);
     }
-    function refreshComponents(){
+    function refreshComponents(paintEntry=null){
       invalidateComponentGraph();
       const settled=resolveComponentGraph().catch(()=>null);
-      for(const e of entries)if(e.item.componentApi!==undefined)void refresh(e);
-      return settled;
+      // A live drag must get a visible frame before the next coalesced position can
+      // invalidate it. Start the active control first; unrelated views remain asynchronous.
+      const painted=paintEntry?refresh(paintEntry):null;
+      for(const e of entries)if(e!==paintEntry && e.item.componentApi!==undefined)void refresh(e);
+      return painted?Promise.all([settled,painted]).then(([graph])=>graph):settled;
     }
     function select(entry){
       if(selected===entry)return;
@@ -4988,13 +5039,31 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       position(e);
       e.host.style.cursor=e.behavior.move?'grab':'default';
     }
-    async function refresh(e){
+    function refresh(e){
       if(!current(e))return;
       markReaderPaintPending(e);
-      if(e.busy){e.dirty=true;return;}
-      e.busy=true;e.dirty=false;e.next=Infinity;
-      const it=e.item,state=it.state,w=it.w,h=it.h,generation=epoch,revision=componentRevision,paintRevision=e.paintRevision;
+      if(e.busy){e.dirty=true;return e.paintPromise;}
+      e.busy=true;
+      e.paintPromise=(async()=>{
+        try{
+          // Keep one shared job even when newer graph revisions require another paint.
+          do{
+            e.dirty=false;e.next=Infinity;
+            await paintReaderEntry(e);
+          }while(current(e) && e.dirty);
+        }finally{e.busy=false;schedule();}
+      })();
+      return e.paintPromise;
+    }
+    async function paintReaderEntry(e){
+      const it=e.item,state=it.state,w=it.w,h=it.h,source=it.script,style=smartResolvedStyle(it),generation=epoch,revision=componentRevision,paintRevision=e.paintRevision;
       const fresh=()=>current(e) && generation===epoch && paintRevision===e.paintRevision && (it.componentApi===undefined || revision===componentRevision);
+      const sameView=io=>{
+        if(!current(e) || generation!==epoch || it.script!==source || it.state!==state || it.w!==w || it.h!==h || smartResolvedStyle(it)!==style)return false;
+        if(it.componentApi!==2 || fresh())return true;
+        const record=currentGraph?.get(it);
+        return record && !record.error && JSON.stringify(componentViewIo(it,record.io))===JSON.stringify(io);
+      };
       const ready=()=>{e.host.dataset.smartGraphRevision=String(revision);e.host.dataset.smartReady='true';};
       try{
         if(it.componentInvalid)throw Object.assign(new Error(it.componentInvalid),{componentPermanent:true});
@@ -5009,22 +5078,29 @@ const opToSVG=function opToSVG(op, assetPool=assets){
           e.behavior={move:false,rotate:false,resizeWidth:false,resizeHeight:false};paint(e);ready();return;
         }
         if(!fresh()){if(current(e))e.dirty=true;return;}
-        const style=smartResolvedStyle(it),drawingSignature=JSON.stringify([state,style,w,h,io]);
+        const drawingSignature=JSON.stringify([state,style,w,h,io]);
         // A clock or unrelated event can advance the graph without changing this view. Keep
         // its validated artwork and handles, but still honor the script's drawing deadline.
         if(!e.error && e.drawingSource===it.script && e.drawingSignature===drawingSignature && performance.now()<e.drawingDeadline){
           e.next=e.drawingDeadline;ready();return;
         }
-        const behavior=(caps.exportBehavior ? await requestSmartCall(it,'exportBehavior',[state]) : null) || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};
         const args=[state,style,w,h,true];if(io)args.push(io);
-        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args},it);
-        const handles=caps.handles ? await requestSmartCall(it,'handles',[state,w,h,smartResolvedStyle(it)]) || [] : [];
-        if(!fresh()){if(current(e))e.dirty=true;return;}
-        if(it.state!==state || it.w!==w || it.h!==h){e.dirty=true;return;}
+        // These hooks read the same snapshot. Queue them together so another control's
+        // next drag update cannot repeatedly overtake this view's final handles request.
+        const call=(fn,args)=>requestSmartSandbox({method:'call',src:source,fn,args},it).then(reply=>reply.result).catch(()=>null);
+        const [behavior,drawing,handles]=await Promise.all([
+          caps.exportBehavior?call('exportBehavior',[state,...(io?[io]:[])]):null,
+          requestSmartSandbox({method:'call',src:source,fn:'children',refresh:true,args},it),
+          caps.handles?call('handles',[state,w,h,style,...(io?[io]:[])]):null
+        ]);
+        if(!sameView(io)){if(current(e))e.dirty=true;return;}
         e.error=null;delete e.host.dataset.componentError;
-        e.behavior=behavior;e.kids=drawing.result.filter(c=>!c.editorOnly);
-        e.handles=handles.filter(h=>!h.editorOnly);paint(e);
-        ready();
+        e.behavior=behavior || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};e.kids=drawing.result.filter(c=>!c.editorOnly);
+        e.handles=(handles || []).filter(h=>!h.editorOnly);paint(e);
+        // An unrelated clock may advance the graph while these unchanged view inputs
+        // are painting. Show the completed frame, but acknowledge readiness only after
+        // the newest graph has been checked (the retry can reuse this drawing).
+        if(fresh())ready();else e.dirty=true;
         e.next=drawing.refreshMs?performance.now()+drawing.refreshMs:Infinity;
         e.drawingSource=it.script;e.drawingSignature=drawingSignature.length<=64000?drawingSignature:null;e.drawingDeadline=e.next;
       }catch(err){
@@ -5046,11 +5122,6 @@ const opToSVG=function opToSVG(op, assetPool=assets){
             e.next=err.componentPermanent?Infinity:performance.now()+SMART_BACKOFF_MS;
           }
         }
-      }
-      finally{
-        e.busy=false;
-        if(current(e) && e.dirty)void refresh(e);
-        schedule();
       }
     }
     function point(e,event,parent=false){
@@ -5126,7 +5197,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
           finally{for(const execution of owners.values())disposeSmartExecution(execution);}
         };
         const host={
-          valid:currentAction,read,event:notify,reader:true,inspectReplacement,
+          valid:currentAction,read,event:notify,reader:true,inspectReplacement,nativeFilePicker:!options.preview,
           command:async action=>{
             const snapshot=await read();if(!currentAction())return false;
             const command=prepareDatasetRecordAction(it,action,snapshot.record,snapshot.pool,true);
@@ -5254,7 +5325,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
           const halfW=(it.w-p.original.w)/2,halfH=(it.h-p.original.h)/2;
           e.offset={x:p.original.offset.x+(c-1)*halfW-s*halfH,y:p.original.offset.y+s*halfW+(c-1)*halfH};
           position(e);
-          void refresh(e);
+          await refresh(e);
         }else{
           const state=it.state,revision=componentRevision;
           const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,at.x,at.y,it.w,it.h,smartResolvedStyle(it)]);
@@ -5262,7 +5333,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
             if(componentReplyEvents(next).length && handle.kind==='drag')throw new Error('Events require a submission or completed click, not a live drag');
             if(await applyReaderSmartEvents(e,next,()=>valid(p)))p.finished=true;
             else applyReaderSmartDragResult(e,next);
-            if(it.componentApi!==undefined)await refreshComponents();else void refresh(e);
+            if(it.componentApi!==undefined)await refreshComponents(e);else await refresh(e);
           }
         }
       };

@@ -1279,6 +1279,30 @@ test('overlapping smart controls keep the first touch target on double-tap', asy
   }
 }, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
 
+test('a native touch double-click does not repeat a handled double-tap, and a following mouse double-click still exits', async () => app(async ({page,run}) => {
+  const scene=[rectangle('background'),overlappingSmart('smart')];
+  await seedOverlap(run,scene);
+  let box=await page.locator('#canvas').boundingBox();
+  await page.touchscreen.tap(box.x+190,box.y+160);
+  await page.touchscreen.tap(box.x+198,box.y+166);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===1);
+  // Chromium can deliver this compatibility MouseEvent after the touch recognizer
+  // already entered editing. Replay it explicitly so the regression is deterministic.
+  await page.locator('#canvas').evaluate((canvas,point)=>{
+    const event=new MouseEvent('dblclick',{bubbles:true,cancelable:true,detail:2,clientX:point.x,clientY:point.y});
+    Object.defineProperty(event,'sourceCapabilities',{value:{firesTouchEvents:true}});
+    canvas.dispatchEvent(event);
+  },{x:box.x+198,y:box.y+166});
+  await run('smartHitSettled');
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+  assert.equal(await run('editingSmartIdx'),1,'one double-tap must not enter then immediately leave editing');
+  box=await page.locator('#canvas').boundingBox();
+  await page.mouse.dblclick(box.x+198,box.y+166);
+  await page.waitForFunction(()=>__test.run('editingSmartIdx')===null);
+  assert.deepEqual(await run('selectedUids()'),['smart']);
+  assert.deepEqual(await run('items'),scene);
+}, {context:{viewport:{width:768,height:1024},hasTouch:true,isMobile:true}}));
+
 test('ungrouped text/table still open their own editor on the very first double-click, unaffected', async () => app(async ({page,run}) => {
   await run(`items=[{type:'text',uid:'t1',x:100,y:100,w:200,h:50,text:'hello',font:'400 28px sans-serif',
     color:'#1f2937',textColor:'#1f2937',strokeOn:false,fill:false,align:'center',size:2}];setTool('select');render();`);

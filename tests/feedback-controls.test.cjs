@@ -70,7 +70,7 @@ test('offline HTML Pause and Step preserve intermediate feedback displays and Re
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-feedback-controls-'));
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
   const file=path.join(directory,'feedback.html');fs.copyFileSync(await(await download).path(),file);
-  const exported=fs.readFileSync(file,'utf8'),paintHook='const handles=caps.handles ? await requestSmartCall(it,',stepHook='const graph=await settleComponentTimeline(list,call,valid,owner,{step:true,datasets:dataPool});';
+  const exported=fs.readFileSync(file,'utf8'),paintHook='if(!sameView(io)){',stepHook='const graph=await settleComponentTimeline(list,call,valid,owner,{step:true,datasets:dataPool});';
   assert.equal(exported.split(paintHook).length,2,'one reader drawing reply can be held for deterministic readiness testing');
   assert.equal(exported.split(stepHook).length,2,'one Step evaluation can be held before refresh starts');
   fs.writeFileSync(file,exported.replace(paintHook,`if(window.holdCounterPaint && it.uid==='step-1'){
