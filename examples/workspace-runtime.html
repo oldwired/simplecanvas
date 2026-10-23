@@ -790,46 +790,73 @@ const createIntegrationCredentialStore=function createIntegrationCredentialStore
       reconcile(scene){const current=new Set(scene);for(const item of values.keys())if(!current.has(item))values.delete(item);},
       mqtt(item,{url}){
         const credential=values.get(item);if(!credential)return {};
-        if(credential.auth!=='mqtt' || new URL(url).origin!==credential.origin)throw new Error('The broker changed. Set credentials for the new origin in Connection.');
+        if(credential.auth!=='mqtt' || new URL(url).origin!==credential.origin)throw new Error('The broker changed. Set credentials for the new origin in Credentials.');
         return {username:credential.username,password:credential.secret};
       },
       headers(item,{url}){
         const credential=values.get(item);if(!credential)return {};
-        if(credential.auth==='mqtt' || new URL(url).origin!==credential.origin)throw new Error('The endpoint changed. Set credentials for the new origin in Connection.');
+        if(credential.auth==='mqtt' || new URL(url).origin!==credential.origin)throw new Error('The endpoint changed. Set credentials for the new origin in Credentials.');
         const authorization=credential.auth==='bearer'?'Bearer '+credential.secret:
           'Basic '+btoa(Array.from(new TextEncoder().encode(credential.username+':'+credential.secret),byte=>String.fromCharCode(byte)).join(''));
         return {Authorization:authorization};
       }
     };
   };
-const openIntegrationCredentials=async function openIntegrationCredentials(item,record,store,{valid=()=>true,baseUrl=location.href,changed=()=>{}}={}){
+const openIntegrationCredentials=async function openIntegrationCredentials(item,record,store,{valid=()=>true,baseUrl=location.href,changed=()=>{},draft=false}={}){
     const mqtt=!!record?.caps?.mqttConfig,source=record?.caps?.httpSource||record?.caps?.mqttConfig;
     if(!source)throw new Error('This component does not declare a connection');
     const input=record.io?.inputs?.[source.url];let endpoint;
-    try{endpoint=new URL(input,baseUrl);}catch{throw new Error('Set a valid '+(mqtt?'WebSocket broker':'HTTP')+' URL in Edit first');}
+    try{if(typeof input!=='string' || !input.trim())throw new Error('Missing URL');endpoint=new URL(input.trim(),baseUrl);}catch{throw new Error('Set a valid '+(mqtt?'WebSocket broker':'HTTP')+' URL in Edit first');}
     if(!(mqtt?['ws:','wss:']:['http:','https:']).includes(endpoint.protocol) || endpoint.username || endpoint.password)throw new Error('Set a '+(mqtt?'WS(S) broker':'HTTP(S)')+' URL without embedded credentials');
     const dialog=document.createElement('dialog');dialog.dataset.integrationCredentials='';
-    dialog.style.cssText='box-sizing:border-box;width:430px;max-width:calc(100vw - 24px);padding:22px;border:1px solid #cbd5e1;border-radius:12px;font:14px system-ui;color:#334155';
-    const heading=document.createElement('h2');heading.textContent='Connection';heading.style.cssText='margin:0 0 12px;font-size:20px';
-    const destination=document.createElement('p');destination.textContent=(item.componentName||'HTTP source')+' · '+endpoint.origin;destination.style.overflowWrap='anywhere';
-    const note=document.createElement('p');note.textContent='Credentials stay in this session. Saving or exporting lets you explicitly include them in that file. No request is sent by this dialog.';
-    const field=(label,node)=>{const wrapper=document.createElement('label');wrapper.style.cssText='display:grid;gap:6px;margin:14px 0';wrapper.append(document.createTextNode(label),node);node.style.cssText='box-sizing:border-box;width:100%;padding:8px;font:inherit';dialog.append(wrapper);return wrapper;};
-    dialog.append(heading,destination,note);
-    const auth=document.createElement('select');auth.dataset.integrationAuth='';for(const [value,label] of (mqtt?[['none','No authentication'],['mqtt','Username and password']]:[['none','No authentication'],['bearer','Bearer token'],['basic','HTTP Basic']]))auth.add(new Option(label,value));field('Authentication',auth);
-    const username=document.createElement('input');username.dataset.integrationUser='';username.autocomplete='off';username.maxLength=256;const userField=field('Username',username);
-    const secret=document.createElement('input');secret.type='password';secret.dataset.integrationSecret='';secret.autocomplete='new-password';secret.maxLength=2000;const secretField=field('Password / token',secret);
+    dialog.style.cssText='box-sizing:border-box;width:460px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:hidden;padding:22px;border:1px solid #cbd5e1;border-radius:12px;font:14px/1.45 system-ui;color:#334155;background:#fff';
+    const form=document.createElement('form');form.noValidate=true;form.style.cssText='display:flex;flex-direction:column;max-height:calc(100dvh - 70px);margin:0';dialog.append(form);
+    const content=document.createElement('div');content.style.cssText='min-height:0;overflow:auto;padding:2px';form.append(content);
+    const heading=document.createElement('h2');heading.id='integration-credentials-title';heading.textContent=mqtt?'MQTT credentials':'HTTP credentials';heading.style.cssText='margin:0;font-size:20px;line-height:1.3';dialog.setAttribute('aria-labelledby',heading.id);
+    const destination=document.createElement('div');destination.style.cssText='display:grid;gap:3px;padding:12px 0 16px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere';
+    const name=document.createElement('strong');name.textContent=item.componentName?.trim()||(mqtt?'MQTT Config':source.method==='POST'?'HTTP POST':'HTTP GET');name.style.fontWeight='600';
+    const origin=document.createElement('span');origin.textContent=endpoint.origin;origin.style.cssText='color:#64748b;font-size:12px';destination.append(name,origin);content.append(heading,destination);
+    const field=(text,node,key)=>{
+      const wrapper=document.createElement('div');wrapper.style.cssText='display:grid;gap:6px;margin:14px 0;min-width:0';
+      const label=document.createElement('label');label.textContent=text;label.htmlFor=node.id='integration-credentials-'+key;label.style.fontWeight='600';
+      node.style.cssText='box-sizing:border-box;width:100%;min-width:0;min-height:38px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;font:inherit';
+      wrapper.append(label,node);content.append(wrapper);return {wrapper,label};
+    };
+    const auth=document.createElement('select');auth.dataset.integrationAuth='';for(const [value,label] of (mqtt?[['none','No authentication'],['mqtt','Username and password']]:[['none','No authentication'],['bearer','Bearer token'],['basic','HTTP Basic']]))auth.add(new Option(label,value));field('Authentication',auth,'auth');
+    const username=document.createElement('input');username.dataset.integrationUser='';username.autocomplete='off';username.autocapitalize='none';username.spellcheck=false;username.maxLength=256;const userField=field('Username',username,'user');
+    const secret=document.createElement('input');secret.type='password';secret.dataset.integrationSecret='';secret.autocomplete='new-password';secret.autocapitalize='none';secret.spellcheck=false;secret.maxLength=2000;const secretField=field('Password',secret,'secret');
+    const secretRow=document.createElement('div');secretRow.style.cssText='display:flex;gap:8px;align-items:stretch;min-width:0';secretField.wrapper.append(secretRow);secretRow.append(secret);secret.style.flex='1';
+    const reveal=document.createElement('button');reveal.type='button';reveal.dataset.integrationReveal='';reveal.style.cssText='flex:none;min-width:62px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#334155;font:inherit';secretRow.append(reveal);
+    const help=document.createElement('div');help.id='integration-credentials-help';help.style.cssText='font-size:12px;color:#64748b';secretField.wrapper.append(help);secret.setAttribute('aria-describedby',help.id);
+    const note=document.createElement('p');note.id='integration-credentials-note';note.dataset.integrationCredentialNote='';note.style.cssText='margin:18px 0 14px;color:#64748b;font-size:12px';dialog.setAttribute('aria-describedby',note.id);
+    note.textContent=draft?'Credentials apply when you Save the Edit dialog. Canceling Edit discards these changes. They stay in this browser session unless explicitly included in a saved file.':'Credentials stay in this browser session unless explicitly included when saving or exporting. '+(mqtt?'This does not connect to the broker.':'This does not send a request.');content.append(note);
+    const error=document.createElement('p');error.setAttribute('role','alert');error.hidden=true;error.style.cssText='margin:0 0 14px;color:#b91c1c';content.append(error);
+    const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex:none;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid #e2e8f0';
+    const cancel=document.createElement('button'),save=document.createElement('button');cancel.textContent='Cancel';save.textContent=draft?'Use in Edit':'Use for this session';save.dataset.integrationSave='';
+    for(const button of [cancel,save]){button.type=button===save?'submit':'button';button.style.cssText='min-height:38px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;font:inherit';}
+    save.style.cssText+=';background:#4f46e5;border-color:#4f46e5;color:#fff;font-weight:600';buttons.append(cancel,save);form.append(buttons);
     const existing=store.get(item);auth.value=existing?.auth||'none';username.value=existing?.username||'';secret.value=existing?.secret||'';
-    const update=()=>{userField.hidden=!['basic','mqtt'].includes(auth.value);secretField.hidden=auth.value==='none';userField.style.display=userField.hidden?'none':'grid';secretField.style.display=secretField.hidden?'none':'grid';};auth.onchange=update;update();
-    const error=document.createElement('p');error.setAttribute('role','alert');error.style.color='#b91c1c';dialog.append(error);
-    const buttons=document.createElement('div');buttons.style.cssText='display:flex;justify-content:flex-end;gap:8px';
-    const cancel=document.createElement('button'),save=document.createElement('button');cancel.textContent='Cancel';save.textContent='Use for this session';save.dataset.integrationSave='';for(const button of [cancel,save]){button.type='button';button.style.cssText='padding:8px 12px;font:inherit';}buttons.append(cancel,save);dialog.append(buttons);
+    const updateReveal=()=>{const showing=secret.type==='text',label=auth.value==='bearer'?'token':'password';reveal.textContent=showing?'Hide':'Show';reveal.setAttribute('aria-label',(showing?'Hide ':'Show ')+label);reveal.setAttribute('aria-pressed',String(showing));};
+    reveal.onclick=()=>{secret.type=secret.type==='password'?'text':'password';updateReveal();};
+    const update=()=>{
+      userField.wrapper.hidden=!['basic','mqtt'].includes(auth.value);secretField.wrapper.hidden=auth.value==='none';
+      userField.wrapper.style.display=userField.wrapper.hidden?'none':'grid';secretField.wrapper.style.display=secretField.wrapper.hidden?'none':'grid';
+      secretField.label.textContent=auth.value==='bearer'?'Bearer token':'Password';
+      help.textContent=auth.value==='bearer'?'Enter the token without the Bearer prefix.':auth.value==='mqtt'?'An empty password is allowed if the broker accepts it.':'';help.hidden=!help.textContent;
+      secret.type='password';updateReveal();error.textContent='';error.hidden=true;username.removeAttribute('aria-invalid');secret.removeAttribute('aria-invalid');
+    };auth.onchange=update;update();
     return new Promise(resolve=>{
       const finish=value=>{secret.value='';dialog.close();dialog.remove();resolve(value);};cancel.onclick=()=>finish(false);
       dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false);});
-      save.onclick=()=>{
+      form.onsubmit=event=>{
+        event.preventDefault();
         if(!valid()){finish(false);return;}
-        try{store.set(item,auth.value==='none'?null:{auth:auth.value,username:username.value,secret:secret.value,origin:endpoint.origin});changed();finish(true);}
-        catch(failure){error.textContent=failure.message;}
+        let invalidField=secret;
+        try{
+          if(auth.value==='basic' && username.value.includes(':')){invalidField=username;throw new Error('An HTTP Basic username cannot contain a colon.');}
+          if(['bearer','basic'].includes(auth.value) && !secret.value)throw new Error(auth.value==='bearer'?'Enter a bearer token.':'Enter a password.');
+          store.set(item,auth.value==='none'?null:{auth:auth.value,username:username.value,secret:secret.value,origin:endpoint.origin});changed();finish(true);
+        }catch(failure){error.textContent=failure.message;error.hidden=false;if(auth.value!=='none'){invalidField.setAttribute('aria-invalid','true');invalidField.focus();}}
       };
       document.body.append(dialog);dialog.showModal();auth.focus();
     });
@@ -1297,7 +1324,7 @@ const componentIo=function componentIo(inputs,outputs,caps,pool){
 const normalizeComponentHttpSource=function normalizeComponentHttpSource(raw,caps){
     if(raw===undefined)return null;
     if(caps.integrationApi!==1 || !raw || typeof raw!=='object' || Array.isArray(raw) ||
-      Object.keys(raw).some(key=>!['url','path','valueType','timeoutMs','method','body','idempotencyKey','automation'].includes(key)) ||
+      Object.keys(raw).some(key=>!['url','path','valueType','timeoutMs','method','body','idempotencyKey','automation','auth'].includes(key)) ||
       !componentPortName(raw.url) || caps.inputs?.[raw.url]?.type!=='string' ||
       !componentPortName(raw.path) || caps.inputs?.[raw.path]?.type!=='string' ||
       !['number','string','boolean'].includes(raw.valueType))throw new Error('HTTP sources require integrationApi: 1, URL and JSON pointer inputs, and a scalar value type');
@@ -1308,7 +1335,15 @@ const normalizeComponentHttpSource=function normalizeComponentHttpSource(raw,cap
       if(!componentPortName(raw.body) || caps.inputs?.[raw.body]?.type!=='string' || raw.automation!==undefined ||
         raw.idempotencyKey!==undefined && (!componentPortName(raw.idempotencyKey) || caps.inputs?.[raw.idempotencyKey]?.type!=='string'))throw new Error('HTTP POST requires a JSON body input and optional idempotency key input, without automatic scheduling');
     }else if(raw.body!==undefined || raw.idempotencyKey!==undefined)throw new Error('GET sources cannot declare a request body');
-    let automation;
+    let auth,automation;
+    if(raw.auth!==undefined){
+      const value=raw.auth;
+      if(!value || typeof value!=='object' || Array.isArray(value) || !['session','none','bearer','basic'].includes(value.mode))throw new Error('Choose session, none, bearer or basic HTTP authentication');
+      const names=value.mode==='bearer'?['token']:value.mode==='basic'?['username','password']:[];
+      if(Object.keys(value).some(key=>key!=='mode' && !names.includes(key)) || names.some(name=>!componentPortName(value[name]) || caps.inputs?.[value[name]]?.type!=='string'))
+        throw new Error('HTTP authentication requires matching text inputs for its selected mode');
+      auth={mode:value.mode,...Object.fromEntries(names.map(name=>[name,value[name]]))};
+    }
     if(raw.automation!==undefined){
       const value=raw.automation;
       if(!value || typeof value!=='object' || Array.isArray(value) || Object.keys(value).some(key=>!['enabled','interval','polling','onChange','debounceMs','startup'].includes(key)) ||
@@ -1323,15 +1358,18 @@ const normalizeComponentHttpSource=function normalizeComponentHttpSource(raw,cap
     if(caps.outputs?.httpStatus && caps.outputs.httpStatus.type!=='number')throw new Error('HTTP status output must have type number');
     if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
       throw new Error('HTTP sources require compute-only publication');
-    return {url:raw.url,path:raw.path,valueType:raw.valueType,timeoutMs,method,...(method==='POST'?{body:raw.body,...(raw.idempotencyKey===undefined?{}:{idempotencyKey:raw.idempotencyKey})}:{}),...(automation?{automation}:{})};
+    return {url:raw.url,path:raw.path,valueType:raw.valueType,timeoutMs,method,...(method==='POST'?{body:raw.body,...(raw.idempotencyKey===undefined?{}:{idempotencyKey:raw.idempotencyKey})}:{}),...(auth?{auth}:{}),...(automation?{automation}:{})};
   };
 const componentHttpConfiguration=function componentHttpConfiguration(item,caps){
     const ignored=new Set(Object.values(caps?.dataActions||{}).filter(action=>['httpGet','httpPost'].includes(action.type)).map(action=>action.trigger));
-    if(caps?.httpSource?.method==='POST'){ignored.add(caps.httpSource.body);ignored.add(caps.httpSource.idempotencyKey);}
+    if(caps?.httpSource?.method==='POST'){
+      const source=caps.httpSource;
+      for(const name of [source.body,source.idempotencyKey,source.auth?.token,source.auth?.username,source.auth?.password])if(name)ignored.add(name);
+    }
     const filter=values=>Object.fromEntries(Object.entries(values||{}).filter(([name])=>!ignored.has(name)));
     return JSON.stringify([item.state||{},filter(item.inputValues),filter(item.bindings)]);
   };
-const componentHttpRequest=function componentHttpRequest(caps,inputs,baseUrl){
+const componentHttpRequest=function componentHttpRequest(caps,inputs,baseUrl,capturedPost=null){
     const source=caps.httpSource;
     if(caps.integrationApi!==1 || !source)throw new Error('This component does not declare an HTTP source');
     const rawUrl=inputs?.[source.url],path=inputs?.[source.path];
@@ -1342,6 +1380,24 @@ const componentHttpRequest=function componentHttpRequest(caps,inputs,baseUrl){
     url.hash='';
     const method=source.method??'GET',request={url:url.href,path,valueType:source.valueType,timeoutMs:source.timeoutMs,method};
     if(!['GET','POST'].includes(method))throw new Error('HTTP sources support GET or POST');
+    // An accepted POST owns its credentials just as it owns its body. Later form
+    // edits prepare the next command and cannot change or invalidate this one.
+    if(capturedPost && method==='POST'){
+      if(Object.hasOwn(capturedPost,'authorization'))request.authorization=capturedPost.authorization;
+    }else{
+      const auth=source.auth||{mode:'session'};
+      if(auth.mode==='none')request.authorization=null;
+      else if(auth.mode==='bearer'){
+        const token=inputs?.[auth.token];
+        if(typeof token!=='string' || !token || token.length>2000 || /[^\x21-\x7e]/.test(token))throw new Error('Bearer token input needs a token without spaces, line breaks or the Bearer prefix');
+        request.authorization='Bearer '+token;
+      }else if(auth.mode==='basic'){
+        const username=inputs?.[auth.username],password=inputs?.[auth.password];
+        if(typeof username!=='string' || username.length>256 || /[:\u0000\r\n]/.test(username))throw new Error('Basic username input must be at most 256 characters without colons or line breaks');
+        if(typeof password!=='string' || !password || password.length>2000 || /[\u0000\r\n]/.test(password))throw new Error('Basic password input needs a password of at most 2000 characters without line breaks');
+        request.authorization='Basic '+btoa(Array.from(new TextEncoder().encode(username+':'+password),byte=>String.fromCharCode(byte)).join(''));
+      }else if(auth.mode!=='session')throw new Error('Choose a supported HTTP authentication mode');
+    }
     if(method==='POST'){
       const text=inputs?.[source.body];
       if(typeof text!=='string' || text.length>2000)throw new Error('HTTP POST body must be JSON text of at most 2000 characters');
@@ -1386,7 +1442,7 @@ const createComponentIntegrationService=function createComponentIntegrationServi
       try{
         const captured=entry.request;
         if(captured.method==='POST')inputs={...inputs,[caps.httpSource.body]:captured.body,...(caps.httpSource.idempotencyKey?{[caps.httpSource.idempotencyKey]:captured.idempotencyKey||''}:{})};
-        return JSON.stringify(componentHttpRequest(caps,inputs,entry.baseUrl))===JSON.stringify(captured);
+        return JSON.stringify(componentHttpRequest(caps,inputs,entry.baseUrl,captured))===JSON.stringify(captured);
       }
       catch{return false;}
     };
@@ -1453,7 +1509,7 @@ const createComponentIntegrationService=function createComponentIntegrationServi
           // request to the same endpoint has since started. New form contents only
           // prepare the next POST; resolved endpoint/mapping changes invalidate it.
           if(request.method==='POST')inputs={...inputs,[caps.httpSource.body]:request.body,...(caps.httpSource.idempotencyKey?{[caps.httpSource.idempotencyKey]:request.idempotencyKey||''}:{})};
-          return JSON.stringify(componentHttpRequest(caps,inputs,context.baseUrl))===JSON.stringify(request);
+          return JSON.stringify(componentHttpRequest(caps,inputs,context.baseUrl,request))===JSON.stringify(request);
         }catch{return false;}
       }};
       entry.snapshot={...previous,revision:++revision,status:'loading',loading:true,available:false,stale:previous.lastUpdated>0,error:'',httpStatus:0};
@@ -1478,7 +1534,7 @@ const createComponentIntegrationService=function createComponentIntegrationServi
       // server cannot hold the queue, simulation rounds, or another component's refresh.
       entry.pending=(async()=>{
         try{
-          const supplied=options.credentials?.(item,request)||{},headers={Accept:'application/json'};
+          const supplied=Object.hasOwn(request,'authorization')?(request.authorization===null?{}:{Authorization:request.authorization}):options.credentials?.(item,request)||{},headers={Accept:'application/json'};
           for(const [name,value] of Object.entries(supplied)){
             if(name.toLowerCase()!=='authorization' || typeof value!=='string' || value.length>8192 || /[\r\n]/.test(value))throw new Error('Invalid HTTP credential configuration');
             headers.Authorization=value;
@@ -1526,7 +1582,7 @@ const createComponentIntegrationService=function createComponentIntegrationServi
           // Fetch errors may carry a full URL (including query credentials). Expose only
           // our fixed diagnostics; tokens, headers and browser exception text stay private.
           const message=timedOut?'HTTP request timed out':error?.name==='AbortError'?'Request cancelled':
-            error?.message==='The endpoint changed. Set credentials for the new origin in Connection.'?error.message:
+            error?.message==='The endpoint changed. Set credentials for the new origin in Credentials.'?error.message:
             /^(HTTP \d{3}|HTTP response exceeds 64 KiB|JSON text output exceeds 2000 characters|JSON numbers must be finite|The response (?:must have a JSON content type|is not valid JSON)|The JSON pointer does not identify a value|Expected a finite number, boolean, or string|Invalid HTTP credential configuration)/.test(error?.message||'')?error.message:
             'HTTP request failed. Check the endpoint, CORS, and network connection.';
           const snapshot={...entry.snapshot,revision:++revision,status:'error',loading:false,available:false,stale:entry.snapshot.lastUpdated>0,error:message.slice(0,2000),httpStatus};
@@ -3798,7 +3854,7 @@ const componentGraphModel=async function componentGraphModel(list,call,valid,poo
         n.actionDeps=[];
         n.actionInputErrors={};
         n.actions=normalizeComponentActionDeclarations(caps.dataActions,caps.inputs,caps);
-        if(caps.httpSource?.method==='POST')for(const name of [caps.httpSource.body,caps.httpSource.idempotencyKey])if(name)n.actionInputs.add(name);
+        if(caps.httpSource?.method==='POST')for(const name of [caps.httpSource.body,caps.httpSource.idempotencyKey,caps.httpSource.auth?.token,caps.httpSource.auth?.username,caps.httpSource.auth?.password])if(name)n.actionInputs.add(name);
         for(const action of Object.values(n.actions))if(['replaceTable','appendTable','syncTable'].includes(action.type) && action.input!==n.ownerInput)throw new Error('Only a Dataset owner may apply source tables');
         if(Object.keys(caps.outputs).length && !caps.compute && !caps.publish)throw new Error('Declared outputs require compute() or publish()');
         for(const raw of [n.bindings,n.literals]){

@@ -309,3 +309,37 @@ for(const mode of ['Run','HTML'])test(mode+' supports explicit POST and hybrid c
   assert.equal(await run('JSON.stringify(items)'),before,'reader state is separate from the editor');
   if(mode==='Run')await exitPreview(page);
 }));
+
+for(const mode of ['editor','Run','HTML'])test(mode+' sends Basic and Bearer Authorization headers on explicit HTTP requests',async()=>app(async({page,run,context,directory,calls})=>{
+  // GET's other combinations are covered by http-integration-runtime; all POST
+  // combinations are exercised here through the same credentials UI and transport.
+  const authModes=[mode==='Run'?'bearer':'basic','basic','bearer'];
+  await seed(run,[source(),post(),post(),collector(0,'completed'),collector(1,'completed'),collector(2,'completed')]);
+  for(const [index,auth] of authModes.entries()){
+    await action(run,index,'httpCredentials');const dialog=page.locator('[data-integration-credentials]');await dialog.waitFor();
+    await dialog.locator('[data-integration-auth]').selectOption(auth);
+    if(auth==='basic')await dialog.locator('[data-integration-user]').fill('reader');
+    await dialog.locator('[data-integration-secret]').fill(auth==='basic'?'pāssword':'reader-token-'+index);
+    await dialog.locator('[data-integration-save]').click();await dialog.waitFor({state:'detached'});
+  }
+  const handles=await Promise.all([handle(run,0,'refresh'),handle(run,1,'send'),handle(run,2,'send')]);
+  let frame=null,owner=page;
+  if(mode==='Run')frame=await preview(page);
+  if(mode==='HTML'){
+    await run('void exportHtml()');const chooser=page.locator('[data-integration-export]');await chooser.waitFor();
+    const checks=chooser.locator('[data-integration-include]');assert.equal(await checks.count(),3);
+    for(const check of await checks.all()){assert.equal(await check.isChecked(),false);await check.check();}
+    const download=page.waitForEvent('download');await chooser.locator('[data-integration-export-continue]').click();
+    const file=path.join(directory,'authenticated.html');await(await download).saveAs(file);
+    owner=await context.newPage();await owner.goto(pathToFileURL(file).href);frame=owner;await readerReady(frame);
+  }
+  assert.equal(calls.length,0,'setting credentials and opening a reader never sends a request');
+  for(const [index,auth] of authModes.entries()){
+    if(frame){await readerClick(owner,frame,index,handles[index],{preview:mode==='Run'});await readerText(frame,index+3,'Events: 1');}
+    else{await action(run,index,index===0?'httpGet':'httpPost');await logs(page,run,index+3,1);}
+    assert.equal(calls.length,index+1);assert.equal(calls[index].method,index===0?'GET':'POST');
+    assert.equal(calls[index].headers.authorization,auth==='basic'?'Basic '+Buffer.from('reader:pāssword').toString('base64'):'Bearer reader-token-'+index);
+    if(index>0)assert.deepEqual(JSON.parse(calls[index].body),{});
+  }
+  if(mode==='Run')await exitPreview(page);
+}));

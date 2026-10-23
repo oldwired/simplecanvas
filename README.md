@@ -264,6 +264,9 @@ keywords, choose a category, and use the **Source** filter for **Built-in** or *
 
 Built-ins can appear in several categories according to their purpose. Numbers and Text bring
 related controls, operations, and displays together; Data covers tables and structured data.
+Network groups HTTP and MQTT connections; Workspace groups settings, navigation and cross-sketch
+communication. These are additional memberships, so the components remain discoverable in Data,
+Controls or Logic where appropriate.
 
 | Category | Examples |
 | --- | --- |
@@ -272,8 +275,10 @@ related controls, operations, and displays together; Data covers tables and stru
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric selectors/registers, text/number conversion, Spreadsheet, Table aggregate, Gauge, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, HTTP POST, MQTT Config/Subscribe/Publish, URL parameter, Publish, Receive |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP GET, HTTP POST, MQTT Config/Subscribe/Publish, URL parameter, Publish, Receive |
+| Network | HTTP GET, HTTP POST, MQTT Config, MQTT Subscribe, MQTT Publish |
+| Workspace | Workspace settings, Sketch settings, Go to tab, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
 The catalog includes 101 entries, including 92 connected API v2 components. Every smart-shape
@@ -409,12 +414,16 @@ numeric. Choose **Raw (exact text)** when you need the original strings without 
 
 ### Read an HTTP endpoint
 
-Place **HTTP source**, open **Edit…**, and set its **URL**, **JSON pointer** (for example `/value`),
+Place **HTTP GET**, open **Edit…**, and set its **URL**, **JSON pointer** (for example `/value`),
 and **Value type**. Click **Refresh** to make one GET request. The mapped `value` and complete
 compact `json` text can feed existing components, including JSON extract. Loading, availability,
 error and last-updated outputs describe the request. Requests run asynchronously: clocks,
 controls, other sources and the rest of the workspace keep processing while a response is pending.
 Refresh again supersedes that instance's earlier request; an older response cannot overwrite it.
+
+Edit groups the request, response mapping, automatic refresh and trigger wiring separately.
+Automatic refresh, triggers and appearance can be expanded when needed. HTTP POST bodies and
+MQTT Publish payloads have multiline editors; switching modes preserves unfinished input values.
 
 Optional settings add **Refresh at intervals** (1–86,400 seconds), debounced URL/JSON-pointer
 changes, and **Refresh on startup in Run / HTML**. The startup setting makes one immediate read
@@ -430,13 +439,33 @@ only establishes the trigger baseline. Every successful request emits the captur
 `json` through their hybrid outputs, plus a `completed` event carrying JSON text; failures emit
 `failed` error text. Equal responses are separate occurrences, so a Memo log can record each one.
 
-**Connection…** supports no authentication, a Bearer token or HTTP Basic credentials. Credentials
+**Authentication** in HTTP GET/POST Edit selects **Session credentials** (default),
+**No authentication**, **Bearer token input**, or **Basic auth inputs**. Bearer mode adds a text
+`token` input; Basic mode adds text `username` and `password` inputs. Wire these like other controls,
+then Refresh or Send. Enter the token without the `Bearer` prefix. Input modes never fall back to
+session credentials; No authentication sends neither. Credentials supplied through inputs are
+ordinary data: literal values and saved upstream state are included in normal saves, autosave,
+copies and exports. The session-credential inclusion chooser does not remove those authored values.
+Each POST captures its credentials when Send is accepted; later input changes prepare the next
+request. GET uses current credentials on its next read; changing only credentials does not itself
+trigger a request.
+
+In **Session credentials** mode, **Credentials…** is available in Edit and on the cards, with
+no authentication, a Bearer token or HTTP Basic username/password.
+Credential changes made through Edit apply with **Save**; **Cancel** discards the draft.
+Changing the target origin requires updating or removing its session credentials. These credentials
 stay in a host-owned session store by default; autosave and component copies omit them. Saving a
 sketch/workspace or exporting HTML offers a separate, unchecked choice for each source whose
 credentials should be included in that particular file. Included credentials are readable from
 the file. Credential inclusion does not enable polling or startup; those are separate settings.
 Redraw, Undo and restoration never replay an old trigger or Send. Run inherits configured session credentials for convenience, but
 starts with its own live-result lifetime; returning cancels its requests and discards its results.
+
+**JSON pointer** chooses the response value for the typed `value` output. For
+`{"sensor":{"temperature":21.5},"readings":[10,20]}`, `/sensor/temperature` selects `21.5` and
+`/readings/0` selects `10`. Empty selects the root, which must match the chosen scalar Value type.
+The `json` output carries the complete response after successful mapping. Pointer syntax is shared
+with JSON extract; property names containing `/` use `~1`, and names containing `~` use `~0`.
 
 Responses are limited to 64 KiB of received bytes and 2,000 characters of compact JSON text,
 matching the current text-port contract. Requests time out after the configured 1–30 seconds
@@ -449,7 +478,7 @@ permission to its isolated frame, so Chromium can ask for access to localhost or
 endpoints; the user or deployment policy can still deny it. CORS remains required. If local
 preview access is unavailable, test in the editor or exported HTML, or use a reachable HTTPS
 endpoint that permits Run's origin.
-HTTP response snapshots and credentials stay outside source state, undo history and ordinary
+HTTP response snapshots and session credentials stay outside source state, undo history and ordinary
 autosave. An explicitly connected consumer can store an event payload, for example in a Memo.
 Unavailable results do not silently flow downstream as zero or empty text.
 
@@ -496,9 +525,10 @@ for example `/value`. The Config is a specific component reference, not a name l
 ordinary value wire. Subscribe and Publish components can share it, including across sketches in
 Whole workspace mode.
 
-Click **Apply / Connect** on the Config to connect. Editing its URL or client ID only changes
-the draft; Apply / Connect commits those changes. **Disconnect** stops reconnection until you
-connect again. **Connect on opening in Run / HTML** is a separate opt-in setting, off by default.
+Click **Connect** on the Config to connect. Editing its URL or client ID prepares a draft;
+**Apply** activates those changes. An unchanged active connection offers **Reconnect**.
+**Disconnect** stops reconnection until you connect again. **Connect on opening in Run / HTML**
+is a separate opt-in setting, off by default.
 The editor never connects merely because a workspace was opened. Leave Client ID empty for a
 fresh per-instance, per-document-session ID; use explicit IDs only when their broker identity
 is intentional.
@@ -553,7 +583,7 @@ node tools/serve-mqtt-example.cjs
 
 Open `http://127.0.0.1:8001/examples/mqtt-integrations.html`, or import
 `examples/mqtt-integrations.json` into the editor at `http://127.0.0.1:8001/index.html`.
-Click **Apply / Connect**. The helper sends a JSON reading and a text status once per second,
+Click **Connect**. The helper sends a JSON reading and a text status once per second,
 with retained initial values. Stop/restart it to try reconnect behavior, or switch to the second
 sketch to see another Subscribe sharing the same Config. The third, **Commands & replies**, connects
 Number control → JSON build → MQTT Publish and logs broker acknowledgements separately from device

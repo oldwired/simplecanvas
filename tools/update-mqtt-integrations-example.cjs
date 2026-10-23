@@ -27,7 +27,7 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
   const bind=(uid,port='value')=>({uid,port});
   const main=[
     text('mqtt-title','MQTT · one connection, several live readings',40,24,1240,44,28),
-    text('mqtt-intro','Start node tools/serve-mqtt-example.cjs, then click Apply / Connect. JSON drives the Gauge; the text topic drives the label and event log.',40,78,1240,54,18),
+    text('mqtt-intro','Start node tools/serve-mqtt-example.cjs, then click Connect. JSON drives the Gauge; the text topic drives the label and event log.',40,78,1240,54,18),
     component('mqtt-config.js','mqtt-config','Local demo broker',40,140,{inputValues:{url:'ws://127.0.0.1:8001/mqtt'}}),
     component('number-control.js','mqtt-local-control','Local control · independent of MQTT',440,140,{w:300,h:142,state:{value:25}}),
     component('live-clock.js','mqtt-clock','Clock · keeps running',800,140,{w:160,h:210,state:{showIndicators:false},inputValues:{timezone:'UTC'}}),
@@ -48,7 +48,7 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
     component('mqtt-subscribe.js','mqtt-other-reading','Second view of Workshop',40,172,{inputValues:{topic:'simplecanvas/demo/reading',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
     component('gauge.js','mqtt-other-gauge','Shared reading',450,172,{w:330,h:220,fill:false,bindings:{value:bind('mqtt-other-reading')}}),
     component('text-label.js','mqtt-other-json','Complete JSON message',840,172,{w:430,h:220,fontSize:19,state:{showName:true},strokeOn:true,color:'#cbd5e1',bindings:{value:bind('mqtt-other-reading','json')}}),
-    text('mqtt-shared-help','Try it\n• Connect on the first sketch, then switch between the two views. They share one broker connection.\n• Stop and restart the example server: the Config shows reconnecting, then subscriptions recover.\n• Disconnect explicitly: it stays disconnected until Apply / Connect.\n• In the editor, Subscribe → Edit lets you choose an MQTT Config by sketch and instance name.',40,420,1230,210,19),
+    text('mqtt-shared-help','Try it\n• Connect on the first sketch, then switch between the two views. They share one broker connection.\n• Stop and restart the example server: the Config shows reconnecting, then subscriptions recover.\n• Disconnect explicitly: it stays disconnected until Connect.\n• In the editor, Subscribe → Edit lets you choose an MQTT Config by sketch and instance name.',40,420,1230,210,19),
     text('mqtt-shared-policies','Defaults\nManual connection. No credentials saved unless explicitly included in an export. Initial / retained messages never emit actions. Pause or hiding the browser suspends connections; resuming reconnects. In Active sketch mode, leaving a sketch disconnects its Config and returning requires Connect. The third sketch sends explicit commands through this same Config.',40,650,1230,170,18),
   ];
   const commands=[

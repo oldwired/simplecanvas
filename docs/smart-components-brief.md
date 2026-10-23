@@ -343,7 +343,11 @@ support search. Canvas **groups** continue to mean objects selected and transfor
 
 Bundled defaults use multiple memberships by purpose: **Numbers** and **Text** group scalar
 tools, while **Data** covers tables and structured data. Numeric arithmetic is no longer filed
-only under Logic; data-backed charts and grids also appear under Displays.
+only under Logic; data-backed charts and grids also appear under Displays. **Network** groups HTTP
+and MQTT integrations; **Workspace** groups settings, navigation and cross-sketch communication.
+These additional memberships preserve useful Data, Controls, Logic and Text discovery. Sketch and
+Workspace settings belong in Workspace rather than Tools & time. Personal category overrides
+remain authoritative.
 
 | Category | Built-in examples |
 | --- | --- |
@@ -352,8 +356,10 @@ only under Logic; data-backed charts and grids also appear under Displays.
 | Numbers | Numeric controls, Math, Inverter (×−1), Clamp, Range mapper, Number function, numeric routing/storage, text/number conversion, Spreadsheet, Table aggregate, numeric displays, and charts |
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, numeric Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, clocks, Stopwatch, Timer |
-| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter, Publish, Receive |
+| Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP GET/POST, MQTT Config/Subscribe/Publish, URL parameter, Publish, Receive |
+| Network | HTTP GET, HTTP POST, MQTT Config, MQTT Subscribe, MQTT Publish |
+| Workspace | Workspace settings, Sketch settings, Go to tab, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank, and categorized user shapes/icons |
 
 The latest stage 2 extension adds fifteen API v2 entries: Pulse generator, Edge to pulse, two
@@ -2704,10 +2710,11 @@ predictable. Invalid JSON, wrong-type mapping, missing properties, HTTP failures
 report errors. Unavailable `value` and `json` ports are withheld by the runtime even if a consumer
 does not connect status outputs. Status ports stay available for loading/error presentation.
 
-Results do not enter component state, history or ordinary autosave. Credentials are host-owned
-and scoped to a source/origin; they never travel through ordinary ports or Worker arguments.
-The Connection dialog supports no authentication, Bearer tokens and HTTP Basic. Session-only is
-the default. JSON saves and HTML exports can explicitly include selected sources' credentials in
+Results do not enter component state, history or ordinary autosave. Session credentials are host-owned
+and scoped to a source/origin; those credentials never travel through ordinary ports or Worker arguments.
+The Credentials dialog supports no authentication, Bearer tokens and HTTP Basic. Session credentials
+remain the default; the explicit HTTP credential-input modes described below use normal authored
+data instead. JSON saves and HTML exports can explicitly include selected sources' session credentials in
 that artifact. Imports restore credentials through the host store without changing trigger policy.
 `features.networkIntegrations` controls execution independently of `smartComponents`. The initial
 delivery used manual Refresh only; the implemented 6.4 settings below add polling, debounced
@@ -2811,7 +2818,7 @@ without credential values, so the copied source requires its own credentials.
 
 ## HTTP requests and triggers — 6.4 and HTTP portion of 6.5 implemented on branch
 
-The shared `integrationApi:1` host service now supports **HTTP source** GET automation and a
+The shared `integrationApi:1` host service now supports automated reads through **HTTP GET** and a
 separate **HTTP POST** built-in. Both use bounded typed/JSON results and the editor/Run/HTML
 runtime. Worker network access stays blocked; neither operation waits for its response in the
 workspace action queue. MQTT Config/Subscribe use the same host boundary with their separate
@@ -2821,7 +2828,7 @@ connection/subscription lifecycle described below. MQTT Publish adds captured ex
 
 | Trigger | Author configuration | Semantics |
 | --- | --- | --- |
-| Direct Refresh button | Always present on HTTP source | One accepted explicit read, even when Automatic reads enabled is false. |
+| Direct Refresh button | Always present on HTTP GET | One accepted explicit read, even when Automatic reads enabled is false. |
 | Polling | Refresh at intervals, with Interval input | From 1 to 86,400 seconds, default 5. Starts after the interval in editor/Run/HTML. One pending poll at most; no overlapping or catch-up burst. |
 | Input changes | Refresh when URL or JSON pointer changes | Waits for the configured 0–10 second debounce, default 0.25. Reads the settled configuration, not intermediate graph evaluations. |
 | Boolean Refresh input | A false → true pulse | One read per rising edge. An initially/restored high value establishes a baseline. |
@@ -2851,7 +2858,7 @@ on its configured schedule afterward; it is not a replay of an earlier action.
 Successful mapped responses publish current `value` and `json`, and emit captured occurrences
 through both hybrid ports. A dedicated `completed:string` event carries compact JSON text;
 `failed:string` carries safe error text. Equal responses produce separate events, allowing
-`HTTP source.completed → Memo.line` to log each accepted completion. Consumer state may
+`HTTP GET.completed → Memo.line` to log each accepted completion. Consumer state may
 deliberately retain those payloads; the source's transient response snapshot remains outside
 history and autosave.
 
@@ -2952,8 +2959,8 @@ separate documents remain responsible for the intended broker identity.
 
 ### Agreed connection and event defaults
 
-- **Manual connection:** Apply / Connect captures the current URL/client ID and connects. Typing or
-  changing a bound input only edits the draft. Disconnect retires the connection intent and stops
+- **Manual connection:** Connect (or Apply after changing the draft) captures the current URL/client
+  ID and connects. Typing or changing a bound input only edits the draft. Disconnect retires the connection intent and stops
   reconnect attempts until another Connect.
 - **Startup:** Connect on opening in Run / HTML is an explicit option, off by default. Editor import,
   reload and Undo do not initiate a connection. Startup and credential inclusion remain separate choices.
@@ -2977,7 +2984,7 @@ Text and JSON payloads map to bounded number/string/Boolean values. JSON mode al
 compact JSON string; text mode leaves `json` empty and emits only its typed value. The limits are
 16 connections per runtime, 64 KiB transport/payload buffering, 2,000-character text/JSON outputs and
 60 messages per second per connection. A rate-limit violation disconnects visibly and requires
-manual Apply / Connect. Malformed payloads show an error without corrupting the document. Network
+manual Connect. Malformed payloads show an error without corrupting the document. Network
 results remain transient: no source undo entries or autosave on every message. Consumers such as
 Memo can deliberately retain accepted payloads.
 
@@ -3101,6 +3108,63 @@ the green full-suite run.
 Saved offline snapshots, table/object response mapping and additional protocols remain later work.
 Broker testing covers local WebSocket listeners and password authentication; deployment TLS,
 reverse-proxy origin policies and physical-device behavior remain environment-specific checks.
+
+### Integration UI consistency pass — 2026-10-23
+
+All five integration components use task-based Edit sections. URL or shared MQTT Config appears
+first, followed by request/message content and response mapping. Automatic refresh, trigger wiring
+and appearance use disclosures; inactive unconnected options are hidden without discarding their
+values, while assigned wires and unfinished numeric fields stay visible. JSON request bodies and MQTT payloads use multiline
+fields. The fixed component type and editable instance name remain separate.
+
+HTTP GET/POST offer **Credentials…** both in Edit and on the component, with None, Bearer token and
+HTTP Basic authentication. MQTT Config uses the same flow for username/password. Credentials
+entered inside Edit remain host-only drafts until Save; Cancel discards them. Credential dialogs
+show the destination origin, label the secret according to the authentication mode, and provide
+Show/Hide and field validation. Updating a draft URL to a different origin requires updating or
+removing its draft credentials. Session-only storage and explicit artifact inclusion remain the
+same; neither previews nor opening the dialogs initiate network activity.
+
+Cards use consistent actions, readable status text, and two-line error summaries. Error details
+remain visible with optional indicators off. MQTT Config labels its primary action Connect,
+Reconnect, Retry or Apply according to the connection state. HTTP GET is the library name for the
+existing HTTP source. Editor, Run and self-contained HTML use the same component renderers and
+credential dialogs.
+
+Validation: 18 focused inspector, credential and authenticated-request cases passed in both
+Chromium and WebKit, including Basic/Bearer GET and POST in editor, Run and HTML. The four card
+layout/state checks and three export dependency checks passed. All four readers and five library
+previews were regenerated; desktop/mobile dialogs and live HTTP/MQTT readers plus Run were visually
+checked. The full Chromium run passed 1,722/1,723 with no skips. Its sole failure was an intermittent
+Chromium promise-GC error while the JSON/date library-placement test awaited a queue; the affected
+file passed 7/7 on its focused rerun. No cause or product regression was established, so that test
+and the placement runtime remain unchanged.
+
+### HTTP credential inputs — 2026-10-23
+
+HTTP GET and POST expose an Authentication setting with four modes: Session credentials (default),
+No authentication, Bearer token input and Basic auth inputs. Bearer adds the `token` text control
+input; Basic adds `username` and `password` text control inputs. The host constructs Authorization,
+including UTF-8 Basic encoding, and validates inputs without echoing their values in diagnostics.
+Input modes use only the selected ports; they never fall back to session credentials. None omits
+Authorization. The session Credentials action is hidden when another mode is selected.
+
+Credential inputs deliberately follow ordinary data-flow semantics: scripts can receive them as
+input values, and authored literals/upstream state can appear in history, autosave, copies and
+exported files. The Edit hint makes this distinction explicit. The credential-inclusion chooser
+only controls the separate host-owned session store; it cannot redact ordinary authored values.
+No new secret-port type or credential propagation model is introduced.
+
+Accepted POST commands capture credential inputs along with body/key. Changes to those inputs
+prepare a later Send without invalidating the accepted request or its completion. GET readings
+are invalidated when their credential inputs change, and a new read uses the current values;
+credential changes alone do not enable or trigger automatic reads. No authentication mode sends
+network traffic merely because Edit opens or a setting changes.
+
+Validation: all 11 credential-input runtime/UI tests pass in Chromium and WebKit, covering
+editor, Run and HTML export. The 51 focused integration regressions, 33 foundation/scheduling/
+visual checks and three export/example checks pass. The built-in catalog and all four
+self-contained example readers have been regenerated.
 
 ## Decisions before each stage
 

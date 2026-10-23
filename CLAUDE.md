@@ -79,10 +79,14 @@ Do not retry automatically or imply that aborting a request reverses a server-si
 Successful responses emit captured hybrid/completion events, including equal values; empty204/205
 POST responses emit only completed('') without inventing mapped values. HTTP status stays available
 when JSON/mapping fails after2xx. Schedules pause while hidden/paused without catch-up bursts.
-Response snapshots and credentials stay outside source state/history/autosave. Unavailable source
+Response snapshots and session credentials stay outside source state/history/autosave. Unavailable source
 data is withheld before evaluation, including through pure transforms; independently stored outputs
-remain usable. Explicit consumers can retain event payloads. Credentials enter a saved artifact only
-through its inclusion dialog, separately from polling/startup choices. Run owns a separate service
+remain usable. Explicit consumers can retain event payloads. Session credentials enter a saved artifact only
+through its inclusion dialog, separately from polling/startup choices. Explicit HTTP Basic/Bearer
+input modes instead carry ordinary text data: their literals/upstream state follow normal history,
+autosave, Worker input and export rules. Never silently fall back from an input mode to session
+credentials. Accepted POST credentials are captured like the body/key; later input edits prepare
+the next command. No-auth mode omits Authorization even if session credentials exist. Run owns a separate service
 lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
 See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
 `tests/http-automation-runtime.test.cjs`.
