@@ -1,23 +1,39 @@
 // Development-only, loopback MQTT broker and static server. All telemetry is synthetic;
-// client publishing is disabled. Runtime HTML uses its bundled client, not these packages.
+// client publishing is restricted to one bounded demonstration command topic.
+// Runtime HTML uses its bundled client, not these packages.
 // Run: node tools/serve-mqtt-example.cjs [port]
 const http=require('node:http');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {WebSocketServer,createWebSocketStream}=require('ws');
 const root=path.join(__dirname,'..');
-const topics={reading:'simplecanvas/demo/reading',status:'simplecanvas/demo/status'};
+const topics={reading:'simplecanvas/demo/reading',status:'simplecanvas/demo/status',
+  command:'simplecanvas/demo/command',reply:'simplecanvas/demo/reply'};
 const types={'.html':'text/html; charset=utf-8','.json':'application/json; charset=utf-8',
   '.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png',
   '.svg':'image/svg+xml','.ico':'image/x-icon','.md':'text/plain; charset=utf-8'};
 
-async function createMqttExampleServer({directory=root,interval=1000,authenticate}={}){
+async function createMqttExampleServer({directory=root,interval=1000,authenticate,commandDelay=250}={}){
   const {Aedes}=await import('aedes');
   const broker=await Aedes.createBroker({maxClientsIdLength:128,heartbeatInterval:0});
   const base=await fs.realpath(path.resolve(directory));
-  const stats={connections:[],disconnects:[],subscriptions:[]};
+  const stats={connections:[],disconnects:[],subscriptions:[],commands:[]};
+  let sequence=0,commandSequence=0,closed=false;
+  const commandTimers=new Set();
+  const commandValue=packet=>{
+    if(packet.topic!==topics.command || packet.retain || packet.payload.length>2000)
+      throw new Error('Only non-retained demo commands are allowed');
+    const data=JSON.parse(packet.payload.toString());
+    if(!data || Array.isArray(data) || Object.keys(data).length!==1 || !Object.hasOwn(data,'value') ||
+      typeof data.value!=='number' || !Number.isFinite(data.value) || data.value<0 || data.value>100)
+      throw new Error('Command must be JSON with one numeric value between 0 and 100');
+    return data.value;
+  };
   if(authenticate)broker.authenticate=authenticate;
-  broker.authorizePublish=(client,packet,done)=>done(new Error('This demonstration broker is read-only'));
+  broker.authorizePublish=(client,packet,done)=>{
+    try{commandValue(packet);if(closed || commandTimers.size>=32)throw new Error('Demo device is busy');done();}
+    catch(error){done(error);}
+  };
   broker.on('client',client=>stats.connections.push(client.id));
   broker.on('clientDisconnect',client=>stats.disconnects.push(client.id));
   broker.on('subscribe',(subscriptions,client)=>stats.subscriptions.push({id:client.id,topics:subscriptions.map(sub=>sub.topic)}));
@@ -49,19 +65,31 @@ async function createMqttExampleServer({directory=root,interval=1000,authenticat
   const publish=(topic,payload,{retain=false,qos=0}={})=>new Promise((resolve,reject)=>{
     broker.publish({cmd:'publish',topic,payload:Buffer.from(typeof payload==='string'?payload:JSON.stringify(payload)),qos,retain},error=>error?reject(error):resolve());
   });
-  let sequence=0,closed=false;
+  broker.on('publish',(packet,client)=>{
+    if(!client || closed || packet.topic!==topics.command)return;
+    let value;try{value=commandValue(packet);}catch{return;}
+    const command={value,sequence:++commandSequence};stats.commands.push({...command,clientId:client.id});
+    // Broker receipt and the simulated device's reply are deliberately separate.
+    const timer=setTimeout(()=>{
+      commandTimers.delete(timer);if(closed)return;
+      void publish(topics.reply,{...command,status:'Applied by demo device'},{retain:true}).catch(()=>{});
+    },commandDelay);
+    commandTimers.add(timer);timer.unref?.();
+  });
   const tick=async()=>{
     await publish(topics.reading,{value:(35+sequence*7)%101,name:'Workshop',sequence},{retain:true});
     await publish(topics.status,sequence%2?'Reading updated':'Workshop online',{retain:true});
     sequence++;
   };
   await tick();
+  await publish(topics.reply,{value:0,sequence:0,status:'No command received'},{retain:true});
   const timer=interval>0?setInterval(()=>void tick().catch(()=>{}),interval):null;
   timer?.unref();
   return {server,broker,sockets,stats,topics,publish,tick,
     dropClients(){for(const socket of sockets.clients)socket.terminate();},
     async close(){
       if(closed)return;closed=true;clearInterval(timer);
+      for(const timer of commandTimers)clearTimeout(timer);commandTimers.clear();
       for(const socket of sockets.clients)socket.terminate();
       await new Promise(resolve=>sockets.close(resolve));
       await new Promise(resolve=>broker.close(resolve));
@@ -79,7 +107,8 @@ if(require.main===module){
       console.log('Editor: http://127.0.0.1:'+port+'/index.html');
       console.log('MQTT example: http://127.0.0.1:'+port+'/examples/mqtt-integrations.html');
       console.log('Broker: ws://127.0.0.1:'+port+'/mqtt');
-      console.log('Read-only topics: '+Object.values(topics).join(' · '));
+      console.log('Readings: '+[topics.reading,topics.status,topics.reply].join(' · '));
+      console.log('Command: '+topics.command+' · JSON {"value":0..100}, retain off');
     });
     for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>void example.close());
   }).catch(error=>{console.error(error.message);process.exitCode=1;});

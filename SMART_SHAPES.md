@@ -1541,10 +1541,10 @@ exported HTML resolves them from its own URL. The opaque Run origin requires end
 `Origin: null`. Its iframe delegates `local-network-access`, `local-network` and `loopback-network`
 permissions so supporting browsers can ask. User/deployment decisions can still deny access;
 there is no proxy or `allow-same-origin` bypass. JSON POST and Idempotency-Key may require a CORS
-preflight, which the server must permit. Table-response mapping, saved offline snapshots and
-MQTT Subscribe is described below; MQTT Publish remains a separate extension.
+preflight, which the server must permit. Table-response mapping and saved offline snapshots remain
+future extensions. MQTT connections, subscriptions and explicit publishing are described below.
 
-## Host-managed MQTT subscriptions (integration API 1)
+## Host-managed MQTT connections, subscriptions and publishing (integration API 1)
 
 [MQTT Config](examples/mqtt-config.js) declares a host-owned connection. Its descriptor names
 ordinary URL/client-ID inputs and an opt-in reader startup policy:
@@ -1602,8 +1602,48 @@ The browser client is bundled in `index.html` and copied into self-contained HTM
 never loads from a CDN. `networkIntegrations:false` disables connections. Run retains its isolated
 origin and owns independent connections/credentials. Brokers must accept the WebSocket origin
 (including Run's opaque origin where appropriate); browser network permissions still apply.
-Credentials use the same explicit per-artifact inclusion choice as HTTP. No Publish action,
-offline command replay, or saved reading snapshot is part of this increment.
+Credentials use the same explicit per-artifact inclusion choice as HTTP. Offline command replay
+and saved reading snapshots are outside this increment.
+
+[MQTT Publish](examples/mqtt-publish.js) uses the same `mqttBinding` Config reference:
+
+```js
+mqttPublish(state) {
+  return {topic:'topic', payload:'payload', format:state.format,
+          retain:state.retain === true, timeoutMs:state.timeoutSeconds * 1000};
+}
+```
+
+`topic` and `payload` name string inputs. The topic must be an exact, nonempty MQTT topic; publish
+wildcards are rejected. `format` is `text` (default) or `json`; JSON is parsed and compacted before
+transmission. Retain defaults to false; acknowledgement timeout defaults to 10,000 ms and is bounded
+from 1,000 to 30,000 ms. The built-in declares a Boolean control input `send` with `event:'action'`,
+`dataActions:{send:{type:'mqttPublish',trigger:'send'}}`, and a `{type:'mqttPublish'}` action handle.
+Only accepted explicit actions publish. Workers receive no socket or transport capability.
+
+The dispatcher captures the resolved Config, topic, payload, format and Retain choice when accepting
+Send. Pending sends do not block ordinary graph processing. The Config must already be connected;
+disconnected sends fail immediately. At most one send per Publish component is pending. Later topic/
+payload edits prepare the next Send; definition/descriptor or Config-reference changes retire pending
+work. Input edits,
+restoration, Undo, rendering, retained readings and reconnect do not send or replay captured commands.
+MQTT Publish has no offline command queue and never retries automatically.
+
+The host supplies `context.source` with `loading`, `status`, `error` and `lastPublished` (epoch ms).
+Statuses are `idle`, `sending`, `ready`, `error`, `cancelled` and `disabled`. `ready` and a new
+`lastPublished` mean **broker acknowledged** via QoS 1 PUBACK, never device execution. Its declared
+`actionEvents:{mqttPublish:{success:'completed',failure:'failed'}}` uses string event outputs:
+`completed` carries the captured transmitted payload (compact JSON in JSON mode), and `failed`
+carries the error. Equal successful messages produce separate events. Transient results stay out
+of source state/history/autosave unless an explicit consumer stores them.
+
+QoS 1 can duplicate delivery. Timeout, disconnect or cancellation cannot prove the broker did not
+receive a command; unknown outcomes must be surfaced instead of silently retried. Retiring or
+replacing a document rejects late acknowledgements. A device acknowledgement belongs on a separate
+response subscription and can carry its own command identifier. Pausing/hiding suspends MQTT and
+fails unacknowledged sends with an unknown outcome. Failure events are buffered while hidden and
+delivered once visible; resuming never replays the send. Already-issued detached HTTP requests can
+instead finish while hidden.
 
 ## Embedded table data
 
@@ -1888,7 +1928,7 @@ the view to update the source and total; click **Copy current total** (a Replace
 copied total to leave both unchanged. A later source edit updates the views but leaves the stored copy
 alone until **Copy current total** is clicked again.
 Coordinated current-record controls, calculated dataset columns, table mapping from HTTP
-responses and MQTT Publish remain future extensions. HTTP and MQTT sources already supply transient
+responses remain future extensions. HTTP and MQTT sources already supply transient
 scalar readings and compact JSON text; it does not create a second stored Dataset model.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
@@ -2447,11 +2487,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 100 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 101 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 91 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 92 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -2490,9 +2530,10 @@ The built-in catalog includes 91 API v2 components, with editable sources in `ex
   allowed; types use `0` auto, `1` number, `2` string, `3` Boolean, or the corresponding names.
 - [Signal → event](examples/signal-to-event.js) and [Event → pulse](examples/event-to-pulse.js):
   explicit scalar sampling and bounded event-to-Boolean pulse conversion, described above.
-- [MQTT Config](examples/mqtt-config.js) and [MQTT Subscribe](examples/mqtt-subscribe.js):
-  shared WebSocket connections, typed readings and fresh-message events, with retained baselines
-  and host-owned credentials.
+- [MQTT Config](examples/mqtt-config.js), [MQTT Subscribe](examples/mqtt-subscribe.js), and
+  [MQTT Publish](examples/mqtt-publish.js): shared WebSocket connections, typed readings and
+  fresh-message events, retained baselines, host-owned credentials, and explicit captured QoS 1
+  sends with separate broker acknowledgements.
 - [HTTP source](examples/http-source.js): manual asynchronous JSON GET through the host integration
   service, optional polling/debounced changes/startup, typed and JSON hybrid outputs, and completion
   events. [HTTP POST](examples/http-post.js) sends captured JSON only on explicit Send actions, with

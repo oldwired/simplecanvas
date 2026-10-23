@@ -22,7 +22,7 @@ async function client(t,url){
 test('MQTT example serves retained baselines and changing live values over real WebSockets',{timeout:10000},async t=>{
   const example=await serve(t),connection=await client(t,example.url),messages=[];
   let ready;const baseline=new Promise(resolve=>ready=resolve);
-  connection.on('message',(topic,payload,packet)=>{messages.push({topic,text:payload.toString(),retain:packet.retain});if(messages.length===2)ready();});
+  connection.on('message',(topic,payload,packet)=>{messages.push({topic,text:payload.toString(),retain:packet.retain});if(messages.length===3)ready();});
   await connection.subscribeAsync('simplecanvas/demo/#');
   await baseline;
   assert.ok(messages.some(message=>message.topic===example.topics.reading&&JSON.parse(message.text).value===35&&message.retain));
@@ -31,11 +31,28 @@ test('MQTT example serves retained baselines and changing live values over real 
   assert.equal(example.stats.connections.length,1);assert.equal(example.stats.subscriptions.length,1);
   assert.equal((await fetch(example.origin+'/index.html')).status,200);
 });
-test('MQTT example rejects client writes and clears connections when closed',{timeout:10000},async t=>{
+test('MQTT example rejects client writes outside its command topic and clears connections',{timeout:10000},async t=>{
   const example=await serve(t),connection=await client(t,example.url);
   const disconnect=once(connection,'close');connection.publish(example.topics.reading,'123');
   await disconnect;
   assert.equal(example.stats.disconnects.length,1);
+});
+test('MQTT example accepts a bounded command and replies separately from its broker acknowledgement',{timeout:10000},async t=>{
+  const example=await serve(t),connection=await client(t,example.url),messages=[];
+  connection.on('message',(topic,payload,packet)=>messages.push({topic,data:JSON.parse(payload),retain:packet.retain}));
+  const initial=once(connection,'message');await connection.subscribeAsync(example.topics.reply);await initial;
+  assert.equal(messages[0].data.sequence,0);assert.equal(messages[0].retain,true);
+  const response=once(connection,'message');await connection.publishAsync(example.topics.command,'{"value":72}',{qos:1,retain:false});
+  await response;assert.deepEqual(messages[1].data,{value:72,sequence:1,status:'Applied by demo device'});
+  assert.equal(messages[1].retain,false);assert.equal(example.stats.commands.length,1);
+});
+test('MQTT example refuses retained, malformed and out-of-range commands',{timeout:10000},async t=>{
+  const example=await serve(t);
+  for(const [payload,retain] of [['{"value":20}',true],['not json',false],['{"value":101}',false],['{"value":3,"extra":true}',false]]){
+    const connection=await client(t,example.url),closed=once(connection,'close');
+    connection.publish(example.topics.command,payload,{retain});await closed;
+  }
+  assert.deepEqual(example.stats.commands,[]);
 });
 test('MQTT example refuses static-file traversal and symlinks outside its directory',async t=>{
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'mqtt-static-'));

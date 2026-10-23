@@ -989,7 +989,7 @@ commands and downloads, including event-driven requests. See the
 [component scripting contract](../SMART_SHAPES.md#connected-components-api-v2) for custom ports
 and computations, including opt-in typed events for discrete interactions. Manual HTTP GET is
 available through HTTP source and HTTP POST below, including optional automated reads and
-explicit writes. MQTT Config and Subscribe provide live readings; MQTT Publish remains deferred.
+explicit writes. MQTT Config and Subscribe provide live readings; MQTT Publish sends explicit commands.
 
 ## HTTP source
 
@@ -1096,9 +1096,9 @@ under that key returns 409. The last 256 idempotency keys are retained until res
 are not persisted. It is a development helper, not a production API. Table-response mapping remains later work.
 
 
-## MQTT Config and Subscribe
+## MQTT Config, Subscribe and Publish
 
-**MQTT Config** owns one broker connection shared by explicitly referencing Subscribe components.
+**MQTT Config** owns one broker connection shared by explicitly referencing Subscribe and Publish components.
 Use a broker WebSocket URL (`ws://` or `wss://`), not a normal MQTT TCP address. **Apply / Connect**
 commits the current URL/client ID and connects; changing a bound URL alone does not reconnect.
 **Disconnect** stops automatic retries. **Credentials…** opens host-owned username/password fields.
@@ -1141,7 +1141,7 @@ Whole workspace execution. This host reference is separate from ordinary value/e
 Initial messages after subscribing/reconnecting and all retained messages update current values but
 emit no action events. Later live messages emit captured hybrid values, even when two payloads are
 equal. In JSON mode, `value` and `json` from one message share an event origin. The first version uses
-QoS 0 subscriptions and clean sessions; it has no offline message queue or publishing operation.
+QoS 0 subscriptions and clean sessions; it has no offline message queue.
 Payloads are bounded at 64 KiB and text/JSON outputs at 2,000 characters. At most 16 connections
 run concurrently; more than 60 messages per second on one connection disconnects it visibly until
 Apply / Connect. Malformed payloads become visible errors. Unavailable readings are withheld from downstream value
@@ -1153,11 +1153,49 @@ readings stale; resume reconnects its prior connection intent. Whole workspace m
 connections across visible-sketch changes. Active sketch mode disconnects when the owning sketch
 is left and requires another manual Connect on return. Explicit Disconnect does not reconnect.
 
+**MQTT Publish** selects a Config in its Edit inspector in the same way. It sends only when **Send**
+is clicked, the Send input rises false → true, or an accepted event reaches Send. Editing a payload,
+reopening, Undo, retained readings and reconnect never send it. The action captures its topic,
+payload, format and Retain setting; later topic/payload edits prepare the next Send. Changing its
+component definition or Config relationship cancels pending work.
+
+| Publish setting/input | Meaning |
+| --- | --- |
+| Topic | Exact MQTT topic; empty topics and wildcards are rejected. |
+| Payload | Text to transmit. JSON mode validates and compacts it first. |
+| Send | Explicit Boolean pulse or event; the on-canvas button issues the same action. |
+| Payload format | Text (default) or JSON. |
+| Retain the message on the broker | Off by default. When enabled, the broker keeps this publication for future subscribers. |
+| Acknowledgement timeout | 1–30 seconds; defaults to 10 seconds. |
+| Show delivery details | Show/hide the QoS, retention and broker/device explanation. |
+
+| Publish output | Meaning |
+| --- | --- |
+| `loading` | Waiting for the broker acknowledgement. |
+| `status` / `error` | Current delivery state and any failure. `ready` means broker acknowledged. |
+| `lastPublished` | Epoch milliseconds of the last broker acknowledgement. |
+| `completed` | Event containing the captured transmitted payload after QoS 1 PUBACK. |
+| `failed` | Event containing the failure message. |
+
+The Config must already be connected. Disconnected sends fail immediately; there is no offline
+queue, automatic retry or replay after reconnect. One send can be pending per Publish component.
+QoS 1 confirms broker receipt and can produce duplicate deliveries. It does not confirm device
+execution. Timeout or disconnect may leave the outcome unknown because the broker might already
+have received the command. Use a separate response-topic subscriber when the device must report its
+result. Commands needing duplicate protection should carry an application-level identifier or be
+idempotent. Pausing or hiding suspends MQTT; an unacknowledged send fails with an unknown outcome
+and its failure event waits while the page is hidden. Becoming visible delivers it; resuming never
+replays the send. Runtime status and acknowledgements do not change authored state or undo history.
+
 The [MQTT workspace](../examples/mqtt-integrations.json) and
 [HTML reader](../examples/mqtt-integrations.html) show numeric and text subscriptions sharing a
-Config, a Gauge, an event log, and a second sketch using that same connection. Run `npm ci` once for the development tools, then
+Config, a Gauge, an event log, a second sketch using that same connection, and a third **Commands &
+replies** sketch. The third connects JSON build → MQTT Publish and separates broker acknowledgement
+from a simulated device reply. Run `npm ci` once for the development tools, then
 `node tools/serve-mqtt-example.cjs` and open `http://127.0.0.1:8001/examples/mqtt-integrations.html`.
-The local helper supplies retained baselines and new readings once per second. The client is bundled
-into self-contained HTML; a live broker is still required. Credentials, origin checks and browser
-local-network rules apply in the editor, Run and exported reader. MQTT Publish and explicitly saved
-offline reading snapshots remain deferred.
+The local helper supplies retained baselines and new readings once per second. It accepts only
+non-retained JSON commands with one numeric `value` from 0 through 100 on
+`simplecanvas/demo/command`, and sends a separate simulated device response on
+`simplecanvas/demo/reply`. Other client writes are refused. The client is bundled into self-contained
+HTML; a live broker is still required. Credentials, origin checks and browser local-network rules
+apply in the editor, Run and exported reader. Explicitly saved offline reading snapshots remain deferred.

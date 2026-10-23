@@ -711,13 +711,22 @@ increase runtime budgets or impose hardware-dependent pass/fail thresholds. See 
 - `mqtt-foundation.test.cjs` exercises descriptor/request validation, shared versus independent
   Config connections, manual/startup policy, generation retirement, reconnect, retained/initial
   baselines, payload limits and message-rate bounds with controlled clients.
-- `mqtt-example-server.test.cjs` exercises the loopback WebSocket broker and retained/live fixtures.
+- `mqtt-example-server.test.cjs` exercises the loopback WebSocket broker, retained/live fixtures,
+  the bounded command authorization policy and the separate simulated device response.
 - `mqtt-integrations-example-contracts.test.cjs` checks transient component outputs, manual controls,
-  explicit cross-sketch Config references, unchanged authored state and atomic JSON/HTML generation.
+  explicit cross-sketch Config references, unchanged authored state, separate broker/device feedback,
+  and atomic JSON/HTML generation.
 - `mqtt-runtime-browser.test.cjs` covers the real bundled client through the editor, Run and
   standalone export, using an isolated local broker rather than an external endpoint. It verifies
   queued wildcard values keep their original topics and that a released control click completes
   while continuous readings update 80 Gauges.
+- `mqtt-publish-foundation.test.cjs` checks exact-topic/JSON validation, captured QoS 1 intent,
+  pending/timeout/disconnect ownership, late acknowledgements and no queued reconnect replay.
+- `mqtt-publish-browser.test.cjs` covers explicit button/pulse/event sends, captured payloads,
+  responsive graphs during delayed PUBACK, retained-baseline suppression, Config selection through
+  Edit, deletion/Undo while pending, Run/export lifecycle, and hidden-page failure delivery without
+  replay in editor and HTML. Optional real-Mosquitto scenarios cover retained publishing and credentials
+  in the editor, Run and downloaded HTML.
 - `mqtt-event-receivers.test.cjs` checks enabled hybrid/explicit event receiver discovery, including
   transforms and cross-sketch endpoints, and stable integration snapshots within one graph pass.
 - `mqtt-mosquitto-browser.test.cjs` optionally runs against a real Mosquitto executable through

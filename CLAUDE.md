@@ -86,11 +86,14 @@ through its inclusion dialog, separately from polling/startup choices. Run owns 
 lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
 See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
 `tests/http-automation-runtime.test.cjs`.
-MQTT Config/Subscribe share host-owned connections through explicit `mqttBinding` sketch/component
+MQTT Config/Subscribe/Publish share host-owned connections through explicit `mqttBinding` sketch/component
 references. Draft URL/client-ID changes apply only on Connect; retained/initial messages establish
 readings without events. Keep generation checks, bounded reconnect, stale/unavailable value handling
 and separate Run lifetimes. Credentials stay in the shared host store and only enter explicitly
-selected saved artifacts. Worker scripts never receive a socket or credential.
+selected saved artifacts. Worker scripts never receive a socket or credential. MQTT Publish captures
+explicit Send intent, uses QoS 1 PUBACK as broker receipt, and never queues offline or retries/replays
+on reconnect. Retain defaults off; device execution requires a separate response. Pending sends must
+not block the workspace queue, and retired generations must reject late acknowledgements.
 Each graph pass captures its integration readings; incoming packets cannot change a later settling
 round of that pass. Shared network redraw tasks coalesce behind accepted gestures, and MQTT
 value-only consumers skip event preparation. Captured events retain their original topic/timestamp

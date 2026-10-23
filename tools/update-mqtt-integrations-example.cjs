@@ -49,10 +49,28 @@ function buildMqttIntegrationsExample({root:directory=root}={}){
     component('gauge.js','mqtt-other-gauge','Shared reading',450,172,{w:330,h:220,fill:false,bindings:{value:bind('mqtt-other-reading')}}),
     component('text-label.js','mqtt-other-json','Complete JSON message',840,172,{w:430,h:220,fontSize:19,state:{showName:true},strokeOn:true,color:'#cbd5e1',bindings:{value:bind('mqtt-other-reading','json')}}),
     text('mqtt-shared-help','Try it\n• Connect on the first sketch, then switch between the two views. They share one broker connection.\n• Stop and restart the example server: the Config shows reconnecting, then subscriptions recover.\n• Disconnect explicitly: it stays disconnected until Apply / Connect.\n• In the editor, Subscribe → Edit lets you choose an MQTT Config by sketch and instance name.',40,420,1230,210,19),
-    text('mqtt-shared-policies','Defaults\nManual connection. No credentials saved unless explicitly included in an export. Initial / retained messages never emit actions. Pause or hiding the browser suspends connections; resuming reconnects. In Active sketch mode, leaving a sketch disconnects its Config and returning requires Connect. MQTT Publish is a later step.',40,650,1230,170,18),
+    text('mqtt-shared-policies','Defaults\nManual connection. No credentials saved unless explicitly included in an export. Initial / retained messages never emit actions. Pause or hiding the browser suspends connections; resuming reconnects. In Active sketch mode, leaving a sketch disconnects its Config and returning requires Connect. The third sketch sends explicit commands through this same Config.',40,650,1230,170,18),
+  ];
+  const commands=[
+    text('mqtt-command-title','Commands & replies · broker receipt and device response',40,24,1240,44,28),
+    text('mqtt-command-intro','Connect the Local demo broker on the first sketch. Choose a value, then click Send. Changing the slider only prepares the JSON; it never sends a command by itself.',40,78,1240,60,18),
+    component('number-control.js','mqtt-command-value','Requested value · 0–100',40,160,{w:320,h:144,state:{value:65}}),
+    component('json-build.js','mqtt-command-json','Command JSON',410,160,{w:330,h:144,state:{fields:'value:number',showIndicators:false},bindings:{field0:bind('mqtt-command-value')}}),
+    component('mqtt-publish.js','mqtt-command-publish','Send to demo device',800,160,{w:470,h:208,state:{format:'json'},inputValues:{topic:'simplecanvas/demo/command'},bindings:{payload:bind('mqtt-command-json','text')},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    text('mqtt-command-capture','Each Send captures the topic and payload.\nNo queue while disconnected; reconnect never replays a command.',40,320,700,52,17),
+    component('mqtt-subscribe.js','mqtt-command-reply','Demo device reply',40,400,{w:360,h:176,inputValues:{topic:'simplecanvas/demo/reply',path:'/value'},mqttBinding:{sketchId:'mqtt-readings',componentUid:'mqtt-config'}}),
+    component('gauge.js','mqtt-command-gauge','Applied value',440,400,{w:220,h:176,fill:false,bindings:{value:bind('mqtt-command-reply')}}),
+    component('text-label.js','mqtt-command-response','Complete device response',710,400,{w:560,h:176,fontSize:19,state:{showName:true},strokeOn:true,color:'#cbd5e1',bindings:{value:bind('mqtt-command-reply','json')}}),
+    text('mqtt-command-ack-heading','Broker acknowledgements · sent payload',40,596,380,24,17),
+    text('mqtt-command-reply-heading','Device reply events',450,596,380,24,17),
+    text('mqtt-command-error-heading','Failed sends',860,596,410,24,17),
+    component('memo.js','mqtt-command-acks','Broker acknowledgements',40,630,{w:380,h:142,fontSize:15,state:{logMode:true,maxLines:5,showCounts:false},inputValues:{showScrollbar:true},eventBindings:{line:bind('mqtt-command-publish','completed')}}),
+    component('memo.js','mqtt-command-replies','Device replies',450,630,{w:380,h:142,fontSize:15,state:{logMode:true,maxLines:5,showCounts:false},inputValues:{showScrollbar:true},bindings:{line:bind('mqtt-command-reply','json')}}),
+    component('memo.js','mqtt-command-errors','Failed sends',860,630,{w:410,h:142,fontSize:15,state:{logMode:true,maxLines:5,showCounts:false},inputValues:{showScrollbar:true},eventBindings:{line:bind('mqtt-command-publish','failed')}}),
+    text('mqtt-command-help','QoS 1 confirms broker receipt, not device execution. This local demo simulates a device response on a separate topic after a short delay. Retain is off for commands; a retained reply supplies the initial display without adding a log entry. Try sending the same value twice.',40,792,1230,60,16),
   ];
   const tab=(id,name,scene)=>({id,name,items:scene,datasets:{},assets:{}});
-  return {app:'SimpleCanvasWorkspace',version:5,activeIndex:0,tabs:[tab('mqtt-readings','MQTT readings',main),tab('mqtt-shared','Shared connection',other)]};
+  return {app:'SimpleCanvasWorkspace',version:5,activeIndex:0,tabs:[tab('mqtt-readings','MQTT readings',main),tab('mqtt-shared','Shared connection',other),tab('mqtt-commands','Commands & replies',commands)]};
 }
 
 async function updateMqttIntegrationsExample({root:directory=root,exportReader=exportWorkspaceReader,io=fs}={}){

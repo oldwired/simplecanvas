@@ -211,7 +211,7 @@
     'use strict';
     options=options||{};
     const SMART_MAX_REPLY=524288;
-const SMART_WORKER_SRC="\n\"use strict\";\nconst stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);\nconst encoder = new TextEncoder();\nconst send = value => {\n  const json = stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});\n  transmit(encoder.encode(json).length <= 524288 ? json : stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));\n};\nsend({ready:true});\nfor(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){\n  try{ delete self[g]; }catch(e){}\n  try{ self[g] = undefined; }catch(e){}\n}\ntry{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}\nlet source, compiled;\nfunction compile(src){\n  if(source!==undefined){if(source!==src)throw new Error('Worker source changed');return compiled;}\n  source=src;\n  var def = null;\n  try{\n    def = new Function('\"use strict\";return ('+src+');')();\n    if(!def || typeof def.children !== 'function') def = null;\n  }catch(e){ def = null; }\n  return compiled=def;\n}\nself.onmessage = function(e){\n  var msg = e.data || {};\n  var id = msg.id;\n  try{ var def = compile(msg.src || '');\n  const apiVersion=def && def.apiVersion===undefined ? 1 : def && def.apiVersion;\n  if(def && apiVersion!==1 && apiVersion!==2){send({id,ok:false,error:'Unsupported component API version'});return;}\n  if(def && msg.componentApi!==undefined && msg.componentApi!==apiVersion){send({id,ok:false,error:'Component API marker does not match script'});return;}\n  if(def && msg.method==='call' && apiVersion===2 && msg.componentApi!==2){send({id,ok:false,error:'Component API 2 requires a saved componentApi marker'});return;}\n  if(msg.method === 'caps'){\n    const state=msg.args && msg.args[0] || (def && (typeof def.inputs==='function' || typeof def.outputs==='function' || typeof def.eventTransform==='function' || typeof def.actionEvents==='function' || typeof def.httpSource==='function' || typeof def.mqttConfig==='function' || typeof def.mqttSource==='function') && typeof def.initState==='function' ? def.initState() : {});\n    send({id:id, ok:!!def, caps: def ? {\n      children: typeof def.children==='function', unavailableChildren: apiVersion===2 && typeof def.unavailableChildren==='function', handles: typeof def.handles==='function',\n      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function', contextMenu: typeof def.contextMenu==='function',\n      initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',\n      importTable: apiVersion===2 && typeof def.importTable==='function',\n      configure: apiVersion===2 && typeof def.configure==='function',\n      configurationError: apiVersion===2 && typeof def.configurationError==='function' ? def.configurationError(state) : null,\n      refreshMs: typeof def.refreshMs==='function', compute: typeof def.compute==='function',\n      transition: apiVersion===2 && typeof def.transition==='function',\n      publish: apiVersion===2 && typeof def.publish==='function',\n      onEvent: apiVersion===2 && typeof def.onEvent==='function',\n      eventApi:apiVersion===2 ? def.eventApi : undefined,\n      eventTransform:apiVersion===2 ? (typeof def.eventTransform==='function' ? def.eventTransform(state) : def.eventTransform) : undefined,\n      eventInputs:apiVersion===2 ? (typeof def.eventInputs==='function' ? def.eventInputs(state) : def.eventInputs) : undefined,\n      eventOutputs:apiVersion===2 ? (typeof def.eventOutputs==='function' ? def.eventOutputs(state) : def.eventOutputs) : undefined,\n      wakePolicy:apiVersion===2 ? def.wakePolicy : undefined,\n      queryParameters:apiVersion===2 ? def.queryParameters : undefined,\n      integrationApi:apiVersion===2 ? def.integrationApi : undefined,\n      httpSource:apiVersion===2 ? (typeof def.httpSource==='function' ? def.httpSource(state) : def.httpSource) : undefined,\n      mqttConfig:apiVersion===2 ? (typeof def.mqttConfig==='function' ? def.mqttConfig(state) : def.mqttConfig) : undefined,\n      mqttSource:apiVersion===2 ? (typeof def.mqttSource==='function' ? def.mqttSource(state) : def.mqttSource) : undefined,\n      tablePresentation:apiVersion===2 ? def.tablePresentation : undefined,\n      datasetOwner:apiVersion===2 ? def.datasetOwner : undefined,\n      pageSettings:apiVersion===2 ? def.pageSettings : undefined,\n      sketchSettingsOverrides:apiVersion===2 ? def.sketchSettingsOverrides : undefined,\n      workspaceSettings:apiVersion===2 ? def.workspaceSettings : undefined,\n      workspaceEndpoint:apiVersion===2 ? (typeof def.workspaceEndpoint==='function' ? def.workspaceEndpoint(state) : def.workspaceEndpoint) : undefined,\n      apiVersion, inputs:apiVersion===2 ? (typeof def.inputs==='function' ? def.inputs(state) : def.inputs) : undefined,\n      outputs:apiVersion===2 ? (typeof def.outputs==='function' ? def.outputs(state) : def.outputs) : undefined,\n      settings:apiVersion===2 ? def.settings : undefined,\n      dataActions:apiVersion===2 ? (typeof def.dataActions==='function' ? def.dataActions(state) : def.dataActions) : undefined,\n      actionEvents:apiVersion===2 ? (typeof def.actionEvents==='function' ? def.actionEvents(state) : def.actionEvents) : undefined,\n      exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')\n    } : null});\n    return;\n  }\n  if(msg.method === 'call'){\n    const hook=def && def[msg.fn];\n    const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook\n      : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;\n    const reply={id:id, ok:true, apiVersion, result:result===undefined ? null : result};\n    if(msg.fn==='children' && msg.refresh===true){\n      const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;\n      // Invalid intervals must not prevent valid children from crossing the JSON-only transport.\n      reply.refreshMs=interval==null ? null : typeof interval==='number' && Number.isFinite(interval) ? interval : 'invalid';\n    }\n    send(reply);\n    return;\n  }\n  }catch(e){ send({id:id,ok:false,error:['compute','transition','publish','importTable','onEvent'].includes(msg.fn) && typeof e?.message==='string' && e.message\n    ? (msg.fn==='importTable'?'Table import failed: ':'Computation failed: ')+e.message.slice(0,160) : 'Script hook failed'}); }\n};\n";
+const SMART_WORKER_SRC="\n\"use strict\";\nconst stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);\nconst encoder = new TextEncoder();\nconst send = value => {\n  const json = stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});\n  transmit(encoder.encode(json).length <= 524288 ? json : stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));\n};\nsend({ready:true});\nfor(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){\n  try{ delete self[g]; }catch(e){}\n  try{ self[g] = undefined; }catch(e){}\n}\ntry{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}\nlet source, compiled;\nfunction compile(src){\n  if(source!==undefined){if(source!==src)throw new Error('Worker source changed');return compiled;}\n  source=src;\n  var def = null;\n  try{\n    def = new Function('\"use strict\";return ('+src+');')();\n    if(!def || typeof def.children !== 'function') def = null;\n  }catch(e){ def = null; }\n  return compiled=def;\n}\nself.onmessage = function(e){\n  var msg = e.data || {};\n  var id = msg.id;\n  try{ var def = compile(msg.src || '');\n  const apiVersion=def && def.apiVersion===undefined ? 1 : def && def.apiVersion;\n  if(def && apiVersion!==1 && apiVersion!==2){send({id,ok:false,error:'Unsupported component API version'});return;}\n  if(def && msg.componentApi!==undefined && msg.componentApi!==apiVersion){send({id,ok:false,error:'Component API marker does not match script'});return;}\n  if(def && msg.method==='call' && apiVersion===2 && msg.componentApi!==2){send({id,ok:false,error:'Component API 2 requires a saved componentApi marker'});return;}\n  if(msg.method === 'caps'){\n    const state=msg.args && msg.args[0] || (def && (typeof def.inputs==='function' || typeof def.outputs==='function' || typeof def.eventTransform==='function' || typeof def.actionEvents==='function' || typeof def.httpSource==='function' || typeof def.mqttConfig==='function' || typeof def.mqttSource==='function' || typeof def.mqttPublish==='function') && typeof def.initState==='function' ? def.initState() : {});\n    send({id:id, ok:!!def, caps: def ? {\n      children: typeof def.children==='function', unavailableChildren: apiVersion===2 && typeof def.unavailableChildren==='function', handles: typeof def.handles==='function',\n      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function', contextMenu: typeof def.contextMenu==='function',\n      initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',\n      importTable: apiVersion===2 && typeof def.importTable==='function',\n      configure: apiVersion===2 && typeof def.configure==='function',\n      configurationError: apiVersion===2 && typeof def.configurationError==='function' ? def.configurationError(state) : null,\n      refreshMs: typeof def.refreshMs==='function', compute: typeof def.compute==='function',\n      transition: apiVersion===2 && typeof def.transition==='function',\n      publish: apiVersion===2 && typeof def.publish==='function',\n      onEvent: apiVersion===2 && typeof def.onEvent==='function',\n      eventApi:apiVersion===2 ? def.eventApi : undefined,\n      eventTransform:apiVersion===2 ? (typeof def.eventTransform==='function' ? def.eventTransform(state) : def.eventTransform) : undefined,\n      eventInputs:apiVersion===2 ? (typeof def.eventInputs==='function' ? def.eventInputs(state) : def.eventInputs) : undefined,\n      eventOutputs:apiVersion===2 ? (typeof def.eventOutputs==='function' ? def.eventOutputs(state) : def.eventOutputs) : undefined,\n      wakePolicy:apiVersion===2 ? def.wakePolicy : undefined,\n      queryParameters:apiVersion===2 ? def.queryParameters : undefined,\n      integrationApi:apiVersion===2 ? def.integrationApi : undefined,\n      httpSource:apiVersion===2 ? (typeof def.httpSource==='function' ? def.httpSource(state) : def.httpSource) : undefined,\n      mqttConfig:apiVersion===2 ? (typeof def.mqttConfig==='function' ? def.mqttConfig(state) : def.mqttConfig) : undefined,\n      mqttSource:apiVersion===2 ? (typeof def.mqttSource==='function' ? def.mqttSource(state) : def.mqttSource) : undefined,\n      mqttPublish:apiVersion===2 ? (typeof def.mqttPublish==='function' ? def.mqttPublish(state) : def.mqttPublish) : undefined,\n      tablePresentation:apiVersion===2 ? def.tablePresentation : undefined,\n      datasetOwner:apiVersion===2 ? def.datasetOwner : undefined,\n      pageSettings:apiVersion===2 ? def.pageSettings : undefined,\n      sketchSettingsOverrides:apiVersion===2 ? def.sketchSettingsOverrides : undefined,\n      workspaceSettings:apiVersion===2 ? def.workspaceSettings : undefined,\n      workspaceEndpoint:apiVersion===2 ? (typeof def.workspaceEndpoint==='function' ? def.workspaceEndpoint(state) : def.workspaceEndpoint) : undefined,\n      apiVersion, inputs:apiVersion===2 ? (typeof def.inputs==='function' ? def.inputs(state) : def.inputs) : undefined,\n      outputs:apiVersion===2 ? (typeof def.outputs==='function' ? def.outputs(state) : def.outputs) : undefined,\n      settings:apiVersion===2 ? def.settings : undefined,\n      dataActions:apiVersion===2 ? (typeof def.dataActions==='function' ? def.dataActions(state) : def.dataActions) : undefined,\n      actionEvents:apiVersion===2 ? (typeof def.actionEvents==='function' ? def.actionEvents(state) : def.actionEvents) : undefined,\n      exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')\n    } : null});\n    return;\n  }\n  if(msg.method === 'call'){\n    const hook=def && def[msg.fn];\n    const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook\n      : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;\n    const reply={id:id, ok:true, apiVersion, result:result===undefined ? null : result};\n    if(msg.fn==='children' && msg.refresh===true){\n      const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;\n      // Invalid intervals must not prevent valid children from crossing the JSON-only transport.\n      reply.refreshMs=interval==null ? null : typeof interval==='number' && Number.isFinite(interval) ? interval : 'invalid';\n    }\n    send(reply);\n    return;\n  }\n  }catch(e){ send({id:id,ok:false,error:['compute','transition','publish','importTable','onEvent'].includes(msg.fn) && typeof e?.message==='string' && e.message\n    ? (msg.fn==='importTable'?'Table import failed: ':'Computation failed: ')+e.message.slice(0,160) : 'Script hook failed'}); }\n};\n";
 const SMART_CALL_TIMEOUT_MS=250;
 const SMART_STARTUP_TIMEOUT_MS=2000;
 const SMART_MAX_RESIDENT_WORKERS=4;
@@ -745,7 +745,7 @@ const remapDatasetSelections=function remapDatasetSelections(list,beforePool,nex
     return list;
   };
 const normalizeComponentDataAction=function normalizeComponentDataAction(raw){
-    if(raw && ['httpGet','httpPost','httpCredentials','mqttConnect','mqttDisconnect','mqttCredentials'].includes(raw.type)){
+    if(raw && ['httpGet','httpPost','httpCredentials','mqttConnect','mqttDisconnect','mqttCredentials','mqttPublish'].includes(raw.type)){
       if(typeof raw!=='object' || Array.isArray(raw) || Object.keys(raw).some(key=>key!=='type'))throw new Error('Invalid integration action');
       return {type:raw.type};
     }
@@ -1636,6 +1636,7 @@ const createComponentHttpCompletions=function createComponentHttpCompletions(opt
   };
 const componentHttpResponseEventState=function componentHttpResponseEventState(item,caps,snapshot){
     if(caps.mqttSource)return componentMqttMessageEventState(item,caps,snapshot);
+    if(caps.mqttPublish)return componentMqttPublishEventState(item,caps,snapshot);
     const events=[],success=snapshot.status==='ready',operation=caps.httpSource.method==='POST'?'httpPost':'httpGet';
     if(success && snapshot.available){
       if(caps.outputs.value?.event)events.push({port:'value',payload:snapshot.value});
@@ -1656,11 +1657,27 @@ const captureHttpHostIntent=function captureHttpHostIntent(item,record,provenanc
     return {item,type:record.caps.httpSource.method==='POST'?'httpPost':'httpGet',provenance,
       record:{caps:record.caps,io:{inputs:{...record.io.inputs}}},configuration:componentHttpConfiguration(item,record.caps)};
   };
+const captureMqttHostIntent=function captureMqttHostIntent(item,record,provenance){
+    return {item,type:'mqttPublish',provenance,
+      record:{caps:JSON.parse(JSON.stringify(record.caps)),io:{inputs:JSON.parse(JSON.stringify(record.io.inputs))}},
+      configuration:componentMqttPublishConfiguration(item,record.caps)};
+  };
+const componentIntegrationConfiguration=function componentIntegrationConfiguration(item,caps){
+    return caps?.mqttPublish?componentMqttPublishConfiguration(item,caps):componentHttpConfiguration(item,caps);
+  };
+const componentMqttPublishEventState=function componentMqttPublishEventState(item,caps,snapshot){
+    const state=componentActionEventState(item,caps,'mqttPublish',snapshot.status==='ready'?'success':'failure',
+      snapshot.status==='ready'?snapshot.payload:snapshot.error);
+    if(!state)return null;
+    const outputs=Object.fromEntries(Object.keys(caps.outputs).filter(name=>Object.hasOwn(snapshot,name)).map(name=>[name,snapshot[name]]));
+    Object.defineProperty(state,Symbol.for('simplecanvas.eventValues'),{value:outputs});
+    return state;
+  };
 const captureComponentIntegrationRead=function captureComponentIntegrationRead(read){
     const snapshots=new Map();
     return (item,caps,inputs)=>{
       let values=snapshots.get(item);if(!values){values=new Map();snapshots.set(item,values);}
-      const key=JSON.stringify([caps.httpSource||caps.mqttConfig||caps.mqttSource,inputs]);
+      const key=JSON.stringify([caps.httpSource||caps.mqttConfig||caps.mqttSource||caps.mqttPublish,inputs]);
       if(!values.has(key))values.set(key,read(item,caps,inputs));
       return values.get(key);
     };
@@ -1752,7 +1769,7 @@ const normalizeComponentMqttConfig=function normalizeComponentMqttConfig(raw,cap
       raw.startup!==undefined && typeof raw.startup!=='boolean')throw new Error('MQTT Config requires URL and client ID inputs');
     for(const [name,type] of Object.entries({connected:'boolean',status:'string',error:'string'}))
       if(caps.outputs?.[name]?.type!==type)throw new Error('MQTT Config output '+name+' must have type '+type);
-    if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.httpSource || caps.mqttSource || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
+    if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.httpSource || caps.mqttSource || caps.mqttPublish || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
       throw new Error('MQTT Config requires compute-only publication');
     return {url:raw.url,clientId:raw.clientId,startup:raw.startup===true};
   };
@@ -1764,9 +1781,43 @@ const normalizeComponentMqttSource=function normalizeComponentMqttSource(raw,cap
       !['text','json'].includes(raw.format) || !['number','string','boolean'].includes(raw.valueType))throw new Error('MQTT Subscribe requires a topic, JSON pointer and scalar value type');
     for(const [name,type] of Object.entries({value:raw.valueType,json:'string',available:'boolean',stale:'boolean',error:'string',lastUpdated:'number',status:'string'}))
       if(caps.outputs?.[name]?.type!==type)throw new Error('MQTT Subscribe output '+name+' must have type '+type);
-    if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.httpSource || caps.mqttConfig || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
+    if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.httpSource || caps.mqttConfig || caps.mqttPublish || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
       throw new Error('MQTT Subscribe requires compute-only publication');
     return {topic:raw.topic,path:raw.path,format:raw.format,valueType:raw.valueType};
+  };
+const normalizeComponentMqttPublish=function normalizeComponentMqttPublish(raw,caps){
+    if(!raw || typeof raw!=='object' || Array.isArray(raw) || caps.integrationApi!==1 ||
+      Object.keys(raw).some(key=>!['topic','payload','format','retain','timeoutMs'].includes(key)) ||
+      !componentPortName(raw.topic) || caps.inputs?.[raw.topic]?.type!=='string' ||
+      !componentPortName(raw.payload) || caps.inputs?.[raw.payload]?.type!=='string' ||
+      !['text','json'].includes(raw.format) || typeof raw.retain!=='boolean' ||
+      !Number.isInteger(raw.timeoutMs) || raw.timeoutMs<1000 || raw.timeoutMs>30000)
+      throw new Error('MQTT Publish requires topic and payload inputs, text/JSON format, Retain and a 1–30 second timeout');
+    for(const [name,type] of Object.entries({loading:'boolean',status:'string',error:'string',lastPublished:'number'}))
+      if(caps.outputs?.[name]?.type!==type)throw new Error('MQTT Publish output '+name+' must have type '+type);
+    if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.httpSource || caps.mqttConfig || caps.mqttSource || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
+      throw new Error('MQTT Publish requires compute-only publication');
+    return {topic:raw.topic,payload:raw.payload,format:raw.format,retain:raw.retain,timeoutMs:raw.timeoutMs};
+  };
+const componentMqttPublishConfiguration=function componentMqttPublishConfiguration(item,caps){
+    // Form values prepare the next Send. An accepted operation owns a captured topic
+    // and payload; changing their source wiring or the operation definition retires it.
+    return JSON.stringify([item.script,item.state||{},item.bindings||{},item.eventBindings||{},item.eventModes||{},item.mqttBinding||null,caps?.mqttPublish]);
+  };
+const componentMqttPublication=function componentMqttPublication(caps,inputs){
+    const source=caps?.mqttPublish;if(caps?.integrationApi!==1 || !source)throw new Error('This component does not declare MQTT Publish');
+    const topic=inputs?.[source.topic];let payload=inputs?.[source.payload];
+    if(typeof topic!=='string' || !topic || topic.length>2000 || /[+#\u0000-\u001f\u007f]/.test(topic))
+      throw new Error('MQTT Publish needs a topic of at most 2000 characters without wildcards or control characters');
+    if(typeof payload!=='string' || payload.length>2000)throw new Error('MQTT Publish payload must be text of at most 2000 characters');
+    if(source.format==='json'){
+      try{payload=JSON.stringify(JSON.parse(payload,(_,value)=>{if(typeof value==='number' && !Number.isFinite(value))throw new Error();return value;}));}
+      catch{throw new Error('MQTT Publish payload must be valid JSON with finite numbers');}
+      if(payload.length>2000)throw new Error('MQTT Publish JSON payload exceeds 2000 characters');
+    }else if(source.format!=='text')throw new Error('Choose text or JSON as MQTT Publish payload format');
+    if(typeof source.retain!=='boolean' || !Number.isInteger(source.timeoutMs) || source.timeoutMs<1000 || source.timeoutMs>30000)
+      throw new Error('MQTT Publish requires Retain and a 1–30 second timeout');
+    return {topic,payload,format:source.format,retain:source.retain,qos:1,timeoutMs:source.timeoutMs};
   };
 const componentMqttConfiguration=function componentMqttConfiguration(caps,inputs){
     if(!caps?.mqttConfig)throw new Error('This component does not declare MQTT Config');
@@ -1813,7 +1864,7 @@ const componentMqttPayload=function componentMqttPayload(payload,request){
     return {value,text,json};
   };
 const createComponentMqttService=function createComponentMqttService(options={}){
-    const configs=new Map(),sources=new Map(),pendingChanges=new Set(),clock=options.now||(()=>Date.now());
+    const configs=new Map(),sources=new Map(),publishers=new Map(),pendingChanges=new Set(),clock=options.now||(()=>Date.now());
     const schedule=options.setTimeout||setTimeout,unschedule=options.clearTimeout||clearTimeout;
     let revision=0,sourceSerial=0,scene=[],disposed=false,started=new WeakSet();
     const flag=(name,fallback=true)=>{try{return options[name]===undefined?fallback:typeof options[name]==='function'?options[name]()===true:options[name]===true;}catch{return false;}};
@@ -1821,7 +1872,7 @@ const createComponentMqttService=function createComponentMqttService(options={})
     const idle=(status='idle',error='')=>({revision:++revision,status,connected:false,available:false,stale:false,error,lastUpdated:0,text:'',json:'',topic:''});
     const notify=entry=>{
       if(pendingChanges.has(entry))return;pendingChanges.add(entry);
-      Promise.resolve().then(()=>{pendingChanges.delete(entry);if(configs.get(entry.item)!==entry && sources.get(entry.item)!==entry)return;
+      Promise.resolve().then(()=>{pendingChanges.delete(entry);if(configs.get(entry.item)!==entry && sources.get(entry.item)!==entry && publishers.get(entry.item)!==entry)return;
         try{options.onChange?.(entry.item,{...entry.snapshot});}catch(error){console.warn('Could not update MQTT view:',error);}});
     };
     const update=(entry,patch,emit=true)=>{
@@ -1838,6 +1889,40 @@ const createComponentMqttService=function createComponentMqttService(options={})
       if(!entry){entry={item,serial:++sourceSerial,script:item.script,generation:0,config:null,request:null,first:true,snapshot:idle('unbound')};sources.set(item,entry);}
       return entry;
     };
+    const publisherFor=item=>{
+      let entry=publishers.get(item);
+      if(!entry){entry={item,script:item.script,operation:null,definition:null,config:null,snapshot:{...idle(),loading:false,acknowledged:false,lastPublished:0,payload:''}};publishers.set(item,entry);}
+      return entry;
+    };
+    const publisherDefinition=(item,caps)=>componentMqttPublishConfiguration(item,caps);
+    const finishPublication=(entry,operation,error='',cancelled=false)=>{
+      if(entry.operation!==operation)return;
+      entry.operation=null;unschedule(operation.timer);operation.client.off?.('packetsend',operation.packetSent);
+      if(error && Number.isInteger(operation.messageId)){
+        try{operation.client.removeOutgoingMessage?.(operation.messageId);}catch{}
+      }
+      update(entry,{status:cancelled?'cancelled':error?'error':'ready',loading:false,acknowledged:!error && !cancelled,error,
+        connected:!!entry.config?.client && entry.config.snapshot.connected,topic:operation.request.topic,payload:operation.request.payload,
+        ...(!error && !cancelled?{lastPublished:clock(),lastUpdated:clock()}:{})});
+      if(!cancelled && operation.logicalValid()){
+        try{
+          const result=options.onComplete?.(entry.item,{...entry.snapshot},operation.completionContext);
+          result?.catch?.(error=>console.warn('Could not deliver MQTT completion:',error));
+        }catch(error){console.warn('Could not deliver MQTT completion:',error);}
+      }
+      // A publication not sent during its publish call belongs to a library queue.
+      // Closing that client discards it; no delayed packet may escape cancellation.
+      if(error && !Number.isInteger(operation.messageId) && operation.config.client===operation.client){
+        if(healthy(operation.config))fail(operation.config,'MQTT send was cancelled before acknowledgement; reconnecting without replay');
+        else retire(operation.config);
+      }
+    };
+    const cancelPublication=(entry,reason='MQTT Publish cancelled; the broker may already have received it')=>{
+      if(entry.operation)finishPublication(entry,entry.operation,reason,true);
+    };
+    const failPublications=(config,reason='MQTT connection closed before acknowledgement; outcome unknown: the broker may already have received the message')=>{
+      for(const entry of publishers.values())if(entry.operation?.config===config)finishPublication(entry,entry.operation,reason);
+    };
     const sourceDefinition=(item,caps)=>JSON.stringify([item.script,item.state||{},item.inputValues||{},item.bindings||{},item.mqttBinding||null,caps.mqttSource]);
     const sourceStamp=(item,caps,inputs)=>JSON.stringify([sourceDefinition(item,caps),inputs]);
     const unavailable=(entry,status,error='',emit=true)=>update(entry,{status,error,available:false,connected:false,stale:entry.snapshot.lastUpdated>0},emit);
@@ -1846,6 +1931,7 @@ const createComponentMqttService=function createComponentMqttService(options={})
     const retire=(entry)=>{
       entry.generation++;unschedule(entry.timer);entry.timer=null;entry.subscriptions.clear();
       const client=entry.client;entry.client=null;
+      failPublications(entry);
       if(client){try{client.end(true,{},()=>{});}catch{try{client.end(true);}catch{}}}
     };
     const healthy=entry=>enabled() && configs.get(entry.item)===entry && entry.item.script===entry.script;
@@ -1953,14 +2039,85 @@ const createComponentMqttService=function createComponentMqttService(options={})
       const entry=configs.get(item);if(!entry)return;
       entry.wanted=false;retire(entry);update(entry,{connected:false,status:'disconnected',error:''});staleSources(entry,'disconnected');
     };
+    const publish=(item,record,context={})=>{
+      const entry=publisherFor(item);
+      if(entry.operation)throw new Error('An MQTT Publish is already in progress; wait for its acknowledgement before sending again');
+      let request,config;
+      try{
+        if(!enabled())throw new Error('Network integrations are disabled');
+        if(!active())throw new Error('Resume the workspace before sending');
+        if(context.valid && !context.valid())throw new Error('The component is no longer available');
+        if(!['user','signal','event'].includes(context.origin))throw new Error('MQTT Publish requires an explicit Send action or trigger');
+        if(record?.error)throw new Error(record.error);
+        request=componentMqttPublication(record?.caps,record?.io?.inputs);
+        const target=options.resolveConfig?.(item,item.mqttBinding,scene);config=configs.get(target);
+        if(!config?.caps?.mqttConfig || !healthy(config))throw new Error('Choose an available MQTT Config in Edit');
+        if(!config.snapshot.connected || !config.client || config.client.connected===false)throw new Error('MQTT Config is disconnected; connect it before sending. Nothing was queued.');
+        if([...publishers.values()].filter(candidate=>candidate.operation).length>=16)throw new Error('At most 16 MQTT publishes may await acknowledgement');
+        if(context.origin!=='user'){
+          const now=clock();entry.starts=(entry.starts||[]).filter(at=>at>now-10000);
+          if(entry.starts.length>=30)throw new Error('MQTT triggered send limit reached (30 sends per 10 seconds)');
+          entry.starts.push(now);
+        }
+      }catch(error){
+        update(entry,{status:enabled()?'error':'disabled',loading:false,acknowledged:false,error:error.message});throw error;
+      }
+      entry.script=item.script;entry.caps=record.caps;entry.definition=publisherDefinition(item,record.caps);entry.config=config;
+      const definition=entry.definition,client=config.client,generation=config.generation;
+      const logicalValid=()=>{
+        try{return enabled() && publishers.get(item)===entry && publisherDefinition(item,record.caps)===definition &&
+          configs.get(config.item)===config && config.item.script===config.script && (!context.valid || context.valid());}
+        catch{return false;}
+      };
+      const operation={request,config,client,logicalValid,messageId:null,timer:null,packetSent:null,
+        completionContext:{...context,actionType:'mqttPublish',request:{...request},valid:logicalValid,
+          matches:(caps,inputs)=>publisherDefinition(item,caps)===definition}};
+      entry.operation=operation;
+      const current=()=>entry.operation===operation && logicalValid() && config.generation===generation && config.client===client;
+      operation.packetSent=packet=>{
+        if(packet?.cmd!=='publish' || packet.qos!==1 || packet.topic!==request.topic || packet.payload!==request.payload ||
+          !Number.isInteger(packet.messageId) || packet.messageId<1)return;
+        operation.messageId=packet.messageId;client.off?.('packetsend',operation.packetSent);
+      };
+      client.on('packetsend',operation.packetSent);
+      operation.timer=schedule(()=>{
+        if(!current()){cancelPublication(entry);return;}
+        finishPublication(entry,operation,'MQTT acknowledgement timed out; outcome unknown: the broker may already have received the message');
+      },request.timeoutMs);
+      update(entry,{status:'sending',loading:true,acknowledged:false,error:'',connected:true,topic:request.topic,payload:request.payload});
+      try{
+        client.publish(request.topic,request.payload,{qos:1,retain:request.retain},error=>{
+          if(entry.operation!==operation)return;
+          if(!current()){cancelPublication(entry);return;}
+          finishPublication(entry,operation,error?'MQTT publish failed before acknowledgement; outcome unknown: the broker may already have received the message':'');
+        });
+      }catch{finishPublication(entry,operation,'MQTT publish failed before acknowledgement; outcome unknown: the broker may already have received the message');}
+      finally{client.off?.('packetsend',operation.packetSent);}
+      // The bundled MQTT.js memory store sends synchronously. Restrict packet ID
+      // capture to this call so concurrent equal payloads can never share an ID.
+      // If the library instead queued the request, retire it before another Send.
+      if(entry.operation===operation && !Number.isInteger(operation.messageId))
+        finishPublication(entry,operation,'MQTT could not send immediately; outcome unknown: the broker may already have received the message');
+      return {...entry.snapshot};
+    };
     const read=(item,caps,inputs)=>{
       if(caps?.mqttConfig){
-        const entry=configFor(item);
+        const entry=configFor(item);entry.caps=caps;
         if(entry.script!==item.script){disconnect(item);entry.script=item.script;}
         if(!enabled())return {...entry.snapshot,connected:false,status:'disabled',error:''};
         let pending=false;
         if(entry.request && inputs!==undefined){try{const draft=componentMqttConfiguration(caps,inputs);pending=draft.url!==entry.request.url || draft.clientId!==entry.draftClientId;}catch{pending=true;}}
         return {...entry.snapshot,pending,connectedUrl:entry.request?.url||''};
+      }
+      if(caps?.mqttPublish){
+        const entry=publisherFor(item),definition=publisherDefinition(item,caps);
+        if(entry.definition!==definition){
+          cancelPublication(entry);entry.script=item.script;entry.caps=caps;entry.definition=definition;
+          entry.snapshot={...idle(),loading:false,acknowledged:false,lastPublished:0,payload:''};
+        }
+        entry.config=configs.get(options.resolveConfig?.(item,item.mqttBinding,scene))||null;
+        if(!enabled()){cancelPublication(entry);return {...entry.snapshot,status:'disabled',loading:false,connected:false,error:''};}
+        return {...entry.snapshot,connected:!!entry.config?.client && entry.config.snapshot.connected};
       }
       const source=sourceFor(item);
       if(!enabled())return {...source.snapshot,connected:false,available:false,stale:source.snapshot.lastUpdated>0,status:'disabled',error:''};
@@ -1980,21 +2137,32 @@ const createComponentMqttService=function createComponentMqttService(options={})
       return {...source.snapshot};
     };
     const peek=(item,caps,inputs)=>{
-      const entry=caps?.mqttConfig?configs.get(item):sources.get(item);
+      const entry=caps?.mqttConfig?configs.get(item):caps?.mqttPublish?publishers.get(item):sources.get(item);
       const snapshot=entry?{...entry.snapshot}:{revision:0,status:'idle',connected:false,available:false,stale:false,error:'',lastUpdated:0,text:'',json:'',topic:''};
-      if(!enabled())return {...snapshot,connected:false,available:false,stale:snapshot.lastUpdated>0,status:'disabled',error:''};
+      if(!enabled())return {...snapshot,connected:false,loading:false,available:false,stale:snapshot.lastUpdated>0,status:'disabled',error:''};
+      if(caps?.mqttPublish && entry?.definition!==publisherDefinition(item,caps))return {...snapshot,status:'idle',loading:false,acknowledged:false,error:''};
       if(caps?.mqttSource && (entry?.definition!==sourceDefinition(item,caps) || inputs!==undefined && entry?.stamp!==sourceStamp(item,caps,inputs)))return {...snapshot,available:false,stale:snapshot.lastUpdated>0};
       return snapshot;
     };
     const suspend=()=>{for(const entry of configs.values())if(entry.client || entry.timer){retire(entry);update(entry,{connected:false,status:'suspended',error:''});staleSources(entry,'suspended');}};
     const reconcile=list=>{
       scene=list;const present=new Set(list);
+      for(const [item,entry] of publishers){
+        if(!present.has(item)){publishers.delete(item);cancelPublication(entry);}
+        else if(entry.caps && entry.definition!==publisherDefinition(item,entry.caps))cancelPublication(entry);
+      }
       for(const [item,source] of sources)if(!present.has(item)){source.generation++;sources.delete(item);}
       for(const [item,entry] of configs)if(!present.has(item) || item.script!==entry.script){entry.wanted=false;retire(entry);staleSources(entry,'disconnected','MQTT Config is no longer available');configs.delete(item);}
       if(!active())suspend();
     };
     const observe=(list,records)=>{
       reconcile(list);
+      for(const [item,entry] of publishers)if(records.has(item) && !records.get(item)?.caps?.mqttPublish){
+        publishers.delete(item);cancelPublication(entry);
+      }
+      for(const entry of configs.values())if(records.has(entry.item) && !records.get(entry.item)?.caps?.mqttConfig){
+        entry.caps=null;if(entry.client || entry.timer)disconnect(entry.item);
+      }
       for(const [item,record] of records){
         if(record.caps?.mqttConfig){
           const entry=configFor(item);entry.caps=record.caps;
@@ -2015,14 +2183,22 @@ const createComponentMqttService=function createComponentMqttService(options={})
         if(source && target!==source.config?.item)source.stamp=null;
         read(item,record.caps,record.io.inputs);
       }
+      for(const [item,record] of records)if(record.caps?.mqttPublish){
+        read(item,record.caps,record.io?.inputs);
+        const entry=publishers.get(item),target=options.resolveConfig?.(item,item.mqttBinding,scene);
+        if(target && !records.get(target)?.caps?.mqttConfig){
+          cancelPublication(entry);entry.config=null;
+          update(entry,{status:'error',loading:false,error:'The selected component is not an MQTT Config'});
+        }
+      }
       if(!active())return;
       for(const entry of configs.values()){
         if(entry.wanted && !entry.client && !entry.timer && entry.snapshot.status==='suspended')open(entry);
         syncSubscriptions(entry);
       }
     };
-    const clear=()=>{for(const entry of configs.values()){entry.wanted=false;retire(entry);}configs.clear();sources.clear();pendingChanges.clear();started=new WeakSet();scene=[];revision++;};
-    return {read,peek,observe,reconcile,connect,disconnect,suspend,clear,get size(){return configs.size+sources.size;},get revision(){return revision;},dispose(){clear();disposed=true;}};
+    const clear=()=>{for(const entry of publishers.values())cancelPublication(entry);publishers.clear();for(const entry of configs.values()){entry.wanted=false;retire(entry);}configs.clear();sources.clear();pendingChanges.clear();started=new WeakSet();scene=[];revision++;};
+    return {read,peek,observe,reconcile,connect,disconnect,publish,suspend,clear,get size(){return configs.size+sources.size+publishers.size;},get revision(){return revision;},dispose(){clear();disposed=true;}};
   };
 const createComponentActionDispatcher=function createComponentActionDispatcher(){return {queue:[],failures:[],running:false,notifyingLimit:false,seen:new WeakSet(),generation:null};};
 const dispatchComponentActions=function dispatchComponentActions(dispatcher,intents,host){
@@ -2119,6 +2295,12 @@ const captureComponentActionIntent=function captureComponentActionIntent(item,na
     try{
       if(record.error)throw new Error(record.error);
       const inputs=io?.inputs||{},caps=record.caps;
+      if(action.type==='mqttPublish'){
+        if(caps.integrationApi!==1 || !caps.mqttPublish)throw new Error('MQTT Publish action requires its integration declaration');
+        intent.configuration=componentMqttPublishConfiguration(item,caps);
+        intent.record={caps:JSON.parse(JSON.stringify(caps)),io:{inputs:JSON.parse(JSON.stringify(inputs))}};
+        return intent;
+      }
       if(['httpGet','httpPost'].includes(action.type)){
         if(caps.integrationApi!==1 || !caps.httpSource || (caps.httpSource.method||'GET')!==(action.type==='httpGet'?'GET':'POST'))throw new Error('HTTP action must match its source method');
         intent.configuration=componentHttpConfiguration(item,caps);
@@ -2612,11 +2794,11 @@ const normalizeComponentActionEvents=function normalizeComponentActionEvents(raw
     if(!raw || typeof raw!=='object' || Array.isArray(raw) || Object.keys(raw).length>8 || caps.eventApi!==1)throw new Error('Action completion events require eventApi: 1');
     const result={};
     for(const [operation,mapping] of Object.entries(raw)){
-      if(!['importDataset','reloadDataset','appendRow','replaceTable','appendTable','syncTable','goToTab','downloadTable','httpGet','httpPost'].includes(operation) || !mapping || typeof mapping!=='object' || Array.isArray(mapping) || !Object.keys(mapping).length || Object.keys(mapping).some(key=>!['success','failure'].includes(key)))throw new Error('Invalid action completion declaration');
+      if(!['importDataset','reloadDataset','appendRow','replaceTable','appendTable','syncTable','goToTab','downloadTable','httpGet','httpPost','mqttPublish'].includes(operation) || !mapping || typeof mapping!=='object' || Array.isArray(mapping) || !Object.keys(mapping).length || Object.keys(mapping).some(key=>!['success','failure'].includes(key)))throw new Error('Invalid action completion declaration');
       if(operation==='importDataset'?!Object.values(caps.inputs||{}).some(port=>port.type==='table'):!Object.values(caps.dataActions||{}).some(action=>action.type===operation))throw new Error('Action completion must match a declared dataset action');
       result[operation]={};
       for(const [status,name] of Object.entries(mapping)){
-        const port=caps.eventOutputs?.[name],type=status==='success' && !['downloadTable','httpGet','httpPost'].includes(operation)?'number':'string';
+        const port=caps.eventOutputs?.[name],type=status==='success' && !['downloadTable','httpGet','httpPost','mqttPublish'].includes(operation)?'number':'string';
         if(!componentPortName(name) || !port || port.hybrid || port.types?.length!==1 || port.types[0]!==type)throw new Error('Action '+status+' requires a dedicated '+type+' event output');
         result[operation][status]=name;
       }
@@ -2743,7 +2925,7 @@ const prepareComponentEventDelivery=async function prepareComponentEventDelivery
     const eventUsers=new Map(),valueUsers=new Map(),values=new Map(),staleValues=new Set();
     const add=(map,from,edge)=>{if(!map.has(from))map.set(from,[]);map.get(from).push(edge);};
     const bindingsFor=(item,caps)=>caps?.workspaceEndpoint?.direction==='receive'?componentRuntimeBindings(item,caps,scene):item.bindings||{};
-    const pure=caps=>caps?.compute && !caps.publish && !caps.transition && !caps.httpSource && !caps.mqttConfig && !caps.mqttSource && (!caps.onEvent || caps.workspaceEndpoint) &&
+    const pure=caps=>caps?.compute && !caps.publish && !caps.transition && !caps.httpSource && !caps.mqttConfig && !caps.mqttSource && !caps.mqttPublish && (!caps.onEvent || caps.workspaceEndpoint) &&
       (caps.workspaceEndpoint || Object.values(caps.inputs||{}).every(port=>port.type!=='table') && Object.values(caps.outputs||{}).every(port=>port.type!=='table'));
     // Connector rows are independent paths. Keeping them as separate dependency nodes
     // allows a path to leave one row and return through another without inventing a cycle.
@@ -3063,6 +3245,12 @@ const normalizeComponentActionDeclarations=function normalizeComponentActionDecl
     if(!raw || typeof raw!=='object' || Array.isArray(raw) || Object.keys(raw).length>8)throw new Error('Expected at most 8 data action declarations');
     const actions={};
     for(const [name,action] of Object.entries(raw)){
+      if(action?.type==='mqttPublish'){
+        if(!componentPortName(name) || Array.isArray(action) || Object.keys(action).some(key=>!['type','trigger'].includes(key)) ||
+          !componentPortName(action.trigger) || inputs[action.trigger]?.type!=='boolean')throw new Error('MQTT Publish actions require a Boolean trigger');
+        if(caps && (caps.integrationApi!==1 || !caps.mqttPublish))throw new Error('MQTT Publish action requires its integration declaration');
+        actions[name]={type:action.type,trigger:action.trigger};continue;
+      }
       if(['httpGet','httpPost'].includes(action?.type)){
         if(!componentPortName(name) || Array.isArray(action) || Object.keys(action).some(key=>!['type','trigger'].includes(key)) ||
           !componentPortName(action.trigger) || inputs[action.trigger]?.type!=='boolean')throw new Error('HTTP actions require a Boolean trigger');
@@ -3755,7 +3943,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
       if(hook==='compute' || hook==='transition'){
         const context={...(hook==='compute'?args[2]:args[3])};
         if(n.caps.queryParameters)context.query=query;
-        if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource){
+        if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource || n.caps.mqttPublish){
           context.source={...n.integrationSource};
           if(!context.source.available){delete context.source.value;delete context.source.json;}
         }
@@ -4018,7 +4206,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
         let attempted=false;
         try{
           const {inputs,unavailable,actionErrors}=inputsFor(n,snapshot);next.inputs=inputs;next.inputStamp=inputStamp(inputs);next.actionErrors=actionErrors;
-          if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource){
+          if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource || n.caps.mqttPublish){
             n.integrationSource=options.integrationSource?.(n.item,n.caps,unavailable?undefined:inputs)||{revision:0,status:'idle',loading:false,available:false,stale:false,error:'',lastUpdated:0,json:''};
             next.inputStamp=JSON.stringify([next.inputStamp,n.integrationSource]);
           }
@@ -4065,9 +4253,9 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
             }
             const proposed={...pendingDerived,...next.tables};checkDerived(proposed);
             next.record.io=componentIo(inputs,next.outputs,n.caps,ownedPool({...pool,...next.tables}));
-            if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource){
+            if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource || n.caps.mqttPublish){
               next.record.io.source=n.integrationSource;
-              if(!n.caps.mqttConfig && !n.integrationSource.available){
+              if((n.caps.httpSource || n.caps.mqttSource) && !n.integrationSource.available){
                 const error=n.integrationSource.error || (n.integrationSource.loading?'Source is still loading':'Source has no current result');
                 next.record.outputErrors={value:{error,transient:true,unknown:true,unavailable:true},json:{error,transient:true,unknown:true,unavailable:true}};
               }
@@ -4092,7 +4280,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
             if(live)for(const [name,action] of Object.entries(n.actions)){
               if(action.type==='syncTable')continue;
               const tableAction=['replaceTable','appendTable'].includes(action.type);
-              const http=['httpGet','httpPost'].includes(action.type),navigation=action.type==='goToTab',value=inputs[action.trigger],before=n.actionLevels[name],enabled=http || navigation || action.type==='downloadTable' || action.type==='appendRow' || tableAction || next.state.allowReaderImport===true;
+              const http=['httpGet','httpPost','mqttPublish'].includes(action.type),navigation=action.type==='goToTab',value=inputs[action.trigger],before=n.actionLevels[name],enabled=http || navigation || action.type==='downloadTable' || action.type==='appendRow' || tableAction || next.state.allowReaderImport===true;
               // Configuration/imports/Undo and unavailable recovery establish a baseline. Pure
               // inspection never observes edges; historical replay only updates the baseline.
               next.actionLevels[name]={value:typeof value==='boolean'?value:null,enabled};
@@ -4321,7 +4509,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
         let next=actionFailures.has(action.id)?{...action,error:actionFailures.get(action.id)}:action;
         if(settled && next.pendingSnapshot){
           next={...next};delete next.pendingSnapshot;
-          if(!next.error && ['httpGet','httpPost'].includes(next.type)){
+          if(!next.error && ['httpGet','httpPost','mqttPublish'].includes(next.type)){
             try{const node=byUid.get(next.item.uid);Object.assign(next,captureComponentActionIntent(next.item,next.name,node?.record,pool));}
             catch(error){next.error=error.message;}
           }else if(!next.error)try{
@@ -4787,7 +4975,8 @@ const validateSmartReply=function validateSmartReply(data,message){
         if(data.caps.httpSource!==undefined)caps.httpSource=normalizeComponentHttpSource(data.caps.httpSource,caps);
         if(data.caps.mqttConfig!==undefined)caps.mqttConfig=normalizeComponentMqttConfig(data.caps.mqttConfig,caps);
         if(data.caps.mqttSource!==undefined)caps.mqttSource=normalizeComponentMqttSource(data.caps.mqttSource,caps);
-        if([caps.httpSource,caps.mqttConfig,caps.mqttSource].filter(Boolean).length>1)throw new Error('A component declares only one integration role');
+        if(data.caps.mqttPublish!==undefined)caps.mqttPublish=normalizeComponentMqttPublish(data.caps.mqttPublish,caps);
+        if([caps.httpSource,caps.mqttConfig,caps.mqttSource,caps.mqttPublish].filter(Boolean).length>1)throw new Error('A component declares only one integration role');
         normalizeComponentActionDeclarations(caps.dataActions,caps.inputs,caps);
       }
       return {ok:true,caps};
@@ -5634,6 +5823,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       active:()=>!document.hidden && !!timeline?.active && !timeline?.pausedByUser,
       resolveConfig:(item,ref)=>resolveComponentMqttConfig(items,ref),
       credentials:(item,request)=>integrationCredentials.mqtt(item,request),
+      onComplete:(item,snapshot,context)=>httpCompletions.push(item,snapshot,context),
       onMessage(item,snapshot,context){
         const known=integrationGraph,records=known?.scene===items && known.signature===componentGraphSignature(items)?known.records:null;
         if(componentHasEventReceivers(items,item,records,['value','json']))httpCompletions.push(item,snapshot,context);
@@ -5677,8 +5867,8 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       const it=intent.item;
       return intent.workspaceGeneration===runtimeGeneration && items.includes(it) &&
         workspaceContext?.sketchByUid.get(it.uid)===intent.sketchId && it.script===intent.script &&
-        componentRuntimeId(it)===intent.runtimeId && (['httpGet','httpPost'].includes(intent.type) || JSON.stringify(it.bindings||{})===intent.bindings) &&
-        (!['httpGet','httpPost'].includes(intent.type) || intent.configuration===componentHttpConfiguration(it,intent.record?.caps) && options.networkIntegrations!==false) &&
+        componentRuntimeId(it)===intent.runtimeId && (['httpGet','httpPost','mqttPublish'].includes(intent.type) || JSON.stringify(it.bindings||{})===intent.bindings) &&
+        (!['httpGet','httpPost','mqttPublish'].includes(intent.type) || intent.configuration===componentIntegrationConfiguration(it,intent.record?.caps) && options.networkIntegrations!==false) &&
         (intent.eventBindings===undefined || JSON.stringify(it.eventBindings||{})===intent.eventBindings) &&
         (intent.type!=='reloadDataset' || componentDatasetSources(it).get(intent.input)===intent.datasetSource);
     }
@@ -5693,6 +5883,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
         generation:()=>runtimeGeneration,valid:readerActionCurrent,paused:()=>document.hidden,
         execute:(intent,current)=>{
           const entry=entryFor(intent.item);if(!entry)return;
+          if(intent.type==='mqttPublish'){mqttService.publish(intent.item,intent.record,{valid:current,origin:intent.provenance||'signal'});return;}
           if(['httpGet','httpPost'].includes(intent.type)){integrationService.start(intent.item,intent.record,{valid:current,baseUrl:options.baseUrl||location.href,origin:intent.provenance});return;}
           if(intent.type==='reloadDataset')return openReaderDataAction({entry,cancelled:false,serviceCurrent:current},{type:'importDataset',input:intent.input},true);
           const task=gestureQueue.then(async()=>{
@@ -5871,7 +6062,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
           const reply=await requestSmartSandbox({method:'call',src:item.script,fn:hook,args},item);
           return reply.result;
         };
-        const integrationSource=captureComponentIntegrationRead((item,caps,inputs)=>(caps.mqttConfig || caps.mqttSource?mqttService:integrationService).read(item,caps,inputs));
+        const integrationSource=captureComponentIntegrationRead((item,caps,inputs)=>(caps.mqttConfig || caps.mqttSource || caps.mqttPublish?mqttService:integrationService).read(item,caps,inputs));
         componentGraphPromise=(live?settleComponentTimeline(list,call,valid,owner,{datasets:dataPool,integrationSource}):evaluateComponentGraph(list,call,valid,{datasets:dataPool,integrationSource}))
           .then(graph=>{
             if(!valid())throw smartCancelled();
@@ -6116,6 +6307,17 @@ const opToSVG=function opToSVG(op, assetPool=assets){
       queueReaderComponentActionIntents(takeComponentDataActions(owner));
     }
     async function openReaderDataAction(p,action,reload=false){
+      if(action?.type==='mqttPublish'){
+        const it=p.entry.item,generation=runtimeGeneration,script=it.script,identity=componentRuntimeId(it);p.finished=true;
+        const current=()=>generation===runtimeGeneration && items.includes(it) && it.script===script && componentRuntimeId(it)===identity;
+        try{
+          if(options.networkIntegrations===false)throw new Error('Network integrations are disabled in this document');
+          const graph=await resolveAcceptedComponentGraph(resolveComponentGraph,current),record=graph.get(it);
+          if(!current())return false;
+          if(!record?.caps?.mqttPublish || record.error)throw new Error(record?.error||'This component does not declare MQTT Publish');
+          queueReaderComponentActionIntents([captureMqttHostIntent(it,record,'user')]);return true;
+        }catch(error){if(current() && !error.cancelled)showReaderEventError(error.message);return false;}
+      }
       if(['mqttConnect','mqttDisconnect','mqttCredentials'].includes(action?.type)){
         const it=p.entry.item,generation=runtimeGeneration,script=it.script;p.finished=true;
         const current=()=>generation===runtimeGeneration && items.includes(it) && it.script===script;
@@ -6468,7 +6670,7 @@ const opToSVG=function opToSVG(op, assetPool=assets){
         markComponentPaintPending();
         if(owner.pendingTime===null && owner.signature===componentGraphSignature(list) && owner.committedDatasets===dataPool && owner.committedQueryRevision===queryRevision && Number.isFinite(owner.deadline))owner.elapsed=Math.max(owner.elapsed,owner.deadline);
         const call=(it,hook,args)=>hook==='caps'?requestSmartCaps(it,null,args[0]):requestSmartCall(it,hook,args);
-        const graph=await settleComponentTimeline(list,call,valid,owner,{step:true,datasets:dataPool,integrationSource:(item,caps,inputs)=>(caps.mqttConfig || caps.mqttSource?mqttService:integrationService).read(item,caps,inputs)});if(!valid())return;
+        const graph=await settleComponentTimeline(list,call,valid,owner,{step:true,datasets:dataPool,integrationSource:(item,caps,inputs)=>(caps.mqttConfig || caps.mqttSource || caps.mqttPublish?mqttService:integrationService).read(item,caps,inputs)});if(!valid())return;
         setReaderDatasetPool(retainDatasetTimelinePool(list,datasets,owner));
         invalidateComponentGraph();componentGraphLive=false;componentGraphDatasets=datasets;componentGraphQueryRevision=queryRevision;componentGraphPromise=Promise.resolve(graph);
         if(owner.pendingTime===null)applyPageSettings(graph);else{currentGraph=graph;renderReaderWiring(graph);}

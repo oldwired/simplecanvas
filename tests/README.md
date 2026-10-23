@@ -160,11 +160,14 @@ physical iPad Safari and its on-screen keyboard, native Office paste, and physic
 
 ## MQTT integration tests
 
-The MQTT example has two sketches sharing a Config, numeric/JSON and text readings, and an event log.
+The MQTT example has three sketches sharing a Config: numeric/JSON and text readings, an event log,
+and explicit JSON commands with separate broker-acknowledgement and device-response logs.
 After `npm ci`, run `node tools/serve-mqtt-example.cjs` and open
 `http://127.0.0.1:8001/examples/mqtt-integrations.html`. The helper runs a loopback WebSocket broker,
 serves the editor and self-contained reader, publishes retained baselines, and sends fresh readings
-once per second. It is development-only; the browser client is already bundled in the app and HTML.
+once per second. It permits only a bounded non-retained JSON command on `simplecanvas/demo/command`
+and simulates its separate device response on `simplecanvas/demo/reply`; other client publications
+are rejected. It is development-only; the browser client is already bundled in the app and HTML.
 The automated broker fixture never contacts an external service. Startup is manual unless explicitly
 enabled for Run/HTML. Stop/restart the helper to inspect reconnect and stale-reading behavior.
 The browser regressions also queue wildcard messages to check captured value/topic pairing, and
@@ -173,8 +176,8 @@ keep publishing every 35 ms while a control click is accepted in a workspace wit
 so value-only dashboards avoid unnecessary event work without dropping enabled event consumers.
 
 ```sh
-node --test tests/mqtt-foundation.test.cjs tests/mqtt-event-receivers.test.cjs tests/mqtt-example-server.test.cjs tests/mqtt-integrations-example-contracts.test.cjs tests/mqtt-runtime-browser.test.cjs
-BROWSER_ENGINE=webkit node --test tests/mqtt-runtime-browser.test.cjs
+node --test tests/mqtt-foundation.test.cjs tests/mqtt-publish-foundation.test.cjs tests/mqtt-event-receivers.test.cjs tests/mqtt-example-server.test.cjs tests/mqtt-integrations-example-contracts.test.cjs tests/mqtt-runtime-browser.test.cjs tests/mqtt-publish-browser.test.cjs
+BROWSER_ENGINE=webkit node --test tests/mqtt-runtime-browser.test.cjs tests/mqtt-publish-browser.test.cjs
 ```
 
 The optional Mosquitto suite checks the same bundled browser client against a separate system
@@ -182,8 +185,8 @@ broker, with native TCP publishers feeding its WebSocket listener. Supply execut
 enable it; ordinary test runs skip it and never install or start a system service.
 
 ```sh
-MOSQUITTO_BIN=/opt/homebrew/sbin/mosquitto MOSQUITTO_PASSWD=/opt/homebrew/bin/mosquitto_passwd node --test tests/mqtt-mosquitto-browser.test.cjs
-BROWSER_ENGINE=webkit MOSQUITTO_BIN=/opt/homebrew/sbin/mosquitto MOSQUITTO_PASSWD=/opt/homebrew/bin/mosquitto_passwd node --test tests/mqtt-mosquitto-browser.test.cjs
+MOSQUITTO_BIN=/opt/homebrew/sbin/mosquitto MOSQUITTO_PASSWD=/opt/homebrew/bin/mosquitto_passwd node --test tests/mqtt-mosquitto-browser.test.cjs tests/mqtt-publish-browser.test.cjs
+BROWSER_ENGINE=webkit MOSQUITTO_BIN=/opt/homebrew/sbin/mosquitto MOSQUITTO_PASSWD=/opt/homebrew/bin/mosquitto_passwd node --test tests/mqtt-mosquitto-browser.test.cjs tests/mqtt-publish-browser.test.cjs
 ```
 
 Adjust those paths for your installation. The fixture creates temporary configuration and password
@@ -192,4 +195,5 @@ editor, isolated Run and freshly downloaded HTML, including shared connections, 
 retained baselines, live events, reconnection and credentials. These checks use `ws://`; deployment
 TLS certificates, `wss://` reverse proxies and their origin policies require separate validation.
 Verified on 2026-10-23 with Mosquitto 2.1.2: 4/4 scenarios passed in Chromium and 4/4 in WebKit,
-with no skips or application changes.
+with no skips or application changes. The later Publish suite passed 10/10 in Chromium and 10/10
+in WebKit, including real-Mosquitto acknowledged/retained publication and authenticated Run/HTML sends.

@@ -273,10 +273,10 @@ related controls, operations, and displays together; Data covers tables and stru
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, HTTP POST, MQTT Config/Subscribe, URL parameter, Publish, Receive |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, HTTP POST, MQTT Config/Subscribe/Publish, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 100 entries, including 91 connected API v2 components. Every smart-shape
+The catalog includes 101 entries, including 92 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -394,7 +394,8 @@ previews outputs without adding a second formula or layout editor.
   mapped readings and JSON extraction alongside a live clock and responsive slider.
 - [MQTT integration example](examples/mqtt-integrations.json) and its
   [self-contained reader](examples/mqtt-integrations.html): shared broker connections, typed
-  readings, retained-message baselines, and fresh-message events across two sketches.
+  readings, retained-message baselines, fresh-message events, and explicit commands with separate
+  device replies across three sketches.
 - [Scripting API](SMART_SHAPES.md#connected-components-api-v2) and
   [design brief](docs/smart-components-brief.md): custom components and the development roadmap.
 
@@ -461,7 +462,8 @@ server honoring the key; a timeout or cancellation cannot prove the write did no
 POST exposes the same scalar, JSON and completion outputs. A successful 204/205 response emits
 `completed` with empty text and shows **Sent**, without inventing a scalar result. **HTTP status**
 lets you distinguish a received HTTP response from an unavailable response; a JSON/mapping error
-after HTTP 2xx is a response problem and does not undo the write. MQTT Publish remains deferred.
+after HTTP 2xx is a response problem and does not undo the write. MQTT commands use the separate
+MQTT Publish component described below.
 
 To try the supplied endpoint files, serve the repository root and open the HTTP example:
 
@@ -485,13 +487,13 @@ disappear on server restart; this helper is not a production service. If deploye
 endpoint. Its drawing remains usable offline, with visible request errors rather than saved
 readings presented as fresh data.
 
-### Receive MQTT readings
+### MQTT readings and commands
 
 Place **MQTT Config** and set its broker WebSocket URL in **Edit…** (`ws://` locally or `wss://`
 for a secure deployment). Place **MQTT Subscribe**, choose that Config in its Edit inspector,
 and set the topic/filter, payload format and value type. JSON payloads also use a JSON pointer,
 for example `/value`. The Config is a specific component reference, not a name lookup or an
-ordinary value wire. Several Subscribe components can share it, including across sketches in
+ordinary value wire. Subscribe and Publish components can share it, including across sketches in
 Whole workspace mode.
 
 Click **Apply / Connect** on the Config to connect. Editing its URL or client ID only changes
@@ -513,7 +515,7 @@ becomes unavailable and stale, rather than silently supplying zero. Hiding the b
 the simulation suspends connections; resuming reconnects the configurations that were connected.
 Whole workspace mode keeps a Config active while switching sketches. Active sketch mode retires
 it when its sketch is left; returning requires Connect. The first version subscribes with QoS 0
-and clean sessions, without an offline message queue. It does not publish commands. Each runtime
+and clean sessions, without an offline message queue. Each runtime
 allows 16 connections; payloads are bounded at 64 KiB, text/JSON outputs at 2,000 characters, and
 a connection exceeding 60 messages/second is disconnected with a visible error.
 
@@ -524,7 +526,25 @@ connection lifetime and fresh default client IDs. Its isolated browser origin st
 a broker or reverse proxy must permit that WebSocket origin. Browser local-network and mixed-content
 rules still apply. The MQTT client is bundled into the editor and exported HTML, with no CDN request.
 
-Try the two-sketch example with the development broker:
+**MQTT Publish** uses the same Config picker. Set an exact **Topic** (no wildcards), connect a
+text or JSON **Payload**, and press **Send** or use a Send pulse/event. Changing the payload,
+opening, Undo, redraw and reconnect never send it. Each accepted action captures its topic, payload,
+format and Retain choice. Later topic/payload edits prepare the next send; changing the component
+definition or Config relationship cancels pending work. JSON is validated and compacted before sending. A disconnected Config
+rejects the action immediately; nothing waits in an offline queue or replays on reconnect.
+
+Delivery uses **QoS 1**. **Broker acknowledged** and the `completed` event mean the broker received
+the message, not that a device executed it. A subscriber to a separate response topic can confirm
+what the device did. QoS 1 can produce duplicates; commands that must avoid duplicate effects need
+an application-level identifier or idempotent behavior. **Retain** is off by default. The acknowledgement
+timeout defaults to 10 seconds (configurable from 1–30). Timeout/disconnect can leave the outcome
+unknown: the broker may already have received the message. Failed sends emit `failed`; they never
+retry automatically. The last acknowledgement timestamp and status are transient, like readings.
+Hiding the browser or pausing suspends MQTT: an unacknowledged send fails with an unknown outcome.
+Failure events wait while the page is hidden and are delivered once it is visible. Resuming never
+replays the send. Already-issued HTTP requests can instead complete while hidden.
+
+Try the three-sketch example with the development broker:
 
 ```sh
 npm ci
@@ -535,9 +555,13 @@ Open `http://127.0.0.1:8001/examples/mqtt-integrations.html`, or import
 `examples/mqtt-integrations.json` into the editor at `http://127.0.0.1:8001/index.html`.
 Click **Apply / Connect**. The helper sends a JSON reading and a text status once per second,
 with retained initial values. Stop/restart it to try reconnect behavior, or switch to the second
-sketch to see another Subscribe sharing the same Config. It is a local testing broker, not a
-production service. A downloaded reader is self-contained but live readings still need a reachable
-broker. Saved offline reading snapshots and MQTT Publish remain later work.
+sketch to see another Subscribe sharing the same Config. The third, **Commands & replies**, connects
+Number control → JSON build → MQTT Publish and logs broker acknowledgements separately from device
+responses. Its helper accepts only non-retained `{"value": 0–100}` commands on
+`simplecanvas/demo/command`, then simulates a device reply on `simplecanvas/demo/reply`. It refuses
+other client writes. This is a local testing broker, not a production service. A downloaded reader
+is self-contained but live operations still need a reachable broker. Saved offline reading snapshots
+remain later work.
 
 ### Demo library
 

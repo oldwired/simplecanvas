@@ -617,7 +617,7 @@
         {
           "type": "text",
           "uid": "mqtt-shared-policies",
-          "text": "Defaults\nManual connection. No credentials saved unless explicitly included in an export. Initial / retained messages never emit actions. Pause or hiding the browser suspends connections; resuming reconnects. In Active sketch mode, leaving a sketch disconnects its Config and returning requires Connect. MQTT Publish is a later step.",
+          "text": "Defaults\nManual connection. No credentials saved unless explicitly included in an export. Initial / retained messages never emit actions. Pause or hiding the browser suspends connections; resuming reconnects. In Active sketch mode, leaving a sketch disconnects its Config and returning requires Connect. The third sketch sends explicit commands through this same Config.",
           "x": 40,
           "y": 650,
           "w": 1230,
@@ -628,6 +628,481 @@
           "fontFamily": "sans",
           "fontSize": 18,
           "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        }
+      ],
+      "datasets": {},
+      "assets": {}
+    },
+    {
+      "id": "mqtt-commands",
+      "name": "Commands & replies",
+      "items": [
+        {
+          "type": "text",
+          "uid": "mqtt-command-title",
+          "text": "Commands & replies · broker receipt and device response",
+          "x": 40,
+          "y": 24,
+          "w": 1240,
+          "h": 44,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 28,
+          "font": "28px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-intro",
+          "text": "Connect the Local demo broker on the first sketch. Choose a value, then click Send. Changing the slider only prepares the JSON; it never sends a command by itself.",
+          "x": 40,
+          "y": 78,
+          "w": 1240,
+          "h": 60,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "18px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-value",
+          "componentApi": 2,
+          "componentName": "Requested value · 0–100",
+          "x": 40,
+          "y": 160,
+          "color": "#64748b",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 20,
+          "font": "16px sans-serif",
+          "w": 320,
+          "h": 144,
+          "script": "// A numeric source with configurable bounds and step. Click the value to type a number.\n// The slider, buttons, and direct entry use the same step grid, anchored at the minimum.\n({\n  apiVersion:2,\n  inputs:{min:{role:'control',type:'number',default:0},max:{role:'control',type:'number',default:100},step:{role:'control',type:'number',default:1}},\n  outputs:{value:{type:'number'}},\n  initState(){return {value:50};},\n  initStyle(){return {w:240,h:130,fontSize:20,strokeOn:false};},\n  _config(inputs={}){\n    const {min=0,max=100,step=1}=inputs;\n    if(!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step))throw new Error('Bounds and step must be finite numbers');\n    if(min>max)throw new Error('Minimum must not exceed maximum');\n    if(step<=0)throw new Error('Step must be greater than zero');\n    if(!Number.isFinite(max-min) || !Number.isFinite((max-min)/step))throw new Error('Range or step is outside the numeric range');\n    return {min,max,step};\n  },\n  _snap(value,config){\n    const {min,max,step}=config;\n    value=Number.isFinite(value)?Math.max(min,Math.min(max,value)):min;\n    if(value===min || value===max)return value||0;\n    const ticks=Math.round((value-min)/step),raw=Math.max(min,Math.min(max,min+ticks*step));\n    const decimals=value=>{const [mantissa,exponent='0']=String(value).split('e');return Math.max(0,(mantissa.split('.')[1]||'').length-Number(exponent));};\n    const precision=Math.max(decimals(min),decimals(step));\n    const snapped=precision<=100?Number(raw.toFixed(precision)):raw;\n    return Math.max(min,Math.min(max,snapped))||0;\n  },\n  compute(inputs,state){const config=this._config(inputs);return {value:this._snap(state.value,config)};},\n  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io={}){\n    let config;try{config=this._config(io.inputs);}catch{}\n    const value=io.outputs?.value,available=!io.error && Number.isFinite(value) && !!config;\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15),y=h*.55;\n    const textColor=style.textColor||style.color,font=size=>'600 '+Math.max(6,size*scale)+'px sans-serif';\n    const position=available && config.max!==config.min?(value-config.min)/(config.max-config.min):.5;\n    const label=this._number(value);\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.22,...this._caption(io.name,'Number control',w,h*.22,style),align:'center',color:textColor,strokeOn:false,fill:false},\n      {type:'text',x:w*.12,y:h*.23,w:w*.76,h:h*.23,text:available?label:'—',align:'center',font:font(20),color:textColor,strokeOn:false,fill:false},\n      {type:'line',x1:pad,y1:y,x2:w-pad,y2:y,color:style.color,size:2}\n    ];\n    if(available){\n      children.push({type:'ellipse',x:pad+(w-pad*2)*position-6*scale,y:y-6*scale,w:12*scale,h:12*scale,fill:true,fillColor:style.color,strokeOn:false});\n      if(editing){\n        for(const [x,label] of [[0,'− '+this._number(config.step)],[w/2,'+ '+this._number(config.step)]]){\n          children.push({type:'rect',x:x+4*scale,y:h*.72,w:Math.max(0,w/2-8*scale),h:h*.25,strokeOn:true,color:style.color,size:1,fill:false});\n          children.push({type:'text',x,y:h*.72,w:w/2,h:h*.25,text:label,align:'center',font:font(16),color:textColor,strokeOn:false,fill:false});\n        }\n      }\n    }else{\n      children.push({type:'text',x:0,y:h*.72,w,h:h*.25,text:'Check bounds and step in Edit',align:'center',font:font(10),color:'#92400e',strokeOn:false,fill:false});\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,false,{...io,outputs:{}});},\n  handles(state,w,h,style,io={}){\n    let config;try{config=this._config(io.inputs);}catch{return [];}\n    const value=io.outputs?.value;if(!Number.isFinite(value) || io.error)return [];\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15);\n    const position=config.max===config.min?.5:(value-config.min)/(config.max-config.min);\n    return [\n      {id:'value',x:pad+(w-pad*2)*position,y:h*.55},\n      {id:'entry',x:w/2,y:h*.345,kind:'number',value,min:config.min,max:config.max,step:config.step},\n      {id:'minus',x:w/4,y:h*.84,kind:'click'},\n      {id:'plus',x:w*.75,y:h*.84,kind:'click'}\n    ];\n  },\n  hitEdit(state,lx,ly,w,h){\n    if(lx<0 || lx>w)return null;\n    if(ly>=h*.72 && ly<=h)return lx<w/2?'minus':'plus';\n    if(ly>=h*.23 && ly<=h*.46)return 'entry';\n    if(Math.abs(ly-h*.55)<=Math.min(18,h*.09))return 'value';\n    return null;\n  },\n  dragEdit(state,handle,lx,ly,w,h,style,io={}){\n    const config=this._config(io.inputs),current=this._snap(io.outputs?.value??state.value,config);\n    const scale=Math.min(w/240,h/130),pad=Math.min(20*scale,w*.15);\n    let value=current;\n    if(handle==='value')value=config.min+Math.max(0,Math.min(1,(lx-pad)/Math.max(1,w-pad*2)))*(config.max-config.min);\n    else if(handle==='entry'){if(!Number.isFinite(lx))throw new Error('Enter a finite number');value=lx;}\n    else if(handle==='plus')value=config.max-current<=config.step?config.max:current+config.step;\n    else if(handle==='minus')value=current-config.min<=config.step?config.min:current-config.step;\n    if(!Number.isFinite(value))throw new Error('Calculation overflow');\n    return {state:{...state,value:this._snap(value,config)}};\n  }\n})\n",
+          "state": {
+            "value": 65
+          },
+          "inputValues": {
+            "min": 0,
+            "max": 100,
+            "step": 1
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-json",
+          "componentApi": 2,
+          "componentName": "Command JSON",
+          "x": 410,
+          "y": 160,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 18,
+          "font": "16px sans-serif",
+          "w": 330,
+          "h": 144,
+          "script": "// Build a JSON object from 1–8 named, typed fields; field0 is the first configured field.\n// Labels show JSON keys; connection IDs stay positional so a same-slot rename keeps its wiring.\n// Each setting line is name:string|number|boolean|json. A json field parses nested JSON from a string port.\n// Field changes update the current JSON value. Emit/Reprocess deliberately captures one message.\n({\n  apiVersion:2,\n  eventApi:1,\n  eventTransform:{inputs:[],outputs:['text','valid'],reprocess:'reprocess'},\n  settings:{fields:{type:'string',format:'lines',default:'name:string\\nvalue:number',label:'Fields, in port order (name:type)'},showIndicators:{type:'boolean',default:true,label:'Show indicators'}},\n  _fields(state){\n    if(typeof state.fields!=='string' || state.fields.length>2000)throw new Error('Fields must fit within 2000 characters');\n    const lines=state.fields.split(/\\r?\\n/).map(line=>line.trim()).filter(Boolean),keys=new Set();\n    if(!lines.length || lines.length>8)throw new Error('Enter 1–8 fields, one name:type per line');\n    return lines.map((line,index)=>{\n      const at=line.lastIndexOf(':'),key=line.slice(0,at).trim(),type=line.slice(at+1).trim().toLowerCase();\n      if(at<1 || !key || key.length>100 || keys.has(key))throw new Error('Field names must be unique and contain 1–100 characters');\n      if(!['string','number','boolean','json'].includes(type))throw new Error('Field '+key+' must use string, number, boolean, or json');\n      keys.add(key);return {key,type,port:'field'+index};\n    });\n  },\n  inputs(state){\n    const ports={reprocess:{role:'control',type:'boolean',default:false,event:'command',label:'Emit / Reprocess'}};\n    for(const {key,type,port} of this._fields(state))ports[port]={label:key,type:type==='json'?'string':type,default:type==='number'?0:type==='boolean'?false:type==='json'?'null':''};\n    return ports;\n  },\n  outputs:{text:{type:'string',event:true},valid:{role:'control',type:'boolean',event:true}},\n  initState(){return {fields:'name:string\\nvalue:number',showIndicators:true};},\n  initStyle(){return {w:300,h:128,fontSize:18,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  _finite(value){\n    const pending=[value];\n    while(pending.length){\n      const item=pending.pop();\n      if(typeof item==='number' && !Number.isFinite(item))return false;\n      if(item!==null && typeof item==='object')pending.push(...Object.values(item));\n    }\n    return true;\n  },\n  compute(inputs,state=this.initState()){\n    const fields=this._fields(state),object=Object.create(null);\n    for(const {key,type,port} of fields){\n      const portType=type==='json'?'string':type;\n      if(typeof inputs[port]!==portType || portType==='number' && !Number.isFinite(inputs[port]) || portType==='string' && inputs[port].length>2000)throw new Error('Field '+key+' requires '+(portType==='string'?'a string of at most 2000 characters':portType==='number'?'a finite number':'a Boolean value'));\n    }\n    for(const {key,type,port} of fields){\n      let value=inputs[port];\n      if(type==='json'){\n        try{value=JSON.parse(value);}catch{return {text:'',valid:false};}\n        if(!this._finite(value))return {text:'',valid:false};\n      }\n      object[key]=value;\n    }\n    const text=JSON.stringify(object);\n    if(text.length>2000)throw new Error('Output exceeds 2000 characters');\n    return {text,valid:true};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const units=char=>/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n    const chars=this._graphemes(String(value).replace(/\\s+/g,' '));let text='',used=0;\n    for(let i=0;i<chars.length;i++){\n      const next=units(chars[i]),remaining=i<chars.length-1?1.1:0;\n      if((used+next+remaining)*size>w){text+='…';break;}\n      text+=chars[i];used+=next;\n    }\n    const font=(style.font||weight+' '+size+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px');\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font,color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/300,h/128),pad=12*scale,available=!io.error && typeof io.outputs?.text==='string' && typeof io.outputs?.valid==='boolean';\n    const name=(typeof io.name==='string'?io.name:'').trim()||'JSON build',valid=available?io.outputs.valid:null;\n    const message=io.error?io.error:!available?'Input unavailable':valid?io.outputs.text:'Invalid JSON field';\n    let detail='Configure fields in Edit';try{detail=this._fields(state).map(({key,port})=>port+': '+key).join(' · ');}catch{}\n    const children=[{type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      this._text(name,pad,pad,w-pad*2,19*scale,13*scale,style,style.textColor||'#334155',600),\n      this._text(message,pad,40*scale,w-pad*2,28*scale,(io.error?12:18)*scale,style,io.error?'#92400e':style.textColor||'#334155',600),\n      this._text(detail,pad,74*scale,w-pad*2,17*scale,11*scale,style,'#64748b')];\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:105*scale,w:8*scale,h:8*scale,fill:true,fillColor:valid===null?'#fbbf24':valid?'#15803d':'#64748b',strokeOn:false});\n      children.push(this._text('Valid: '+(valid===null?'—':String(valid)),pad+15*scale,100*scale,w-pad*2-15*scale,18*scale,11*scale,style,'#64748b'));\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "fields": "value:number",
+            "showIndicators": false
+          },
+          "bindings": {
+            "field0": {
+              "uid": "mqtt-command-value",
+              "port": "value"
+            }
+          },
+          "inputValues": {
+            "reprocess": false,
+            "field0": 0
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-publish",
+          "componentApi": 2,
+          "componentName": "Send to demo device",
+          "x": 800,
+          "y": 160,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 470,
+          "h": 208,
+          "script": "// Explicit MQTT QoS 1 publication through an existing host-owned Config.\n// Broker acknowledgement does not prove device execution; disconnected sends are never queued.\n({\n  apiVersion:2,\n  eventApi:1,\n  integrationApi:1,\n  eventOutputs:{completed:{type:'string'},failed:{type:'string'}},\n  actionEvents:{mqttPublish:{success:'completed',failure:'failed'}},\n  dataActions:{send:{type:'mqttPublish',trigger:'send'}},\n  settings:{\n    format:{type:'string',default:'text',options:['text','json'],label:'Payload format'},\n    retain:{type:'boolean',default:false,label:'Retain the message on the broker'},\n    timeoutSeconds:{type:'number',default:10,min:1,max:30,step:1,label:'Acknowledgement timeout (seconds)'},\n    showIndicators:{type:'boolean',default:true,label:'Show delivery details'}\n  },\n  inputs:{topic:{type:'string',default:'',label:'Topic'},payload:{type:'string',default:'',label:'Payload'},\n    send:{role:'control',type:'boolean',default:false,event:'action'}},\n  mqttPublish(state){return {topic:'topic',payload:'payload',format:state.format,retain:state.retain===true,timeoutMs:state.timeoutSeconds*1000};},\n  outputs:{loading:{type:'boolean',role:'control'},status:{type:'string'},error:{type:'string'},lastPublished:{type:'number',label:'Last broker acknowledgement (epoch ms)'}},\n  initState(){return {format:'text',retain:false,timeoutSeconds:10,showIndicators:true};},\n  initStyle(){return {w:360,h:208,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs,state,context={}){\n    const source=context.source||{};\n    return {loading:source.loading===true,status:source.status||'idle',error:source.error||'',lastPublished:source.lastPublished||0};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const content=String(value).replace(/\\s+/g,' ');\n    const chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    let text='',used=0;\n    for(let index=0;index<chars.length;index++){\n      const char=chars[index],units=/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n      if((used+units+(index<chars.length-1?1.1:0))*size>w){text+='…';break;}\n      text+=char;used+=units;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/360,h/208),pad=12*scale,out=io.outputs||{},name=io.name?.trim()||'MQTT Publish';\n    const text=(value,x,y,ww,hh,size,color,weight)=>this._text(value,x,y,ww,hh,size*scale,style,color,weight);\n    const error=io.error||out.error||'',loading=out.loading===true,ready=out.status==='ready';\n    const message=loading?'Awaiting broker…':error?'Send failed':ready?'Broker acknowledged':out.status==='disabled'?'Network writes disabled':out.status==='cancelled'?'Send cancelled':'Ready to send';\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      text(name,pad,pad,w-pad*2,21*scale,14,undefined,600),\n      text(message,pad,42*scale,w-pad*2,30*scale,20,error?'#b91c1c':undefined,600),\n      text(error||io.inputs?.topic||'Choose a Config and topic in Edit',pad,80*scale,w-pad*2,20*scale,11,error?'#b91c1c':'#64748b')\n    ];\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:112*scale,w:8*scale,h:8*scale,fill:true,fillColor:error?'#dc2626':loading?'#d97706':ready?'#15803d':'#94a3b8',strokeOn:false},\n        text('QoS 1 · '+(state.retain?'Retained':'Not retained')+' · '+(state.format==='json'?'JSON':'Text'),pad+15*scale,107*scale,w-pad*2-15*scale,18*scale,10,'#64748b'),\n        text('Receipt by broker ≠ execution by device',pad,128*scale,w-pad*2,16*scale,10,'#64748b'));\n    }\n    const y=h-54*scale;\n    children.push({type:'rect',x:pad,y,w:w-pad*2,h:36*scale,fill:true,fillColor:loading?'#f1f5f9':'#eef2ff',strokeOn:true,color:loading?'#cbd5e1':'#818cf8',size:1},\n      {type:'text',x:pad+12*scale,y:y+9*scale,w:w-pad*2-24*scale,h:18*scale,text:loading?'Sending…':'Send',plainText:true,align:'center',font:'600 '+13*scale+'px sans-serif',color:loading?'#64748b':'#3730a3',strokeOn:false});\n    return children;\n  },\n  handles(state,w,h){const scale=Math.min(w/360,h/208);return [{id:'send',kind:'action',x:w/2,y:h-36*scale,action:{type:'mqttPublish'}}];},\n  hitEdit(state,x,y,w,h){const scale=Math.min(w/360,h/208),pad=12*scale;return x>=pad&&x<=w-pad&&y>=h-54*scale&&y<=h-18*scale?'send':null;},\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,io);}\n})\n",
+          "state": {
+            "format": "json",
+            "retain": false,
+            "timeoutSeconds": 10,
+            "showIndicators": true
+          },
+          "inputValues": {
+            "topic": "simplecanvas/demo/command",
+            "payload": "",
+            "send": false
+          },
+          "bindings": {
+            "payload": {
+              "uid": "mqtt-command-json",
+              "port": "text"
+            }
+          },
+          "mqttBinding": {
+            "sketchId": "mqtt-readings",
+            "componentUid": "mqtt-config"
+          }
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-capture",
+          "text": "Each Send captures the topic and payload.\nNo queue while disconnected; reconnect never replays a command.",
+          "x": 40,
+          "y": 320,
+          "w": 700,
+          "h": 52,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 17,
+          "font": "17px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-reply",
+          "componentApi": 2,
+          "componentName": "Demo device reply",
+          "x": 40,
+          "y": 400,
+          "color": "#94a3b8",
+          "size": 1.5,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
+          "w": 360,
+          "h": 176,
+          "script": "// A typed reading from an explicitly selected MQTT Config. Host results are transient.\n({\n  apiVersion:2,\n  eventApi:1,\n  integrationApi:1,\n  settings:{\n    format:{type:'string',default:'json',options:['text','json'],label:'Payload format'},\n    valueType:{type:'string',default:'number',options:['number','string','boolean'],label:'Value type'},\n    showIndicators:{type:'boolean',default:true,label:'Show status details'}\n  },\n  inputs:{topic:{type:'string',default:'',label:'Topic / filter'},\n    path:{role:'control',type:'string',default:'/value',label:'JSON pointer (JSON payloads)'}},\n  mqttSource(state){return {topic:'topic',path:'path',format:state.format,valueType:state.valueType};},\n  outputs(state){\n    if(!['number','string','boolean'].includes(state.valueType))throw new Error('Choose number, string or boolean as value type');\n    return {value:{type:state.valueType,event:true},json:{type:'string',event:true,label:'JSON text'},\n      available:{role:'control',type:'boolean'},stale:{role:'control',type:'boolean'},\n      error:{type:'string'},lastUpdated:{type:'number',label:'Last updated (epoch ms)'},status:{type:'string'},topic:{type:'string',label:'Last topic'}};\n  },\n  initState(){return {format:'json',valueType:'number',showIndicators:true};},\n  initStyle(){return {w:340,h:176,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},\n  compute(inputs,state,context={}){\n    this.outputs(state);\n    const source=context.source||{},empty=state.valueType==='number'?0:state.valueType==='boolean'?false:'';\n    return {value:source.available?source.value:empty,json:source.available?(source.json||''):'',available:source.available===true,\n      stale:source.stale===true,error:source.error||'',lastUpdated:source.lastUpdated||0,status:source.status||'disconnected',topic:source.topic||''};\n  },\n  _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){\n    const content=String(value).replace(/\\s+/g,' ');\n    const chars=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(content),part=>part.segment):Array.from(content);\n    let text='',used=0;\n    for(let index=0;index<chars.length;index++){\n      const char=chars[index],units=/[MWmw@#%]/.test(char)||char.codePointAt(0)>255?1.1:/[A-Z]/.test(char)?.88:.72;\n      if((used+units+(index<chars.length-1?1.1:0))*size>w){text+='…';break;}\n      text+=char;used+=units;\n    }\n    return {type:'text',x,y,w,h,text,plainText:true,align:'left',font:weight+' '+size+'px sans-serif',color,strokeOn:false};\n  },\n  children(state,style,w,h,editing,io={}){\n    const scale=Math.min(w/340,h/176),pad=12*scale,out=io.outputs||{},name=io.name?.trim()||'MQTT Subscribe';\n    const text=(value,x,y,ww,hh,size,color,weight)=>this._text(value,x,y,ww,hh,size*scale,style,color,weight);\n    const ready=out.available===true,error=io.error||out.error||'',stale=out.stale===true;\n    const formatted=typeof out.value==='number'?Number.isSafeInteger(out.value)?String(out.value):String(Number(out.value.toPrecision(8))):String(out.value??'');\n    const message=ready?(formatted||'(empty)'):stale?'Reading is stale':error?'Subscription error':'Waiting for a reading';\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},\n      text(name,pad,pad,w-pad*2,21*scale,14,undefined,600),\n      text(message,pad,42*scale,w-pad*2,30*scale,ready?22:18,error?'#b91c1c':undefined,600),\n      text(error||io.inputs?.topic||'Choose a Config and topic in Edit',pad,80*scale,w-pad*2,20*scale,11,error?'#b91c1c':'#64748b')\n    ];\n    if(state.showIndicators!==false){\n      children.push({type:'ellipse',x:pad,y:114*scale,w:8*scale,h:8*scale,fill:true,fillColor:error?'#dc2626':ready?'#15803d':stale?'#d97706':'#94a3b8',strokeOn:false});\n      const updated=out.lastUpdated?new Date(out.lastUpdated).toLocaleTimeString():'';\n      children.push(text((out.status||'disconnected')+(updated?' · '+updated:''),pad+15*scale,108*scale,w-pad*2-15*scale,18*scale,10,'#64748b'),\n        text(state.format==='json'?'JSON '+(io.inputs?.path||'(root)')+' → '+state.valueType:'Text → '+state.valueType,pad,136*scale,w-pad*2,18*scale,10,'#64748b'));\n    }\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,io);}\n})\n",
+          "inputValues": {
+            "topic": "simplecanvas/demo/reply",
+            "path": "/value"
+          },
+          "mqttBinding": {
+            "sketchId": "mqtt-readings",
+            "componentUid": "mqtt-config"
+          },
+          "state": {
+            "format": "json",
+            "valueType": "number",
+            "showIndicators": true
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-gauge",
+          "componentApi": 2,
+          "componentName": "Applied value",
+          "x": 440,
+          "y": 400,
+          "color": "#64748b",
+          "size": 1.5,
+          "fill": false,
+          "fillColor": "#2563eb",
+          "strokeOn": false,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 24,
+          "font": "16px sans-serif",
+          "w": 220,
+          "h": 176,
+          "script": "// Select this shape and choose Edit to connect value to a Number control's value output.\n({\n  apiVersion: 2,\n  inputs: { value: { type:'number', default:0 } },\n  outputs: { percentage: { type:'number' } },\n  initState(){ return {}; },\n  initStyle(){ return { w:260, h:120, fontSize:24, strokeOn:false, fillColor:'#2563eb' }; },\n  compute(inputs,state){ return { percentage:Math.max(0,Math.min(100,inputs.value)) }; },\n  _number(value){return !Number.isFinite(value)?'—':Number.isSafeInteger(value)?String(value):String(Number(value.toPrecision(8)));},\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>Array.from(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of rest){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=Array.from(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  children(state,style,w,h,editing,io){\n    const value=io.outputs.percentage;\n    return [\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {type:'text',x:0,y:0,w,h:h*.23,...this._caption(io.name,'Gauge',w,h*.23,style),align:'center',color:style.textColor,strokeOn:false,fill:false},\n      {type:'text',x:0,y:h*.25,w,h:h*.28,text:this._number(value)+'%',align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false},\n      {type:'rect',x:8,y:h*.6,w:Math.max(1,w-16),h:h*.25,fill:false,strokeOn:true,color:style.color,size:1},\n      {type:'rect',x:8,y:h*.6,w:Math.max(0,w-16)*value/100,h:h*.25,fill:true,fillColor:style.fillColor,strokeOn:false}\n    ];\n  }\n})\n",
+          "bindings": {
+            "value": {
+              "uid": "mqtt-command-reply",
+              "port": "value"
+            }
+          },
+          "state": {},
+          "inputValues": {
+            "value": 0
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-response",
+          "componentApi": 2,
+          "componentName": "Complete device response",
+          "x": 710,
+          "y": 400,
+          "color": "#cbd5e1",
+          "size": 2,
+          "fill": false,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 19,
+          "font": "16px sans-serif",
+          "w": 560,
+          "h": 176,
+          "script": "// A string display and pass-through. The canvas shows a wrapped preview; value stays complete.\n({\n  apiVersion:2,\n  settings:{showName:{type:'boolean',default:false,label:'Show name'},showHints:{type:'boolean',default:false,label:'Show hints'}},\n  inputs:{value:{type:'string',default:''}},\n  outputs:{value:{type:'string'}},\n  initState(){return {showName:false,showHints:false};},\n  initStyle(){return {w:280,h:64,fontSize:18,fill:false,fillColor:'#ffffff',strokeOn:false,color:'#64748b',textColor:'#334155',size:2};},\n  compute(inputs){\n    if(typeof inputs.value!=='string' || inputs.value.length>2000)throw new Error('Text label requires a string of at most 2000 characters');\n    return {value:inputs.value};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[];\n    for(const block of text.replace(/\\r\\n?/g,'\\n').replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block);\n      if(!chars.length)rows.push('');\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        rows.push(chars.splice(0,length).join(''));\n      }\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),hidden=rows.length>limit;\n    return {lines:rows.slice(0,limit),lineHeight,hidden};\n  },\n  children(state,style,w,h,editing,io={}){\n    const available=!io.error && typeof io.outputs?.value==='string',value=available?io.outputs.value:'';\n    const boxed=style.strokeOn===true || style.fill===true,stroke=style.strokeOn===true?Math.max(0,style.size||0):0;\n    const inset=boxed?Math.min(4+stroke/2,w/4,h/4):0,width=Math.max(1,w-inset*2),height=Math.max(1,h-inset*2);\n    const size=Math.max(5,Math.min(style.fontSize||18,height)),caption=state.showName===true?Math.min(22,height*.35):0;\n    const hintNeeded=state.showHints===true && available && (value==='' || this._view(value,width,Math.max(1,height-caption),size).hidden);\n    const footer=hintNeeded?Math.min(14,height*.25):0,bodyHeight=Math.max(1,height-caption-footer),bodySize=Math.min(size,bodyHeight/1.35);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[];\n    if(boxed)children.push({type:'rect',x:0,y:0,w,h,strokeOn:style.strokeOn===true,color:style.color,size:style.size,dash:style.dash,fill:style.fill===true,fillColor:style.fillColor});\n    if(caption)children.push({...text('',inset,inset,width,caption,12),...this._caption(io.name,'Text label',width,caption,{...style,fontSize:12})});\n    let status='';\n    if(!available)children.push(text('Input unavailable',inset,inset+caption,width,Math.min(bodyHeight,size*1.35),Math.min(size,bodyHeight/1.35),'#92400e'));\n    else if(value===''){\n      status='Empty text';\n    }else{\n      const view=this._view(value,width,bodyHeight,bodySize);\n      view.lines.forEach((line,index)=>children.push(text(line,inset,inset+caption+index*view.lineHeight,width,view.lineHeight,bodySize)));\n      if(view.hidden)status='More text in output…';\n    }\n    if(footer && status)children.push(text(status,inset,inset+height-footer,width,footer,Math.min(10,footer/1.35),'#64748b'));\n    return children;\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "showName": true,
+            "showHints": false
+          },
+          "bindings": {
+            "value": {
+              "uid": "mqtt-command-reply",
+              "port": "json"
+            }
+          },
+          "inputValues": {
+            "value": ""
+          }
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-ack-heading",
+          "text": "Broker acknowledgements · sent payload",
+          "x": 40,
+          "y": 596,
+          "w": 380,
+          "h": 24,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 17,
+          "font": "17px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-reply-heading",
+          "text": "Device reply events",
+          "x": 450,
+          "y": 596,
+          "w": 380,
+          "h": 24,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 17,
+          "font": "17px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-error-heading",
+          "text": "Failed sends",
+          "x": 860,
+          "y": 596,
+          "w": 410,
+          "h": 24,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 17,
+          "font": "17px sans-serif",
+          "align": "left",
+          "strokeOn": false,
+          "fill": false,
+          "fillColor": "#ffffff"
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-acks",
+          "componentApi": 2,
+          "componentName": "Broker acknowledgements",
+          "x": 40,
+          "y": 630,
+          "color": "#64748b",
+          "size": 2,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 15,
+          "font": "16px sans-serif",
+          "w": 380,
+          "h": 142,
+          "script": "// Set replaces stored text; Append adds a line/block; Clear empties it.\n// Event receivers and rising-edge triggers share the same bounded operations.\n// Empty storage has zero lines. Appending an empty line makes one explicitly stored blank line.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{\n    showCounts:{type:'boolean',default:false,label:'Show counts'},\n    showHints:{type:'boolean',default:false,label:'Show hints'},\n    logMode:{type:'boolean',default:false,label:'Log mode'},\n    maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},\n    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}\n  },\n  inputs:{content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},\n    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}},\n  outputs:{text:{type:'string'},lineCount:{type:'number'}},\n  initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1};},\n  initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},\n  _fits(text){\n    // Reserve the longest status plus maximum configuration/count widths. JSON escapes count\n    // toward the host's 4000-character state budget, even when the visible string is shorter.\n    return JSON.stringify({text,lineCount:1000,notice:' '.repeat(160),maxLines:1000,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:8000}).length<=4000;\n  },\n  _state(state){\n    if(!Number.isInteger(state.maxLines) || state.maxLines<1 || state.maxLines>1000)throw new Error('Maximum lines must be an integer from 1 to 1000');\n    if(!Number.isInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000)throw new Error('Maximum characters must be an integer from 1 to 2000');\n    if(typeof state.text!=='string' || state.text.length>2000 || /\\r/.test(state.text) || !this._fits(state.text))throw new Error('Memo requires bounded, normalized stored text');\n    const count=state.text===''?0:state.text.split('\\n').length;\n    if(!Number.isInteger(state.lineCount) || state.lineCount<0 || state.lineCount>1000 ||\n      (state.lineCount!==count && !(state.text==='' && state.lineCount===1)))throw new Error('Memo line count must match its stored text');\n    if(typeof state.notice!=='string' || state.notice.length>160)throw new Error('Memo requires a bounded status message');\n    if(state.scrollOffset!==undefined && (!Number.isInteger(state.scrollOffset) || state.scrollOffset< -1 || state.scrollOffset>8000))throw new Error('Memo requires a bounded scroll position');\n    const stored={text:state.text,lineCount:state.lineCount,notice:state.notice,maxLines:state.maxLines,maxLength:state.maxLength,showCounts:state.showCounts===true,showHints:state.showHints===true,\n      logMode:state.logMode===true,scrollOffset:state.scrollOffset??-1};\n    if(JSON.stringify(stored).length>4000)throw new Error('Memo state exceeds its storage budget');\n    return stored;\n  },\n  _inputs(inputs){\n    for(const key of ['content','line'])if(typeof inputs[key]!=='string' || inputs[key].length>2000)throw new Error('Memo '+key+' requires a string of at most 2000 characters');\n    for(const key of ['set','append','clear'])if(typeof inputs[key]!=='boolean')throw new Error('Memo '+key+' trigger must be Boolean');\n    if(typeof inputs.showScrollbar!=='boolean')throw new Error('Show scrollbar must be Boolean');\n  },\n  publish(state){const stored=this._state(state);return {text:stored.text,lineCount:stored.lineCount};},\n  compute(inputs,state){this._inputs(inputs);return this.publish(state);},\n  _operate(state,operation,payload){\n    const next=this._state(state);\n    let text=next.text,lineCount=next.lineCount,removedLength=0;\n    if(operation==='clear'){text='';lineCount=0;}\n    else if(operation==='set'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Set text requires a string of at most 2000 characters');\n      text=payload.replace(/\\r\\n?/g,'\\n');lineCount=text===''?0:text.split('\\n').length;\n    }else if(operation==='append'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Append line requires a string of at most 2000 characters');\n      const line=payload.replace(/\\r\\n?/g,'\\n');\n      text=(lineCount>0?text+'\\n':'')+line;lineCount+=line.split('\\n').length;\n      if(next.logMode && lineCount>next.maxLines){\n        const kept=text.split('\\n').slice(-next.maxLines).join('\\n');\n        // The viewport is anchored in the expanded display text, so wrapped lines and\n        // tabs keep their reading position when earlier logical lines leave the log.\n        removedLength=text.slice(0,text.length-kept.length).replace(/\\t/g,'    ').length;\n        text=kept;lineCount=next.maxLines;\n      }\n    }else throw new Error('Unknown Memo operation');\n    if(lineCount>next.maxLines)next.notice='Line limit reached ('+next.maxLines+'). Previous text retained.';\n    else if(text.length>next.maxLength)next.notice='Character limit reached ('+next.maxLength+'). Previous text retained.';\n    else if(!this._fits(text))next.notice='Storage limit reached (escaped text). Previous text retained.';\n    else {\n      next.text=text;next.lineCount=lineCount;next.notice='';\n      if(operation!=='append')next.scrollOffset=-1;\n      else if(next.scrollOffset>=0)next.scrollOffset=Math.max(0,next.scrollOffset-removedLength);\n    }\n    return next;\n  },\n  onEvent(name,payload,state,io){return {state:this._operate(state,name==='content'?'set':name==='line'?'append':name,payload)};},\n  transition(inputs,state,memory){\n    this._inputs(inputs);\n    let next=this._state(state);\n    const observed={set:inputs.set,append:inputs.append,clear:inputs.clear};\n    const primed=memory && ['set','append','clear'].every(key=>typeof memory[key]==='boolean');\n    const rising=key=>primed && memory[key]===false && inputs[key];\n    const operation=rising('clear')?'clear':rising('set')?'set':rising('append')?'append':null;\n    if(operation)next=this._operate(next,operation,operation==='set'?inputs.content:inputs.line);\n    const reduced='Stored text exceeds the configured limit. Clear it or set shorter text.';\n    if(!operation && (next.lineCount>next.maxLines || next.text.length>next.maxLength))next.notice=reduced;\n    else if(!operation && next.notice===reduced)next.notice='';\n    return {state:next,memory:observed,nextWakeAt:null};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size,scrollOffset=-1){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[],offsets=[];\n    let base=0;\n    for(const block of text.replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block),consumed=0;\n      if(!chars.length){rows.push('');offsets.push(base);}\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        const row=chars.splice(0,length).join('');\n        rows.push(row);offsets.push(base+consumed);consumed+=row.length;\n      }\n      base+=block.length+1;\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),maxStart=Math.max(0,rows.length-limit);\n    let row=0;\n    while(row<maxStart && offsets[row+1]<=scrollOffset)row++;\n    const start=scrollOffset<0?maxStart:row;\n    return {lines:rows.slice(start,start+limit),offsets,lineHeight,hidden:maxStart>0,start,total:rows.length,limit,maxStart};\n  },\n  _layout(state,style,w,h,io={}){\n    const stored=this._state(state),scale=Math.min(1,w/360,h/280),pad=8*scale,header=18*scale;\n    const size=Math.max(5,Math.min(style.fontSize||16,h*.25)),width=Math.max(1,w-pad*2),bodyY=pad+header+4*scale;\n    const notice=stored.notice || (io.error?'Input unavailable; stored text retained':'');\n    const hintNeeded=stored.showHints && this._view(stored.text,width,Math.max(1,h-bodyY-pad),size).hidden;\n    const footer=notice?26*scale:stored.showCounts || hintNeeded?14*scale:0,bodyHeight=Math.max(1,h-bodyY-pad-footer);\n    let bodyWidth=width,view=this._view(stored.text,width,bodyHeight,size),scrollbar=null;\n    if(io.inputs?.showScrollbar===true && view.hidden){\n      const trackWidth=Math.min(12*scale,width*.2),gap=6*scale;\n      bodyWidth=Math.max(1,width-trackWidth-gap);\n      view=this._view(stored.text,bodyWidth,bodyHeight,size,stored.scrollOffset);\n      const thumbH=Math.min(bodyHeight,Math.max(20*scale,bodyHeight*view.limit/view.total));\n      scrollbar={x:w-pad-trackWidth,y:bodyY,w:trackWidth,h:bodyHeight,thumbH,\n        thumbY:bodyY+(bodyHeight-thumbH)*view.start/view.maxStart};\n    }\n    return {stored,scale,pad,header,size,width,bodyWidth,bodyY,bodyHeight,notice,footer,view,scrollbar};\n  },\n  children(state,style,w,h,editing,io={}){\n    const {stored,scale,pad,header,size,width,bodyWidth,bodyY,notice,footer,view,scrollbar}=this._layout(state,style,w,h,io);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {...text('',pad,pad,width,header,12*scale),...this._caption(io.name,'Memo',width,header,{...style,fontSize:12*scale})}\n    ];\n    if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,bodyWidth,view.lineHeight,size,'#94a3b8'));\n    else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,bodyWidth,view.lineHeight,size)));\n    if(scrollbar){\n      const bar=scrollbar;\n      children.push({type:'rect',x:bar.x,y:bar.y,w:bar.w,h:bar.h,fill:true,fillColor:'#e2e8f0',strokeOn:false},\n        {type:'rect',x:bar.x,y:bar.thumbY,w:bar.w,h:bar.thumbH,fill:true,fillColor:'#64748b',strokeOn:false});\n    }\n    if(footer){\n      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';\n      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';\n      const hint=stored.showHints && view.hidden?(view.start===view.maxStart?'Showing latest text':'Showing earlier text'):'';\n      const status=notice || [counts,hint].filter(Boolean).join(' · ');\n      if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),\n        ...this._caption(status,' ',width,footer,{...style,fontSize:10*scale,font:font(10*scale)})});\n    }\n    return children;\n  },\n  handles(state,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar?[{id:'scroll',x:scrollbar.x+scrollbar.w/2,y:scrollbar.thumbY+scrollbar.thumbH/2}]:[];\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar && x>=scrollbar.x && x<=scrollbar.x+scrollbar.w && y>=scrollbar.y && y<=scrollbar.y+scrollbar.h?'scroll':null;\n  },\n  dragEdit(state,handle,x,y,w,h,style={},io={}){\n    const {stored,view,scrollbar}=this._layout(state,style,w,h,io);\n    if(handle!=='scroll' || !scrollbar || !Number.isFinite(y))return {state:stored};\n    const travel=scrollbar.h-scrollbar.thumbH;\n    const row=travel>0?Math.round(Math.max(0,Math.min(1,(y-scrollbar.y-scrollbar.thumbH/2)/travel))*view.maxStart):view.maxStart;\n    return {state:{...stored,scrollOffset:row===view.maxStart?-1:view.offsets[row]}};\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "text": "",
+            "lineCount": 0,
+            "notice": "",
+            "maxLines": 5,
+            "maxLength": 2000,
+            "showCounts": false,
+            "showHints": false,
+            "logMode": true,
+            "scrollOffset": -1
+          },
+          "inputValues": {
+            "content": "",
+            "line": "",
+            "set": false,
+            "append": false,
+            "clear": false,
+            "showScrollbar": true
+          },
+          "eventBindings": {
+            "line": {
+              "uid": "mqtt-command-publish",
+              "port": "completed"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-replies",
+          "componentApi": 2,
+          "componentName": "Device replies",
+          "x": 450,
+          "y": 630,
+          "color": "#64748b",
+          "size": 2,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 15,
+          "font": "16px sans-serif",
+          "w": 380,
+          "h": 142,
+          "script": "// Set replaces stored text; Append adds a line/block; Clear empties it.\n// Event receivers and rising-edge triggers share the same bounded operations.\n// Empty storage has zero lines. Appending an empty line makes one explicitly stored blank line.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{\n    showCounts:{type:'boolean',default:false,label:'Show counts'},\n    showHints:{type:'boolean',default:false,label:'Show hints'},\n    logMode:{type:'boolean',default:false,label:'Log mode'},\n    maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},\n    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}\n  },\n  inputs:{content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},\n    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}},\n  outputs:{text:{type:'string'},lineCount:{type:'number'}},\n  initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1};},\n  initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},\n  _fits(text){\n    // Reserve the longest status plus maximum configuration/count widths. JSON escapes count\n    // toward the host's 4000-character state budget, even when the visible string is shorter.\n    return JSON.stringify({text,lineCount:1000,notice:' '.repeat(160),maxLines:1000,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:8000}).length<=4000;\n  },\n  _state(state){\n    if(!Number.isInteger(state.maxLines) || state.maxLines<1 || state.maxLines>1000)throw new Error('Maximum lines must be an integer from 1 to 1000');\n    if(!Number.isInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000)throw new Error('Maximum characters must be an integer from 1 to 2000');\n    if(typeof state.text!=='string' || state.text.length>2000 || /\\r/.test(state.text) || !this._fits(state.text))throw new Error('Memo requires bounded, normalized stored text');\n    const count=state.text===''?0:state.text.split('\\n').length;\n    if(!Number.isInteger(state.lineCount) || state.lineCount<0 || state.lineCount>1000 ||\n      (state.lineCount!==count && !(state.text==='' && state.lineCount===1)))throw new Error('Memo line count must match its stored text');\n    if(typeof state.notice!=='string' || state.notice.length>160)throw new Error('Memo requires a bounded status message');\n    if(state.scrollOffset!==undefined && (!Number.isInteger(state.scrollOffset) || state.scrollOffset< -1 || state.scrollOffset>8000))throw new Error('Memo requires a bounded scroll position');\n    const stored={text:state.text,lineCount:state.lineCount,notice:state.notice,maxLines:state.maxLines,maxLength:state.maxLength,showCounts:state.showCounts===true,showHints:state.showHints===true,\n      logMode:state.logMode===true,scrollOffset:state.scrollOffset??-1};\n    if(JSON.stringify(stored).length>4000)throw new Error('Memo state exceeds its storage budget');\n    return stored;\n  },\n  _inputs(inputs){\n    for(const key of ['content','line'])if(typeof inputs[key]!=='string' || inputs[key].length>2000)throw new Error('Memo '+key+' requires a string of at most 2000 characters');\n    for(const key of ['set','append','clear'])if(typeof inputs[key]!=='boolean')throw new Error('Memo '+key+' trigger must be Boolean');\n    if(typeof inputs.showScrollbar!=='boolean')throw new Error('Show scrollbar must be Boolean');\n  },\n  publish(state){const stored=this._state(state);return {text:stored.text,lineCount:stored.lineCount};},\n  compute(inputs,state){this._inputs(inputs);return this.publish(state);},\n  _operate(state,operation,payload){\n    const next=this._state(state);\n    let text=next.text,lineCount=next.lineCount,removedLength=0;\n    if(operation==='clear'){text='';lineCount=0;}\n    else if(operation==='set'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Set text requires a string of at most 2000 characters');\n      text=payload.replace(/\\r\\n?/g,'\\n');lineCount=text===''?0:text.split('\\n').length;\n    }else if(operation==='append'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Append line requires a string of at most 2000 characters');\n      const line=payload.replace(/\\r\\n?/g,'\\n');\n      text=(lineCount>0?text+'\\n':'')+line;lineCount+=line.split('\\n').length;\n      if(next.logMode && lineCount>next.maxLines){\n        const kept=text.split('\\n').slice(-next.maxLines).join('\\n');\n        // The viewport is anchored in the expanded display text, so wrapped lines and\n        // tabs keep their reading position when earlier logical lines leave the log.\n        removedLength=text.slice(0,text.length-kept.length).replace(/\\t/g,'    ').length;\n        text=kept;lineCount=next.maxLines;\n      }\n    }else throw new Error('Unknown Memo operation');\n    if(lineCount>next.maxLines)next.notice='Line limit reached ('+next.maxLines+'). Previous text retained.';\n    else if(text.length>next.maxLength)next.notice='Character limit reached ('+next.maxLength+'). Previous text retained.';\n    else if(!this._fits(text))next.notice='Storage limit reached (escaped text). Previous text retained.';\n    else {\n      next.text=text;next.lineCount=lineCount;next.notice='';\n      if(operation!=='append')next.scrollOffset=-1;\n      else if(next.scrollOffset>=0)next.scrollOffset=Math.max(0,next.scrollOffset-removedLength);\n    }\n    return next;\n  },\n  onEvent(name,payload,state,io){return {state:this._operate(state,name==='content'?'set':name==='line'?'append':name,payload)};},\n  transition(inputs,state,memory){\n    this._inputs(inputs);\n    let next=this._state(state);\n    const observed={set:inputs.set,append:inputs.append,clear:inputs.clear};\n    const primed=memory && ['set','append','clear'].every(key=>typeof memory[key]==='boolean');\n    const rising=key=>primed && memory[key]===false && inputs[key];\n    const operation=rising('clear')?'clear':rising('set')?'set':rising('append')?'append':null;\n    if(operation)next=this._operate(next,operation,operation==='set'?inputs.content:inputs.line);\n    const reduced='Stored text exceeds the configured limit. Clear it or set shorter text.';\n    if(!operation && (next.lineCount>next.maxLines || next.text.length>next.maxLength))next.notice=reduced;\n    else if(!operation && next.notice===reduced)next.notice='';\n    return {state:next,memory:observed,nextWakeAt:null};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size,scrollOffset=-1){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[],offsets=[];\n    let base=0;\n    for(const block of text.replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block),consumed=0;\n      if(!chars.length){rows.push('');offsets.push(base);}\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        const row=chars.splice(0,length).join('');\n        rows.push(row);offsets.push(base+consumed);consumed+=row.length;\n      }\n      base+=block.length+1;\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),maxStart=Math.max(0,rows.length-limit);\n    let row=0;\n    while(row<maxStart && offsets[row+1]<=scrollOffset)row++;\n    const start=scrollOffset<0?maxStart:row;\n    return {lines:rows.slice(start,start+limit),offsets,lineHeight,hidden:maxStart>0,start,total:rows.length,limit,maxStart};\n  },\n  _layout(state,style,w,h,io={}){\n    const stored=this._state(state),scale=Math.min(1,w/360,h/280),pad=8*scale,header=18*scale;\n    const size=Math.max(5,Math.min(style.fontSize||16,h*.25)),width=Math.max(1,w-pad*2),bodyY=pad+header+4*scale;\n    const notice=stored.notice || (io.error?'Input unavailable; stored text retained':'');\n    const hintNeeded=stored.showHints && this._view(stored.text,width,Math.max(1,h-bodyY-pad),size).hidden;\n    const footer=notice?26*scale:stored.showCounts || hintNeeded?14*scale:0,bodyHeight=Math.max(1,h-bodyY-pad-footer);\n    let bodyWidth=width,view=this._view(stored.text,width,bodyHeight,size),scrollbar=null;\n    if(io.inputs?.showScrollbar===true && view.hidden){\n      const trackWidth=Math.min(12*scale,width*.2),gap=6*scale;\n      bodyWidth=Math.max(1,width-trackWidth-gap);\n      view=this._view(stored.text,bodyWidth,bodyHeight,size,stored.scrollOffset);\n      const thumbH=Math.min(bodyHeight,Math.max(20*scale,bodyHeight*view.limit/view.total));\n      scrollbar={x:w-pad-trackWidth,y:bodyY,w:trackWidth,h:bodyHeight,thumbH,\n        thumbY:bodyY+(bodyHeight-thumbH)*view.start/view.maxStart};\n    }\n    return {stored,scale,pad,header,size,width,bodyWidth,bodyY,bodyHeight,notice,footer,view,scrollbar};\n  },\n  children(state,style,w,h,editing,io={}){\n    const {stored,scale,pad,header,size,width,bodyWidth,bodyY,notice,footer,view,scrollbar}=this._layout(state,style,w,h,io);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {...text('',pad,pad,width,header,12*scale),...this._caption(io.name,'Memo',width,header,{...style,fontSize:12*scale})}\n    ];\n    if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,bodyWidth,view.lineHeight,size,'#94a3b8'));\n    else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,bodyWidth,view.lineHeight,size)));\n    if(scrollbar){\n      const bar=scrollbar;\n      children.push({type:'rect',x:bar.x,y:bar.y,w:bar.w,h:bar.h,fill:true,fillColor:'#e2e8f0',strokeOn:false},\n        {type:'rect',x:bar.x,y:bar.thumbY,w:bar.w,h:bar.thumbH,fill:true,fillColor:'#64748b',strokeOn:false});\n    }\n    if(footer){\n      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';\n      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';\n      const hint=stored.showHints && view.hidden?(view.start===view.maxStart?'Showing latest text':'Showing earlier text'):'';\n      const status=notice || [counts,hint].filter(Boolean).join(' · ');\n      if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),\n        ...this._caption(status,' ',width,footer,{...style,fontSize:10*scale,font:font(10*scale)})});\n    }\n    return children;\n  },\n  handles(state,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar?[{id:'scroll',x:scrollbar.x+scrollbar.w/2,y:scrollbar.thumbY+scrollbar.thumbH/2}]:[];\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar && x>=scrollbar.x && x<=scrollbar.x+scrollbar.w && y>=scrollbar.y && y<=scrollbar.y+scrollbar.h?'scroll':null;\n  },\n  dragEdit(state,handle,x,y,w,h,style={},io={}){\n    const {stored,view,scrollbar}=this._layout(state,style,w,h,io);\n    if(handle!=='scroll' || !scrollbar || !Number.isFinite(y))return {state:stored};\n    const travel=scrollbar.h-scrollbar.thumbH;\n    const row=travel>0?Math.round(Math.max(0,Math.min(1,(y-scrollbar.y-scrollbar.thumbH/2)/travel))*view.maxStart):view.maxStart;\n    return {state:{...stored,scrollOffset:row===view.maxStart?-1:view.offsets[row]}};\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "text": "",
+            "lineCount": 0,
+            "notice": "",
+            "maxLines": 5,
+            "maxLength": 2000,
+            "showCounts": false,
+            "showHints": false,
+            "logMode": true,
+            "scrollOffset": -1
+          },
+          "inputValues": {
+            "content": "",
+            "line": "",
+            "set": false,
+            "append": false,
+            "clear": false,
+            "showScrollbar": true
+          },
+          "bindings": {
+            "line": {
+              "uid": "mqtt-command-reply",
+              "port": "json"
+            }
+          }
+        },
+        {
+          "type": "smart",
+          "uid": "mqtt-command-errors",
+          "componentApi": 2,
+          "componentName": "Failed sends",
+          "x": 860,
+          "y": 630,
+          "color": "#64748b",
+          "size": 2,
+          "fill": true,
+          "fillColor": "#ffffff",
+          "strokeOn": true,
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 15,
+          "font": "16px sans-serif",
+          "w": 410,
+          "h": 142,
+          "script": "// Set replaces stored text; Append adds a line/block; Clear empties it.\n// Event receivers and rising-edge triggers share the same bounded operations.\n// Empty storage has zero lines. Appending an empty line makes one explicitly stored blank line.\n({\n  apiVersion:2,\n  eventApi:1,\n  settings:{\n    showCounts:{type:'boolean',default:false,label:'Show counts'},\n    showHints:{type:'boolean',default:false,label:'Show hints'},\n    logMode:{type:'boolean',default:false,label:'Log mode'},\n    maxLines:{type:'number',default:100,min:1,max:1000,step:1,label:'Maximum lines'},\n    maxLength:{type:'number',default:2000,min:1,max:2000,step:1,label:'Maximum length (UTF-16 units)'}\n  },\n  inputs:{content:{type:'string',default:'',event:true},line:{type:'string',default:'',event:true},set:{role:'control',type:'boolean',default:false},append:{role:'control',type:'boolean',default:false},clear:{role:'control',type:'boolean',default:false,event:'command'},\n    showScrollbar:{role:'control',type:'boolean',default:false,label:'Show scrollbar'}},\n  outputs:{text:{type:'string'},lineCount:{type:'number'}},\n  initState(){return {text:'',lineCount:0,notice:'',maxLines:100,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:-1};},\n  initStyle(){return {w:360,h:280,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#64748b',textColor:'#334155',size:2};},\n  _fits(text){\n    // Reserve the longest status plus maximum configuration/count widths. JSON escapes count\n    // toward the host's 4000-character state budget, even when the visible string is shorter.\n    return JSON.stringify({text,lineCount:1000,notice:' '.repeat(160),maxLines:1000,maxLength:2000,showCounts:false,showHints:false,logMode:false,scrollOffset:8000}).length<=4000;\n  },\n  _state(state){\n    if(!Number.isInteger(state.maxLines) || state.maxLines<1 || state.maxLines>1000)throw new Error('Maximum lines must be an integer from 1 to 1000');\n    if(!Number.isInteger(state.maxLength) || state.maxLength<1 || state.maxLength>2000)throw new Error('Maximum characters must be an integer from 1 to 2000');\n    if(typeof state.text!=='string' || state.text.length>2000 || /\\r/.test(state.text) || !this._fits(state.text))throw new Error('Memo requires bounded, normalized stored text');\n    const count=state.text===''?0:state.text.split('\\n').length;\n    if(!Number.isInteger(state.lineCount) || state.lineCount<0 || state.lineCount>1000 ||\n      (state.lineCount!==count && !(state.text==='' && state.lineCount===1)))throw new Error('Memo line count must match its stored text');\n    if(typeof state.notice!=='string' || state.notice.length>160)throw new Error('Memo requires a bounded status message');\n    if(state.scrollOffset!==undefined && (!Number.isInteger(state.scrollOffset) || state.scrollOffset< -1 || state.scrollOffset>8000))throw new Error('Memo requires a bounded scroll position');\n    const stored={text:state.text,lineCount:state.lineCount,notice:state.notice,maxLines:state.maxLines,maxLength:state.maxLength,showCounts:state.showCounts===true,showHints:state.showHints===true,\n      logMode:state.logMode===true,scrollOffset:state.scrollOffset??-1};\n    if(JSON.stringify(stored).length>4000)throw new Error('Memo state exceeds its storage budget');\n    return stored;\n  },\n  _inputs(inputs){\n    for(const key of ['content','line'])if(typeof inputs[key]!=='string' || inputs[key].length>2000)throw new Error('Memo '+key+' requires a string of at most 2000 characters');\n    for(const key of ['set','append','clear'])if(typeof inputs[key]!=='boolean')throw new Error('Memo '+key+' trigger must be Boolean');\n    if(typeof inputs.showScrollbar!=='boolean')throw new Error('Show scrollbar must be Boolean');\n  },\n  publish(state){const stored=this._state(state);return {text:stored.text,lineCount:stored.lineCount};},\n  compute(inputs,state){this._inputs(inputs);return this.publish(state);},\n  _operate(state,operation,payload){\n    const next=this._state(state);\n    let text=next.text,lineCount=next.lineCount,removedLength=0;\n    if(operation==='clear'){text='';lineCount=0;}\n    else if(operation==='set'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Set text requires a string of at most 2000 characters');\n      text=payload.replace(/\\r\\n?/g,'\\n');lineCount=text===''?0:text.split('\\n').length;\n    }else if(operation==='append'){\n      if(typeof payload!=='string' || payload.length>2000)throw new Error('Append line requires a string of at most 2000 characters');\n      const line=payload.replace(/\\r\\n?/g,'\\n');\n      text=(lineCount>0?text+'\\n':'')+line;lineCount+=line.split('\\n').length;\n      if(next.logMode && lineCount>next.maxLines){\n        const kept=text.split('\\n').slice(-next.maxLines).join('\\n');\n        // The viewport is anchored in the expanded display text, so wrapped lines and\n        // tabs keep their reading position when earlier logical lines leave the log.\n        removedLength=text.slice(0,text.length-kept.length).replace(/\\t/g,'    ').length;\n        text=kept;lineCount=next.maxLines;\n      }\n    }else throw new Error('Unknown Memo operation');\n    if(lineCount>next.maxLines)next.notice='Line limit reached ('+next.maxLines+'). Previous text retained.';\n    else if(text.length>next.maxLength)next.notice='Character limit reached ('+next.maxLength+'). Previous text retained.';\n    else if(!this._fits(text))next.notice='Storage limit reached (escaped text). Previous text retained.';\n    else {\n      next.text=text;next.lineCount=lineCount;next.notice='';\n      if(operation!=='append')next.scrollOffset=-1;\n      else if(next.scrollOffset>=0)next.scrollOffset=Math.max(0,next.scrollOffset-removedLength);\n    }\n    return next;\n  },\n  onEvent(name,payload,state,io){return {state:this._operate(state,name==='content'?'set':name==='line'?'append':name,payload)};},\n  transition(inputs,state,memory){\n    this._inputs(inputs);\n    let next=this._state(state);\n    const observed={set:inputs.set,append:inputs.append,clear:inputs.clear};\n    const primed=memory && ['set','append','clear'].every(key=>typeof memory[key]==='boolean');\n    const rising=key=>primed && memory[key]===false && inputs[key];\n    const operation=rising('clear')?'clear':rising('set')?'set':rising('append')?'append':null;\n    if(operation)next=this._operate(next,operation,operation==='set'?inputs.content:inputs.line);\n    const reduced='Stored text exceeds the configured limit. Clear it or set shorter text.';\n    if(!operation && (next.lineCount>next.maxLines || next.text.length>next.maxLength))next.notice=reduced;\n    else if(!operation && next.notice===reduced)next.notice='';\n    return {state:next,memory:observed,nextWakeAt:null};\n  },\n  // Preview boundaries follow visible characters. Without Segmenter, keep the text whole.\n  _graphemes(value){\n    const text=String(value);\n    return typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'\n      ?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text),part=>part.segment)\n      :text?[text]:[];\n  },\n  _caption(name,fallback,w,h,style){\n    const label=(typeof name==='string'?name:'').trim().replace(/\\s+/g,' ')||fallback;\n    const units=text=>this._graphemes(text).reduce((n,c)=>n+(/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72),0);\n    const width=Math.max(1,w-16),base=Math.min(style.fontSize||20,h*.7);\n    let size=Math.min(base,width/Math.max(1,units(label))),lines=[label];\n    if(size<Math.min(12,base)){\n      size=Math.min(base,12,Math.max(1,h-2)/2.4,width/1.1);lines=[];let rest=label;\n      for(let row=0;row<2 && rest;row++){\n        let line='';for(const c of this._graphemes(rest)){if(line && units(line+c)*size>width)break;line+=c;}\n        if(line.length<rest.length && line.lastIndexOf(' ')>0)line=line.slice(0,line.lastIndexOf(' '));\n        rest=rest.slice(line.length).trim();\n        if(row===1 && rest){while(line && units(line+'…')*size>width)line=this._graphemes(line).slice(0,-1).join('');line+='…';}\n        lines.push(line);\n      }\n    }\n    return {text:lines.join('\\n'),font:(style.font||'600 20px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,size+'px')};\n  },\n  _view(text,width,height,size,scrollOffset=-1){\n    const unit=c=>/[MWmw@#%]/.test(c)||c.codePointAt(0)>255?1.1:/[A-Z]/.test(c)?.88:.72;\n    const room=Math.max(1,width)/size,rows=[],offsets=[];\n    let base=0;\n    for(const block of text.replace(/\\t/g,'    ').split('\\n')){\n      let chars=this._graphemes(block),consumed=0;\n      if(!chars.length){rows.push('');offsets.push(base);}\n      while(chars.length){\n        let length=0,used=0,space=0;\n        for(const c of chars){if(length && used+unit(c)>room)break;used+=unit(c);length++;if(/\\s/.test(c))space=length;}\n        if(length<chars.length && space>0)length=space;\n        const row=chars.splice(0,length).join('');\n        rows.push(row);offsets.push(base+consumed);consumed+=row.length;\n      }\n      base+=block.length+1;\n    }\n    const lineHeight=size*1.35,limit=Math.max(1,Math.min(80,Math.floor(height/lineHeight))),maxStart=Math.max(0,rows.length-limit);\n    let row=0;\n    while(row<maxStart && offsets[row+1]<=scrollOffset)row++;\n    const start=scrollOffset<0?maxStart:row;\n    return {lines:rows.slice(start,start+limit),offsets,lineHeight,hidden:maxStart>0,start,total:rows.length,limit,maxStart};\n  },\n  _layout(state,style,w,h,io={}){\n    const stored=this._state(state),scale=Math.min(1,w/360,h/280),pad=8*scale,header=18*scale;\n    const size=Math.max(5,Math.min(style.fontSize||16,h*.25)),width=Math.max(1,w-pad*2),bodyY=pad+header+4*scale;\n    const notice=stored.notice || (io.error?'Input unavailable; stored text retained':'');\n    const hintNeeded=stored.showHints && this._view(stored.text,width,Math.max(1,h-bodyY-pad),size).hidden;\n    const footer=notice?26*scale:stored.showCounts || hintNeeded?14*scale:0,bodyHeight=Math.max(1,h-bodyY-pad-footer);\n    let bodyWidth=width,view=this._view(stored.text,width,bodyHeight,size),scrollbar=null;\n    if(io.inputs?.showScrollbar===true && view.hidden){\n      const trackWidth=Math.min(12*scale,width*.2),gap=6*scale;\n      bodyWidth=Math.max(1,width-trackWidth-gap);\n      view=this._view(stored.text,bodyWidth,bodyHeight,size,stored.scrollOffset);\n      const thumbH=Math.min(bodyHeight,Math.max(20*scale,bodyHeight*view.limit/view.total));\n      scrollbar={x:w-pad-trackWidth,y:bodyY,w:trackWidth,h:bodyHeight,thumbH,\n        thumbY:bodyY+(bodyHeight-thumbH)*view.start/view.maxStart};\n    }\n    return {stored,scale,pad,header,size,width,bodyWidth,bodyY,bodyHeight,notice,footer,view,scrollbar};\n  },\n  children(state,style,w,h,editing,io={}){\n    const {stored,scale,pad,header,size,width,bodyWidth,bodyY,notice,footer,view,scrollbar}=this._layout(state,style,w,h,io);\n    const font=(fontSize,weight=400)=>(style.font||weight+' '+fontSize+'px sans-serif').replace(/\\d+(?:\\.\\d+)?px/,fontSize+'px');\n    const text=(value,x,y,width,height,fontSize,color=style.textColor||'#334155')=>({type:'text',x,y,w:width,h:height,text:value,plainText:true,align:'left',font:font(fontSize),color,strokeOn:false});\n    const children=[\n      {type:'rect',x:0,y:0,w,h,fill:style.fill,fillColor:style.fillColor,strokeOn:style.strokeOn,color:style.color,size:style.size},\n      {...text('',pad,pad,width,header,12*scale),...this._caption(io.name,'Memo',width,header,{...style,fontSize:12*scale})}\n    ];\n    if(stored.lineCount===0 && stored.showHints)children.push(text('Empty memo',pad,bodyY,bodyWidth,view.lineHeight,size,'#94a3b8'));\n    else if(stored.lineCount>0)view.lines.forEach((line,index)=>children.push(text(line,pad,bodyY+index*view.lineHeight,bodyWidth,view.lineHeight,size)));\n    if(scrollbar){\n      const bar=scrollbar;\n      children.push({type:'rect',x:bar.x,y:bar.y,w:bar.w,h:bar.h,fill:true,fillColor:'#e2e8f0',strokeOn:false},\n        {type:'rect',x:bar.x,y:bar.thumbY,w:bar.w,h:bar.thumbH,fill:true,fillColor:'#64748b',strokeOn:false});\n    }\n    if(footer){\n      const characterCount=typeof Intl!=='undefined' && typeof Intl.Segmenter==='function'?this._graphemes(stored.text).length+' characters':stored.text.length+' UTF-16 units';\n      const counts=stored.showCounts?stored.lineCount+' '+(stored.lineCount===1?'line':'lines')+' · '+characterCount:'';\n      const hint=stored.showHints && view.hidden?(view.start===view.maxStart?'Showing latest text':'Showing earlier text'):'';\n      const status=notice || [counts,hint].filter(Boolean).join(' · ');\n      if(status)children.push({...text('',pad,h-pad-footer,width,footer,10*scale,notice?'#92400e':'#64748b'),\n        ...this._caption(status,' ',width,footer,{...style,fontSize:10*scale,font:font(10*scale)})});\n    }\n    return children;\n  },\n  handles(state,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar?[{id:'scroll',x:scrollbar.x+scrollbar.w/2,y:scrollbar.thumbY+scrollbar.thumbH/2}]:[];\n  },\n  hitEdit(state,x,y,w,h,style={},io={}){\n    const {scrollbar}=this._layout(state,style,w,h,io);\n    return scrollbar && x>=scrollbar.x && x<=scrollbar.x+scrollbar.w && y>=scrollbar.y && y<=scrollbar.y+scrollbar.h?'scroll':null;\n  },\n  dragEdit(state,handle,x,y,w,h,style={},io={}){\n    const {stored,view,scrollbar}=this._layout(state,style,w,h,io);\n    if(handle!=='scroll' || !scrollbar || !Number.isFinite(y))return {state:stored};\n    const travel=scrollbar.h-scrollbar.thumbH;\n    const row=travel>0?Math.round(Math.max(0,Math.min(1,(y-scrollbar.y-scrollbar.thumbH/2)/travel))*view.maxStart):view.maxStart;\n    return {state:{...stored,scrollOffset:row===view.maxStart?-1:view.offsets[row]}};\n  },\n  unavailableChildren(state,style,w,h,editing,io={}){return this.children(state,style,w,h,editing,{...io,error:io.error||'Input unavailable'});}\n})\n",
+          "state": {
+            "text": "",
+            "lineCount": 0,
+            "notice": "",
+            "maxLines": 5,
+            "maxLength": 2000,
+            "showCounts": false,
+            "showHints": false,
+            "logMode": true,
+            "scrollOffset": -1
+          },
+          "inputValues": {
+            "content": "",
+            "line": "",
+            "set": false,
+            "append": false,
+            "clear": false,
+            "showScrollbar": true
+          },
+          "eventBindings": {
+            "line": {
+              "uid": "mqtt-command-publish",
+              "port": "failed"
+            }
+          }
+        },
+        {
+          "type": "text",
+          "uid": "mqtt-command-help",
+          "text": "QoS 1 confirms broker receipt, not device execution. This local demo simulates a device response on a separate topic after a short delay. Retain is off for commands; a retained reply supplies the initial display without adding a log entry. Try sending the same value twice.",
+          "x": 40,
+          "y": 792,
+          "w": 1230,
+          "h": 60,
+          "size": 1,
+          "color": "#334155",
+          "textColor": "#334155",
+          "fontFamily": "sans",
+          "fontSize": 16,
+          "font": "16px sans-serif",
           "align": "left",
           "strokeOn": false,
           "fill": false,

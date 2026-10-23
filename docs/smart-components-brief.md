@@ -1,7 +1,8 @@
 # From smart shapes to connected components
 
-Status: stages 1–5 are complete on `feature/smart-components`, based on `main`,
-with stage 3 validated 2026-10-18, stage 4 closed out 2026-10-20, and stage 5 closed out 2026-10-21.
+Status: stages 1–6 are complete on `feature/smart-components`, based on `main`,
+with stage 3 validated 2026-10-18, stage 4 closed out 2026-10-20, stage 5 closed out 2026-10-21,
+and stage 6 closed out 2026-10-23.
 Stage 2 includes the expanded library, logic, routing, timed signals,
 the initial eight-tab example workspace, offline HTML reader, and the final authoring pass.
 These additions are not yet part of the main-branch baseline below.
@@ -29,8 +30,10 @@ Stages 6.1/6.2, automated HTTP reads in 6.4, and the HTTP POST portion of 6.5 ar
 the branch: transient host-owned results, typed/JSON hybrid outputs, bounded nonblocking requests,
 explicit action/completion events, polling/change/startup policies and per-artifact credential
 inclusion. MQTT Config/Subscribe (6.3) adds explicitly shared WebSocket connections, typed
-readings and fresh-message events with retained-message baselines. MQTT Publish (remaining 6.5)
-stays deferred. Optional authoring extensions remain proposals.
+readings and fresh-message events with retained-message baselines. MQTT Publish completes the 6.5
+implementation with captured QoS 1 commands, broker acknowledgements, Retain off by default, and no
+offline queue or replay. The phase-wide closeout and verification evidence are recorded below. Optional authoring
+extensions remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -236,7 +239,7 @@ Publish/Receive endpoints, shared Dataset discovery, and workspace/sketch settin
 contract across sketches while retaining all existing signals and triggers. Stage 5 completes
 isolated Run preview and the Edit/binding workflow with an explicit discard/download policy.
 Stage 6 delivers the shared integration foundation, manual and automated HTTP GET, and explicit
-HTTP POST plus MQTT Config/Subscribe described below. MQTT Publish remains deferred. Shared buses are explicitly outside the
+HTTP POST plus MQTT Config/Subscribe/Publish described below. Shared buses are explicitly outside the
 feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -254,7 +257,7 @@ Share runtime helpers between editor and export throughout.
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
 | 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
 | 5. Authoring and reader workflow — complete on branch | Isolated Run preview, reusable property controls, searchable binding sources with repair feedback, and discard-on-return with explicit result downloads; initial visual wiring is delivered in stage 3 | An author places, configures and connects components, operates a preview with layout tools hidden, returns without changing the source, then saves, reopens and exports the workspace. Spreadsheet retains its specialized editor. |
-| 6. External integrations — HTTP and MQTT reads on branch; MQTT Publish deferred | Shared host contracts, manual/automated HTTP GET, explicit JSON POST and MQTT Config/Subscribe | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT connections share explicit Config references, preserve retained-message baselines, and recover with stale/reconnect status. Workers remain isolated. |
+| 6. External integrations — complete on branch | Shared host contracts, manual/automated HTTP GET, explicit JSON POST and MQTT Config/Subscribe/Publish | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT connections share explicit Config references, preserve retained-message baselines, and recover with stale/reconnect status. Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
 
@@ -264,11 +267,12 @@ Stage 6 is deliberately split into reviewable deliveries:
 | 6.2 Manual HTTP GET — implemented on branch | 6.1; a bounded JSON GET initiated by Refresh, one mapped scalar plus complete compact JSON text | The newest accepted result drives a display; another source, clock and slider continue during pending requests. Errors remain visible in editor, Run and downloaded HTML. |
 | 6.3 MQTT Config and Subscribe — implemented on branch | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
 | 6.4 Automated HTTP reads — implemented on branch | 6.2; bounded polling, debounced URL/pointer changes, signal/event triggers and explicit Run/HTML startup | Initial/restored values do not replay edges. Enabled gates all automatic origins, manual Refresh remains available, repeated responses emit events, and pause/visibility suspend schedules without catch-up bursts. |
-| 6.5 Explicit external writes — HTTP POST implemented; MQTT Publish deferred | 6.1 and the relevant transport; captured JSON POST from Send/button/signal/event | One accepted Send produces one host intent; redraw, Undo, reload and input changes do not replay it. No automatic retries; optional server-supported idempotency, HTTP status and empty acknowledgements distinguish a write from its response. |
+| 6.5 Explicit external writes — implemented on branch | 6.1 and the relevant transport; captured JSON POST and MQTT QoS 1 Publish from Send/button/signal/event | One accepted Send produces one host intent; redraw, Undo, reload and input changes do not replay it. No offline queue, reconnect replay or automatic retries; optional HTTP idempotency and MQTT broker acknowledgements distinguish transport receipt from application/device execution. |
 
-HTTP read/write work spans 6.1, 6.2, 6.4 and the HTTP part of 6.5. Step 6.3 now adds MQTT
-readings on that shared foundation. The integration stage remains open for explicit MQTT Publish
-in the remaining part of 6.5; its command delivery policy is still a separate decision.
+HTTP read/write work spans 6.1, 6.2, 6.4 and the HTTP part of 6.5. Step 6.3 adds MQTT readings
+on that shared foundation, and MQTT Publish completes the 6.5 implementation. The accepted command
+policy is QoS 1 broker acknowledgement, Retain off by default, explicit Send only, and no offline
+queue or replay. The phase-wide closeout covers all five increments.
 
 Keep nested components, a marketplace, automatic library upgrades, shared-definition migration,
 and a complete visual programming editor outside these milestones unless actual examples justify them.
@@ -374,7 +378,7 @@ URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON
 catalog to 90 entries / 81 API v2 components. Page settings brings it to 91 entries / 82 API v2
 components. Signal → event and Event → pulse brought it to 93 entries / 84 API v2 components.
 Workspace settings, Publish, Receive, HTTP source and HTTP POST bring it to 98 entries / 89 API v2 components.
-MQTT Config and MQTT Subscribe bring the current catalog to **100 entries / 91 API v2 components**.
+MQTT Config, MQTT Subscribe and MQTT Publish bring the current catalog to **101 entries / 92 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -2811,7 +2815,7 @@ The shared `integrationApi:1` host service now supports **HTTP source** GET auto
 separate **HTTP POST** built-in. Both use bounded typed/JSON results and the editor/Run/HTML
 runtime. Worker network access stays blocked; neither operation waits for its response in the
 workspace action queue. MQTT Config/Subscribe use the same host boundary with their separate
-connection/subscription lifecycle described below; MQTT Publish remains deferred.
+connection/subscription lifecycle described below. MQTT Publish adds captured explicit commands to that shared connection.
 
 ### GET trigger policies
 
@@ -2923,7 +2927,7 @@ MQTT Config and MQTT Subscribe use the same host-managed integration boundary as
 remain network-blocked; neither a socket nor credentials enter component scripts. Browser MQTT
 uses a broker WebSocket endpoint (`ws://` or `wss://`). The bundled MQTT.js browser client and
 adapter are included in the editor and exported HTML, without a CDN, deployment plugin or runtime
-build step. Live telemetry still requires a reachable broker. MQTT Publish remains deferred.
+build step. Live telemetry and commands still require a reachable broker. MQTT Publish shares the same connection boundary.
 
 ### Components and deliberate connection references
 
@@ -2931,9 +2935,9 @@ build step. Live telemetry still requires a reachable broker. MQTT Publish remai
 | --- | --- | --- |
 | **MQTT Config** | Broker URL, optional client ID, session credentials, explicit Connect and opt-in reader startup | One host-owned connection, with connected/status/error outputs. |
 | **MQTT Subscribe** | Explicit Config reference, topic/filter, text/JSON format, JSON pointer and scalar type | Typed `value`, complete `json` in JSON mode, availability/stale/error/status, last topic and timestamp. |
-| **MQTT Publish — later** | Explicit Config reference, topic/payload and accepted Send | One write intent and its result; broker acknowledgement must remain distinct from device execution. |
+| **MQTT Publish** | Explicit Config reference, topic/payload, text/JSON format, Retain and accepted Send | Captured QoS 1 intent, broker acknowledgement, completion/failure events and last acknowledgement time; device execution remains separate. |
 
-The Subscribe Edit inspector selects a Config by sketch and component name. The saved reference
+The Subscribe and Publish Edit inspectors select a Config by sketch and component name. The saved reference
 contains stable sketch/component IDs, not display names or arbitrary string values. It is a
 host relationship separate from ordinary signal/event wiring. A copied connected selection or
 workspace remaps references to Configs that travel with it. Missing/deleted Configs remain broken
@@ -2966,8 +2970,8 @@ separate documents remain responsible for the intended broker identity.
   Active sketch scope retires its Config and requires Connect when returning. Pausing or hiding the
   browser suspends sockets while retaining connection intent for resume. Closing/replacing the workspace
   and returning from Run retire its connections.
-- **Delivery:** version 1 uses MQTT 3.1.1, clean sessions and QoS 0 subscriptions. There is no offline
-  message queue, command publishing or queued-command replay.
+- **Delivery:** version 1 uses MQTT 3.1.1, clean sessions and QoS 0 subscriptions. Explicit Publish
+  uses QoS 1 and Retain off by default. There is no offline message queue or queued-command replay.
 
 Text and JSON payloads map to bounded number/string/Boolean values. JSON mode also exposes the whole
 compact JSON string; text mode leaves `json` empty and emits only its typed value. The limits are
@@ -3002,9 +3006,13 @@ not persist offline reading snapshots; explicitly saved last-known snapshots rem
 ### Example and acceptance
 
 The separate [MQTT workspace](../examples/mqtt-integrations.json) and
-[self-contained reader](../examples/mqtt-integrations.html) contain two sketches. One Config feeds
+[self-contained reader](../examples/mqtt-integrations.html) contain three sketches. One Config feeds
 numeric/JSON and text subscribers, a Gauge, a status label and a fresh-message Memo log; a second
-sketch selects that same Config for another view. A local development helper,
+sketch selects that same Config for another view. **Commands & replies** connects Number control →
+JSON build → MQTT Publish, then shows a separate reply subscription, Gauge and Memo logs for broker
+receipt, device response and failures. Its broker permits only non-retained `{"value":0–100}`
+commands on `simplecanvas/demo/command` and simulates replies on `simplecanvas/demo/reply`.
+Other client publications are rejected. A local development helper,
 `node tools/serve-mqtt-example.cjs`, serves the editor/reader and a broker at
 `ws://127.0.0.1:8001/mqtt`, with retained baselines and a new reading/status every second.
 
@@ -3016,10 +3024,10 @@ control click; another queues wildcard messages and verifies each value keeps it
 `mqtt-event-receivers.test.cjs` covers receiver discovery and stable per-pass integration snapshots.
 The existing HTTP and component tests remain regression gates.
 
-Validation on 2026-10-23: MQTT foundation checks passed 25/25, and real-broker browser checks
+6.3 checkpoint validation on 2026-10-23, before Publish: MQTT foundation checks passed 25/25, and real-broker browser checks
 passed 18/18 in Chromium and 18/18 in WebKit. Catalog and bundled-client parity checks passed;
 all four self-contained readers were regenerated and passed the export dependency audit.
-The final full Chromium run passed 1,666/1,669. Two failures were assertion reads racing a
+A full Chromium run at that checkpoint passed 1,666/1,669. Two failures were assertion reads racing a
 replaced graph in the choice-list and Memo tests; those tests now await the existing accepted-graph
 helper without repeating edits. The third was an intermittent Playwright “Resulting promise was
 garbage collected” failure in the existing cross-sketch export test; it passed unchanged on rerun
@@ -3037,13 +3045,62 @@ with explicit credential inclusion in HTML. No application changes were needed. 
 paths are supplied; it does not enable a system service. This verifies `ws://`, not deployment TLS
 certificates, `wss://` reverse proxies or their origin policies.
 
-### Remaining 6.5: explicit MQTT Publish
+### Explicit MQTT Publish — 6.5 implemented on branch
 
-Publishing starts with explicit Send only. Opening, redraw, Undo, retained readings and reconnect
-must never publish or replay earlier commands. Decide publish QoS, retain, acknowledgement and
-retry/duplicate handling separately from the reading policy. A broker acknowledgement cannot
-prove that a device applied a command. Keep Publish on the existing Config/reference/credential
-contract; it does not require redesigning Subscribe or HTTP.
+Publish selects an existing Config through the same stable reference and credential contract as
+Subscribe. An accepted Send button, rising Boolean pulse or action event captures the resolved
+Config, exact topic, payload, format and Retain choice. Later topic/payload input edits prepare the
+next Send; definition/descriptor or Config-reference edits retire pending work. Text sends the captured
+string; JSON validates and compacts it before sending.
+Pending acknowledgement work is detached from the workspace action queue, so controls, clocks,
+subscribers and other components keep processing.
+
+The accepted delivery policy is **QoS 1**, **Retain off by default**, a 10-second acknowledgement
+timeout configurable from 1–30 seconds, and **no offline queue, automatic retry or reconnect replay**.
+The Config must already be connected. A disconnected Send fails immediately; one Publish component
+accepts only one pending send at a time. Opening, redraw, Undo, retained baselines and reconnect
+cannot issue or restore a command. Generations isolate replaced Configs/documents and late replies.
+
+PUBACK sets status to `ready`, displays **Broker acknowledged**, updates `lastPublished`, and emits
+`completed` with the captured transmitted string. It proves broker receipt, never device execution.
+QoS 1 can duplicate delivery; commands that need duplicate protection should carry their own ID or
+be idempotent. Failure emits `failed`. Timeout or disconnect can leave the outcome unknown because
+the broker may already have received the message. A separate response-topic Subscribe represents
+the device's application-level reply.
+
+Pausing or hiding the browser suspends MQTT connections. A pending send is failed with an unknown
+outcome. Its failure event waits while the page is hidden and is delivered once visible. Resume never
+replays it. This differs from an already-issued detached HTTP request, which can complete while hidden. Closing or
+replacing a document and returning from Run retire its requests and late acknowledgements.
+
+Publish's transient `loading`, `status`, `error` and `lastPublished` outputs do not enter source
+state, undo or ordinary autosave. Completion payloads may be deliberately retained by consumers.
+`networkIntegrations:false`, credential inclusion, Run isolation and export self-containment use
+the existing integration policies. No socket or credentials enter a component Worker.
+
+### Phase 6 closeout — complete on branch, 2026-10-23
+
+Steps 6.1–6.5 are complete. The closeout verifies captured commands in the editor, isolated Run and
+freshly downloaded HTML; actual QoS 1 PUBACK and retained publication against Aedes and Mosquitto;
+disconnect/timeout/late replies; hidden-page failure delivery; and no replay after history,
+restoration or reconnect. Cross-sketch Config selection, deletion/Undo while a send is pending,
+independent ownership, and unchanged source after Run are covered. The new **Commands & replies**
+sketch visibly separates broker acknowledgement from a simulated device response.
+
+The full Chromium suite passed **1,701/1,701**, with no skips and the real Mosquitto scenarios enabled.
+The 11 focused Publish browser cases also passed in WebKit. MQTT foundation checks passed **39/39**;
+catalog and pinned-client parity checks passed. All four self-contained readers were regenerated,
+passed the export dependency audit, and the command/reply demo was visually checked live.
+
+The pass also closes two cancellation edges: packet identifiers are captured only within the
+individual synchronous send, preventing equal concurrent payloads from sharing ownership; a
+component that loses its Publish capability retires its pending operation. Neither case can leave
+an abandoned command queued for reconnect. Earlier 6.3 test-synchronization fixes are included in
+the green full-suite run.
+
+Saved offline snapshots, table/object response mapping and additional protocols remain later work.
+Broker testing covers local WebSocket listeners and password authentication; deployment TLS,
+reverse-proxy origin policies and physical-device behavior remain environment-specific checks.
 
 ## Decisions before each stage
 
@@ -3077,7 +3134,8 @@ contract; it does not require redesigning Subscribe or HTTP.
    independent requests, credentials and explicit artifact inclusion underpin manual/automated
    GET and captured JSON POST. Polling/change/startup policies stay separate from Send; completion
    events preserve repeated responses. Object/table response contracts and offline snapshots remain extensions.
-6. **Step 6.3 — implemented on branch; remaining MQTT 6.5 deferred:** Config/Subscribe establish
-   client IDs, reconnect, QoS 0 readings and retained-message baselines. Decide publish acknowledgement,
-   retain and retry/duplicate handling before adding commands. Keep execution settings separate from
-   optional authoring, and the runtime independent of the deployment-plugin experiment.
+6. **Steps 6.3 and MQTT 6.5 — implemented on branch:** Config/Subscribe establish client IDs,
+   reconnect, QoS 0 readings and retained-message baselines. Publish captures explicit QoS 1 sends,
+   with Retain off, separate broker acknowledgements, and no offline queue/retry/replay. The phase-wide
+   closeout completed on 2026-10-23. Keep execution settings separate from optional authoring,
+   and the runtime independent of the deployment-plugin experiment.

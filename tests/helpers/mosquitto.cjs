@@ -31,7 +31,7 @@ async function createMosquitto({authenticated=false}={}){
     const config=path.join(directory,'mosquitto.conf');
     fs.writeFileSync(config,'persistence false\nlog_dest stdout\nlog_type all\nconnection_messages true\n'+auth+
       'listener '+tcpPort+' 127.0.0.1\nprotocol mqtt\nlistener '+wsPort+' 127.0.0.1\nprotocol websockets\n');
-    const fixture={url,credentials,get log(){return log;},
+    const fixture={url,credentials,get log(){return log;},get client(){return publisher;},
       browserConnections(){return [...log.matchAll(/New client connected[^\n]* as (sc[A-Za-z0-9]+)\b/g)].map(match=>match[1]);},
       async start(){
         if(processHandle)throw new Error('Mosquitto is already running');
