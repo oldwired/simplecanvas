@@ -5,14 +5,14 @@ const http=require('node:http');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const root=path.join(__dirname,'..');
-const fixtures=new Set(['/examples/http-reading.json','/examples/http-reading-alternate.json']);
-const readPath='/examples/api/reading',writePath='/examples/api/echo';
+const fixtures=new Set(['/examples/http-reading.json','/examples/http-reading-alternate.json','/examples/http-stock.json']);
+const readPath='/examples/api/reading',writePath='/examples/api/echo',tablePath='/examples/api/stock';
 const types={'.html':'text/html; charset=utf-8','.json':'application/json; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.md':'text/plain; charset=utf-8'};
 
 function createHttpExampleServer({directory=root}={}){
   const base=path.resolve(directory),realBase=fs.realpath(base);
-  let readSequence=0,writeSequence=0,lastWrite=null;
+  let readSequence=0,tableSequence=0,writeSequence=0,lastWrite=null;
   const acceptedKeys=new Map();
   async function readJson(request){
     const chunks=[];let size=0;
@@ -32,7 +32,7 @@ function createHttpExampleServer({directory=root}={}){
   return http.createServer(async(request,response)=>{
     try{
       const url=new URL(request.url,'http://localhost'),pathname=decodeURIComponent(url.pathname);
-      const fixture=fixtures.has(pathname),api=pathname===readPath || pathname===writePath,example=fixture||api;
+      const fixture=fixtures.has(pathname),api=pathname===readPath || pathname===writePath || pathname===tablePath,example=fixture||api;
       response.setHeader('Cache-Control','no-store');
       if(example)response.setHeader('Access-Control-Allow-Origin','*');
       if(request.method==='OPTIONS' && example){
@@ -62,6 +62,13 @@ function createHttpExampleServer({directory=root}={}){
       if(pathname===readPath){
         if(request.method==='GET')readSequence++;
         send(JSON.stringify({value:(35+Math.max(0,readSequence-1)*7)%101,name:url.searchParams.get('name')||'Workshop',sequence:readSequence}),requestedStatus);return;
+      }
+      if(pathname===tablePath){
+        if(request.method==='GET')tableSequence++;
+        const records=[{item:'Apples',quantity:12+Math.max(0,tableSequence-1)},{item:'Pears',quantity:8},{item:'Plums',quantity:16}];
+        const items=url.searchParams.get('empty')==='1'
+          ?{columns:[{key:'item',name:'Item',type:'string'},{key:'quantity',name:'Quantity',type:'number'}],rows:[]}:records;
+        send(JSON.stringify({items,sequence:tableSequence}),requestedStatus);return;
       }
       if(pathname===writePath){
         if(request.method!=='POST'){send(JSON.stringify({count:writeSequence,last:lastWrite}));return;}
@@ -106,7 +113,7 @@ if(require.main===module){
     server.listen(port,'127.0.0.1',()=>{
       console.log('Editor: http://127.0.0.1:'+port+'/index.html');
       console.log('HTTP example: http://127.0.0.1:'+port+'/examples/http-integrations.html');
-      console.log('Changing reads: '+readPath+' · In-memory POST/echo: '+writePath);
+      console.log('Changing reads: '+readPath+' · Tables: '+tablePath+' · In-memory POST/echo: '+writePath);
       console.log('Add ?delay=2500 or ?status=503 to an example endpoint. POST records disappear on restart.');
     });
   }

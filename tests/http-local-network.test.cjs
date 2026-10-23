@@ -45,20 +45,23 @@ test('Run delegates browser local-network permission, remains isolated, and keep
     assert.match(await frameElement.getAttribute('allow'),/local-network \*/);
     assert.match(await frameElement.getAttribute('allow'),/loopback-network \*/);
     const frame=await(await frameElement.elementHandle()).contentFrame();
-    await frame.locator('[data-smart-index="2"][data-smart-ready="true"]').waitFor();
-    await frame.locator('[data-smart-index="2"]').getByText('Refresh',{exact:true}).click();
+    // Component indices belong to a sketch. Other sketches may contain a different
+    // component at the same index, even while their panels remain hidden.
+    const sketch=frame.locator('.tab-panel[data-tab-id="http-reads"]');await sketch.waitFor({state:'visible'});
+    await sketch.locator('[data-smart-index="2"][data-smart-ready="true"]').waitFor();
+    await sketch.locator('[data-smart-index="2"]').getByText('Refresh',{exact:true}).click();
     let requestDeadline,received;
     try{received=await Promise.race([requested,new Promise((resolve,reject)=>{
       requestDeadline=setTimeout(()=>reject(new Error('The isolated preview did not reach the local endpoint')),15000);
     })]);}finally{clearTimeout(requestDeadline);}
     assert.deepEqual(received,{origin:'null'},'a real GET originates in the isolated preview');
-    await frame.getByText('Loading…',{exact:true}).waitFor();
-    await frame.locator('[data-smart-index="4"]').getByText('+ 1',{exact:true}).click();
-    await frame.locator('[data-smart-index="4"]').getByText('26',{exact:true}).waitFor();
-    assert.equal(await frame.getByText('Loading…',{exact:true}).count(),1,'interaction succeeds before the response is released');
+    await sketch.getByText('Loading…',{exact:true}).waitFor();
+    await sketch.locator('[data-smart-index="4"]').getByText('+ 1',{exact:true}).click();
+    await sketch.locator('[data-smart-index="4"]').getByText('26',{exact:true}).waitFor();
+    assert.equal(await sketch.getByText('Loading…',{exact:true}).count(),1,'interaction succeeds before the response is released');
     release();release=null;
-    await frame.locator('[data-smart-index="2"]').getByText('72',{exact:true}).waitFor();
-    await frame.locator('[data-smart-index="10"]').getByText('Workshop',{exact:true}).waitFor();
+    await sketch.locator('[data-smart-index="2"]').getByText('72',{exact:true}).waitFor();
+    await sketch.locator('[data-smart-index="10"]').getByText('Workshop',{exact:true}).waitFor();
     await page.locator('#exitPreviewBtn').click();await page.locator('#runPreviewPanel').waitFor({state:'hidden'});
     assert.equal(await run('items.find(item=>item.uid==="http-local-control").state.value'),25,'Return discards preview interaction');
     assert.deepEqual(errors,[]);

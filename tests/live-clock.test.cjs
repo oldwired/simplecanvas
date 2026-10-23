@@ -73,7 +73,7 @@ async function editorZone(page,run){
 }
 async function graphSnapshot(run){
   return run(`(async()=>{
-    const graph=await ensureEditorComponentGraph();
+    const graph=await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true);
     return items.map(item=>({uid:item.uid,error:graph.get(item)?.error||'',outputs:graph.get(item)?.io.outputs}));
   })()`);
 }

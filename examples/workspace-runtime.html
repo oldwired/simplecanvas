@@ -1327,7 +1327,7 @@ const normalizeComponentHttpSource=function normalizeComponentHttpSource(raw,cap
       Object.keys(raw).some(key=>!['url','path','valueType','timeoutMs','method','body','idempotencyKey','automation','auth'].includes(key)) ||
       !componentPortName(raw.url) || caps.inputs?.[raw.url]?.type!=='string' ||
       !componentPortName(raw.path) || caps.inputs?.[raw.path]?.type!=='string' ||
-      !['number','string','boolean'].includes(raw.valueType))throw new Error('HTTP sources require integrationApi: 1, URL and JSON pointer inputs, and a scalar value type');
+      !['number','string','boolean','table'].includes(raw.valueType))throw new Error('HTTP sources require integrationApi: 1, URL and JSON pointer inputs, and a scalar or table response type');
     const timeoutMs=raw.timeoutMs??10000;
     if(!Number.isInteger(timeoutMs) || timeoutMs<100 || timeoutMs>30000)throw new Error('HTTP timeout must be 100–30000 milliseconds');
     const method=raw.method??'GET';if(!['GET','POST'].includes(method))throw new Error('HTTP sources support GET or POST');
@@ -1356,6 +1356,8 @@ const normalizeComponentHttpSource=function normalizeComponentHttpSource(raw,cap
     for(const [name,type] of Object.entries({value:raw.valueType,json:'string',available:'boolean',loading:'boolean',error:'string',lastUpdated:'number'}))
       if(caps.outputs?.[name]?.type!==type)throw new Error('HTTP source output '+name+' must have type '+type);
     if(caps.outputs?.httpStatus && caps.outputs.httpStatus.type!=='number')throw new Error('HTTP status output must have type number');
+    if(caps.outputs?.jsonAvailable && caps.outputs.jsonAvailable.type!=='boolean')throw new Error('JSON availability output must have type boolean');
+    if(caps.outputs?.rowCount && (raw.valueType!=='table' || caps.outputs.rowCount.type!=='number'))throw new Error('HTTP row count requires a table response and a number output');
     if(!caps.compute || caps.publish || caps.transition || caps.onEvent || caps.eventTransform || caps.datasetOwner || caps.pageSettings || caps.workspaceSettings || caps.workspaceEndpoint)
       throw new Error('HTTP sources require compute-only publication');
     return {url:raw.url,path:raw.path,valueType:raw.valueType,timeoutMs,method,...(method==='POST'?{body:raw.body,...(raw.idempotencyKey===undefined?{}:{idempotencyKey:raw.idempotencyKey})}:{}),...(auth?{auth}:{}),...(automation?{automation}:{})};
@@ -1418,7 +1420,34 @@ const componentHttpValue=function componentHttpValue(value,path,type){
       if(!value || typeof value!=='object' || !Object.hasOwn(value,key))throw new Error('The JSON pointer does not identify a value');
       value=value[key];
     }
-    return componentScalar(value,type);
+    return type==='table'?componentHttpTable(value):componentScalar(value,type);
+  };
+const componentHttpTable=function componentHttpTable(value){
+    // Infer each response independently. An empty result needs an explicit schema;
+    // its meaning must not depend on which earlier responses this session received.
+    try{
+      if(Array.isArray(value)){
+        if(!value.length)throw new Error('Empty rows need a typed {columns, rows} response');
+        return normalizeDataTable({name:'HTTP response',...parseDatasetJSON(JSON.stringify(value))});
+      }
+      if(!value || typeof value!=='object' || !Array.isArray(value.columns) || !Array.isArray(value.rows))
+        throw new Error('Select an array of flat row objects or a typed {columns, rows} response');
+      return normalizeDataTable({name:value.name??'HTTP response',columns:value.columns,rows:value.rows});
+    }catch(error){
+      // Do not echo remote column names or values in diagnostics: a response can
+      // contain sensitive data, and only its validated result is publishable.
+      const message=String(error.message).replace(/JSON column "[\s\S]*" mixes value types/,'JSON columns must not mix value types');
+      throw new Error('HTTP table: '+message);
+    }
+  };
+const componentIntegrationOutputErrors=function componentIntegrationOutputErrors(caps,source){
+    if(!caps.httpSource && !caps.mqttSource)return {};
+    const errors={},unavailable=!source?.available;
+    const message=source?.error || (source?.loading?'Source is still loading':'Source has no current result');
+    const mark=(name,error)=>{if(caps.outputs?.[name])errors[name]={error,transient:true,unknown:true,unavailable:true};};
+    if(unavailable){mark('value',message);mark('rowCount',message);mark('json',message);}
+    else if(source.jsonAvailable===false)mark('json','JSON text output exceeds 2000 characters; the table is available');
+    return errors;
   };
 const createComponentIntegrationService=function createComponentIntegrationService(options={}){
     const entries=new Map(),clock=options.now||(()=>Date.now()),fetcher=options.fetch||((...args)=>fetch(...args));
@@ -1573,9 +1602,15 @@ const createComponentIntegrationService=function createComponentIntegrationServi
             return value;
           });}catch(error){throw new Error(error.message==='JSON numbers must be finite'?error.message:'The response is not valid JSON');}
           const json=JSON.stringify(parsed);
-          if(json.length>2000)throw new Error('JSON text output exceeds 2000 characters');
+          const jsonAvailable=json.length<=2000;
+          if(!jsonAvailable && request.valueType!=='table')throw new Error('JSON text output exceeds 2000 characters');
           const value=componentHttpValue(parsed,request.path,request.valueType);
-          const snapshot={revision:++revision,status:'ready',loading:false,available:true,stale:false,error:'',lastUpdated:clock(),httpStatus,value,json};
+          if(request.valueType==='table'){
+            for(const column of value.columns)Object.freeze(column);
+            for(const row of value.rows)Object.freeze(row);
+            Object.freeze(value.columns);Object.freeze(value.rows);Object.freeze(value);
+          }
+          const snapshot={revision:++revision,status:'ready',loading:false,available:true,stale:false,error:'',lastUpdated:clock(),httpStatus,value,json:jsonAvailable?json:'',jsonAvailable};
           entry.snapshot=snapshot;notify(entry);complete(snapshot);
         }catch(error){
           if(!current())return;
@@ -1583,7 +1618,7 @@ const createComponentIntegrationService=function createComponentIntegrationServi
           // our fixed diagnostics; tokens, headers and browser exception text stay private.
           const message=timedOut?'HTTP request timed out':error?.name==='AbortError'?'Request cancelled':
             error?.message==='The endpoint changed. Set credentials for the new origin in Credentials.'?error.message:
-            /^(HTTP \d{3}|HTTP response exceeds 64 KiB|JSON text output exceeds 2000 characters|JSON numbers must be finite|The response (?:must have a JSON content type|is not valid JSON)|The JSON pointer does not identify a value|Expected a finite number, boolean, or string|Invalid HTTP credential configuration)/.test(error?.message||'')?error.message:
+            /^(HTTP \d{3}|HTTP table: |HTTP response exceeds 64 KiB|JSON text output exceeds 2000 characters|JSON numbers must be finite|The response (?:must have a JSON content type|is not valid JSON)|The JSON pointer does not identify a value|Expected a finite number, boolean, or string|Invalid HTTP credential configuration)/.test(error?.message||'')?error.message:
             'HTTP request failed. Check the endpoint, CORS, and network connection.';
           const snapshot={...entry.snapshot,revision:++revision,status:'error',loading:false,available:false,stale:entry.snapshot.lastUpdated>0,error:message.slice(0,2000),httpStatus};
           entry.snapshot=snapshot;notify(entry);complete(snapshot);
@@ -1696,7 +1731,7 @@ const componentHttpResponseEventState=function componentHttpResponseEventState(i
     const events=[],success=snapshot.status==='ready',operation=caps.httpSource.method==='POST'?'httpPost':'httpGet';
     if(success && snapshot.available){
       if(caps.outputs.value?.event)events.push({port:'value',payload:snapshot.value});
-      if(caps.outputs.json?.event)events.push({port:'json',payload:snapshot.json});
+      if(caps.outputs.json?.event && snapshot.jsonAvailable!==false)events.push({port:'json',payload:snapshot.json});
     }
     const port=caps.actionEvents?.[operation]?.[success?'success':'failure'];
     if(port)events.push({port,payload:success?snapshot.json:snapshot.error});
@@ -1707,7 +1742,10 @@ const componentHttpResponseEventState=function componentHttpResponseEventState(i
     Object.defineProperties(state,{
       [Symbol.for('simplecanvas.events')]:{value:events},
       [Symbol.for('simplecanvas.eventBatch')]:{value:true}
-    });return state;
+    });
+    if(success && snapshot.available && caps.httpSource.valueType==='table')
+      Object.defineProperty(state,Symbol.for('simplecanvas.httpTableResponse'),{value:snapshot});
+    return state;
   };
 const captureHttpHostIntent=function captureHttpHostIntent(item,record,provenance){
     return {item,type:record.caps.httpSource.method==='POST'?'httpPost':'httpGet',provenance,
@@ -3198,8 +3236,35 @@ const prepareAcceptedComponentEvents=async function prepareAcceptedComponentEven
       if(!owners.has(item))owners.set(item,createSmartExecution(item,valid));
       return (await requestSmartSandbox({method:'call',src:item.script,fn,args},item,owners.get(item))).result;
     };
-    try{return await prepareComponentEventDelivery(scene,source,next,call,valid,records);}
+    try{
+      const captured=next[Symbol.for('simplecanvas.httpTableResponse')];
+      if(captured && componentHasEventReceivers(scene,source,records,componentReplyEvents(next).map(event=>event.port)))
+        records=await componentHttpResponseRecords(scene,source,captured,call,valid,records);
+      return await prepareComponentEventDelivery(scene,source,next,call,valid,records);
+    }
     finally{for(const owner of owners.values())disposeSmartExecution(owner);}
+  };
+const componentHttpResponseRecords=async function componentHttpResponseRecords(scene,source,snapshot,call,valid,records){
+    // A queued completion samples its own table, even after a later reply arrived.
+    // Recompute only its pure descendants; stored values and unrelated sources keep
+    // the accepted graph's baseline. This pass cannot run transitions or host actions.
+    const affected=new Set([source]),byUid=new Map(scene.map(item=>[item.uid,item]));
+    let changed=true;
+    while(changed){
+      changed=false;
+      for(const item of scene){
+        const caps=records.get(item)?.caps;
+        if(affected.has(item) || !caps?.compute || caps.publish || caps.transition || caps.datasetOwner || caps.httpSource || caps.mqttSource || caps.mqttConfig || caps.mqttPublish)continue;
+        if(Object.values(componentRuntimeBindings(item,caps,scene)).some(binding=>affected.has(byUid.get(binding.uid)))){affected.add(item);changed=true;}
+      }
+    }
+    return evaluateComponentGraph(scene,(item,hook,args)=>{
+      const record=records.get(item);
+      if(hook==='caps')return record?.caps;
+      if(!affected.has(item) && ['compute','publish'].includes(hook))return record?.io?.outputs||{};
+      return call(item,hook,args);
+    },valid,{datasets:records.datasets,query:records.query,
+      integrationSource:item=>item===source?snapshot:records.get(item)?.io?.source});
   };
 const componentScalar=function componentScalar(value,type){
     if(!['number','string','boolean'].includes(type) || typeof value!==type ||
@@ -4002,6 +4067,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
         if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource || n.caps.mqttPublish){
           context.source={...n.integrationSource};
           if(!context.source.available){delete context.source.value;delete context.source.json;}
+          else if(context.source.jsonAvailable===false)delete context.source.json;
         }
         const tables=componentTables(args[0],n.caps.inputs,pool,DATA_LIMITS.rows);
         if(Object.keys(tables).length){
@@ -4019,10 +4085,13 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
     // row indices from an earlier round; reusing its dataset ID for newer rows would reinterpret
     // those indices and emit transient values that edge-sensitive consumers could latch.
     const materialize=(n,value)=>{
-      const outputs=normalizeComponentOutputs(value,n.caps.outputs,pool),tables={};
+      const withheld=componentIntegrationOutputErrors(n.caps,n.integrationSource);
+      const restricted=Object.keys(withheld).length>0;
+      const outputs=normalizeComponentOutputs(
+        restricted?Object.fromEntries(Object.entries(value).filter(([name])=>!withheld[name])):value,
+        restricted?Object.fromEntries(Object.entries(n.caps.outputs).filter(([name])=>!withheld[name])):n.caps.outputs,pool),tables={};
       // Unavailable source data is not a usable fallback value. Keep status ports live,
       // while only a current successful response can drive data consumers.
-      if((n.caps.httpSource || n.caps.mqttSource) && !n.integrationSource?.available){delete outputs.value;delete outputs.json;}
       for(const [port,value] of Object.entries(outputs))if(value && typeof value==='object' && value.table){
         const owner=n.item.uid+'\u0000'+port;
         let id=owners.get(owner);
@@ -4139,10 +4208,11 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
     let unavailableIntegrations=false;
     for(const n of nodes)if(!n.fatal && (n.caps?.httpSource || n.caps?.mqttSource)){
       n.integrationSource=options.integrationSource?.(n.item,n.caps)||{revision:0,status:'idle',loading:false,available:false,stale:false,error:'',lastUpdated:0,json:''};
-      if(!n.integrationSource.available){
-        unavailableIntegrations=true;delete n.outputs.value;delete n.outputs.json;
-        const error=n.integrationSource.error || (n.integrationSource.loading?'Source is still loading':'Source has no current result');
-        n.record.outputErrors={value:{error,transient:true,unknown:true,unavailable:true},json:{error,transient:true,unknown:true,unavailable:true}};
+      const withheld=componentIntegrationOutputErrors(n.caps,n.integrationSource);
+      if(Object.keys(withheld).length){
+        unavailableIntegrations=true;
+        for(const name of Object.keys(withheld))delete n.outputs[name];
+        n.record.outputErrors=withheld;
       }
     }
     if(unavailableIntegrations){
@@ -4311,10 +4381,8 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
             next.record.io=componentIo(inputs,next.outputs,n.caps,ownedPool({...pool,...next.tables}));
             if(n.caps.httpSource || n.caps.mqttConfig || n.caps.mqttSource || n.caps.mqttPublish){
               next.record.io.source=n.integrationSource;
-              if((n.caps.httpSource || n.caps.mqttSource) && !n.integrationSource.available){
-                const error=n.integrationSource.error || (n.integrationSource.loading?'Source is still loading':'Source has no current result');
-                next.record.outputErrors={value:{error,transient:true,unknown:true,unavailable:true},json:{error,transient:true,unknown:true,unavailable:true}};
-              }
+              const withheld=componentIntegrationOutputErrors(n.caps,n.integrationSource);
+              if(Object.keys(withheld).length)next.record.outputErrors=withheld;
             }
             if(n.caps.workspaceEndpoint?.direction==='receive'){
               const scope=componentWorkspace(list);
@@ -4514,11 +4582,17 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
         for(const n of nodes)for(const [name,action] of Object.entries(n.actions||{}))if(action.type==='syncTable'){
           const before=n.liveActions[name],config=JSON.stringify([n.bindings[action.source]||null,n.literals[action.source]||null,n.literals[action.input]||null]);
           const provenance=sourceProvenance(n,action),cyclic=sourceProvenance(n,action,true).cycle;
-          n.liveActions[name]={enabled:action.enabled,config,stamp:provenance.stamp,cyclic,healthy:!n.record.error};
+          // A transiently unavailable publication is a waiting baseline, not a
+          // failed copy. Broken references/schema still report a configuration
+          // error once. Recovery publishes once even if the table is unchanged.
+          const binding=n.bindings[action.source],source=binding && byUid.get(binding.uid);
+          const status=source?.record.outputErrors?.[binding.port]||source?.record;
+          const healthy=!n.record.error && status?.unavailable!==true;
+          n.liveActions[name]={enabled:action.enabled,config,stamp:provenance.stamp,cyclic,healthy};
           liveBaselines.set(n.item.uid,n.liveActions);
           // Restored scenes observe a baseline. A deliberate enable/rebind or a new source
           // publication applies once; destination-only edits cannot change this source stamp.
-          if(options.historical || n.record.error || !before || !action.enabled || before.healthy && before.enabled && before.config===config && before.stamp===provenance.stamp && before.cyclic===cyclic)continue;
+          if(options.historical || !healthy || !before || !action.enabled || before.healthy && before.enabled && before.config===config && before.stamp===provenance.stamp && before.cyclic===cyclic)continue;
           const intent={id:++dataActionSerial,item:n.item,name,...action,at:now,script:n.item.script,bindings:JSON.stringify(n.bindings)};
           try{
             if(cyclic)throw new Error('Live Dataset sources cannot form feedback loops. Use Manual updates for this connection.');
@@ -4591,7 +4665,7 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
       timeline.derivedOwners=new Map([...owners].filter(([key,id])=>Object.hasOwn(derived,id) && byUid.has(key.split('\u0000')[0])));timeline.derivedOrigins=origins;
       timeline.tableVersions=new Map([...versions].filter(([id])=>Object.hasOwn(pool,id)));timeline.tableRevision=tableRevision;
     }
-    const records=new Map(nodes.map(n=>[n.item,n.record]));records.datasets=pool;records.datasetOwners=datasetOwners;return records;
+    const records=new Map(nodes.map(n=>[n.item,n.record]));records.datasets=pool;records.datasetOwners=datasetOwners;records.query=query;return records;
   };
 const evaluateComponentGraph=async function evaluateComponentGraph(list,call,valid=()=>true,options={}){
     return runComponentEvaluation(list,call,valid,options);
@@ -4786,7 +4860,7 @@ const settleComponentTimeline=async function settleComponentTimeline(list,call,v
       timeline.signature=componentGraphSignature(list);
       timeline.committedScene=working.map(item=>({item:originals.get(item),snapshot:copy(originals.get(item))}));
       timeline.committedDatasets=dataPool;timeline.committedQuery=query;timeline.committedQueryRevision=queryRevision;
-      const result=new Map([...records].map(([item,record])=>[originals.get(item),record]));result.datasets=records.datasets;result.datasetOwners=records.datasetOwners;return result;
+      const result=new Map([...records].map(([item,record])=>[originals.get(item),record]));result.datasets=records.datasets;result.datasetOwners=records.datasetOwners;result.query=records.query;return result;
     }finally{
       for(const item of temporary)disposeSmartExecution(smartItemExecutions.get(item));
     }

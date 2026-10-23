@@ -49,7 +49,7 @@ test('HTTP builtin presents manual actions and reads transient results without c
 });
 
 test('automatic reads and explicit POST examples wire controls, completion logs and captured JSON drafts',()=>{
-  const workspace=buildHttpIntegrationsExample();assert.equal(workspace.tabs.length,3);
+  const workspace=buildHttpIntegrationsExample();assert.equal(workspace.tabs.length,4);
   const ids=new Set();
   for(const tab of workspace.tabs){
     for(const item of tab.items){assert.equal(ids.has(item.uid),false);ids.add(item.uid);}
@@ -64,6 +64,25 @@ test('automatic reads and explicit POST examples wire controls, completion logs 
   assert.deepEqual(writer.bindings.body,{uid:'http-post-body',port:'text'});
   assert.deepEqual(writer.eventBindings.send,{uid:'http-post-trigger',port:'value'});
   assert.deepEqual(post.find(item=>item.uid==='http-post-log').eventBindings.line,{uid:'http-post-source',port:'completed'});
+});
+
+test('HTTP table example separates transient flow from an owned editable Live copy',()=>{
+  const workspace=buildHttpIntegrationsExample(),tab=workspace.tabs[3],byId=new Map(tab.items.map(item=>[item.uid,item]));
+  assert.equal(tab.name,'HTTP tables');
+  const source=byId.get('http-table-source'),owner=byId.get('http-table-owner'),editor=byId.get('http-table-editor');
+  assert.equal(source.state.valueType,'table');assert.equal(source.inputValues.path,'/items');
+  assert.equal(source.inputValues.url,'/examples/api/stock');assert.equal(Object.hasOwn(source.state,'value'),false);
+  assert.deepEqual(byId.get('http-table-filter').bindings.data,{uid:source.uid,port:'value'});
+  assert.deepEqual(byId.get('http-table-chart').bindings.data,{uid:'http-table-filter',port:'data'});
+  assert.deepEqual(byId.get('http-table-download').bindings.data,{uid:'http-table-filter',port:'data'});
+  assert.equal(byId.get('http-table-view').state.editDataset,false);
+  assert.equal(owner.datasetOwner,'data');assert.equal(owner.state.updateMode,'Live');assert.equal(owner.state.allowReaderUpdates,true);
+  assert.deepEqual(owner.bindings.source,{uid:source.uid,port:'value'});
+  assert.deepEqual(editor.bindings.data,{uid:owner.uid,port:'data'});assert.equal(editor.state.editDataset,true);assert.equal(editor.state.allowReaderEdit,true);
+  const stored=tab.datasets[owner.inputValues.data.datasetId],fixture=JSON.parse(fs.readFileSync(path.join(root,'examples/http-stock.json'),'utf8'));
+  assert.deepEqual(stored.rows,[],'stored records begin empty; export is not a fetch');
+  assert.deepEqual(stored.columns.map(column=>[column.key,column.type]),[['item','string'],['quantity','number']]);
+  assert.equal(fixture.items.length,3);for(const record of fixture.items){assert.equal(typeof record.item,'string');assert.equal(typeof record.quantity,'number');}
 });
 
 test('HTTP POST declares explicit sends only and displays a successful empty response',()=>{
@@ -93,11 +112,11 @@ function fixture(t){
 test('HTTP example publishes its JSON and HTML pair only after a successful export',async t=>{
   const f=fixture(t);
   await updateHttpIntegrationsExample({root:f.root,exportReader:async({workspacePath,readerPath,tabCount})=>{
-    assert.equal(tabCount,3);assert.equal(fs.readFileSync(f.json,'utf8'),'{"previous":true}\n');
+    assert.equal(tabCount,4);assert.equal(fs.readFileSync(f.json,'utf8'),'{"previous":true}\n');
     assert.equal(JSON.parse(fs.readFileSync(workspacePath,'utf8')).tabs[0].id,'http-reads');
     fs.writeFileSync(readerPath,'<title>HTTP example</title>');
   }});
-  assert.equal(JSON.parse(fs.readFileSync(f.json,'utf8')).tabs.length,3);
+  assert.equal(JSON.parse(fs.readFileSync(f.json,'utf8')).tabs.length,4);
   assert.equal(fs.readFileSync(f.html,'utf8'),'<title>HTTP example</title>');
 });
 

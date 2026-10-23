@@ -257,7 +257,7 @@ Share runtime helpers between editor and export throughout.
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
 | 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
 | 5. Authoring and reader workflow — complete on branch | Isolated Run preview, reusable property controls, searchable binding sources with repair feedback, and discard-on-return with explicit result downloads; initial visual wiring is delivered in stage 3 | An author places, configures and connects components, operates a preview with layout tools hidden, returns without changing the source, then saves, reopens and exports the workspace. Spreadsheet retains its specialized editor. |
-| 6. External integrations — complete on branch | Shared host contracts, manual/automated HTTP GET, explicit JSON POST and MQTT Config/Subscribe/Publish | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT connections share explicit Config references, preserve retained-message baselines, and recover with stale/reconnect status. Workers remain isolated. |
+| 6. External integrations — complete on branch | Shared host contracts, manual/automated HTTP GET, explicit JSON POST, scalar/table HTTP response mapping and MQTT Config/Subscribe/Publish | Typed/JSON hybrid outputs, transient table flows, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT connections share explicit Config references, preserve retained-message baselines, and recover with stale/reconnect status. Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
 
@@ -2724,14 +2724,15 @@ Run inherits current session credentials into a separate host store and service 
 returning cancels its pending requests and does not change the authored workspace or credentials.
 
 The [separate example workspace](../examples/http-integrations.json) and
-[self-contained HTML](../examples/http-integrations.html) contain three sketches: manual reads,
-automatic reads with a completion log, and JSON build → explicit POST → response log. The first
+[self-contained HTML](../examples/http-integrations.html) contain four sketches: manual reads,
+automatic reads with a completion log, JSON build → explicit POST → response log, and HTTP tables
+feeding direct views plus an editable Live Dataset. The first
 uses two supplied JSON files, mapped gauges, JSON extract, a clock and a local slider.
 `node tools/serve-http-example.cjs` serves the repository root so
 `/examples/http-reading.json` and `/examples/http-reading-alternate.json` resolve in the editor,
 Run and reader. A deployment in a subdirectory needs the corresponding URL prefix. Opening the
 HTML offline still shows the drawing and local controls; Refresh reports unavailability.
-The development server enables CORS only for its two public JSON files and demo API endpoints. Run keeps its opaque
+The development server enables CORS only for its public JSON fixtures and demo API endpoints. Run keeps its opaque
 sandbox origin, so its endpoints must permit `Origin: null` (or `*` for public responses).
 Browser local-network permissions remain separate. Run delegates the browser's network
 permission to its isolated frame so Chromium can ask for access, without enabling
@@ -2906,10 +2907,11 @@ particular artifact. Credential inclusion does not select startup or authorize a
 still obey endpoint authentication/CORS, including POST preflight and Run's opaque origin, and
 browser local-network permissions. Static export generation never contacts endpoints.
 
-The dedicated three-sketch HTTP example demonstrates independent manual reads, enabled polling,
+The initial three-sketch HTTP example demonstrated independent manual reads, enabled polling,
 URL changes, Refresh events, repeated completion logging and JSON build → explicit POST. It
 uses local fixtures and an in-memory test endpoint. Its offline drawing remains usable, with
-visible network errors; saved last-known snapshots and table response mapping stay deferred.
+visible network errors. The later HTTP-table extension below adds a fourth sketch; saved last-known
+source snapshots remain deferred.
 
 Acceptance covers editor, Run and downloaded HTML: pending requests leave controls/timers
 responsive; sources do not overlap polls; rapid changes select the latest result; restored high
@@ -3105,7 +3107,8 @@ component that loses its Publish capability retires its pending operation. Neith
 an abandoned command queued for reconnect. Earlier 6.3 test-synchronization fixes are included in
 the green full-suite run.
 
-Saved offline snapshots, table/object response mapping and additional protocols remain later work.
+The subsequent HTTP-table extension below adds table response mapping. Saved offline snapshots,
+custom object/column mapping and additional protocols remain later work.
 Broker testing covers local WebSocket listeners and password authentication; deployment TLS,
 reverse-proxy origin policies and physical-device behavior remain environment-specific checks.
 
@@ -3195,6 +3198,66 @@ Final verification with Node 24.19.0 passes the complete Chromium suite **1,734/
 no skips and local Mosquitto scenarios enabled. The application runtime and self-contained reader
 artifacts are unchanged; the only shipped metadata correction is the two explicit HTTP defaults.
 
+### HTTP table responses — 2026-10-23
+
+Existing **HTTP GET** and **HTTP POST** gain **Response type: Table**. This extends their source
+role; it does not introduce a second Dataset owner or a combined HTTP/Dataset component. The
+ordinary `value` output keeps its port identity and becomes a table port labelled **Table**.
+It can feed Filter, Sort, Aggregate, Dataset editor, Spreadsheet, Chart and Download table
+directly, or feed **Dataset → Source** for an editable stored copy.
+
+HTTP owns the asynchronous request and transient result; Dataset owns authoritative editable
+records. Dataset's Manual Replace/Append commands capture incoming rows, while Live mode copies
+successful source publications and overwrites local edits. Existing ownership, schema, history
+and reader-update checks apply. An unavailable HTTP source cannot drive a direct consumer, but
+it does not hide an independently stored Dataset. No HTTP response silently alters a Dataset's
+column definitions or writes edits upstream. Run discards its own changes on return; explicit
+result downloads remain available.
+Live mode waits without issuing failed copy commands while the source is loading or unavailable;
+a valid refresh replaces edits once, including when its rows equal the preceding response.
+
+JSON Pointer selects either a nonempty array of flat record objects or a typed
+`{name?,columns:[{key,name?,type}],rows:[...]}` table. Record arrays use the existing import
+rules: first-seen column order, consistent non-null scalar types, missing cells as null and
+all-null columns inferred as text. Explicit columns allow zero rows. Bare `[]` is rejected
+with guidance because its schema is unknown; it does not depend on a previous session's data.
+Nested cell objects/arrays, mixed types and existing table-limit violations fail atomically.
+Responses remain bounded to 64 KiB, with at most 1,000 rows, 32 columns and the existing cell limits.
+
+Table publication is independent of the 2,000-character JSON text-port limit. Larger valid
+tables succeed with `jsonAvailable:false` and a withheld `json` output; smaller responses
+retain complete compact JSON. Table ports carry current values, without table hybrid events.
+The existing `completed` event still identifies each accepted successful response, carrying
+its JSON text when available and empty text otherwise. `rowCount` is exposed in Table mode.
+Completion-driven Dataset actions use the corresponding captured response, including through
+pure table transforms, rather than sampling a newer in-flight request's result.
+
+The fourth HTTP demo sketch, **HTTP tables**, contrasts a direct filter/chart/read-only table
+with an editable Live Dataset and includes filtered CSV/JSON downloads. The local
+`/examples/api/stock` endpoint changes one quantity on each GET; `?empty=1` supplies a typed
+empty table, while `?status=503` demonstrates preserved stored data alongside unavailable direct
+views. `examples/http-stock.json` is a fixed fixture with the same columns. Both source-update
+and reader-cell-edit permissions are explicitly enabled for the stored-copy demonstration.
+
+Further work: authored field-to-column mapping and nested-record flattening; saved offline
+source snapshots with freshness labels; and a separate table-to-request-body contract if needed.
+Table response mode does not expand the existing JSON POST body size or authorize automatic writes.
+
+Verification covers typed and inferred schemas, empty/invalid/oversized responses, immutable
+source snapshots, per-port availability, queued response capture through Sort, cancellation,
+and unrelated graph baselines. The dedicated browser suite passes **11/11 in Chromium and
+11/11 in WebKit**, including actual Edit configuration, Live overwrite/wait behavior, explicit
+missing-source rejection, isolated Run, fresh HTML, downloads and reader permissions. Existing
+HTTP/inspector/export checks pass **47/47 in WebKit**; the real local-network Run check also passes
+in both engines. All four self-contained readers were regenerated. The fourth HTTP sketch was
+visually checked against the local server, and Table-mode inspectors were checked at 390 pixels.
+Broader verification corrected the catalog's JSON-availability metadata, scoped the multi-sketch
+HTTP test's locators, and made the clock test read an accepted graph after inspector changes.
+Final verification with Node 24.19.0 passes the complete Chromium suite **1,760/1,760**, with
+no skips and local Mosquitto scenarios enabled. The final HTTP table and Live Dataset browser
+checks pass **15/15 in WebKit**. Live source waiting preserves the existing one-time errors for
+broken references and incompatible schemas; only transient unavailable publications wait quietly.
+
 ## Decisions before each stage
 
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
@@ -3226,7 +3289,8 @@ artifacts are unchanged; the only shipped metadata correction is the two explici
 5. **Steps 6.1/6.2/6.4 and HTTP 6.5 — implemented on branch:** Shared transient results,
    independent requests, credentials and explicit artifact inclusion underpin manual/automated
    GET and captured JSON POST. Polling/change/startup policies stay separate from Send; completion
-   events preserve repeated responses. Object/table response contracts and offline snapshots remain extensions.
+   events preserve repeated responses. The HTTP-table extension adds direct transient table flows
+   and existing Dataset-copy workflows. Custom field mapping and offline source snapshots remain extensions.
 6. **Steps 6.3 and MQTT 6.5 — implemented on branch:** Config/Subscribe establish client IDs,
    reconnect, QoS 0 readings and retained-message baselines. Publish captures explicit QoS 1 sends,
    with Retain off, separate broker acknowledgements, and no offline queue/retry/replay. The phase-wide

@@ -90,6 +90,12 @@ the next command. No-auth mode omits Authorization even if session credentials e
 lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
 See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
 `tests/http-automation-runtime.test.cjs`.
+HTTP Table responses publish transient, immutable tables through the existing `value` port.
+Use ordinary table flows or Dataset Source/Live/Replace/Append to create an editable stored copy;
+HTTP never owns a document dataset. Typed `{columns,rows}` responses support empty results;
+record arrays infer each response's schema independently. JSON text availability is separate from
+table availability, and completion-driven table actions sample their captured response through
+pure transforms. Keep these contracts in editor, Run and export; see `tests/http-table-runtime.test.cjs`.
 MQTT Config/Subscribe/Publish share host-owned connections through explicit `mqttBinding` sketch/component
 references. Draft URL/client-ID changes apply only on Connect; retained/initial messages establish
 readings without events. Keep generation checks, bounded reconnect, stale/unavailable value handling

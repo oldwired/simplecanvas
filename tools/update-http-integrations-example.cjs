@@ -20,7 +20,7 @@ function buildHttpIntegrationsExample({root:directory=root}={}){
     const values=Object.fromEntries(Object.entries(ports).filter(([,port])=>Object.hasOwn(port,'default')).map(([key,port])=>[key,copy(port.default)]));
     return {type:'smart',uid,componentApi:2,componentName:name,x,y,color:'#64748b',size:1.5,fill:true,fillColor:'#ffffff',
       strokeOn:true,textColor:'#334155',fontFamily:'sans',fontSize:16,font:'16px sans-serif',...style,
-      script:source,...options,state,inputValues:{...values,...options.inputValues}};
+      script:source,...(definition.datasetOwner?{datasetOwner:definition.datasetOwner}:{}),...options,state,inputValues:{...values,...options.inputValues}};
   }
   const text=(uid,value,x,y,w=1220,h=48,size=18)=>({type:'text',uid,text:value,x,y,w,h,size:1,color:'#334155',textColor:'#334155',
     fontFamily:'sans',fontSize:size,font:`${size}px sans-serif`,align:'left',strokeOn:false,fill:false,fillColor:'#ffffff'});
@@ -82,9 +82,26 @@ function buildHttpIntegrationsExample({root:directory=root}={}){
       inputValues:{showScrollbar:true},eventBindings:{line:bind('http-post-source','completed')}}),
     text('http-post-help','The demo server keeps writes only in memory. Reusing a key with the same JSON returns the original response; changing the JSON under that key returns 409. No write is retried automatically. A timeout or response error cannot prove the server did not accept a write.',40,770,700,115,16),
   ];
-  const tab=(id,name,scene)=>({id,name,items:scene,datasets:{},assets:{}});
+  const tableRows=[
+    text('http-table-title','HTTP tables · a live flow or an editable dataset',40,24,1240,44,28),
+    text('http-table-intro','Click Refresh. The same response feeds a read-only filter/chart and a separate editable Dataset. Edit a stored quantity, then Refresh again: Live mode replaces those edits with the new response.',40,78,1240,60,18),
+    component('http-source.js','http-table-source','Stock from HTTP',40,158,{state:{valueType:'table'},inputValues:{url:'/examples/api/stock',path:'/items'}}),
+    component('table-filter.js','http-table-filter','Flow: quantity ≥ 10',420,158,{w:340,h:150,inputValues:{column:'quantity',operation:'≥',number:10},bindings:{data:bind('http-table-source')}}),
+    component('data-bar-chart.js','http-table-chart','Filtered live response',800,158,{w:470,h:242,inputValues:{category:'item',value:'quantity'},bindings:{data:bind('http-table-filter','data')}}),
+    text('http-table-flow-label','Direct flow · no stored records',40,400,560,36,20),
+    component('data-table.js','http-table-view','Response rows · read-only',40,438,{w:560,h:200,state:{maxRows:5,maxColumns:2},bindings:{data:bind('http-table-source')}}),
+    text('http-table-store-label','Dataset · owns an editable copy',680,400,590,36,20),
+    component('data-source.js','http-table-owner','Stock · Live copy',680,438,{state:{updateMode:'Live',allowReaderUpdates:true},inputValues:{data:{datasetId:'http-stock'}},bindings:{source:bind('http-table-source')}}),
+    text('http-table-edit-help','Change a quantity below.\nRefresh overwrites edits.\nSource failures keep this copy.',1004,448,266,126,15),
+    component('data-table.js','http-table-editor','Stored stock · editable',680,610,{w:590,h:190,state:{maxRows:5,maxColumns:2,editDataset:true,allowReaderEdit:true},bindings:{data:bind('http-table-owner','data')}}),
+    component('data-download.js','http-table-download','Filtered download',40,660,{w:320,h:140,inputValues:{filename:'filtered-http-stock'},bindings:{data:bind('http-table-filter','data')}}),
+    text('http-table-copy-help','HTTP owns the connection and current response. Dataset owns the records. Switch Dataset to Manual in Edit to copy only on Replace or Append.',390,665,230,130,15),
+    text('http-table-help','Refresh changes a quantity. Try /examples/http-stock.json for fixed data, or add ?status=503 to the live endpoint: direct views become unavailable; the stored copy remains. Run discards changes on return; downloads are kept.',40,825,1230,65,16),
+  ];
+  const stock={name:'HTTP stock',columns:[{key:'item',name:'Item',type:'string'},{key:'quantity',name:'Quantity',type:'number'}],rows:[]};
+  const tab=(id,name,scene,datasets={})=>({id,name,items:scene,datasets,assets:{}});
   return {app:'SimpleCanvasWorkspace',version:5,activeIndex:0,tabs:[tab('http-reads','HTTP reads',items),
-    tab('http-automatic','Automatic reads',automatic),tab('http-post','HTTP POST',post)]};
+    tab('http-automatic','Automatic reads',automatic),tab('http-post','HTTP POST',post),tab('http-tables','HTTP tables',tableRows,{'http-stock':stock})]};
 }
 
 async function updateHttpIntegrationsExample({root:directory=root,exportReader=exportWorkspaceReader,io=fs}={}){

@@ -396,7 +396,7 @@ previews outputs without adding a second formula or layout editor.
   signals with Dashboard and Data editor through explicit Publish/Receive endpoints.
 - [HTTP integration example](examples/http-integrations.json) and its
   [self-contained reader](examples/http-integrations.html): independent manual JSON requests,
-  mapped readings and JSON extraction alongside a live clock and responsive slider.
+  automated reads, explicit POSTs, and table responses feeding both a live flow and an editable Dataset.
 - [MQTT integration example](examples/mqtt-integrations.json) and its
   [self-contained reader](examples/mqtt-integrations.html): shared broker connections, typed
   readings, retained-message baselines, fresh-message events, and explicit commands with separate
@@ -415,7 +415,7 @@ numeric. Choose **Raw (exact text)** when you need the original strings without 
 ### Read an HTTP endpoint
 
 Place **HTTP GET**, open **Edit…**, and set its **URL**, **JSON pointer** (for example `/value`),
-and **Value type**. Click **Refresh** to make one GET request. The mapped `value` and complete
+and **Response type**. Click **Refresh** to make one GET request. The mapped `value` and complete
 compact `json` text can feed existing components, including JSON extract. Loading, availability,
 error and last-updated outputs describe the request. Requests run asynchronously: clocks,
 controls, other sources and the rest of the workspace keep processing while a response is pending.
@@ -435,9 +435,35 @@ pulses/events; clicking the component's own **Refresh** remains available when i
 Automatic requests are limited to 30 per source in 10 seconds; manual Refresh is independent.
 
 Connect a pulse or event to **Refresh** for one deliberate read. A restored high Boolean value
-only establishes the trigger baseline. Every successful request emits the captured `value` and
+only establishes the trigger baseline. Every successful scalar request emits the captured `value` and
 `json` through their hybrid outputs, plus a `completed` event carrying JSON text; failures emit
 `failed` error text. Equal responses are separate occurrences, so a Memo log can record each one.
+
+Choose **Table** as the Response type to fetch records instead of a scalar. The same `value` output,
+labelled **Table** in this mode, connects directly to Filter, Sort, Aggregate, Dataset editor,
+Spreadsheet, charts and table downloads. Connect it to **Dataset → Source** when you need an
+editable stored copy. Dataset's **Manual** mode copies on Replace or Append; **Live** mode replaces
+the copy on a successful source update, including overwriting local edits. Source errors leave the
+stored copy intact. In Run/HTML, enable **Allow source updates in HTML export** on the Dataset and
+**Allow reader edits** on its Dataset editor independently. Editing the copy never writes to HTTP.
+
+The pointer selects a nonempty array of flat records, such as
+`[{"item":"Apples","quantity":12},{"item":"Pears","quantity":8}]`. Columns are inferred from the
+complete response; cells must be consistently typed text, numbers, Booleans or null. Missing fields
+become null. A typed `{columns,rows}` object also works, including zero rows:
+
+```json
+{"columns":[{"key":"item","type":"string"},{"key":"quantity","type":"number"}],"rows":[]}
+```
+
+A bare `[]` has no column definitions and reports a mapping error. Nested objects/arrays inside
+cells require preprocessing; this version does not flatten them. Tables stay within 64 KiB per
+HTTP response and the existing 1,000-row / 32-column dataset limits. Their `rowCount` output
+reports the current size. Table connections carry values; use `completed` for occurrence triggers.
+If the complete response exceeds the 2,000-character text-port limit, the table still succeeds:
+`jsonAvailable` is false, `json` is withheld, and `completed` carries empty text. Smaller responses
+retain the complete JSON text. HTTP results stay transient until explicitly copied into a Dataset
+or another storing component; existing Dataset schema checks still apply.
 
 **Authentication** in HTTP GET/POST Edit selects **Session credentials** (default),
 **No authentication**, **Bearer token input**, or **Basic auth inputs**. Bearer mode adds a text
@@ -463,12 +489,13 @@ starts with its own live-result lifetime; returning cancels its requests and dis
 
 **JSON pointer** chooses the response value for the typed `value` output. For
 `{"sensor":{"temperature":21.5},"readings":[10,20]}`, `/sensor/temperature` selects `21.5` and
-`/readings/0` selects `10`. Empty selects the root, which must match the chosen scalar Value type.
-The `json` output carries the complete response after successful mapping. Pointer syntax is shared
+`/readings/0` selects `10`. Empty selects the root, which must match the chosen Response type.
+The `json` output carries the complete response after successful mapping when `jsonAvailable` is true. Pointer syntax is shared
 with JSON extract; property names containing `/` use `~1`, and names containing `~` use `~0`.
 
-Responses are limited to 64 KiB of received bytes and 2,000 characters of compact JSON text,
-matching the current text-port contract. Requests time out after the configured 1–30 seconds
+Responses are limited to 64 KiB of received bytes. Scalar mode also requires the complete compact
+JSON to fit 2,000 characters; Table mode can publish rows independently of that text-port limit.
+Requests time out after the configured 1–30 seconds
 and do not retry automatically. The endpoint must permit browser requests; CORS still applies.
 Run keeps its isolated origin, so even a server beside the editor must allow its `Origin: null`
 request (or use `Access-Control-Allow-Origin: *` for public, credential-free responses).
@@ -505,9 +532,12 @@ Open `http://127.0.0.1:8000/examples/http-integrations.html`, or open the editor
 server enables CORS only for the example JSON/API endpoints. Run can use them where the
 browser also permits its isolated frame to access the local network.
 Add `?delay=2500` to a source URL to see the clock and slider continue during a slow request.
-The three sketches cover manual reads, automatic reads/event logs, and JSON build → POST.
+The four sketches cover manual reads, automatic reads/event logs, JSON build → POST, and HTTP tables.
 The first reads `/examples/http-reading.json` and `/examples/http-reading-alternate.json`;
 change a file, then Refresh. `/examples/api/reading` changes its reading on each request, and
+`/examples/api/stock` changes the first stock quantity on each request. Its fourth sketch compares
+a direct table flow with an editable Live Dataset; `/examples/http-stock.json` supplies the same
+records as a fixed fixture. Add `?empty=1` to the stock endpoint for a typed empty table.
 `/examples/api/echo` accepts POSTs in memory only. Add `?status=503` for a controlled failure or
 `?status=204` to the POST endpoint for an empty acknowledgement. A reused idempotency key returns
 the original response for the same body and HTTP 409 for a different body. Demo records/keys

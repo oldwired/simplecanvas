@@ -10,7 +10,7 @@
   dataActions:{send:{type:'httpPost',trigger:'send'}},
   settings:{
     authMode:{type:'string',default:'session',options:['session','none','bearer','basic'],label:'Authentication'},
-    valueType:{type:'string',default:'number',options:['number','string','boolean'],label:'Value type'},
+    valueType:{type:'string',default:'number',options:['number','string','boolean','table'],label:'Response type'},
     timeoutSeconds:{type:'number',default:10,min:1,max:30,step:1,label:'Timeout (seconds)'},
     showIndicators:{type:'boolean',default:true,label:'Show status details'}
   },
@@ -32,8 +32,9 @@
   },
   httpSource(state){return {auth:this._auth(state),method:'POST',url:'url',path:'path',body:'body',idempotencyKey:'idempotencyKey',valueType:state.valueType,timeoutMs:state.timeoutSeconds*1000};},
   outputs(state){
-    if(!['number','string','boolean'].includes(state.valueType))throw new Error('Choose number, string or boolean as value type');
-    return {value:{type:state.valueType,event:true},json:{type:'string',event:true,label:'JSON text'},
+    if(!['number','string','boolean','table'].includes(state.valueType))throw new Error('Choose number, string, boolean or table as response type');
+    return {value:{type:state.valueType,...(state.valueType==='table'?{label:'Table'}:{event:true})},json:{type:'string',event:true,label:'JSON text'},
+      ...(state.valueType==='table'?{rowCount:{type:'number',label:'Row count'}}:{}),jsonAvailable:{role:'control',type:'boolean',label:'JSON text available'},
       available:{role:'control',type:'boolean'},loading:{role:'control',type:'boolean'},stale:{role:'control',type:'boolean'},
       error:{type:'string'},lastUpdated:{type:'number',label:'Last updated (epoch ms)'},status:{type:'string'},httpStatus:{type:'number',label:'HTTP status'}};
   },
@@ -41,8 +42,10 @@
   initStyle(){return {w:340,h:208,fontSize:16,fill:true,fillColor:'#ffffff',strokeOn:true,color:'#94a3b8',textColor:'#334155',size:1.5};},
   compute(inputs,state,context={}){
     this.outputs(state);
-    const source=context.source||{},empty=state.valueType==='number'?0:state.valueType==='boolean'?false:'';
-    return {value:source.available?source.value:empty,json:source.available?source.json:'',available:source.available===true,
+    const source=context.source||{},table=state.valueType==='table',empty=state.valueType==='number'?0:state.valueType==='boolean'?false:'';
+    const jsonAvailable=source.available===true && source.jsonAvailable!==false;
+    return {...(table?source.available?{value:{table:source.value},rowCount:source.value.rows.length}:{rowCount:0}:{value:source.available?source.value:empty}),
+      json:jsonAvailable?source.json:'',jsonAvailable,available:source.available===true,
       loading:source.loading===true,stale:source.stale===true,error:source.error||'',lastUpdated:source.lastUpdated||0,status:source.status||'idle',httpStatus:source.httpStatus||0};
   },
   _text(value,x,y,w,h,size,style,color=style.textColor||'#334155',weight=400){
@@ -70,13 +73,15 @@
     const text=(value,x,y,ww,hh,size,color,weight)=>this._text(value,x,y,ww,hh,size*scale,style,color,weight);
     const ready=out.available===true,loading=out.loading===true,error=io.error||out.error||'',stale=out.stale===true;
     const setup=!error && !loading && !ready && out.status!=='ready' && !String(io.inputs?.url||'').trim();
-    const formatted=typeof out.value==='number'?Number.isSafeInteger(out.value)?String(out.value):String(Number(out.value.toPrecision(8))):String(out.value??'');
+    const table=state.valueType==='table',columns=io.tables?.outputs?.value?.columns||out.value?.table?.columns;
+    const formatted=table?out.rowCount+' '+(out.rowCount===1?'row':'rows')+(columns?' · '+columns.length+' '+(columns.length===1?'column':'columns'):''):
+      typeof out.value==='number'?Number.isSafeInteger(out.value)?String(out.value):String(Number(out.value.toPrecision(8))):String(out.value??'');
     const message=out.status==='disabled'?'Network disabled':out.status==='cancelled'?'Request cancelled':loading?'Sending…':error?(out.httpStatus>=200 && out.httpStatus<300?'Response error':'Send failed'):ready?(formatted||'(empty)'):out.status==='ready'?'Sent':stale?'Reading is stale':setup?'Set up request':'Ready to send';
     const success=ready || out.status==='ready',color=error?'#b91c1c':undefined;
     const children=[
       {type:'rect',x:0,y:0,w,h,fill:style.fill!==false,fillColor:style.fillColor||'#ffffff',strokeOn:style.strokeOn!==false,color:style.color||'#94a3b8',size:style.size,dash:style.dash},
       text(name,pad,pad,w-pad*2,21*scale,14,undefined,600),
-      text(message,pad,42*scale,w-pad*2,30*scale,ready?24:20,color,600)
+      text(message,pad,42*scale,w-pad*2,30*scale,ready?(table?18:24):20,color,600)
     ];
     if(error)children.push(...this._message(error,pad,80*scale,w-pad*2,12,scale,style,'#b91c1c'));
     else children.push(text(io.inputs?.url||'Enter an HTTP(S) URL in Edit',pad,80*scale,w-pad*2,20*scale,12,'#64748b'));
@@ -87,7 +92,7 @@
       const mapping=(io.inputs?.path||'Root')+' → '+state.valueType;
       children.push(text(error?(updated?'Last received '+updated:'No current reading'):mapping+(updated?' · '+updated:''),pad+15*scale,row*scale,w-pad*2-15*scale,17*scale,11,'#64748b'));
       const policy=out.httpStatus?'HTTP '+out.httpStatus:'Send by button, pulse or event';
-      if(!error)children.push(text(policy,pad,131*scale,w-pad*2,16*scale,11,'#64748b'));
+      if(!error)children.push(text(ready && out.jsonAvailable===false?'JSON text exceeds 2,000 characters':policy,pad,131*scale,w-pad*2,16*scale,11,'#64748b'));
     }
     const sessionAuth=(state.authMode??'session')==='session',y=h-58*scale,bh=40*scale,leftWidth=sessionAuth?(w-pad*3)*.51:w-pad*2;
     const button=(label,x,width,primary)=>[

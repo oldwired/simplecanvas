@@ -19,9 +19,9 @@ function runtime(){
   const declarations=[declarationsBetween('DATA_LIMITS','ITEM_TYPES'),
     declarationsBetween('componentScalar','normalizeComponentSettings'),
     declarationsBetween('componentGraphSignature','editorComponentEvaluation'),
-    app.declaration('createComponentHttpCompletions')];
+    app.declaration('createComponentHttpCompletions'),app.declaration('componentHttpResponseEventState')];
   vm.runInContext(declarations.join('\n')+
-    '\nthis.api={createComponentIntegrationService,createComponentHttpCompletions,normalizeComponentHttpSource,componentHttpConfiguration,componentHttpRequest,componentHttpValue,normalizeComponentActionDeclarations,normalizeComponentActionEvents,captureComponentActionIntent,prepareComponentEventDelivery,normalizeComponentHybridEvents,runComponentEvaluation,settleComponentTimeline,createComponentTimeline,takeComponentDataActions};',scope);
+    '\nthis.api={createComponentIntegrationService,createComponentHttpCompletions,normalizeComponentHttpSource,componentHttpConfiguration,componentHttpRequest,componentHttpValue,componentHttpTable,componentIntegrationOutputErrors,componentHttpResponseEventState,componentHttpResponseRecords,normalizeComponentActionDeclarations,normalizeComponentActionEvents,captureComponentActionIntent,prepareComponentEventDelivery,normalizeComponentHybridEvents,runComponentEvaluation,settleComponentTimeline,createComponentTimeline,takeComponentDataActions};',scope);
   return scope.api;
 }
 const api=runtime();
@@ -46,6 +46,189 @@ test('integration declarations and JSON pointers are bounded and typed',()=>{
   for(const url of ['javascript:alert(1)','file:///tmp/data.json','https://name:secret@data.test/'])
     assert.throws(()=>api.componentHttpRequest(caps,{url,path:'/value'},'https://app.test/'));
   assert.equal(api.componentHttpRequest(caps,{url:'./data.json',path:'/value'},'https://app.test/canvas/').url,'https://app.test/canvas/data.json');
+});
+
+function tableDefinition(file='http-source.js'){
+  const definition=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../examples',file),'utf8'),{Intl,Date});
+  const state={...definition.initState(),valueType:'table'};
+  const declared={apiVersion:2,eventApi:1,integrationApi:1,compute:true,inputs:definition.inputs(state),outputs:definition.outputs(state),httpSource:definition.httpSource(state),
+    dataActions:definition.dataActions,actionEvents:definition.actionEvents,eventInputs:{},eventOutputs:{completed:{types:['string']},failed:{types:['string']}}};
+  api.normalizeComponentHybridEvents(declared);
+  return {definition,state,declared};
+}
+
+test('HTTP table mapping uses flat records or explicit schemas, independently for every response',()=>{
+  const {declared}=tableDefinition();
+  assert.equal(api.normalizeComponentHttpSource(declared.httpSource,declared).valueType,'table');
+  assert.throws(()=>api.normalizeComponentHttpSource(declared.httpSource,{...declared,outputs:{...declared.outputs,value:{type:'number'}}}),/value must have type table/);
+  assert.throws(()=>api.normalizeComponentHttpSource(declared.httpSource,{...declared,outputs:{...declared.outputs,rowCount:{type:'string'}}}),/row count/);
+  assert.throws(()=>api.normalizeComponentHttpSource(declared.httpSource,{...declared,outputs:{...declared.outputs,jsonAvailable:{type:'number'}}}),/availability/);
+  const mapped=api.componentHttpValue({'a/b':{'~':[{fruit:'Apples',quantity:2,active:true,note:null},{fruit:'Pears',quantity:4.5,active:false,later:'added'}]}},'/a~1b/~0','table');
+  assert.deepEqual(plain(mapped),{name:'HTTP response',columns:[{key:'fruit',name:'fruit',type:'string'},{key:'quantity',name:'quantity',type:'number'},
+    {key:'active',name:'active',type:'boolean'},{key:'note',name:'note',type:'string'},{key:'later',name:'later',type:'string'}],
+    rows:[['Apples',2,true,null,null],['Pears',4.5,false,null,'added']]});
+  assert.deepEqual(plain(api.componentHttpTable({name:'Empty inventory',columns:[{key:'quantity',name:'Quantity',type:'number'}],rows:[]})),
+    {name:'Empty inventory',columns:[{key:'quantity',name:'Quantity',type:'number'}],rows:[]});
+  assert.equal(api.componentHttpTable([{quantity:'changed'}]).columns[0].type,'string','inference does not inherit a previous response schema');
+  assert.throws(()=>api.componentHttpTable([]),/Empty rows need a typed/,'a bare empty response cannot silently depend on session history');
+  assert.throws(()=>api.componentHttpValue({},'/missing','table'),/pointer/);
+});
+
+test('HTTP tables reject nested, mixed, unsafe and oversized data without echoing remote names',()=>{
+  const cases=[
+    [[{value:{nested:1}}],/JSON cells/],[[{value:[1]}],/JSON cells/],
+    [[{private_column:1},{private_column:'two'}],/must not mix value types/],
+    [[{'private\ncolumn':1},{'private\ncolumn':'two'}],/must not mix value types/],
+    [[{value:Number.MAX_SAFE_INTEGER+1}],/value limits/],[{columns:[{key:'v',type:'number'}],rows:[[Infinity]]},/value limits/],
+    [JSON.parse('[{"__proto__":1}]'),/Column names/],[[{}],/1–32 columns/],
+    [Array.from({length:1001},()=>({value:1})),/1–1000/],
+    [[Object.fromEntries(Array.from({length:33},(_,index)=>['c'+index,1]))],/32 columns/],
+    [[{value:'x'.repeat(2001)}],/value limits/],
+    [{columns:[{key:'v',type:'number'}],rows:[['1']]},/value limits/],
+    [{columns:[{key:'v',type:'number'},{key:'v',type:'number'}],rows:[]},/Column names/],
+    [{columns:[{key:'v',type:'object'}],rows:[]},/Column type/],
+    [{columns:[{key:'v',type:'number'}],rows:[[1,2]]},/column count/],
+    [{columns:[{key:'v',type:'string'}],rows:Array.from({length:300},()=>['x'.repeat(2000)])},/500,000/]
+  ];
+  for(const [value,expected] of cases)assert.throws(()=>api.componentHttpTable(value),error=>{
+    assert.match(error.message,/^HTTP table:/);assert.match(error.message,expected);
+    assert.doesNotMatch(error.message,/private[_\n]column/);return true;
+  });
+});
+
+for(const method of ['GET','POST'])test('HTTP '+method+' publishes a table beyond the JSON text limit and preserves immutable response snapshots',async()=>{
+  const {state,declared}=tableDefinition(method==='POST'?'http-post.js':'http-source.js');
+  const source={...item(),state,inputValues:{url:'https://data.test/rows',path:'/records',...(method==='POST'?{body:'{}',idempotencyKey:''}:{})}};
+  const data=[{label:'a'.repeat(1500),quantity:2},{label:'b'.repeat(1500),quantity:3}],completions=[];
+  let reply={records:data};
+  const service=api.createComponentIntegrationService({fetch:async()=>json(reply),onComplete:(subject,snapshot)=>completions.push(snapshot)});
+  try{
+    assert.equal(service.start(source,record(source,declared),{origin:'user'}).loading,true);
+    await until(()=>!service.read(source,declared,source.inputValues).loading);
+    const snapshot=service.read(source,declared,source.inputValues);
+    assert.equal(snapshot.status,'ready');assert.equal(snapshot.available,true);assert.equal(snapshot.value.rows.length,2);
+    assert.equal(snapshot.jsonAvailable,false);assert.equal(snapshot.json,'');assert.equal(snapshot.error,'');
+    assert.equal(completions.length,1);assert.equal(completions[0].value.rows[0][1],2);
+    snapshot.value.rows[0][1]=99;snapshot.value.columns[0].name='changed';
+    assert.equal(service.read(source,declared,source.inputValues).value.rows[0][1],2,'a caller cannot mutate the retained HTTP snapshot');
+    assert.equal(service.read(source,declared,source.inputValues).value.columns[0].name,'label');
+    assert.equal(completions[0].value.rows[0][1],2,'an accepted completion owns its result independently of subsequent reads');
+    reply={records:{columns:[{key:'quantity',type:'number'}],rows:[]}};
+    service.start(source,record(source,declared),{origin:'user'});await until(()=>!service.read(source,declared,source.inputValues).loading);
+    const empty=service.read(source,declared,source.inputValues);assert.equal(empty.status,'ready');assert.equal(empty.available,true);assert.equal(empty.value.rows.length,0);assert.equal(empty.jsonAvailable,true);
+    reply={records:[]};service.start(source,record(source,declared),{origin:'user'});await until(()=>!service.read(source,declared,source.inputValues).loading);
+    const invalid=service.read(source,declared,source.inputValues);assert.equal(invalid.status,'error');assert.equal(invalid.available,false);assert.match(invalid.error,/Empty rows need a typed/);
+    assert.equal(completions[0].value.rows[0][1],2,'later table versions never rewrite an earlier completion');
+  }finally{service.dispose();}
+});
+
+test('HTTP table responses still enforce the body limit and preserve an empty POST acknowledgement',async()=>{
+  for(const method of ['GET','POST']){
+    const {declared,state}=tableDefinition(method==='POST'?'http-post.js':'http-source.js');
+    const source={...item(),state,inputValues:{url:'https://data.test/rows',path:'',...(method==='POST'?{body:'{}',idempotencyKey:''}:{})}};
+    let reply=()=>json(Array.from({length:40},()=>({text:'x'.repeat(2000)})));
+    const service=api.createComponentIntegrationService({fetch:async()=>reply()});
+    try{
+      service.start(source,record(source,declared),{origin:'user'});await until(()=>!service.read(source,declared,source.inputValues).loading);
+      const failed=service.read(source,declared,source.inputValues);assert.equal(failed.available,false);assert.match(failed.error,/64 KiB/);
+      if(method==='POST'){
+        reply=()=>new Response(null,{status:204});service.start(source,record(source,declared),{origin:'user'});
+        await until(()=>!service.read(source,declared,source.inputValues).loading);
+        const done=service.read(source,declared,source.inputValues);assert.equal(done.status,'ready');assert.equal(done.available,false);assert.equal(done.httpStatus,204);
+        assert.equal(Object.hasOwn(done,'value'),false,'204 is an acknowledgement, not an invented empty table');
+        const event=api.componentHttpResponseEventState(source,declared,done);
+        assert.deepEqual(plain(event[Symbol.for('simplecanvas.events')]),[{port:'completed',payload:''}]);
+      }
+    }finally{service.dispose();}
+  }
+});
+
+test('table data and status keep flowing when JSON text is too large; stale tables are withheld through cached transforms',async()=>{
+  const {definition,state,declared}=tableDefinition(),source={...item(),state,inputValues:{url:'https://data.test/rows',path:''}};
+  const passthrough={...item('pass'),script:'pass',inputValues:{},bindings:{data:{uid:source.uid,port:'value'}}};
+  const rows={...item('rows'),script:'rows',inputValues:{},bindings:{data:{uid:passthrough.uid,port:'data'}}};
+  const text={...item('text'),script:'text',inputValues:{},bindings:{text:{uid:source.uid,port:'json'}}};
+  const status={...item('status'),script:'status',inputValues:{},bindings:{available:{uid:source.uid,port:'available'},jsonAvailable:{uid:source.uid,port:'jsonAvailable'}}};
+  const definitions={source:declared,pass:{apiVersion:2,compute:true,inputs:{data:{type:'table'}},outputs:{data:{type:'table'}}},
+    rows:{apiVersion:2,compute:true,inputs:{data:{type:'table'}},outputs:{count:{type:'number'},quantity:{type:'number'}}},
+    text:{apiVersion:2,compute:true,inputs:{text:{type:'string'}},outputs:{text:{type:'string'}}},
+    status:{apiVersion:2,compute:true,inputs:{available:{type:'boolean'},jsonAvailable:{type:'boolean'}},outputs:{available:{type:'boolean'},jsonAvailable:{type:'boolean'}}}};
+  const call=async(subject,hook,args)=>{
+    if(hook==='caps')return definitions[subject.uid];
+    if(subject===source)return definition.compute(...args);
+    if(subject===rows)return {count:args[2].tables.data.rowCount,quantity:args[2].tables.data.rows[0][1]};
+    return args[0];
+  };
+  const service=api.createComponentIntegrationService({fetch:async()=>json([{label:'a'.repeat(1500),quantity:2},{label:'b'.repeat(1500),quantity:3}])});
+  const scene=[rows,text,status,passthrough,source],timeline=api.createComponentTimeline(()=>0),before=JSON.stringify(scene);
+  const evaluate=()=>api.settleComponentTimeline(scene,call,()=>true,timeline,{datasets:{},integrationSource:(item,caps,inputs)=>service.read(item,caps,inputs)});
+  try{
+    let graph=await evaluate();assert.match(graph.get(rows).error,/no current result/);
+    service.start(source,graph.get(source),{origin:'user'});await until(()=>service.read(source,declared,source.inputValues).available);
+    graph=await evaluate();assert.equal(graph.get(source).error??null,null);assert.equal(graph.get(rows).error??null,null);
+    assert.equal(graph.get(rows).io.outputs.count,2);assert.equal(graph.get(rows).io.outputs.quantity,2);
+    assert.equal(graph.get(source).io.outputs.rowCount,2);assert.match(graph.get(text).error,/2000 characters/);
+    assert.equal(graph.get(source).io.outputs.json,undefined);assert.deepEqual(plain(graph.get(status).io.outputs),{available:true,jsonAvailable:false});
+    const id=graph.get(source).io.outputs.value.datasetId;assert.ok(graph.datasets[id]);assert.match(id,/^~derived-/);
+    assert.equal(JSON.stringify(scene),before,'direct HTTP tables never enter authored items or datasets');
+    service.cancel(source,'Disconnected');graph=await evaluate();assert.match(graph.get(rows).error,/Disconnected/);
+    assert.equal(graph.get(source).io.outputs.value,undefined);assert.equal(graph.get(source).io.outputs.rowCount,undefined);
+    assert.equal(graph.get(status).io.outputs.available,false);
+  }finally{service.dispose();}
+});
+
+test('a captured table completion samples its own sorted rows while preserving stored and unrelated baselines',async()=>{
+  const {definition,state,declared}=tableDefinition(),source={...item(),state,inputValues:{url:'https://data.test/rows',path:''}};
+  const sortDefinition=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../examples/table-sort.js'),'utf8'));
+  const datasetDefinition=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../examples/data-source.js'),'utf8'));
+  const sort={...item('sort'),script:'sort',state:sortDefinition.initState(),inputValues:{column:'quantity'},bindings:{data:{uid:source.uid,port:'value'}}};
+  const dataset={...item('dataset'),script:'dataset',state:datasetDefinition.initState(),inputValues:{data:{datasetId:'saved'}},
+    bindings:{source:{uid:sort.uid,port:'data'}},eventBindings:{append:{uid:source.uid,port:'completed'}}};
+  const random={...item('random'),script:'random',inputValues:{}},stored={...item('stored'),script:'stored',state:{value:11},inputValues:{},bindings:{input:{uid:source.uid,port:'rowCount'}}};
+  const extraSource={...item('extra'),script:'extra'},mixed={...item('mixed'),script:'mixed',inputValues:{},bindings:{count:{uid:source.uid,port:'rowCount'},sample:{uid:random.uid,port:'value'}}};
+  const datasetCaps={apiVersion:2,eventApi:1,compute:true,datasetOwner:'data',inputs:datasetDefinition.inputs,outputs:datasetDefinition.outputs,
+    dataActions:datasetDefinition.dataActions(dataset.state),eventInputs:{},eventOutputs:{}};
+  api.normalizeComponentHybridEvents(datasetCaps);
+  const declarations={source:declared,sort:{apiVersion:2,compute:true,inputs:sortDefinition.inputs,outputs:sortDefinition.outputs},dataset:datasetCaps,
+    random:{apiVersion:2,compute:true,inputs:{},outputs:{value:{type:'number'}}},stored:{apiVersion:2,publish:true,transition:true,inputs:{input:{type:'number'}},outputs:{value:{type:'number'}}},
+    extra:caps,mixed:{apiVersion:2,compute:true,inputs:{count:{type:'number'},sample:{type:'number'}},outputs:{value:{type:'number'}}}};
+  const table=rows=>({name:'Rows',columns:[{key:'name',name:'Name',type:'string'},{key:'quantity',name:'Quantity',type:'number'}],rows});
+  const snapshot=rows=>({status:'ready',available:true,loading:false,stale:false,error:'',json:'',jsonAvailable:false,httpStatus:200,value:table(rows),lastUpdated:42});
+  const earlier=snapshot([['first-high',9],['first-low',2]]),latest=snapshot([['second',7]]),extra={status:'ready',available:true,value:99,json:'{"value":99}'};
+  const scene=[dataset,stored,mixed,sort,source,extraSource,random],pool={saved:table([['existing',1]])};
+  const calls=[];let randomCalls=0;
+  const call=async(subject,hook,args)=>{
+    if(hook==='caps')return declarations[subject.uid];calls.push([subject.uid,hook]);
+    if(subject===source)return definition.compute(...args);
+    if(subject===sort)return sortDefinition.compute(...args);
+    if(subject===dataset)return datasetDefinition.compute(...args);
+    if(subject===random)return {value:++randomCalls};
+    if(subject===stored){assert.equal(hook,'publish','completion preparation never runs transitions');return {value:args[0].value};}
+    if(subject===mixed)return {value:args[0].count+args[0].sample};
+    const value=args[2].source;return {value:value.value,json:value.json,available:true,loading:false,error:'',lastUpdated:0};
+  };
+  const graph=await api.runComponentEvaluation(scene,call,()=>true,{datasets:pool,integrationSource:item=>item===source?latest:extra});
+  assert.equal(graph.get(dataset).error??null,null);assert.equal(graph.get(source).io.outputs.rowCount,1);
+  const before=JSON.stringify(scene),beforeGraph=JSON.stringify([...graph].map(([item,record])=>[item.uid,record.io])),beforeRandom=randomCalls;
+  calls.length=0;
+  const captured=await api.componentHttpResponseRecords(scene,source,earlier,call,()=>true,graph);
+  assert.equal(captured.get(source).io.outputs.rowCount,2);
+  assert.equal(captured.get(stored).io.outputs.value,11);assert.equal(captured.get(extraSource).io.outputs.value,99);
+  assert.equal(captured.get(random).io.outputs.value,graph.get(random).io.outputs.value);assert.equal(randomCalls,beforeRandom);
+  assert.equal(captured.get(mixed).io.outputs.value,2+graph.get(random).io.outputs.value);
+  assert.ok(calls.every(([id])=>['source','sort','mixed'].includes(id)),'only the captured source and pure downstream computations execute');
+  const next=api.componentHttpResponseEventState(source,declared,earlier);
+  const changes=await api.prepareComponentEventDelivery(scene,source,next,call,()=>true,captured);
+  const actions=changes[Symbol.for('simplecanvas.actionIntents')];
+  assert.equal(actions.length,1);assert.equal(actions[0].type,'appendTable');assert.equal(actions[0].error,undefined);
+  assert.deepEqual(plain(actions[0].table.rows),[['first-low',2],['first-high',9]],'the older completion cannot sample the newer response');
+  assert.equal(JSON.stringify(scene),before,'snapshot preparation mutates neither stored component state nor authored records');
+  assert.equal(JSON.stringify([...graph].map(([item,record])=>[item.uid,record.io])),beforeGraph,'the accepted live graph remains unchanged');
+  let current=true;
+  await assert.rejects(api.componentHttpResponseRecords(scene,source,earlier,async(...args)=>{
+    const result=await call(...args);if(args[0]===sort && args[1]==='compute')current=false;return result;
+  },()=>current,graph),error=>error.cancelled===true);
+  assert.equal(JSON.stringify(scene),before,'cancelling a captured graph pass leaves authored state untouched');
 });
 
 test('manual requests launch independently, return immediately and only the newest completion publishes',async()=>{

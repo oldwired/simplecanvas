@@ -1451,23 +1451,56 @@ eventOutputs: {completed:{type:'string'}, failed:{type:'string'}},
 actionEvents: {httpGet:{success:'completed', failure:'failed'}}
 ```
 
-`url` and `path` name declared string inputs. `valueType` is `number`, `string` or `boolean`;
+`url` and `path` name declared string inputs. `valueType` is `number`, `string`, `boolean` or `table`;
 `timeoutMs` is bounded to 1,000–30,000 ms. JSON Pointer uses an empty pointer for the root,
 `/items/0` for an array entry, and `~0`/`~1` escaping. Lookup uses own properties only.
 An omitted method means GET. `compute(inputs,state,context)` reads a transient `context.source`
 snapshot: `revision`, `status`, `loading`, `available`, `stale`, `error`, `lastUpdated`, `value`,
-`json` and `httpStatus`. It does not schedule requests or copy response data into source state.
+`json`, `jsonAvailable` and `httpStatus`. It does not schedule requests or copy response data into source state.
 
-Declare `value` with the selected scalar type, `json` and `error` as strings, `available` and
+Declare `value` with the selected type, `json` and `error` as strings, `available` and
 `loading` as Booleans, and `lastUpdated` as a number. The canonical components also expose
-`status`, `stale` and numeric `httpStatus` (zero before a response). Unavailable `value`/`json`
+`status`, `stale`, `jsonAvailable` and numeric `httpStatus` (zero before a response). Table mode also
+exposes numeric `rowCount`. Unavailable `value`/`json`
 ports are withheld independently of placeholder computation results. Optional status wiring
 cannot accidentally make missing source data available.
 
-`value`/`json` use `event:true` for captured successful-response occurrences. Each successful
+Scalar `value`/`json` use `event:true` for captured successful-response occurrences. Each successful
 request also emits `completed` with compact JSON text; each failure emits `failed` with safe
 error text. Identical response values still produce distinct events. Consumers may deliberately
 store event payloads, for example in a Memo log; the source's own live snapshot remains transient.
+
+### Table response publication
+
+`valueType:'table'` maps the selected JSON value to a validated table. The pointer may select:
+
+- A nonempty array of flat record objects. Columns are inferred from all rows, with first-seen
+  key order; missing values become null and all-null columns become text. Non-null types must
+  be consistent within each column. Nested objects/arrays in cells are rejected.
+- An explicit `{name?,columns:[{key,name?,type}],rows:[...]}` object, using array rows and the
+  existing typed-table contract. This form supports zero rows. A bare empty array is rejected
+  because it defines no columns; no schema is borrowed from earlier results.
+
+The host gives `compute` the normalized table at `context.source.value` when available.
+Publish it using `{value:{table:context.source.value}}`, as for other derived table outputs;
+the host assigns a compact runtime reference and immutable table version. The port declaration
+is `value:{type:'table',label:'Table'}` without `event:true`. The canonical built-ins additionally
+return the number of rows on `rowCount`. Source scripts must not copy the response into their
+persistent `state`.
+
+HTTP still bounds the received body to 64 KiB, and table validation applies the shared 32-column,
+1,000-row and cell limits. In Table mode, compact JSON longer than 2,000 characters does not
+invalidate a valid table. Instead `context.source.jsonAvailable` is false, the graph withholds
+`json`, and no JSON hybrid event is emitted. `completed` still emits empty text for that successful
+request. Smaller table responses retain the complete compact JSON and ordinary JSON/completion
+events. Scalar response mode retains its existing text-limit error behavior.
+
+Table values can feed pure table transforms or views directly. An existing Dataset owner can copy
+them using Manual Replace/Append or Live source mode; the source never gains mutation rights to
+that stored pool. Completion-triggered actions capture the table from that response, including
+through pure transforms, so a subsequent request cannot substitute different rows. Ordinary table
+ports do not themselves become hybrid event ports. Stored-copy schema checks, reader permissions,
+independent source instances, cancellation and Run isolation remain unchanged.
 
 ### GET triggers and scheduling
 
@@ -1512,7 +1545,7 @@ at most 200 printable ASCII characters and becomes `Idempotency-Key`. The endpoi
 that key for duplicate protection; there is no automatic write retry or exactly-once guarantee.
 
 A 204/205 POST response is successful without mapped data: `status:'ready'`, `available:false`,
-`json:''`, and a `completed` event with empty text. The scalar remains unavailable and the card
+`json:''`, and a `completed` event with empty text. The scalar or table remains unavailable and the card
 shows Sent. Other successful responses must satisfy JSON/mapping validation. A 2xx response can
 therefore yield a response error after the write was accepted; `httpStatus` remains available.
 Cancelling, timing out, leaving a sketch or discarding Run cannot undo a server-side action.
@@ -1528,9 +1561,10 @@ still produce new occurrences.
 Static rendering, export generation and library thumbnails never schedule requests. Repainting and Undo
 never replay a request edge or Send, although explicitly configured polling can resume afterward.
 
-Response bodies are limited to 64 KiB and compact JSON to 2,000 characters. Finite scalar types,
+Response bodies are limited to 64 KiB and compact JSON text ports to 2,000 characters, with the
+independent Table-mode availability described above. Finite scalar types,
 timeouts and response validation are shared. No automatic retry is performed. HTTP response
-snapshots stay outside history/autosave. `{type:'httpCredentials'}` opens the host-owned Connection
+snapshots stay outside history/autosave. `{type:'httpCredentials'}` opens the host-owned Credentials
 dialog for no authentication, Bearer or HTTP Basic; credentials stay outside state and scripts.
 Including selected credentials in a saved artifact is a separate per-export choice and does not
 turn on polling/startup. Component/library/sketch copies omit credentials.
@@ -1541,8 +1575,9 @@ exported HTML resolves them from its own URL. The opaque Run origin requires end
 `Origin: null`. Its iframe delegates `local-network-access`, `local-network` and `loopback-network`
 permissions so supporting browsers can ask. User/deployment decisions can still deny access;
 there is no proxy or `allow-same-origin` bypass. JSON POST and Idempotency-Key may require a CORS
-preflight, which the server must permit. Table-response mapping and saved offline snapshots remain
-future extensions. MQTT connections, subscriptions and explicit publishing are described below.
+preflight, which the server must permit. Custom column/field mapping, nested-record flattening and
+saved offline source snapshots remain future extensions. MQTT connections, subscriptions and explicit
+publishing are described below.
 
 ## Host-managed MQTT connections, subscriptions and publishing (integration API 1)
 
@@ -1927,8 +1962,8 @@ view, a read-only aggregate, and an independently editable Manual copy of that a
 the view to update the source and total; click **Copy current total** (a Replace pulse), then edit the
 copied total to leave both unchanged. A later source edit updates the views but leaves the stored copy
 alone until **Copy current total** is clicked again.
-Coordinated current-record controls, calculated dataset columns, table mapping from HTTP
-responses remain future extensions. HTTP and MQTT sources already supply transient
+Coordinated current-record controls and calculated dataset columns remain future extensions.
+HTTP Table responses already feed direct flows or Dataset's Source input. HTTP and MQTT also supply transient
 scalar readings and compact JSON text; it does not create a second stored Dataset model.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves

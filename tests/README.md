@@ -105,8 +105,8 @@ The browser integration suite intercepts controlled endpoints to test pending re
 superseding responses, credentials, automated reads and captured POST bodies without relying on an external API:
 
 ```sh
-node --test tests/integration-foundation.test.cjs tests/http-scheduling.test.cjs tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-integrations-example-contracts.test.cjs tests/http-example-server.test.cjs tests/http-local-network.test.cjs
-BROWSER_ENGINE=webkit node --test tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-local-network.test.cjs
+node --test tests/integration-foundation.test.cjs tests/http-scheduling.test.cjs tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-table-components.test.cjs tests/http-table-runtime.test.cjs tests/http-integrations-example-contracts.test.cjs tests/http-example-server.test.cjs tests/http-local-network.test.cjs
+BROWSER_ENGINE=webkit node --test tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-table-runtime.test.cjs tests/http-local-network.test.cjs
 ```
 
 For the rendering/library-preview benchmark:

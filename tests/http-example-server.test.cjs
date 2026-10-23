@@ -44,6 +44,22 @@ test('example API produces changing readings and controlled failures without ext
   assert.equal((await fetch(base+'/examples/api/reading',{method:'POST'})).status,405);
 });
 
+test('example table endpoint changes records independently and can return a typed empty table',async t=>{
+  const base=await server(t),url=base+'/examples/api/stock';
+  const fixture=await fetch(base+'/examples/http-stock.json');
+  assert.equal(fixture.headers.get('access-control-allow-origin'),'*');
+  const first=await(await fetch(url)).json(),second=await(await fetch(url)).json();
+  assert.deepEqual(first.items,(await fixture.json()).items);
+  assert.equal(first.sequence,1);assert.equal(second.sequence,2);assert.equal(second.items[0].quantity,first.items[0].quantity+1);
+  assert.equal((await(await fetch(base+'/examples/api/reading')).json()).sequence,1,'table and scalar sequence counters are independent');
+  const empty=await(await fetch(url+'?empty=1')).json();
+  assert.deepEqual(empty.items.rows,[]);assert.deepEqual(empty.items.columns.map(column=>column.type),['string','number']);
+  assert.equal((await fetch(url+'?status=503')).status,503);
+  const preflight=await fetch(url,{method:'OPTIONS'});assert.equal(preflight.status,204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'),'*');assert.doesNotMatch(preflight.headers.get('access-control-allow-methods'),/POST/);
+  assert.equal((await fetch(url,{method:'POST'})).status,405);
+});
+
 test('example POST validates JSON and honors in-memory idempotency keys',async t=>{
   const base=await server(t),url=base+'/examples/api/echo';
   const preflight=await fetch(url,{method:'OPTIONS',headers:{Origin:'null','Access-Control-Request-Method':'POST',
