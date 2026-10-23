@@ -8,10 +8,19 @@ function runtime(){
   const scope=vm.createContext({URL,AbortController,TextEncoder,TextDecoder,Response,Headers,ReadableStream,setTimeout,clearTimeout,console,
     performance:{now:()=>0},datasets:{},smartCancelled:()=>Object.assign(new Error('Cancelled'),{cancelled:true}),
     normalizeSmartState:plain,smartNumber:v=>v,smartItemExecutions:new Map(),disposeSmartExecution:()=>{},componentRuntimeId:item=>item.uid,componentViewIo:(item,io)=>io});
-  const ranges=[['// ---------- embedded datasets ----------','// End of embedded dataset contract.'],
-    ['  function componentScalar(','  function normalizeComponentSettings('],['  function componentGraphSignature(','  let editorComponentEvaluation='],
-    ['  function createComponentHttpCompletions(','  // Sensitive configuration']];
-  vm.runInContext(ranges.map(([a,b])=>html.slice(html.indexOf(a),html.indexOf(b))).join('\n')+
+  // Use parsed declarations, not comment/text markers that can silently disappear
+  // or match inside an embedded script and pull unrelated application code into the VM.
+  const names=[...app.declarations.keys()];
+  const declarationsBetween=(first,after)=>{
+    const start=names.indexOf(first),end=names.indexOf(after);
+    assert.ok(start>=0 && end>start,'Expected app declarations '+first+' through '+after);
+    return app.declarationsSource(names.slice(start,end));
+  };
+  const declarations=[declarationsBetween('DATA_LIMITS','ITEM_TYPES'),
+    declarationsBetween('componentScalar','normalizeComponentSettings'),
+    declarationsBetween('componentGraphSignature','editorComponentEvaluation'),
+    app.declaration('createComponentHttpCompletions')];
+  vm.runInContext(declarations.join('\n')+
     '\nthis.api={createComponentIntegrationService,createComponentHttpCompletions,normalizeComponentHttpSource,componentHttpConfiguration,componentHttpRequest,componentHttpValue,normalizeComponentActionDeclarations,normalizeComponentActionEvents,captureComponentActionIntent,prepareComponentEventDelivery,normalizeComponentHybridEvents,runComponentEvaluation,settleComponentTimeline,createComponentTimeline,takeComponentDataActions};',scope);
   return scope.api;
 }

@@ -202,7 +202,9 @@ test('offline workspace starts at configured sketch, hides service tab and conti
     editorComponentEvaluation=null;saveEditorRuntime();
   })()`);
 
-  const download=page.waitForEvent('download');await run('exportHtml()');
+  // The download is the completion signal; do not keep a separate DevTools await
+  // wrapper alive across the export's Worker calls or retry the export action.
+  const download=page.waitForEvent('download');await run('void exportHtml()');
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-workspace-runtime-'));context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
   const file=path.join(directory,'workspace.html');fs.copyFileSync(await(await download).path(),file);
   fs.writeFileSync(file,fs.readFileSync(file,'utf8').replace('    void activate(initial);', '    window.__reader={run:source=>eval(source)};void activate(initial);'));

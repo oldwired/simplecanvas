@@ -57,7 +57,9 @@ async function readerSubmit(page,index,handle,value){
   await input.press('Escape');await input.waitFor({state:'detached'});
 }
 async function exported(page,run,context){
-  const download=page.waitForEvent('download');await run('exportHtml()');
+  // Observe the completed artifact rather than sending a long-lived export promise
+  // through Chromium's weak DevTools promise handle. Start the export only once.
+  const download=page.waitForEvent('download');await run('void exportHtml()');
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-native-data-'));
   context.on('close',()=>fs.rmSync(directory,{recursive:true,force:true}));
   const file=path.join(directory,'native-data.html');fs.copyFileSync(await(await download).path(),file);
@@ -77,7 +79,13 @@ test('JSON and date tools are placeable built-ins with inert previews and typed 
     const thumbnail=tile.locator('img');await thumbnail.waitFor();assert.match(await thumbnail.getAttribute('src'),/^data:image\/png;base64,/);
     assert.ok(await thumbnail.evaluate(async image=>{await image.decode();return image.naturalWidth>0&&image.naturalHeight>0;}));
     await tile.click();const box=await page.locator('#canvas').boundingBox();
-    await page.mouse.click(box.x+240+(index%3)*440,box.y+200+Math.floor(index/3)*300);await run('shapePlacementQueue');
+    await page.mouse.click(box.x+240+(index%3)*440,box.y+200+Math.floor(index/3)*300);
+    // Chromium can collect the DevTools await wrapper after the app's queue has
+    // settled. Observe the committed placement instead; a failed or stuck placement
+    // still times out, and the click is never retried.
+    await page.waitForFunction(({index,name})=>__test.run(
+      `items.length===${index+1} && items[${index}]?.componentName===${JSON.stringify(name)} && shapePlacementRequests.size===0`
+    ),{index,name});
     assert.equal(await run(`items[${index}].componentName`),name);assert.equal((await record(run,index)).error,null);
   }
   const caps=await run('(async()=>Promise.all(items.map(item=>requestSmartCaps(item))))()');

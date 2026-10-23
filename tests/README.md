@@ -50,6 +50,13 @@ styling. Do not multiply the same gesture across viewport sizes without a separa
   explicitly take over before testing edits; do not bypass the read-only UI gate.
 - Use deterministic delayed replies for async races. Do not fix a race by increasing arbitrary
   sleeps, weakening an assertion, or retrying a mutating action.
+- Observe committed library placements (expected items and no pending placement requests) and
+  completed downloads instead of returning their long-lived task promises through `page.evaluate`.
+  Chromium's DevTools promise observation can fail with “Resulting promise was garbage collected”
+  after the application has already finished. Start each action once and retain all result checks;
+  a missing item, stuck placement or absent download must still fail. The
+  [investigation](../docs/smart-components-brief.md#browser-test-promise-observation--2026-10-23)
+  records the reproduction and stress verification.
 - Keep accepted event delivery separate from page visibility: a captured transaction finishes
   while hidden or during Whole workspace navigation; page departure, ownership loss, and leaving
   its Active sketch only scope still cancel it. See the

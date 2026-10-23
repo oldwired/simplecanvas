@@ -40,7 +40,7 @@ test('HTTP builtin presents manual actions and reads transient results without c
   assert.equal(definition.outputs({...state,valueType:'boolean'}).value.type,'boolean');
   assert.equal(ports.value.event,true);assert.equal(ports.json.event,true);
   assert.equal(definition.eventOutputs.completed.type,'string');assert.equal(definition.eventOutputs.failed.type,'string');
-  assert.equal(definition.dataActions.refresh.trigger,'refresh');assert.equal(definition.inputs.refresh.event,'action');
+  assert.equal(definition.dataActions.refresh.trigger,'refresh');assert.equal(definition.inputs(state).refresh.event,'action');
   assert.equal(definition.httpSource(state).automation.polling,false);
   assert.equal(definition.httpSource({...state,polling:true,refreshOnChange:true,refreshOnStart:true}).automation.startup,true);
   assert.equal(definition.httpSource({...state,debounceSeconds:.4}).automation.debounceMs,400);
@@ -70,7 +70,7 @@ test('HTTP POST declares explicit sends only and displays a successful empty res
   const definition=vm.runInNewContext(fs.readFileSync(path.join(root,'examples/http-post.js'),'utf8'),{Intl,Date});
   const state=definition.initState(),before=JSON.stringify(state),capability=definition.httpSource(state);
   assert.equal(capability.method,'POST');assert.equal(capability.body,'body');assert.equal(capability.idempotencyKey,'idempotencyKey');
-  assert.equal(Object.hasOwn(capability,'automation'),false);assert.equal(definition.inputs.send.event,'action');
+  assert.equal(Object.hasOwn(capability,'automation'),false);assert.equal(definition.inputs(state).send.event,'action');
   assert.equal(definition.dataActions.send.type,'httpPost');assert.equal(definition.actionEvents.httpPost.success,'completed');
   assert.deepEqual(Array.from(definition.handles(state,340,208),handle=>handle.action.type),['httpPost','httpCredentials']);
   const result=definition.compute({},state,{source:{status:'ready',httpStatus:204,available:false,json:''}});

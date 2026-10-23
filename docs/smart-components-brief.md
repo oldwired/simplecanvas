@@ -3166,6 +3166,35 @@ editor, Run and HTML export. The 51 focused integration regressions, 33 foundati
 visual checks and three export/example checks pass. The built-in catalog and all four
 self-contained example readers have been regenerated.
 
+### Browser-test promise observation — 2026-10-23
+
+The intermittent Chromium “Resulting promise was garbage collected” failure was reproduced in
+the JSON/date library-placement test under forced garbage collection every 100 ms: two failures
+across 40 authoring runs. A separate page-side observer reproduced it again and confirmed that
+`shapePlacementQueue` had already settled, all six expected components were committed, and no
+placement requests remained. No stranded application or Worker operation was found.
+
+The installed Chromium 151.0.7922.34 / V8 15.1.206.8 uses weak DevTools promise observations;
+V8's subsequent [inspector lifetime fix](https://chromium.googlesource.com/v8/v8.git/+/5177b10891e65108c1a19dfc56bff4e58d79d216%5E%21/)
+retains evaluated promises until completion or cancellation. Tests now observe the committed
+placement and drained request set through a synchronous predicate. Native-data and cross-sketch
+HTML tests start export once and await the actual download. Component/graph, inspector and reader
+assertions remain intact; missing results and stalled operations still fail. No action retries,
+catch-and-ignore handling, arbitrary delays or production runtime changes are introduced.
+
+The corrected placement test passed 60/60 authoring runs (360 placements) under the same forced
+garbage collection, including all its graph and inspector assertions.
+
+The broader regression pass also exposed drift from the earlier HTTP credential-input addition:
+GET/POST contract checks now resolve their state-dependent input declarations; the integration
+fixture extracts parsed declarations instead of relying on a renamed comment delimiter; and both
+HTTP library templates explicitly store the default `authMode:'session'`, matching fresh placement.
+The focused HTTP contracts pass 29/29, and the real-Worker catalog consistency check passes.
+The affected native-data and cross-sketch runtime suites also pass 15/15 in WebKit.
+Final verification with Node 24.19.0 passes the complete Chromium suite **1,734/1,734**, with
+no skips and local Mosquitto scenarios enabled. The application runtime and self-contained reader
+artifacts are unchanged; the only shipped metadata correction is the two explicit HTTP defaults.
+
 ## Decisions before each stage
 
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,
