@@ -64,14 +64,15 @@ styling. Do not multiply the same gesture across viewport sizes without a separa
 
 ## Generated examples and benchmarks
 
-After runtime or bundled component changes, regenerate both editable/HTML pairs through the app:
+After runtime or bundled component changes, regenerate the editable/HTML pairs through the app:
 
 ```sh
 node tools/update-builtin-catalog.cjs
 node tools/update-builtin-catalog.cjs --check
 node tools/update-example-workspace.cjs
 node tools/update-workspace-runtime-example.cjs
-node --test tests/builtin-catalog-source.test.cjs tests/example-workspace-generator.test.cjs tests/workspace-runtime-example-contracts.test.cjs
+node tools/update-http-integrations-example.cjs
+node --test tests/builtin-catalog-source.test.cjs tests/example-workspace-generator.test.cjs tests/workspace-runtime-example-contracts.test.cjs tests/http-integrations-example-contracts.test.cjs
 ```
 
 The generators preserve sketch IDs and publish each JSON/HTML pair only after successful export.
@@ -82,6 +83,23 @@ which is removed on runtime import. The workspace-runtime builder names its sour
 Keep generated HTML self-contained and verify actual shipped readers after regeneration. Optional PNG palette optimization uses
 `python3 tools/optimize-builtin-thumbnails.py` (Pillow, development only); inspect previews afterward.
 The [detailed catalog](COVERAGE.md#workspace-execution-and-cross-sketch-ownership) links their coverage.
+
+The HTTP example has three sketches: manual reads, automatic reads/event logs and explicit JSON POST. Run
+`node tools/serve-http-example.cjs` to serve the repository root with CORS enabled only for its
+`/examples/http-reading.json`, alternate, and `/examples/api/reading`/`echo` endpoints, including
+CORS for Run's isolated origin and POST preflights. API writes/idempotency records live only in
+the server process; `?delay=2500`, `?status=503` and POST `?status=204` exercise request outcomes.
+Browser local-network permissions still apply. `http-local-network.test.cjs` uses the real
+loopback server and grants the native permission only inside Chromium's isolated test context;
+WebKit makes the same request without that platform permission. It verifies opaque-origin CORS,
+permission delegation, interaction while a response is pending, and discarding Run changes.
+The browser integration suite intercepts controlled endpoints to test pending requests, errors,
+superseding responses, credentials, automated reads and captured POST bodies without relying on an external API:
+
+```sh
+node --test tests/integration-foundation.test.cjs tests/http-scheduling.test.cjs tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-integrations-example-contracts.test.cjs tests/http-example-server.test.cjs tests/http-local-network.test.cjs
+BROWSER_ENGINE=webkit node --test tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-local-network.test.cjs
+```
 
 For the rendering/library-preview benchmark:
 

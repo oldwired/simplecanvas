@@ -1,0 +1,7 @@
+{
+  "value": 72,
+  "name": "Workshop",
+  "unit": "%",
+  "ready": true,
+  "message": "The JSON text output can feed JSON extract."
+}

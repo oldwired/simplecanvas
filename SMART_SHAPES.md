@@ -1423,6 +1423,127 @@ the exported state. Ordinary bindings stay local; Whole workspace mode can pass 
 events through explicit Publish/Receive endpoints. Events do not replay after restoration.
 There are no unrestricted external actions.
 
+## Host-managed HTTP operations (integration API 1)
+
+API v2 components opt into `integrationApi:1`. [HTTP source](examples/http-source.js) declares GET;
+[HTTP POST](examples/http-post.js) adds a captured JSON body and explicit Send action. Both use the
+same host-owned service; Worker scripts stay network-blocked and computation remains pure.
+
+```js
+integrationApi: 1,
+eventApi: 1,
+inputs: {
+  url: {type:'string', default:''},
+  path: {type:'string', default:'/value'},
+  refresh: {type:'boolean', default:false, event:'action'},
+  enabled: {type:'boolean', default:true},
+  interval: {type:'number', default:5}
+},
+httpSource(state) {
+  return {
+    url:'url', path:'path', valueType:state.valueType, timeoutMs:10000,
+    automation:{enabled:'enabled', interval:'interval', polling:state.polling === true,
+      onChange:state.refreshOnChange === true, debounceMs:250, startup:state.refreshOnStart === true}
+  };
+},
+dataActions: {refresh:{type:'httpGet', trigger:'refresh'}},
+eventOutputs: {completed:{type:'string'}, failed:{type:'string'}},
+actionEvents: {httpGet:{success:'completed', failure:'failed'}}
+```
+
+`url` and `path` name declared string inputs. `valueType` is `number`, `string` or `boolean`;
+`timeoutMs` is bounded to 1,000–30,000 ms. JSON Pointer uses an empty pointer for the root,
+`/items/0` for an array entry, and `~0`/`~1` escaping. Lookup uses own properties only.
+An omitted method means GET. `compute(inputs,state,context)` reads a transient `context.source`
+snapshot: `revision`, `status`, `loading`, `available`, `stale`, `error`, `lastUpdated`, `value`,
+`json` and `httpStatus`. It does not schedule requests or copy response data into source state.
+
+Declare `value` with the selected scalar type, `json` and `error` as strings, `available` and
+`loading` as Booleans, and `lastUpdated` as a number. The canonical components also expose
+`status`, `stale` and numeric `httpStatus` (zero before a response). Unavailable `value`/`json`
+ports are withheld independently of placeholder computation results. Optional status wiring
+cannot accidentally make missing source data available.
+
+`value`/`json` use `event:true` for captured successful-response occurrences. Each successful
+request also emits `completed` with compact JSON text; each failure emits `failed` with safe
+error text. Identical response values still produce distinct events. Consumers may deliberately
+store event payloads, for example in a Memo log; the source's own live snapshot remains transient.
+
+### GET triggers and scheduling
+
+Use `{type:'httpGet'}` in an action handle for manual Refresh. A declared `dataActions` entry
+allows a false → true `refresh` signal or accepted event to request one read. Initial/restored
+high values prime the baseline rather than replaying a request.
+
+The optional `automation` descriptor names Boolean `enabled` and numeric `interval` inputs.
+`interval` is in seconds, from 1 to 86,400. Boolean flags enable polling, URL/JSON-pointer change
+reads and reader startup separately; `debounceMs` ranges from 0 to 10,000. The canonical settings
+all default off, with a five-second interval and 250 ms change delay. Polling starts after its
+interval in the editor as well as Run/HTML. Startup adds one immediate read per Run/HTML session
+and source; importing, reopening or undoing in the editor does not invoke the startup policy.
+
+`enabled:false` gates timer, change, startup and connected Refresh signal/event requests. The
+component's direct Refresh button remains available. The shared `features.networkIntegrations`
+switch disables every GET/POST regardless of authoring visibility. Configured reads are bounded,
+with at most 30 automatic requests per instance in a 10-second window; manual Refresh is separate.
+Polls never overlap, and polling/change schedules pause while hidden or simulation is paused.
+Resuming does not replay missed intervals. Whole workspace scope keeps sources active when the
+visible sketch changes; leaving Active sketch only scope cancels pending delivery.
+
+### Explicit JSON POST
+
+The POST capability names additional string inputs:
+
+```js
+httpSource(state) {
+  return {method:'POST', url:'url', path:'path', body:'body', idempotencyKey:'idempotencyKey',
+    valueType:state.valueType, timeoutMs:10000};
+},
+dataActions: {send:{type:'httpPost', trigger:'send'}},
+actionEvents: {httpPost:{success:'completed', failure:'failed'}}
+```
+
+Declare `send` as a Boolean `event:'action'` input and use `{type:'httpPost'}` for the button.
+POST does not accept an automation descriptor. Each accepted Send captures URL, body, mapping,
+credentials and optional idempotency key. Input changes, polling, startup and restoration never
+write. The body must contain valid JSON text within 2,000 characters with finite numeric values;
+the host compacts it and sends `Content-Type: application/json`. An optional nonempty key contains
+at most 200 printable ASCII characters and becomes `Idempotency-Key`. The endpoint must support
+that key for duplicate protection; there is no automatic write retry or exactly-once guarantee.
+
+A 204/205 POST response is successful without mapped data: `status:'ready'`, `available:false`,
+`json:''`, and a `completed` event with empty text. The scalar remains unavailable and the card
+shows Sent. Other successful responses must satisfy JSON/mapping validation. A 2xx response can
+therefore yield a response error after the write was accepted; `httpStatus` remains available.
+Cancelling, timing out, leaving a sketch or discarding Run cannot undo a server-side action.
+
+### Lifetime, authentication and export
+
+Both methods release the interaction/action queue immediately; network completion happens
+independently. Each instance has its own revisions. Changed configuration, superseding GETs,
+deletion and scope replacement prevent late responses from attaching to a different instance.
+One response groups its hybrid value/JSON outputs and completion notification as one event
+origin, so pure branches that reconverge are evaluated together once. Equal later responses
+still produce new occurrences.
+Static rendering, export generation and library thumbnails never schedule requests. Repainting and Undo
+never replay a request edge or Send, although explicitly configured polling can resume afterward.
+
+Response bodies are limited to 64 KiB and compact JSON to 2,000 characters. Finite scalar types,
+timeouts and response validation are shared. No automatic retry is performed. HTTP response
+snapshots stay outside history/autosave. `{type:'httpCredentials'}` opens the host-owned Connection
+dialog for no authentication, Bearer or HTTP Basic; credentials stay outside state and scripts.
+Including selected credentials in a saved artifact is a separate per-export choice and does not
+turn on polling/startup. Component/library/sketch copies omit credentials.
+
+Run inherits session credentials into an independent host store and service lifetime; returning
+discards local results and cancels pending delivery. Relative URLs use the parent editor URL;
+exported HTML resolves them from its own URL. The opaque Run origin requires endpoint CORS for
+`Origin: null`. Its iframe delegates `local-network-access`, `local-network` and `loopback-network`
+permissions so supporting browsers can ask. User/deployment decisions can still deny access;
+there is no proxy or `allow-same-origin` bypass. JSON POST and Idempotency-Key may require a CORS
+preflight, which the server must permit. Table-response mapping, saved offline snapshots and
+MQTT Subscribe/Publish remain separate extensions.
+
 ## Embedded table data
 
 `table` ports retain a compact `{datasetId}` reference or `{datasetId, rows:[0, 3, 7]}` selection.
@@ -1705,8 +1826,9 @@ view, a read-only aggregate, and an independently editable Manual copy of that a
 the view to update the source and total; click **Copy current total** (a Replace pulse), then edit the
 copied total to leave both unchanged. A later source edit updates the views but leaves the stored copy
 alone until **Copy current total** is clicked again.
-Coordinated current-record controls, calculated dataset columns, and dedicated HTTP GET/POST
-providers remain future extensions.
+Coordinated current-record controls, calculated dataset columns, table mapping from HTTP
+responses and MQTT remain future extensions. The HTTP source already supplies transient
+scalar readings and compact JSON text; it does not create a second stored Dataset model.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
 input order. Sort is stable, nulls are last in both directions, and text is case-insensitive unless
@@ -2264,11 +2386,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 96 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 98 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 87 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 89 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -2307,6 +2429,11 @@ The built-in catalog includes 87 API v2 components, with editable sources in `ex
   allowed; types use `0` auto, `1` number, `2` string, `3` Boolean, or the corresponding names.
 - [Signal → event](examples/signal-to-event.js) and [Event → pulse](examples/event-to-pulse.js):
   explicit scalar sampling and bounded event-to-Boolean pulse conversion, described above.
+- [HTTP source](examples/http-source.js): manual asynchronous JSON GET through the host integration
+  service, optional polling/debounced changes/startup, typed and JSON hybrid outputs, and completion
+  events. [HTTP POST](examples/http-post.js) sends captured JSON only on explicit Send actions, with
+  optional idempotency keys. Both expose independent status and HTTP codes. Credentials are
+  session-only unless explicitly selected for a saved document or HTML export.
 - [Capture row](examples/capture-row.js): whole-table `data` input, Boolean `capture`, and 1–24
   scalar inputs declared by **Fields (column:type)**. Lines map in order to `field0` through
   `field23`; supported types are number, string, and Boolean. Each false → true pulse samples one

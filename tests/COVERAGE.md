@@ -570,10 +570,44 @@ Run the browser suites with `BROWSER_ENGINE=webkit` for WebKit, or omit it for C
 Regenerate the separate **Services / Dashboard / Data editor** example with
 `node tools/update-workspace-runtime-example.cjs`. It does not add tabs to the main component
 catalog. The JSON is editable; the HTML is produced by the app's real standalone exporter.
-Both generators retain stable sketch IDs across rebuilds. The main catalog assigns missing IDs
+The generators retain stable sketch IDs across rebuilds. The main catalog assigns missing IDs
 once and preserves them through renaming/reordering; the runtime fixture uses explicit IDs for its
 cross-sketch references. `example-workspace-generator.test.cjs` checks repeatability and atomic
 publication, including rollback and concurrent-edit protection.
+
+## External integrations
+
+- `integration-foundation.test.cjs` covers host-managed transient results, request generations,
+  response limits and validation, independent source instances, cancellation, stale delivery,
+  captured writes, rate limits and completion retention across visibility changes.
+- `http-scheduling.test.cjs` uses a deterministic clock to check debounce, startup baselines,
+  non-overlapping polls, pause/resume without catch-up, and queued timer invalidation when a
+  manual request starts or configuration, scope or Enabled changes.
+- `http-integration-runtime.test.cjs` exercises manual GET, typed and JSON text outputs, no
+  implicit requests on restoration/export, credentials, errors and independent sources in the
+  editor, Run and HTML. Delayed responses verify that local controls and timed processing continue
+  while a GET is pending.
+- `http-automation-runtime.test.cjs` covers polling/enable gates, debounced URL changes, restored
+  trigger baselines, scalar action events, repeated completion payloads, captured-body POST,
+  no automatic write retries, empty successful responses, coherent response fan-in and Run/HTML
+  behavior. Empty visible sketches and visibility changes during completion preparation verify
+  that background sources keep working without lost or duplicated occurrences.
+- `http-integrations-example-contracts.test.cjs` checks stable example identities, resolvable
+  local endpoint files, independent sources, JSON extract wiring, unrelated clock/slider controls,
+  transient component presentation, automation/POST wiring, empty-response presentation and
+  atomic publication of the three-sketch JSON/HTML example pair.
+- `http-example-server.test.cjs` covers the development server's fixture-only CORS responses,
+  controllable delay/failures, changing readings, method restrictions, path confinement and
+  in-memory JSON POST/idempotency behavior. Accepted writes can precede delayed responses.
+- `http-local-network.test.cjs` uses the real loopback fixture server in Run, with a native
+  Chromium permission grant confined to the test context. It checks opaque-origin CORS and
+  iframe permission delegation, controls working before a held response completes, JSON
+  extraction after completion, and discarding preview changes on Return. It also runs in WebKit.
+
+Regenerate this dedicated example with `node tools/update-http-integrations-example.cjs`.
+Its HTML contains the runtime; live reads require the configured endpoints. A repository-root
+HTTP server supplies two deterministic JSON files, changing readings and in-memory POST without a third-party service. Use
+`node tools/serve-http-example.cjs` to enable their CORS responses for Run's isolated origin too.
 
 ## Stabilization, edit history, and browser storage
 
@@ -647,7 +681,7 @@ increase runtime budgets or impose hardware-dependent pass/fail thresholds. See 
 
 ## Structural review and export contracts
 
-- `export-dependencies.test.cjs` parses the actual fresh export and both shipped HTML readers. It
+- `export-dependencies.test.cjs` parses the actual fresh export and all three shipped HTML readers. It
   checks free references, including dormant branches, against their supplied runtime and platform
   globals. This complements browser interaction tests rather than replacing them.
 - `data-import-contracts.test.cjs` covers physically blank CSV records versus explicit empty cells.

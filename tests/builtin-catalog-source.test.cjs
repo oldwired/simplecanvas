@@ -36,7 +36,7 @@ test('catalog refresh repairs matching demo snapshots and preview keys without r
   const file=path.join(root,'examples','demo-shapes-library.json');
   fs.writeFileSync(file,JSON.stringify({shapes:[stale,custom]},null,2)+'\n');
   assert.throws(()=>updateBuiltinCatalog({root,check:true}),/demo library is stale/);
-  updateBuiltinCatalog({root});assert.equal(updateBuiltinCatalog({root,check:true}),96);
+  updateBuiltinCatalog({root});assert.equal(updateBuiltinCatalog({root,check:true}),98);
   const updated=JSON.parse(fs.readFileSync(file,'utf8')).shapes;
   assert.deepEqual(updated[0],canonical);assert.deepEqual(updated[1],custom);
 });

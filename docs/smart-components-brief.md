@@ -25,7 +25,11 @@ Shared host-action dispatch and workspace execution complete stage 4, with the a
 closeout fixes, and verification evidence recorded below. Stage 5 completes Run preview with a
 disposable workspace copy and the Edit/binding workflow, preserving Spreadsheet's specialized
 editor. Returning to editing discards preview changes; explicit result downloads remain available.
-Optional authoring extensions and stage 6 integrations remain proposals.
+Stages 6.1/6.2, automated HTTP reads in 6.4, and the HTTP POST portion of 6.5 are implemented on
+the branch: transient host-owned results, typed/JSON hybrid outputs, bounded nonblocking requests,
+explicit action/completion events, polling/change/startup policies and per-artifact credential
+inclusion. MQTT Config/Subscribe (6.3) and MQTT Publish (remaining 6.5) stay deferred. Optional
+authoring extensions remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -230,7 +234,9 @@ declared local actions through a shared dispatcher. Whole-workspace execution, e
 Publish/Receive endpoints, shared Dataset discovery, and workspace/sketch settings extend that
 contract across sketches while retaining all existing signals and triggers. Stage 5 completes
 isolated Run preview and the Edit/binding workflow with an explicit discard/download policy.
-Stage 6 remains proposed. Shared buses are explicitly outside the feedback milestone.
+Stage 6 delivers the shared integration foundation, manual and automated HTTP GET, and explicit
+HTTP POST described below. MQTT remains deferred. Shared buses are explicitly outside the
+feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
 for scalar integrations. JSON downloads can precede table support; CSV outputs use stage 3.
@@ -247,22 +253,21 @@ Share runtime helpers between editor and export throughout.
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
 | 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
 | 5. Authoring and reader workflow — complete on branch | Isolated Run preview, reusable property controls, searchable binding sources with repair feedback, and discard-on-return with explicit result downloads; initial visual wiring is delivered in stage 3 | An author places, configures and connects components, operates a preview with layout tools hidden, returns without changing the source, then saves, reopens and exports the workspace. Spreadsheet retains its specialized editor. |
-| 6. External integrations | Shared host contracts, then separate HTTP and MQTT read/write increments | Both transports satisfy their own editor/export acceptance checks below, including credential modes, unavailable-network behavior, and explicit write intents. Component Workers remain isolated. |
+| 6. External integrations — HTTP increments on branch; MQTT deferred | Shared host contracts, manual/automated HTTP GET and explicit JSON POST | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT still needs its own acceptance checks below. Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
 
 | Step | Prerequisites and deliverable | Evidence that it works |
 | --- | --- | --- |
-| 6.1 Shared integration foundation | Stage 1 value graph and stage 4 routed events/shared dispatcher; add declared network operations, transient sources, reusable input fields, sensitive references, lifecycle, and execution/export policies | A simulated source and intent sink verify independent instances, stale-response rejection, no replay on restoration, and credential persistence choices in editor and HTML. |
-| 6.2 Manual HTTP GET | 6.1; a configured bounded JSON GET mapped to scalar ports, initiated by Refresh | The newest accepted result drives a display; errors are visible; repeated instances stay independent. Downloaded HTML works with the test endpoint and remains readable offline. |
-| 6.3 MQTT Config and Subscribe | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
-| 6.4 Automated reads | 6.2; bounded HTTP timer, value-change, and edge triggers | One permitted trigger causes one request; initial/restored values do not replay edges, rapid changes settle correctly, and suspended execution pauses polling. |
-| 6.5 Explicit external writes | 6.1 and the relevant transport; user-triggered HTTP POST and MQTT Publish | One accepted Submit/Send produces one host intent; redraw, undo, reload, and reconnect do not replay it. Failure and duplicate handling distinguish host dispatch, transport delivery, and application acknowledgement. |
+| 6.1 Shared integration foundation — implemented on branch | Stage 1 value graph and stage 4 shared dispatcher; declared host operations, transient source revisions, restricted credentials, lifecycle ownership and execution/export policies | Simulated delayed sources and browser workflows exercise independent instances, stale-response rejection, no replay on restoration, and explicit credential persistence choices. |
+| 6.2 Manual HTTP GET — implemented on branch | 6.1; a bounded JSON GET initiated by Refresh, one mapped scalar plus complete compact JSON text | The newest accepted result drives a display; another source, clock and slider continue during pending requests. Errors remain visible in editor, Run and downloaded HTML. |
+| 6.3 MQTT Config and Subscribe — deferred | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
+| 6.4 Automated HTTP reads — implemented on branch | 6.2; bounded polling, debounced URL/pointer changes, signal/event triggers and explicit Run/HTML startup | Initial/restored values do not replay edges. Enabled gates all automatic origins, manual Refresh remains available, repeated responses emit events, and pause/visibility suspend schedules without catch-up bursts. |
+| 6.5 Explicit external writes — HTTP POST implemented; MQTT Publish deferred | 6.1 and the relevant transport; captured JSON POST from Send/button/signal/event | One accepted Send produces one host intent; redraw, Undo, reload and input changes do not replay it. No automatic retries; optional server-supported idempotency, HTTP status and empty acknowledgements distinguish a write from its response. |
 
-Implement 6.2 and 6.3 independently after 6.1; starting with manual GET is the proposed default.
-Step 6.5 can proceed separately for each transport and does not depend on 6.4's polling.
-Reorder those increments if a concrete document needs writes sooner, while keeping their own
-acceptance checks. Do not call the whole integration stage complete after only one transport.
+HTTP read/write work now spans 6.1, 6.2, 6.4 and the HTTP part of 6.5. Step 6.3 can build
+independently on the shared foundation, with MQTT Publish following its own connection contract.
+The entire integration stage remains open until those separately scoped MQTT increments are delivered.
 
 Keep nested components, a marketplace, automatic library upgrades, shared-definition migration,
 and a complete visual programming editor outside these milestones unless actual examples justify them.
@@ -367,7 +372,7 @@ Text to number, Text compose, Text transform, Text replace, and Text selector br
 URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
 catalog to 90 entries / 81 API v2 components. Page settings brings it to 91 entries / 82 API v2
 components. Signal → event and Event → pulse brought it to 93 entries / 84 API v2 components.
-Workspace settings, Publish and Receive bring the current catalog to **96 entries / 87 API v2 components**.
+Workspace settings, Publish, Receive, HTTP source and HTTP POST bring the current catalog to **98 entries / 89 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -1068,7 +1073,7 @@ Acceptance covers literal rendering, independent instances, accepted versus reje
 repeated equal values, queued ordering, Pause/Step/Resume, restoration without replay, Text input
 Clear and clear-after-submit, Memo command priority, blank lines, and budget rejection. Inline entry
 shares commit/cancel behavior between the editor and reader. Sensitive input handling for external
-integrations remains part of step 6.1 rather than an implied capability of ordinary text ports.
+integrations uses step 6.1's host-owned fields and references rather than ordinary text ports.
 
 ## The connected document
 
@@ -1580,7 +1585,7 @@ contract, rather than inferring them from a table port or component name.
   the dataset ID and assigns fresh row IDs; append preserves existing identities and allocates new ones.
   **Allow source updates in HTML export** (`allowReaderUpdates`, default false) is independent of file
   import/reload, capture, and bound-cell permissions. File import remains an owner convenience; dedicated
-  providers can follow the future HTTP work.
+  table providers can follow a later extension of the HTTP source.
 - Spreadsheet INPUT access `1` makes existing source rows editable in that linked rectangle;
   access `2` also permits HTML edits through per-handle `datasetCell.reader:true`. Access `0` or
   omitted remains read-only. Dataset editor retains its separate record-edit and reader-edit settings.
@@ -1666,7 +1671,7 @@ These components share validation, stable row identity, ownership, and mutation 
 not share cell formulas or duplicate record stores. Spreadsheet imports remain independent cell
 copies; shared bound-cell editing changes the Dataset, while copying does not. Later work may add
 per-view selection/current-record controls, record-wise calculated fields, and further chart types.
-HTTP GET/POST providers stay in the external-integration plan; this milestone adds no network access
+HTTP table providers and POST stay in the external-integration plan; this milestone adds no network access
 or general routed events.
 
 Result downloads contain data, not the full editable workspace. A new HTML snapshot or full
@@ -2670,11 +2675,71 @@ extensions. Read, write or read/write Dataset markers first need explicit access
 rules for per-instance editing and reader permissions; the existing neutral Dataset association
 does not promise any of those rights. These additions are outside the closed stage 5 scope.
 
-## Shared integration foundations — proposed step 6.1
+## Shared integration foundations — step 6.1 implemented on branch
 
-Define these contracts before implementing HTTP or MQTT, and share them between the editor and
-the exported runtime. The transport adapters can then be built independently. Neither scalar
-transport requires table datasets, visible wires, or the full Run/Preview workflow.
+These contracts are shared between the editor, Run and exported runtime. HTTP GET and POST use
+the same host-owned service; later MQTT adapters can reuse the ownership and credential rules.
+Scalar transports do not require table datasets or visible wires.
+
+### Initial manual-read delivery and shared contracts
+
+`integrationApi:1` declares a validated `httpSource` capability. Its host-owned service starts
+GET requests without awaiting their network completion in the graph, gesture or action queue.
+The request's asynchronous completion invalidates transient source results; clocks, other sources
+and ordinary interactions continue while it is pending. Each source owns an independent request
+revision. Refresh supersedes its previous request, and changes to its URL, mapping, credentials
+or execution ownership prevent an obsolete reply from being published.
+
+The source provides one mapped number/string/Boolean `value`, complete compact JSON text on
+`json`, and availability/loading/error/last-updated status. JSON Pointer matches JSON extract's
+existing convention. Response bodies are bounded to 64 KiB and compact JSON to the 2,000-character
+text-port limit. A configurable 1–30 second timeout and no automatic retry keep the first delivery
+predictable. Invalid JSON, wrong-type mapping, missing properties, HTTP failures and size limits
+report errors. Unavailable `value` and `json` ports are withheld by the runtime even if a consumer
+does not connect status outputs. Status ports stay available for loading/error presentation.
+
+Results do not enter component state, history or ordinary autosave. Credentials are host-owned
+and scoped to a source/origin; they never travel through ordinary ports or Worker arguments.
+The Connection dialog supports no authentication, Bearer tokens and HTTP Basic. Session-only is
+the default. JSON saves and HTML exports can explicitly include selected sources' credentials in
+that artifact. Imports restore credentials through the host store without changing trigger policy.
+`features.networkIntegrations` controls execution independently of `smartComponents`. The initial
+delivery used manual Refresh only; the implemented 6.4 settings below add polling, debounced
+changes and Run/HTML startup separately. Credential inclusion alone enables none of them.
+
+Run inherits current session credentials into a separate host store and service lifetime;
+returning cancels its pending requests and does not change the authored workspace or credentials.
+
+The [separate example workspace](../examples/http-integrations.json) and
+[self-contained HTML](../examples/http-integrations.html) contain three sketches: manual reads,
+automatic reads with a completion log, and JSON build → explicit POST → response log. The first
+uses two supplied JSON files, mapped gauges, JSON extract, a clock and a local slider.
+`node tools/serve-http-example.cjs` serves the repository root so
+`/examples/http-reading.json` and `/examples/http-reading-alternate.json` resolve in the editor,
+Run and reader. A deployment in a subdirectory needs the corresponding URL prefix. Opening the
+HTML offline still shows the drawing and local controls; Refresh reports unavailability.
+The development server enables CORS only for its two public JSON files and demo API endpoints. Run keeps its opaque
+sandbox origin, so its endpoints must permit `Origin: null` (or `*` for public responses).
+Browser local-network permissions remain separate. Run delegates the browser's network
+permission to its isolated frame so Chromium can ask for access, without enabling
+`allow-same-origin`; the user or deployment policy can still deny it. The helper does not bypass
+these permissions, and local endpoint testing may need the editor or exported reader.
+`/examples/api/reading` changes on each GET. `/examples/api/echo` stores POST acceptances only
+in server memory, returning a JSON echo plus a record ID. Its last 256 idempotency keys deduplicate
+same-body submissions; a different body with the same key returns 409. Restarting clears records.
+`?delay=2500`, `?status=503` and POST `?status=204` exercise latency, failure and empty success.
+This development helper is not a production API. The example has no third-party endpoint. Tests
+use controlled responses to verify that pending requests do not block the workspace.
+
+Validation on 2026-10-22: the 1,568-test Chromium regression run found four failures in
+catalog metadata, the minimal deployment's new feature flag, and a Step test hook. All were
+fixed and rechecked; the final integration/catalog/export/feedback run passed **55/55**, and
+the minimal-deployment check passed in both engines. The HTTP browser suite passed **16/16**
+in Chromium and WebKit, with an additional real-network Run check passing in each engine.
+That check grants native local-network permission in the isolated test context, retains the
+opaque sandbox, and verifies interaction during a held response and discard on return.
+
+The following shared rules also apply to subsequent transports and write operations:
 
 - **Transient sources and status.** Host results and incoming messages live outside saved
   interaction state. Define how validated scalar readings enter the graph, invalidate consumers,
@@ -2698,12 +2763,12 @@ transport requires table datasets, visible wires, or the full Run/Preview workfl
   configuration consumers, not ordinary persisted string outputs visible to arbitrary scripts.
 - **Execution policy.** Keep network execution separate from `smartComponents`, which only hides
   authoring. Define disabled, interactive, and explicitly prepared deployment behavior before
-  allowing automatic startup. Opening/importing a sketch must not enable network operations.
-  A deployment may connect on opening only when its host execution policy allows the configured
-  operations and its author/deployer explicitly selected that startup behavior. Credential
-  inclusion, field visibility, and auto-connect are separate choices.
+  allowing automatic startup. Imported/restored values establish trigger baselines and never
+  replay a Send. Authored polling starts after its interval in an active execution scope; an
+  immediate opening read requires the explicit Run/HTML startup flag. Credential inclusion,
+  field visibility and startup remain separate choices. MQTT deployment startup is still deferred.
 
-Before adding either transport, verify these contracts with a simulated source and a recorded
+For every added transport, verify these contracts with a simulated source and a recorded
 intent sink: repeated instances stay isolated, stale responses are rejected, restoration causes
 no actions, and sensitive inputs obey every persistence path. Real endpoint tests then validate
 each transport's own behavior.
@@ -2716,7 +2781,7 @@ that should work as soon as its HTML document opens.
 | Export mode | Credential values | Reader behavior |
 | --- | --- | --- |
 | **Ask on use** (default) | Credential fields are exported empty. | The reader enters the required values and connects. |
-| **Ready to use** | The author explicitly selects which configured credentials to include in the HTML. | The document can connect automatically; configuration fields may remain visible or be hidden in the reader presentation. |
+| **Ready to use** | The author explicitly selects which configured credentials to include in the HTML. | The HTTP source follows its separately selected manual/polling/startup policy. Including credentials never switches that policy on; POST still requires Send. MQTT startup remains deferred. |
 
 A password input needs both masked presentation and a persistence policy. By default its
 value exists only for the current session and is excluded from autosave, sketch/workspace
@@ -2728,110 +2793,125 @@ Allow an explicit **Include configured credentials** choice when saving a docume
 HTML. The choice identifies the credential fields and the artifact receiving their values;
 including them in an HTML export must not silently enable their inclusion in ordinary autosave.
 On loading an explicitly credential-bearing artifact, restore those values through the host's
-sensitive configuration path, never into ordinary script state. For an HMI deployment, the
-resulting file can carry the chosen configuration defaults and an explicit auto-connect policy.
+sensitive configuration path, never into ordinary script state. An HMI-style HTTP document can
+carry its explicit polling/startup choices separately; future MQTT auto-connect follows the same separation.
 Hiding the input fields changes their reader presentation while preserving
 their configuration and bindings. Embedded credentials remain readable from the file even if
-their fields are masked or hidden; the export UI should state this plainly. Re-exporting or
-copying a credential-bearing document must preserve or explicitly change its inclusion policy,
-rather than accidentally exposing session-only values.
+their fields are masked or hidden; the export UI should state this plainly. Saving or exporting
+a credential-bearing document asks again for each artifact; previous inclusion never
+becomes an autosave default. Component, library and sketch duplication copies configuration
+without credential values, so the copied source requires its own credentials.
 
-## HTTP requests and triggers — proposed steps 6.2, 6.4, and 6.5
+## HTTP requests and triggers — 6.4 and HTTP portion of 6.5 implemented on branch
 
-Components should be able to consume HTTP data and request external actions through a service
-built into the canvas runtime. This service would be shared with exported HTML and would not
-depend on deployment plugins, which are a separate project. This is future work, not part of
-the implemented component API v2.
+The shared `integrationApi:1` host service now supports **HTTP source** GET automation and a
+separate **HTTP POST** built-in. Both use bounded typed/JSON results and the editor/Run/HTML
+runtime. Worker network access stays blocked; neither operation waits for its response in the
+workspace action queue. MQTT remains a separate deferred transport.
 
-Keep direct network access blocked inside component Workers. A component requests a named
-operation; the host checks the configured operation, performs the GET or POST, validates the
-response, and delivers the result to that component instance. Endpoint definitions specify the
-URL, method, allowed parameters or body fields, response mapping, and request limits. Scripts
-receive only the data they need. A document can declare required operations; the shared execution
-policy decides whether they may run. Importing it does not itself grant that permission.
+### GET trigger policies
 
-```mermaid
-flowchart LR
-    A["Button, timer, or input change"] --> B["Request component"]
-    B -->|"Named operation and parameters"| C["Host request service"]
-    C <-->|"GET or POST"| D["Configured endpoint"]
-    C -->|"Validated result and status"| B
-    B -->|"Output ports"| E["Gauge, chart, or other consumer"]
-```
-
-### Explicit triggers
-
-The author selects a request trigger in the component's properties, separately from its data
-inputs and output bindings. Each instance owns its trigger configuration and pending requests,
-even when several instances use the same script or endpoint.
-
-| Trigger | Example | Semantics |
+| Trigger | Author configuration | Semantics |
 | --- | --- | --- |
-| Button press | A reader clicks **Refresh weather** | One request intent per accepted press. |
-| Timer | Refresh every 30 seconds | A host-owned schedule with bounded frequency and no overlapping polls for the same instance. |
-| Input value changes | The selected city changes | Request using the new value, optionally after a configured debounce. |
-| Input signal | `refresh` changes from false to true | Request once on the specified transition; remaining true does not retrigger. |
+| Direct Refresh button | Always present on HTTP source | One accepted explicit read, even when Automatic reads enabled is false. |
+| Polling | Refresh at intervals, with Interval input | From 1 to 86,400 seconds, default 5. Starts after the interval in editor/Run/HTML. One pending poll at most; no overlapping or catch-up burst. |
+| Input changes | Refresh when URL or JSON pointer changes | Waits for the configured 0–10 second debounce, default 0.25. Reads the settled configuration, not intermediate graph evaluations. |
+| Boolean Refresh input | A false → true pulse | One read per rising edge. An initially/restored high value establishes a baseline. |
+| Refresh event input | An accepted scalar action event | One explicit occurrence, including repeated equal payloads. The payload is a command occurrence, not the URL. |
+| Reader startup | Refresh on startup in Run / HTML | One immediate read per source/reader session. Does not run on editor import, reload or Undo. |
 
-A signal transition is different from a value being present. Loading a saved `true` value
-establishes the initial baseline; it does not replay an edge. Initial loading of remote data
-is a separate opt-in startup policy. A permitted input change may produce a request after its
-values settle; the host uses its cause/revision to avoid treating intermediate recomputations
-as additional triggers. Repainting, static export, undo, and restoration must not accidentally
-fire requests. Undo restores local configuration and values; it cannot undo a request already
-processed by a remote service.
+The Boolean **Automatic reads enabled** input gates polling, change/startup reads and connected
+Refresh pulses/events. The direct Refresh button remains available. `features.networkIntegrations`
+is the stronger host-level switch and disables all network operations. The automation settings
+default off; importing a component does not manufacture an edge, although an explicitly authored
+polling schedule starts after its interval when that execution scope is active.
+Automatic origins are limited to 30 requests per instance in a 10-second window; direct manual
+Refresh is separate from that automatic-request budget.
 
-`compute()` stays a pure function. The existing `refreshMs` hook remains a presentation refresh
-and does not schedule network traffic. Timers belong to the host and start only when their
-execution scope and the requested operation are enabled. Pause polling while that scope is
-suspended or the browser page is hidden; changing visible sketches in Whole workspace mode
-does not itself suspend a source. Cancel obsolete work when possible and avoid a burst of missed polls on resume.
-Bound requests and propagation so a response feeding a trigger cannot create an uncontrolled loop.
+Polling/change schedules pause while simulation is paused or the browser page is hidden, then
+resume without replaying missed intervals. Changing the visible sketch in Whole workspace mode
+keeps the source active; leaving Active sketch only scope invalidates its pending work. Export
+construction, static artwork and library thumbnails never perform network requests.
 
-### Results and asynchronous behavior
+`compute()` remains pure, and `refreshMs` remains a drawing refresh hint. Host scheduling owns
+automation, input baselines, deadlines and request revisions. Undo/restoration re-prime edge and
+change detection rather than recreating previously accepted requests. New polling can continue
+on its configured schedule afterward; it is not a replay of an earlier action.
 
-A request component publishes mapped transient result values under step 6.1's source contract,
-with explicit status outputs such as `loading`, `error`, and a last-updated timestamp.
-Begin with bounded JSON responses mapped to
-scalar ports; full response objects and tables require their own supported data contract.
-For example, a selector could feed a request whose bounded numeric reading drives a display.
-The existing Gauge clamps to 0–100; use values in that range for the first acceptance example,
-or use a value label for readings with other units/ranges.
+### Captured completion events
 
-Capture the instance, document, parameters, and request revision when starting a GET. If a
-parameter changes while the request is pending, cancel or supersede it; an older response must
-not replace the newer result. Deletion, tab changes, and document replacement also invalidate
-delivery. Apply timeouts, response-size limits, validation, and bounded retry/backoff in the host.
-On failure, a last-known value may remain visible with an explicit stale/error status.
+Successful mapped responses publish current `value` and `json`, and emit captured occurrences
+through both hybrid ports. A dedicated `completed:string` event carries compact JSON text;
+`failed:string` carries safe error text. Equal responses produce separate events, allowing
+`HTTP source.completed → Memo.line` to log each accepted completion. Consumer state may
+deliberately retain those payloads; the source's transient response snapshot remains outside
+history and autosave.
 
-Treat POST as an explicit action with a separately configured trigger and payload. Start with
-a user-operated **Submit** button. Permission to poll with GET does not authorize automatic
-submissions on every input change. Do not blindly retry writes: where the endpoint supports it,
-use an idempotency key to prevent duplicate submissions. Cancelling a local request or ignoring
-its late response does not guarantee that the server cancelled the action.
+The hybrid outputs and completion event from one response share one occurrence origin. When
+the value and JSON branches meet again in a Compose or another pure transform, that transform
+observes both updated values and emits once. Separate responses remain separate occurrences.
 
-### Export, authentication, and first delivery
+Each instance owns independent request revisions. Manual Refresh supersedes an earlier GET;
+URL/mapping/credential changes, deletion or scope replacement stop obsolete delivery. Response
+bodies stay bounded to 64 KiB, compact JSON to 2,000 characters, and timeouts to 1–30 seconds.
+There is no automatic retry. A configured polling interval can start a later, independent read
+after failure. Stale/unavailable mapped values cannot silently drive downstream data operations;
+status outputs remain available independently.
 
-Export the request definitions, trigger configuration, and required host runtime together.
-Keep credentials out of persisted component state and downloadable documents by default.
-Use the shared credential-inclusion policy above when preparing a ready-to-use HTML file.
-Authenticated operations can also use a backend that holds service credentials or a
-reader-authenticated session. Direct browser requests still depend on the endpoint's CORS and
-authentication policy; the host service does not bypass those
-[browser constraints](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#making_cross-origin_requests).
+### Explicit POST and acknowledgement
 
-An exported document should remain readable offline. It may include an explicitly saved
-last-known data snapshot, labelled with its timestamp and stale status. Network controls should
-explain when requests are unavailable; going back online must not replay queued submissions
-without a defined policy. A reader's execution permissions are separate from the author's.
+**HTTP POST** takes URL, JSON Body, response JSON Pointer, optional Idempotency key, and a Send
+input. **Send** on the component, a Boolean rising edge, or an accepted action event captures one
+request's current URL/body/mapping/credentials/key. Draft fields may come from JSON build and
+ordinary bindings. Changing them, starting polling, opening the document, Undo or redraw never
+submits a write. POST has no startup, polling or on-change mode.
 
-Step **6.2** connects **one configured JSON GET endpoint to the existing Gauge**,
-with a manual Refresh button, loading/error outputs, stale-response protection, and an optional
-offline snapshot. Step **6.4** adds timer and input-based read triggers; step **6.5** adds an
-explicit POST action. These are separate increments: a manual POST does not depend on polling,
-and HTTP completion is not required before starting MQTT Subscribe after the shared foundation.
-Verify each increment in both the editor and exported HTML. The same test endpoint should
-demonstrate that rapid parameter changes settle on the newest result, repeated instances stay
-independent, and redraws or restored state never produce extra requests.
+The body must be valid JSON text within 2,000 characters with finite numbers. The host compacts
+it and sends `Content-Type: application/json`. An optional key of at most 200 printable ASCII
+characters is sent as `Idempotency-Key`. Server-side support is required to deduplicate logical
+writes; the client neither retries automatically nor promises exactly-once execution.
+
+Both built-ins expose numeric `httpStatus` (zero before any response), alongside loading,
+availability, error, last-updated and lifecycle status. A 204/205 POST response is an explicit
+success without mapped data: `status:'ready'`, `available:false`, empty `json`, no scalar value,
+and one `completed` event carrying empty text. The card shows **Sent**. Other successful HTTP
+responses must still pass JSON/type/mapping validation. A response error after HTTP 2xx does not
+mean the write was rejected; the HTTP code remains visible.
+
+Cancellation, timeout, disconnecting a binding or returning from Run can stop local delivery,
+but cannot undo a request already processed by the remote server. Authors need to distinguish
+an accepted host action, a received HTTP response and application-specific acknowledgement.
+No queued write is replayed on reconnect, reload or page visibility changes.
+
+### Shared export and acceptance
+
+Run uses a disposable runtime with inherited session credentials. Saved JSON/HTML contains
+request definitions and trigger choices; credentials remain omitted unless selected for that
+particular artifact. Credential inclusion does not select startup or authorize a Send. Requests
+still obey endpoint authentication/CORS, including POST preflight and Run's opaque origin, and
+browser local-network permissions. Static export generation never contacts endpoints.
+
+The dedicated three-sketch HTTP example demonstrates independent manual reads, enabled polling,
+URL changes, Refresh events, repeated completion logging and JSON build → explicit POST. It
+uses local fixtures and an in-memory test endpoint. Its offline drawing remains usable, with
+visible network errors; saved last-known snapshots and table response mapping stay deferred.
+
+Acceptance covers editor, Run and downloaded HTML: pending requests leave controls/timers
+responsive; sources do not overlap polls; rapid changes select the latest result; restored high
+triggers do not replay; repeated equal responses append separately; captured POST bodies remain
+stable; and no write retries occur after errors/timeouts. Empty successful responses and errors
+after HTTP 2xx preserve the distinction between server-side writes and their returned data.
+
+Increment verification on 2026-10-23: the HTTP automation/write browser suite passed **17/17**
+in Chromium and WebKit; the shared foundation and deterministic scheduler suites passed **29/29**.
+The complete focused HTTP browser set passed **34/34** in WebKit. Component/example/local-server
+contracts passed **11/11**, covering the three-sketch artifact, bounded server fixtures, idempotency
+and empty-response presentation. Actual loopback smoke checks showed changing GET results in
+the completion Memo and one explicit JSON POST/response, without uncaught browser errors.
+The final full Chromium regression suite passed **1,609/1,609**. The pass also corrected a
+catalog port-metadata mismatch and synchronized the Live Dataset browser test with its
+committed action and accepted graph, without replaying mutations. All three self-contained
+HTML demos were regenerated and checked against the shared HTTP runtime.
 
 ## MQTT and configurable connections — proposed steps 6.3 and 6.5
 
@@ -2971,10 +3051,10 @@ handling are tested separately from broker delivery.
    specialized editor. The 2026-10-21 closeout covers authored configuration/binding, Run/discard,
    save/reopen and offline export. Optional settings, Dataset access metadata, Keep results/merging
    and a full HTML-to-editor round trip remain outside this completed scope.
-5. **Step 6.1:** Define transient sources, freshness, trigger provenance, sensitive references,
-   connection identity, and artifact-specific credential/startup policy before either transport.
-   These require explicit contract extensions, not implicit additions to the value/table API v2.
-6. **Transport steps:** Fix HTTP response mapping and request limits before 6.2; MQTT client-ID,
-   reconnect, QoS, and retained-reading rules before 6.3; trigger baselines before 6.4; write retry,
-   duplicate, and acknowledgement policies before 6.5. Keep execution settings separate from
+5. **Steps 6.1/6.2/6.4 and HTTP 6.5 — implemented on branch:** Shared transient results,
+   independent requests, credentials and explicit artifact inclusion underpin manual/automated
+   GET and captured JSON POST. Polling/change/startup policies stay separate from Send; completion
+   events preserve repeated responses. Object/table response contracts and offline snapshots remain extensions.
+6. **Deferred MQTT steps 6.3 and remaining 6.5:** Define client-ID, reconnect, QoS, retained-reading
+   and publish acknowledgement rules before implementation. Keep execution settings separate from
    optional authoring, and the runtime independent of the deployment-plugin experiment.

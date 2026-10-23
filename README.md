@@ -273,10 +273,10 @@ related controls, operations, and displays together; Data covers tables and stru
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, URL parameter, Publish, Receive |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 96 entries, including 87 connected API v2 components. Every smart-shape
+The catalog includes 98 entries, including 89 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -389,6 +389,9 @@ previews outputs without adding a second formula or layout editor.
 - [Workspace application example](examples/workspace-runtime.json) and its
   [offline reader](examples/workspace-runtime.html): a hidden Services sketch shares data and
   signals with Dashboard and Data editor through explicit Publish/Receive endpoints.
+- [HTTP integration example](examples/http-integrations.json) and its
+  [self-contained reader](examples/http-integrations.html): independent manual JSON requests,
+  mapped readings and JSON extraction alongside a live clock and responsive slider.
 - [Scripting API](SMART_SHAPES.md#connected-components-api-v2) and
   [design brief](docs/smart-components-brief.md): custom components and the development roadmap.
 
@@ -399,6 +402,85 @@ the exported state when reopened.
 Table downloads offer CSV and JSON in both the editor and HTML reader. CSV defaults to
 **Spreadsheet-safe**, which prefixes formula-like text with an apostrophe; numeric values remain
 numeric. Choose **Raw (exact text)** when you need the original strings without that prefix.
+
+### Read an HTTP endpoint
+
+Place **HTTP source**, open **Edit…**, and set its **URL**, **JSON pointer** (for example `/value`),
+and **Value type**. Click **Refresh** to make one GET request. The mapped `value` and complete
+compact `json` text can feed existing components, including JSON extract. Loading, availability,
+error and last-updated outputs describe the request. Requests run asynchronously: clocks,
+controls, other sources and the rest of the workspace keep processing while a response is pending.
+Refresh again supersedes that instance's earlier request; an older response cannot overwrite it.
+
+Optional settings add **Refresh at intervals** (1–86,400 seconds), debounced URL/JSON-pointer
+changes, and **Refresh on startup in Run / HTML**. The startup setting makes one immediate read
+per reader session; it does not read immediately on editor import, reload or Undo. Configured
+polling also runs in the editor after its interval, with at most one pending poll per source.
+Polling pauses with simulation/page visibility and resumes without a catch-up burst.
+The **Automatic reads enabled** input gates polling, change/startup reads and connected Refresh
+pulses/events; clicking the component's own **Refresh** remains available when it is false.
+Automatic requests are limited to 30 per source in 10 seconds; manual Refresh is independent.
+
+Connect a pulse or event to **Refresh** for one deliberate read. A restored high Boolean value
+only establishes the trigger baseline. Every successful request emits the captured `value` and
+`json` through their hybrid outputs, plus a `completed` event carrying JSON text; failures emit
+`failed` error text. Equal responses are separate occurrences, so a Memo log can record each one.
+
+**Connection…** supports no authentication, a Bearer token or HTTP Basic credentials. Credentials
+stay in a host-owned session store by default; autosave and component copies omit them. Saving a
+sketch/workspace or exporting HTML offers a separate, unchecked choice for each source whose
+credentials should be included in that particular file. Included credentials are readable from
+the file. Credential inclusion does not enable polling or startup; those are separate settings.
+Redraw, Undo and restoration never replay an old trigger or Send. Run inherits configured session credentials for convenience, but
+starts with its own live-result lifetime; returning cancels its requests and discards its results.
+
+Responses are limited to 64 KiB of received bytes and 2,000 characters of compact JSON text,
+matching the current text-port contract. Requests time out after the configured 1–30 seconds
+and do not retry automatically. The endpoint must permit browser requests; CORS still applies.
+Run keeps its isolated origin, so even a server beside the editor must allow its `Origin: null`
+request (or use `Access-Control-Allow-Origin: *` for public, credential-free responses).
+[Browser local-network permissions](https://developer.chrome.com/blog/local-network-access)
+also apply. Run delegates the browser's local-network
+permission to its isolated frame, so Chromium can ask for access to localhost or private-network
+endpoints; the user or deployment policy can still deny it. CORS remains required. If local
+preview access is unavailable, test in the editor or exported HTML, or use a reachable HTTPS
+endpoint that permits Run's origin.
+HTTP response snapshots and credentials stay outside source state, undo history and ordinary
+autosave. An explicitly connected consumer can store an event payload, for example in a Memo.
+Unavailable results do not silently flow downstream as zero or empty text.
+
+**HTTP POST** sends a JSON **Body**, for example from JSON build. Only **Send**, a connected
+false → true Send pulse, or an accepted Send event issues a write. Changing the body, opening
+the document, polling, Undo and redraw do not send it. The host captures the body and optional
+**Idempotency key** for that action, and never retries automatically. Idempotency depends on the
+server honoring the key; a timeout or cancellation cannot prove the write did not happen.
+
+POST exposes the same scalar, JSON and completion outputs. A successful 204/205 response emits
+`completed` with empty text and shows **Sent**, without inventing a scalar result. **HTTP status**
+lets you distinguish a received HTTP response from an unavailable response; a JSON/mapping error
+after HTTP 2xx is a response problem and does not undo the write. MQTT remains deferred.
+
+To try the supplied endpoint files, serve the repository root and open the HTTP example:
+
+```sh
+node tools/serve-http-example.cjs
+```
+
+Open `http://127.0.0.1:8000/examples/http-integrations.html`, or open the editor at
+`http://127.0.0.1:8000/index.html` and import `examples/http-integrations.json`. The development
+server enables CORS only for the example JSON/API endpoints. Run can use them where the
+browser also permits its isolated frame to access the local network.
+Add `?delay=2500` to a source URL to see the clock and slider continue during a slow request.
+The three sketches cover manual reads, automatic reads/event logs, and JSON build → POST.
+The first reads `/examples/http-reading.json` and `/examples/http-reading-alternate.json`;
+change a file, then Refresh. `/examples/api/reading` changes its reading on each request, and
+`/examples/api/echo` accepts POSTs in memory only. Add `?status=503` for a controlled failure or
+`?status=204` to the POST endpoint for an empty acknowledgement. A reused idempotency key returns
+the original response for the same body and HTTP 409 for a different body. Demo records/keys
+disappear on server restart; this helper is not a production service. If deployed under `/canvas/`, change these URLs to
+`/canvas/examples/…`. Downloaded HTML contains its runtime; live reads still need a reachable
+endpoint. Its drawing remains usable offline, with visible request errors rather than saved
+readings presented as fresh data.
 
 ### Demo library
 
@@ -483,6 +565,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
 | `smartComponents` | Hides component templates, source editing, and Edit; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
+| `networkIntegrations` | Disables host-managed HTTP requests independently of component authoring. Ordinary controls, embedded data and drawing keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 
@@ -548,13 +631,14 @@ authoring templates reuse that catalog script instead of storing another copy. U
 catalog and saved preview together when changing a script, then regenerate the example workspaces.
 The catalog updater also synchronizes matching built-in source/preview snapshots in the shipped
 demo library while preserving custom entries.
-Both workspace generators read canonical example scripts. After editing a canonical script:
+Workspace generators read canonical example scripts. After editing a canonical script:
 
 ```sh
 node tools/update-builtin-catalog.cjs
 node tools/update-builtin-catalog.cjs --check
 node tools/update-example-workspace.cjs
 node tools/update-workspace-runtime-example.cjs
+node tools/update-http-integrations-example.cjs
 ```
 
 The main demo uses an explicit `exampleSource` filename on smart items instead of inferring a

@@ -26,7 +26,12 @@ async function exportReader(page,run,context){const download=page.waitForEvent('
   const reader=await context.newPage(),errors=[],requests=[];reader.on('pageerror',e=>errors.push(e.message));reader.on('request',r=>{if(/^https?:/.test(r.url()))requests.push(r.url());});await reader.goto(pathToFileURL(file).href);await reader.waitForFunction(()=>document.querySelectorAll('[data-smart-ready="true"]').length===6);return {reader,errors,requests};}
 
 
-async function flush(run){await run('ensureEditorComponentGraph()');await run('smartGestureQueue');await run('ensureEditorComponentGraph()');await run('smartGestureQueue');}
+async function flush(run){
+  // A Live replacement commits through the action dispatcher and supersedes its
+  // source graph. Wait for that durable action, then read the accepted graph;
+  // return a scalar so DevTools need not retain a transient graph Map.
+  await run(`(async()=>{const current=()=>true;await resolveAcceptedComponentGraph(ensureEditorComponentGraph,current);await editorActionDispatcher.promise;await smartGestureQueue;await resolveAcceptedComponentGraph(ensureEditorComponentGraph,current);return true;})()`);
+}
 async function mirror(run){
   const value=item('spreadsheet','mirror',370,50,{source:'Dataset',dataRows:2,dataColumns:2,cols:3,rows:3,cells:{C1:'=OUTPUT(A1:B3,"table","string,number")'}},{bindings:{data:{uid:'incoming',port:'data'}}});
   await run(`items[1]=${JSON.stringify(value)};items[2].bindings.source={uid:'mirror',port:'table'};items[2].state.updateMode='Live';items[0].state.allowReaderImport=true;items[0].bindings.reload={uid:'replace',port:'value'};delete items[2].bindings.replace;save();editorComponentEvaluation=null;ensureEditorComponentGraph()`);await flush(run);
@@ -42,7 +47,7 @@ async function readerHandle(reader,index,h){const point=await reader.locator('[d
 async function readerText(reader,index,text){await reader.waitForFunction(({index,text})=>{const host=document.querySelector('[data-smart-index="'+index+'"]');return host?.dataset.smartReady==='true'&&[...host.querySelectorAll('text')].some(t=>t.textContent===text);},{index,text});}
 
 test('editor Live mode keeps local edits through redraw and undo, then applies the next source refresh once',async()=>app(async({page,run})=>{
-  await seed(run);await run("items[2].state.updateMode='Live';ensureEditorComponentGraph()");await rows(page,[['High',9],['Low',2]]);await flush(run);assert.equal(await run('datasetRevision(datasets.saved)'),1);
+  await seed(run);await run("items[2].state.updateMode='Live';render()");await rows(page,[['High',9],['Low',2]]);await flush(run);assert.equal(await run('datasetRevision(datasets.saved)'),1);
   await run("commitEditorDatasetChange({type:'update',datasetId:'saved',rowId:datasets.saved.rowIds[0],changes:{value:77}});ensureEditorComponentGraph()");await flush(run);assert.equal(await run('datasets.saved.rows[0][1]'),77);
   await run("items[0].x+=1;items[2].componentName='Renamed';render();ensureEditorComponentGraph()");await flush(run);assert.equal(await run('datasets.saved.rows[0][1]'),77);
   await run('undo();ensureEditorComponentGraph()');await flush(run);assert.equal(await run('datasets.saved.rows[0][1]'),9);

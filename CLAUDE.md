@@ -68,6 +68,25 @@ Keep parent keyboard, paste and import callbacks from mutating the suspended sou
 Preview startup cancellation must also abort snapshot rendering jobs and release temporary script
 executions; ordinary PNG/SVG/HTML exports retain their independent lifetimes.
 
+HTTP GET/POST components declare `integrationApi:1` and use a detached host service. Never await
+network completion in the graph, gesture queue or action dispatcher; Workers remain network-blocked.
+GET supports bounded non-overlapping polling, debounced changes, pulse/event Refresh and opt-in
+Run/HTML startup. Enabled gates automatic origins, while the direct Refresh button remains usable.
+Restored signals establish baselines; configured polling can resume after its interval. POST requires
+an accepted Send and captures its body/key/configuration; input changes, startup and Undo never write.
+Do not retry automatically or imply that aborting a request reverses a server-side write.
+Successful responses emit captured hybrid/completion events, including equal values; empty204/205
+POST responses emit only completed('') without inventing mapped values. HTTP status stays available
+when JSON/mapping fails after2xx. Schedules pause while hidden/paused without catch-up bursts.
+Response snapshots and credentials stay outside source state/history/autosave. Unavailable source
+data is withheld before evaluation, including through pure transforms; independently stored outputs
+remain usable. Explicit consumers can retain event payloads. Credentials enter a saved artifact only
+through its inclusion dialog, separately from polling/startup choices. Run owns a separate service
+lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
+See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
+`tests/http-automation-runtime.test.cjs`.
+Regenerate all three self-contained demo readers after shared runtime changes.
+
 **Duplicate sketch** creates a new sketch with independent component and owned-dataset IDs.
 Connections within the copy follow its copied objects; references to other sketches remain external.
 The singleton Workspace settings component stays in the original sketch. Export/import uses the same

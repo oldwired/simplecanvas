@@ -24,6 +24,12 @@ reachable through Go to tab; `?page=0` also opens Services. The Data editor over
 title while inheriting other workspace presentation defaults. All sketches remain accessible in
 the editor. This example is separate from the component-by-component catalog below.
 
+The separate [HTTP integration workspace](../examples/http-integrations.json) and
+[HTML reader](../examples/http-integrations.html) demonstrate manual external reads. Two HTTP
+sources feed gauges independently, while JSON text feeds JSON extract and a label. A local
+slider and UTC clock remain active while either request is pending. See
+[HTTP setup](../README.md#read-an-http-endpoint) for serving the two included JSON endpoint files.
+
 | Tab | Try it |
 | --- | --- |
 | Basics | Change one number and watch a gauge and value label follow. |
@@ -981,5 +987,111 @@ explicit **Publish** and **Receive** endpoints connect sketches, and shared Data
 their records available across sketches. Declared local actions support navigation, dataset
 commands and downloads, including event-driven requests. See the
 [component scripting contract](../SMART_SHAPES.md#connected-components-api-v2) for custom ports
-and computations, including opt-in typed events for discrete interactions. HTTP/MQTT
-integrations remain future work.
+and computations, including opt-in typed events for discrete interactions. Manual HTTP GET is
+available through HTTP source and HTTP POST below, including optional automated reads and
+explicit writes. MQTT remains deferred.
+
+## HTTP source
+
+**HTTP source** requests JSON from a configured HTTP(S) endpoint. Click **Refresh** for one GET,
+or enable polling, changes or startup separately. Editor, Run and exported HTML share the service;
+network requests never hold the action queue or pause unrelated components. A manual Refresh
+supersedes that source's older pending read; an obsolete result cannot replace the newer one.
+
+| Setting or input | Meaning |
+| --- | --- |
+| URL | Absolute HTTP(S) URL or a path relative to the opened document. Run uses the parent editor URL. Embedded username/password URLs are rejected. |
+| JSON pointer | Empty selects the root; `/value` a property; `/items/0` an array entry. Use `~0` for `~` and `~1` for `/` within a key. |
+| Value type | Number, string or Boolean; the mapped response must match without coercion. |
+| Refresh | A false → true Boolean pulse or accepted event requests one read. A saved high value only establishes the baseline. |
+| Automatic reads enabled | Gates polling, changes, startup and connected Refresh pulses/events. Default true. The component's own Refresh button remains usable when false. |
+| Refresh interval (seconds) | 1–86,400, default 5; used when Refresh at intervals is enabled. |
+| Refresh at intervals | Default off. Starts after the interval, including in the editor; never overlaps a poll for the same instance. |
+| Refresh when URL or JSON pointer changes | Default off. Reads after a settled configuration change; initial/restored values do not invent a change event. |
+| Change delay (seconds) | 0–10, default 0.25, for debouncing URL/pointer changes. |
+| Refresh on startup in Run / HTML | Default off. One immediate read per source and reader session. Editor import, reload and Undo do not invoke startup. |
+| Timeout (seconds) | 1–30, default 10. Requests are never automatically retried. |
+| Show status details | Shows pointer, type, update time and the configured automatic-read modes. |
+
+Polling/change schedules pause while the browser page is hidden or simulation is paused, and
+resume without a burst of missed intervals. Whole workspace mode keeps a source active when a
+different sketch is visible. Redraw, Undo and restoration never replay an old trigger; explicitly
+configured polling can resume on its schedule afterward.
+Automatic requests are bounded to 30 per instance in 10 seconds; direct manual Refresh is separate.
+
+| Output | Meaning |
+| --- | --- |
+| `value` | The mapped scalar, also emitted as a hybrid event for each successful mapped response. |
+| `json` | Full compact JSON response text, also emitted as a hybrid event. |
+| `completed` | Event carrying the successful JSON text. Identical responses still emit separate events. |
+| `failed` | Event carrying safe request/response error text. |
+| `available` | Whether the current mapped result is valid for the source configuration. |
+| `loading` | True while a request is pending. |
+| `stale` | A previous reading is no longer current. |
+| `error` | Request, response or mapping error, otherwise empty. |
+| `lastUpdated` | Last successful response time as Unix epoch milliseconds; zero before success. |
+| `status` | `idle`, `loading`, `ready`, `error` or `disabled`. |
+| `httpStatus` | Received HTTP status code, or zero when no response code is available. |
+
+`value` and `json` are withheld until a valid mapped response arrives. Status outputs remain
+available, avoiding accidental initial zero/empty values downstream. Invalid JSON, missing
+pointers, wrong types, HTTP errors and response limits fail visibly. Received bodies are bounded
+to 64 KiB and compact JSON to 2,000 characters. Connect `completed` to Memo's Line event input to
+log every successful request, including equal responses, without an extra Append trigger.
+The Value, JSON and Completed events from one response belong together: branches that meet in
+a Compose component are combined once using both updated values.
+
+## HTTP POST
+
+**HTTP POST** sends a captured JSON payload only on **Send**, a false → true Send signal, or an
+accepted Send event. Merely changing fields/body, opening the document, polling, Undo or redraw
+never writes. Its **URL**, **Response JSON pointer**, **Value type**, timeout, Connection dialog
+and outputs follow HTTP source. It has no polling, change or startup setting.
+
+| Input | Meaning |
+| --- | --- |
+| JSON body | Valid JSON text up to 2,000 characters with finite numeric values. Connect JSON build's text output or supply literal JSON. Sent as compact JSON with `Content-Type: application/json`. |
+| Idempotency key | Optional, at most 200 printable ASCII characters; sent as `Idempotency-Key`. Use one stable key for retries of the same logical write only when the endpoint supports it. |
+| Send | One pulse/event captures the current URL, JSON body, response mapping, credentials and key for one request. Initial/restored high signals do not send. |
+
+Every accepted Send is explicit; no failed write is retried automatically. A timeout, cancellation
+or leaving Run cannot undo an already accepted server action. Do not infer that a write failed
+just because its response is missing or invalid. A 2xx response followed by a JSON/mapping error
+retains `httpStatus` and shows **Response error**. A server-supported idempotency key helps avoid
+duplicates, but the client does not promise exactly-once server execution.
+
+Successful 204/205 responses intentionally have no mapped value: the card shows **Sent**,
+`status` is `ready`, `available` is false, and `completed` emits empty text. Other successful
+responses return the same typed scalar, compact JSON and hybrid/completion events as GET.
+
+## HTTP authentication, export and local testing
+
+**Connection…** supports no authentication, a Bearer token or HTTP Basic. Credentials belong to
+the source and endpoint origin. **Use for this session** excludes them from source state, Undo,
+autosave, clipboard and library/sketch copies. Saving a sketch/workspace or HTML offers a separate,
+unchecked per-source inclusion choice for that artifact. Included credentials remain readable
+from the file. Restoring them does not itself enable polling/startup or Send.
+
+Response snapshots are transient. An explicit consumer can capture a response/event into stored
+content such as Memo; the HTTP component itself does not save the reading. Deletion, replacement,
+changed request configuration and scope departure invalidate pending delivery. Run inherits
+session credentials into its separate host store; returning cancels pending delivery and discards
+local reader changes, without undoing writes at the server. Static artwork and HTML generation
+never issue requests. `features.networkIntegrations:false` disables all requests independently
+of component authoring.
+
+Endpoints must permit browser requests. Run retains its opaque `Origin: null`, even for a server
+beside the editor. JSON POST/Idempotency-Key require suitable CORS preflight headers. Browser
+local-network permissions are additional: Run delegates them so Chromium can ask, but users or
+deployment policy can deny access. There is no proxy or relaxed same-origin sandbox.
+
+The [HTTP workspace](../examples/http-integrations.json) and [HTML example](../examples/http-integrations.html)
+have manual-read, automatic-read/log and explicit POST sketches. Run `node tools/serve-http-example.cjs`
+from the repository, then open `http://127.0.0.1:8000/examples/http-integrations.html` or import
+the JSON into the served editor. The helper supplies two JSON files, changing readings at
+`/examples/api/reading`, and in-memory writes at `/examples/api/echo`; CORS applies only to those
+example endpoints. `?delay=2500` simulates latency, `?status=503` failure, and POST `?status=204`
+an empty acknowledgement. Reusing a key/body returns the original response; changing the body
+under that key returns 409. The last 256 idempotency keys are retained until restart; demo records
+are not persisted. It is a development helper, not a production API. MQTT and table-response
+mapping remain later work.

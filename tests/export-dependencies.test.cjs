@@ -7,7 +7,7 @@ const {parseApp,inlineScripts,freeReferences}=require('./helpers/app-source.cjs'
 const root=path.join(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 // These are platform globals, not editor helpers. Any new external dependency in a
 // serialized function must either be supplied by the reader or consciously listed here.
-const browserGlobals=new Set(`Array Blob DOMPoint Date Error Event Infinity Intl JSON Map Math MessageChannel MouseEvent Number Object Option PointerEvent Promise ResizeObserver Set String Symbol TextEncoder URL URLSearchParams Uint32Array WeakMap WeakSet cancelAnimationFrame clearInterval clearTimeout console crypto document getComputedStyle globalThis innerHeight innerWidth location matchMedia parseFloat parseInt performance requestAnimationFrame setInterval setTimeout undefined window`.split(' '));
+const browserGlobals=new Set(`AbortController Array Blob DOMPoint Date Error Event Infinity Intl JSON Map Math MessageChannel MouseEvent Number Object Option PointerEvent Promise ResizeObserver Set String Symbol TextDecoder TextEncoder URL URLSearchParams Uint32Array WeakMap WeakSet btoa cancelAnimationFrame clearInterval clearTimeout console crypto document fetch getComputedStyle globalThis innerHeight innerWidth location matchMedia parseFloat parseInt performance requestAnimationFrame setInterval setTimeout undefined window`.split(' '));
 function missingDependencies(source){return freeReferences(source).filter(reference=>!browserGlobals.has(reference.name));}
 let browser;
 before(async()=>{browser=await launchBrowser();});
@@ -20,7 +20,7 @@ test('scope contract checks dormant branches, respects lexical bindings, and ign
   assert.ok(app.declaration('htmlSmartSource').startsWith('function htmlSmartSource('));
 });
 
-test('fresh HTML export and both shipped demos declare every non-platform function dependency',async()=>{
+test('fresh HTML export and shipped demos declare every non-platform function dependency',async()=>{
   const context=await browser.newContext({viewport:{width:1400,height:1000}});
   try{
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
@@ -34,7 +34,7 @@ test('fresh HTML export and both shipped demos declare every non-platform functi
     await page.locator('.tab-select[data-tab-id="contract-sketch"]').waitFor({state:'attached'});
     await page.locator('#menuBtn').click();const download=page.waitForEvent('download');await page.locator('[data-act="html"]').click();
     const sources=[['fresh export',fs.readFileSync(await(await download).path(),'utf8')],
-      ...['smart-components-workspace.html','workspace-runtime.html'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name),'utf8')])];
+      ...['smart-components-workspace.html','workspace-runtime.html','http-integrations.html'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name),'utf8')])];
     for(const [name,document] of sources){
       const scripts=inlineScripts(document);assert.ok(scripts.length>0,name+' contains executable scripts');
       const missing=scripts.flatMap(script=>missingDependencies(script.source));
