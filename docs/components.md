@@ -989,7 +989,7 @@ commands and downloads, including event-driven requests. See the
 [component scripting contract](../SMART_SHAPES.md#connected-components-api-v2) for custom ports
 and computations, including opt-in typed events for discrete interactions. Manual HTTP GET is
 available through HTTP source and HTTP POST below, including optional automated reads and
-explicit writes. MQTT remains deferred.
+explicit writes. MQTT Config and Subscribe provide live readings; MQTT Publish remains deferred.
 
 ## HTTP source
 
@@ -1093,5 +1093,71 @@ the JSON into the served editor. The helper supplies two JSON files, changing re
 example endpoints. `?delay=2500` simulates latency, `?status=503` failure, and POST `?status=204`
 an empty acknowledgement. Reusing a key/body returns the original response; changing the body
 under that key returns 409. The last 256 idempotency keys are retained until restart; demo records
-are not persisted. It is a development helper, not a production API. MQTT and table-response
-mapping remain later work.
+are not persisted. It is a development helper, not a production API. Table-response mapping remains later work.
+
+
+## MQTT Config and Subscribe
+
+**MQTT Config** owns one broker connection shared by explicitly referencing Subscribe components.
+Use a broker WebSocket URL (`ws://` or `wss://`), not a normal MQTT TCP address. **Apply / Connect**
+commits the current URL/client ID and connects; changing a bound URL alone does not reconnect.
+**Disconnect** stops automatic retries. **Credentials…** opens host-owned username/password fields.
+A blank Client ID generates a unique identity for this Config in this document session; explicit
+IDs are checked for collisions with other active Configs in the same document.
+
+**Connect on opening in Run / HTML** is off by default and never starts the editor on import,
+reload or Undo. Credentials are session-only unless selected in the JSON/HTML export inclusion
+dialog. Run has its own host service and connection lifetime. Component scripts receive status,
+never the connection object or credentials.
+
+| Config output | Meaning |
+| --- | --- |
+| `connected` | The current connection has been accepted by the broker. |
+| `status` | Disconnected, connecting, connected, reconnecting, suspended or error status. |
+| `error` | Connection/configuration error, without exposing credentials. |
+
+In **MQTT Subscribe → Edit**, choose an **MQTT Config** by sketch and component name. The reference
+uses stable sketch/component IDs. It follows a copied connected selection or duplicated sketch;
+a deleted/missing Config stays broken until a replacement is selected. Cross-sketch Configs require
+Whole workspace execution. This host reference is separate from ordinary value/event wiring.
+
+| Subscribe setting/input | Meaning |
+| --- | --- |
+| Topic / filter | Exact topic, or an MQTT filter using `+` for one topic level and `#` for the remaining levels. |
+| Payload format | Text, or JSON with a selected pointer. |
+| Value type | Number, string or Boolean; values must match the selected type. |
+| JSON pointer | Pointer such as `/value`; empty selects the complete JSON root. Ignored for text payloads. |
+| Show status details | Show/hide the small connection/timestamp/type information on the component. |
+
+| Subscribe output | Meaning |
+| --- | --- |
+| `value` | Current typed value, with fresh-message events. |
+| `json` | Complete compact JSON in JSON mode; empty text in text mode. |
+| `available` / `stale` | Whether the current reading is usable, or a prior reading has become stale. |
+| `error` / `status` | Subscription, mapping and connection state. |
+| `lastUpdated` | Timestamp in epoch milliseconds of the last accepted reading. |
+| `topic` | Actual topic of the last accepted message, useful with wildcard filters. |
+
+Initial messages after subscribing/reconnecting and all retained messages update current values but
+emit no action events. Later live messages emit captured hybrid values, even when two payloads are
+equal. In JSON mode, `value` and `json` from one message share an event origin. The first version uses
+QoS 0 subscriptions and clean sessions; it has no offline message queue or publishing operation.
+Payloads are bounded at 64 KiB and text/JSON outputs at 2,000 characters. At most 16 connections
+run concurrently; more than 60 messages per second on one connection disconnects it visibly until
+Apply / Connect. Malformed payloads become visible errors. Unavailable readings are withheld from downstream value
+consumers instead of turning into zero/empty text. Source results do not change undo/autosave;
+explicit consumers such as Memo can retain accepted message payloads.
+
+Reconnect uses bounded increasing delays. Pause or browser hiding suspends a connection and marks
+readings stale; resume reconnects its prior connection intent. Whole workspace mode retains
+connections across visible-sketch changes. Active sketch mode disconnects when the owning sketch
+is left and requires another manual Connect on return. Explicit Disconnect does not reconnect.
+
+The [MQTT workspace](../examples/mqtt-integrations.json) and
+[HTML reader](../examples/mqtt-integrations.html) show numeric and text subscriptions sharing a
+Config, a Gauge, an event log, and a second sketch using that same connection. Run `npm ci` once for the development tools, then
+`node tools/serve-mqtt-example.cjs` and open `http://127.0.0.1:8001/examples/mqtt-integrations.html`.
+The local helper supplies retained baselines and new readings once per second. The client is bundled
+into self-contained HTML; a live broker is still required. Credentials, origin checks and browser
+local-network rules apply in the editor, Run and exported reader. MQTT Publish and explicitly saved
+offline reading snapshots remain deferred.

@@ -46,9 +46,11 @@ async function seed(run,logMode=false){
         eventModes:{line:'value'},bindings:{line:{uid:'entry',port:'value'},append:{uid:'entry',port:'submitted'}}})
     ],{});
     selection=[];editingSmartIdx=null;setTool('select');render();`);
-  await run('ensureEditorComponentGraph()');await run('save()');
+  await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');await run('save()');
 }
-const outputs=(run,index)=>run(`(async()=>{const record=(await ensureEditorComponentGraph()).get(items[${index}]);
+// Closing Edit or replacing history can supersede an in-flight paint. Retry the
+// bounded graph read only; edits and event submissions must never be replayed.
+const outputs=(run,index)=>run(`(async()=>{const record=(await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)).get(items[${index}]);
   if(record.error)throw new Error(record.error);return record.io.outputs;})()`);
 async function waitText(page,index,text){
   await page.waitForFunction(({index,text})=>__test.run(`editorComponentEvaluation?.records?.get(items[${index}])?.io.outputs.text`)===text,{index,text});
@@ -142,8 +144,8 @@ test('Undo restores evicted Memo entries and redo/reload retain the log without 
   const before=await run('undoStack.length');
   await submit(page,run,'E');await waitText(page,1,'C\nD\nE');
   assert.equal(await run('undoStack.length'),before+1,'one accepted submission owns its log eviction');
-  await run('undo();ensureEditorComponentGraph()');assert.deepEqual(await outputs(run,1),{text:'B\nC\nD',lineCount:3});
-  await run('redo();ensureEditorComponentGraph()');assert.deepEqual(await outputs(run,1),{text:'C\nD\nE',lineCount:3});
+  await run('undo();resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');assert.deepEqual(await outputs(run,1),{text:'B\nC\nD',lineCount:3});
+  await run('redo();resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');assert.deepEqual(await outputs(run,1),{text:'C\nD\nE',lineCount:3});
   await run('save()');await page.reload();await run('appStarted');
   await waitText(page,1,'C\nD\nE');
   assert.equal(await run('items[1].state.logMode'),true);

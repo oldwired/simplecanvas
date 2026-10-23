@@ -102,7 +102,7 @@ test('affected event feedback fails visibly and leaves the scene untouched',asyn
 
 test('changed scenes, scripts, state, or bindings cancel an in-flight event transaction',async()=>{
   const {prepareComponentEventDelivery:prepare}=api();
-  for(const change of ['valid','source-state','receiver-script','event-binding','signal-binding','event-mode']){
+  for(const change of ['valid','source-state','receiver-script','event-binding','signal-binding','event-mode','mqtt-binding']){
     const source=item('source'),target=item('target',{eventBindings:{value:{uid:'source',port:'value'}}}),scene=[source,target];
     const graph=records(scene.map(node=>[node,capabilities(ports,ports)]));let current=true;
     await assert.rejects(prepare(scene,source,eventState(1,[{port:'value',payload:'new'}]),async()=>{
@@ -112,6 +112,7 @@ test('changed scenes, scripts, state, or bindings cancel an in-flight event tran
       if(change==='event-binding')target.eventBindings.value.port='other';
       if(change==='event-mode')target.eventModes={value:'value'};
       if(change==='signal-binding')target.bindings={value:{uid:'other',port:'x'}};
+      if(change==='mqtt-binding')source.mqttBinding={sketchId:'other-sketch',componentUid:'other-config'};
       return eventState(1);
     },()=>current,graph),error=>error.cancelled===true,change);
     assert.equal(target.state.count,0,'the stale receiver result never commits');

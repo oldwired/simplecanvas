@@ -298,3 +298,28 @@ test('accepted background dataset changes fold into a gesture baseline across sk
   assert.equal(folded.workspace[0].datasets.data.revision,1);
   assert.deepEqual(folded.datasets,{},'remote data is never copied into the consumer sketch');
 });
+
+test('MQTT Config references follow workspace copies and preserve explicit external owners',()=>{
+  const scope=transferScope(),source=entry('services',[
+    item('broker'),item('local',{mqttBinding:{sketchId:'services',componentUid:'broker'}}),
+    item('remote',{mqttBinding:{sketchId:'other',componentUid:'external'}})
+  ]);
+  const [copy]=plain(scope.transferWorkspaceEntries([source],['services-copy'],{duplicate:true}));
+  assert.deepEqual(copy.items[1].mqttBinding,{sketchId:'services-copy',componentUid:copy.items[0].uid});
+  assert.deepEqual(copy.items[2].mqttBinding,source.items[2].mqttBinding);
+  const [moved,consumer]=plain(scope.transferWorkspaceEntries([source,entry('view',[item('reading',{mqttBinding:{sketchId:'services',componentUid:'broker'}})])],['imported-services','imported-view'],{occupiedComponentIds:['broker']}));
+  assert.deepEqual(consumer.items[0].mqttBinding,{sketchId:'imported-services',componentUid:moved.items[0].uid});
+  const [alone]=plain(scope.transferWorkspaceEntries([entry('view',[item('reading',{mqttBinding:{sketchId:'missing',componentUid:'broker'}})])],['view-copy']));
+  assert.deepEqual(alone.items[0].mqttBinding,{sketchId:'missing',componentUid:'broker'},'an absent connection stays broken rather than binding by display name');
+});
+
+test('MQTT references normalize as bounded identities, independently of ordinary signal bindings',()=>{
+  const scope=vm.createContext({componentPortName:name=>typeof name==='string' && /^[a-zA-Z]\w*$/.test(name),isNum:Number.isFinite,DATA_LIMITS:{rows:1000}});
+  const start=html.indexOf('  function normalizeComponentFields('),end=html.indexOf('  function normalizeItem(',start);
+  vm.runInContext(html.slice(start,end),scope);
+  const result={};scope.normalizeComponentFields({mqttBinding:{sketchId:'services',componentUid:'broker'}},result);
+  assert.deepEqual(plain(result),{mqttBinding:{sketchId:'services',componentUid:'broker'}});
+  for(const ref of [null,[],{}, {sketchId:'__proto__',componentUid:'broker'}, {sketchId:'services',componentUid:''}, {sketchId:'services',componentUid:'broker',password:'secret'}]){
+    const invalid={};scope.normalizeComponentFields({mqttBinding:ref},invalid);assert.match(invalid.componentInvalid,/Invalid MQTT/);
+  }
+});

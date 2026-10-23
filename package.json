@@ -6,7 +6,10 @@
   },
   "devDependencies": {
     "acorn": "8.19.0",
+    "aedes": "1.2.0",
     "eslint-scope": "9.1.2",
-    "playwright": "1.62.1"
+    "mqtt": "5.16.1",
+    "playwright": "1.62.1",
+    "ws": "8.22.0"
   }
 }

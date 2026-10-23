@@ -1,7 +1,8 @@
 # SimpleCanvas — Project Notes
 
 Single-file HTML/CSS/JS canvas drawing app. Everything lives in `index.html` —
-no build step or runtime dependencies. Node.js tooling is development-only.
+no build step or external runtime fetches. The MQTT.js browser client is vendored inline;
+Node.js tooling and the local example broker are development-only.
 
 ## Current implementation
 
@@ -85,7 +86,17 @@ through its inclusion dialog, separately from polling/startup choices. Run owns 
 lifetime and credential store; opaque-origin CORS and native local-network permissions still apply.
 See `tests/integration-foundation.test.cjs`, `tests/http-integration-runtime.test.cjs` and
 `tests/http-automation-runtime.test.cjs`.
-Regenerate all three self-contained demo readers after shared runtime changes.
+MQTT Config/Subscribe share host-owned connections through explicit `mqttBinding` sketch/component
+references. Draft URL/client-ID changes apply only on Connect; retained/initial messages establish
+readings without events. Keep generation checks, bounded reconnect, stale/unavailable value handling
+and separate Run lifetimes. Credentials stay in the shared host store and only enter explicitly
+selected saved artifacts. Worker scripts never receive a socket or credential.
+Each graph pass captures its integration readings; incoming packets cannot change a later settling
+round of that pass. Shared network redraw tasks coalesce behind accepted gestures, and MQTT
+value-only consumers skip event preparation. Captured events retain their original topic/timestamp
+as well as payload. See `tests/mqtt-event-receivers.test.cjs` and the continuous-telemetry and
+queued-topic regressions in `tests/mqtt-runtime-browser.test.cjs`.
+Regenerate all four self-contained demo readers after shared runtime changes.
 
 **Duplicate sketch** creates a new sketch with independent component and owned-dataset IDs.
 Connections within the copy follow its copied objects; references to other sketches remain external.

@@ -1542,7 +1542,68 @@ exported HTML resolves them from its own URL. The opaque Run origin requires end
 permissions so supporting browsers can ask. User/deployment decisions can still deny access;
 there is no proxy or `allow-same-origin` bypass. JSON POST and Idempotency-Key may require a CORS
 preflight, which the server must permit. Table-response mapping, saved offline snapshots and
-MQTT Subscribe/Publish remain separate extensions.
+MQTT Subscribe is described below; MQTT Publish remains a separate extension.
+
+## Host-managed MQTT subscriptions (integration API 1)
+
+[MQTT Config](examples/mqtt-config.js) declares a host-owned connection. Its descriptor names
+ordinary URL/client-ID inputs and an opt-in reader startup policy:
+
+```js
+mqttConfig(state) {
+  return {url:'url', clientId:'clientId', startup:state.connectOnStart === true};
+}
+```
+
+The required Config outputs are `connected:boolean`, `status:string` and `error:string`.
+`compute(inputs, state, context)` reads those transient values from `context.source`. Action handles
+use `{type:'mqttConnect'}`, `{type:'mqttDisconnect'}` or `{type:'mqttCredentials'}`. Connect captures
+the current inputs. Draft changes do not silently reconnect. Credentials and client objects are
+host-owned, never passed into Workers or stored in component state.
+
+[MQTT Subscribe](examples/mqtt-subscribe.js) declares a typed reading:
+
+```js
+mqttSource(state) {
+  return {topic:'topic', path:'path', format:state.format, valueType:state.valueType};
+}
+```
+
+`format` is `text` or `json`; `valueType` is `number`, `string` or `boolean`. The host reference is
+`item.mqttBinding = {sketchId, componentUid}` and is edited by the Config picker. It is not an
+ordinary string port and is never resolved by display name. Transfer/duplication remaps the
+reference only when its target travels with the copy. Missing targets remain visibly unavailable.
+Cross-sketch references require Whole workspace execution.
+
+Subscribe's outputs are `value` of the declared type, `json:string`, `available:boolean`,
+`stale:boolean`, `error:string`, `lastUpdated:number`, `status:string`, and `topic:string`.
+The built-in declares hybrid `value`/`json` outputs with `eventApi:1`. The host injects transient
+readings through `context.source` and withholds unavailable data outputs before downstream
+computation. Text mode has no JSON document; JSON mode returns the complete compact JSON plus
+its mapped scalar. Source snapshots never enter authored state, history or autosave.
+
+All retained messages and the first valid message per subscription/reconnect establish a current
+value without emitting an event. Later live messages deliver captured values with one shared
+origin per message, so equal messages remain distinct occurrences and reconverging pure branches
+recombine once. Explicit consumers may store payloads, for example a Memo log.
+
+Config uses manual connection by default, optional Run/HTML startup, clean MQTT sessions and
+QoS 0 subscriptions. Different Config instances own separate connections; consumers of the same
+Config share one. The runtime allows 16 connections, 64 KiB transport/payload buffering and
+2,000-character text/JSON outputs. More than 60 messages/second on one connection disconnects it
+visibly until another Apply / Connect. Blank client IDs are unique per Config/document session; duplicate explicit
+IDs within an active document are rejected. Reconnect backs off with a bounded delay. Explicit
+Disconnect retires connection intent; hidden/paused suspension preserves intent for resume.
+Leaving an Active sketch execution scope retires its connection and requires Connect on return;
+Whole workspace mode retains it across visible-sketch changes. Closing/replacing the workspace
+retires all generations and rejects late messages.
+
+The browser client is bundled in `index.html` and copied into self-contained HTML exports; it
+never loads from a CDN. `networkIntegrations:false` disables connections. Run retains its isolated
+origin and owns independent connections/credentials. Brokers must accept the WebSocket origin
+(including Run's opaque origin where appropriate); browser network permissions still apply.
+Credentials use the same explicit per-artifact inclusion choice as HTTP. No Publish action,
+offline command replay, or saved reading snapshot is part of this increment.
 
 ## Embedded table data
 
@@ -1827,7 +1888,7 @@ the view to update the source and total; click **Copy current total** (a Replace
 copied total to leave both unchanged. A later source edit updates the views but leaves the stored copy
 alone until **Copy current total** is clicked again.
 Coordinated current-record controls, calculated dataset columns, table mapping from HTTP
-responses and MQTT remain future extensions. The HTTP source already supplies transient
+responses and MQTT Publish remain future extensions. HTTP and MQTT sources already supply transient
 scalar readings and compact JSON text; it does not create a second stored Dataset model.
 
 Table sort accepts `column` and `direction` (`ascending` or `descending`); blank `column` preserves
@@ -2386,11 +2447,11 @@ built-ins: Clock, Chart, Live clock, Stopwatch, and Ruler. Matching full snapsho
 catalog entries while keeping the file portable; `builtinCategoryTags` preserves demo grouping.
 Customizing a built-in requires **Copy to My shapes**; the eight personal definitions remain editable.
 
-The built-in catalog has 98 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
+The built-in catalog has 100 entries. Clock, Arrow, Arc, Chart, Minimal, and Blank
 retain their original API v1 behavior. Minimal is the circle example; Blank
 deliberately produces no drawing. These library entries do not add connected ports to their scripts.
 
-The built-in catalog includes 89 API v2 components, with editable sources in `examples/`:
+The built-in catalog includes 91 API v2 components, with editable sources in `examples/`:
 
 - [AND](examples/and-gate.js), [NAND](examples/nand-gate.js), [OR](examples/or-gate.js),
   [NOR](examples/nor-gate.js), [XOR](examples/xor-gate.js), [XNOR](examples/xnor-gate.js),
@@ -2429,6 +2490,9 @@ The built-in catalog includes 89 API v2 components, with editable sources in `ex
   allowed; types use `0` auto, `1` number, `2` string, `3` Boolean, or the corresponding names.
 - [Signal → event](examples/signal-to-event.js) and [Event → pulse](examples/event-to-pulse.js):
   explicit scalar sampling and bounded event-to-Boolean pulse conversion, described above.
+- [MQTT Config](examples/mqtt-config.js) and [MQTT Subscribe](examples/mqtt-subscribe.js):
+  shared WebSocket connections, typed readings and fresh-message events, with retained baselines
+  and host-owned credentials.
 - [HTTP source](examples/http-source.js): manual asynchronous JSON GET through the host integration
   service, optional polling/debounced changes/startup, typed and JSON hybrid outputs, and completion
   events. [HTTP POST](examples/http-post.js) sends captured JSON only on explicit Send actions, with

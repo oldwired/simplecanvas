@@ -5,10 +5,22 @@ const path=require('node:path');
 const {launchBrowser}=require('./helpers/browser.cjs');
 const {parseApp,inlineScripts,freeReferences}=require('./helpers/app-source.cjs');
 const root=path.join(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const {mqttLibraryDeclaration,updateMqttBundle}=require('../tools/update-mqtt-bundle.cjs');
+const mqttLibrary=mqttLibraryDeclaration(root);
 // These are platform globals, not editor helpers. Any new external dependency in a
 // serialized function must either be supplied by the reader or consciously listed here.
-const browserGlobals=new Set(`AbortController Array Blob DOMPoint Date Error Event Infinity Intl JSON Map Math MessageChannel MouseEvent Number Object Option PointerEvent Promise ResizeObserver Set String Symbol TextDecoder TextEncoder URL URLSearchParams Uint32Array WeakMap WeakSet btoa cancelAnimationFrame clearInterval clearTimeout console crypto document fetch getComputedStyle globalThis innerHeight innerWidth location matchMedia parseFloat parseInt performance requestAnimationFrame setInterval setTimeout undefined window`.split(' '));
-function missingDependencies(source){return freeReferences(source).filter(reference=>!browserGlobals.has(reference.name));}
+const browserGlobals=new Set(`AbortController Array Blob Boolean DOMPoint Date Error Event Infinity Intl JSON Map Math MessageChannel MouseEvent Number Object Option PointerEvent Promise ResizeObserver Set String Symbol TextDecoder TextEncoder URL URLSearchParams Uint32Array WeakMap WeakSet WebSocket queueMicrotask btoa cancelAnimationFrame clearInterval clearTimeout console crypto document fetch getComputedStyle globalThis innerHeight innerWidth location matchMedia parseFloat parseInt performance requestAnimationFrame setInterval setTimeout undefined window`.split(' '));
+function missingDependencies(source){
+  // The pinned upstream browser bundle contains portable UMD/Node feature probes.
+  // Verify it byte-for-byte, then audit our serialized helpers separately instead
+  // of whitelisting its dormant globals for all application code.
+  if(source.includes('function componentMqttClientLibrary(')){
+    assert.ok(source.includes(mqttLibrary),'reader carries the exact checked vendor bundle');
+    source=source.replace(mqttLibrary,'function componentMqttClientLibrary(){return {};}');
+  }
+  return freeReferences(source).filter(reference=>!browserGlobals.has(reference.name));
+}
+test('embedded MQTT client matches its pinned, checksum-verified vendor source',()=>{updateMqttBundle({root,check:true});});
 let browser;
 before(async()=>{browser=await launchBrowser();});
 after(async()=>{await browser?.close();});
@@ -34,7 +46,7 @@ test('fresh HTML export and shipped demos declare every non-platform function de
     await page.locator('.tab-select[data-tab-id="contract-sketch"]').waitFor({state:'attached'});
     await page.locator('#menuBtn').click();const download=page.waitForEvent('download');await page.locator('[data-act="html"]').click();
     const sources=[['fresh export',fs.readFileSync(await(await download).path(),'utf8')],
-      ...['smart-components-workspace.html','workspace-runtime.html','http-integrations.html'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name),'utf8')])];
+      ...['smart-components-workspace.html','workspace-runtime.html','http-integrations.html','mqtt-integrations.html'].map(name=>[name,fs.readFileSync(path.join(root,'examples',name),'utf8')])];
     for(const [name,document] of sources){
       const scripts=inlineScripts(document);assert.ok(scripts.length>0,name+' contains executable scripts');
       const missing=scripts.flatMap(script=>missingDependencies(script.source));

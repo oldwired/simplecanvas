@@ -15,13 +15,14 @@ async function app(fn){
   const context=await browser.newContext({viewport:{width:1600,height:1250}});
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'simplecanvas-http-auto-'));
   const html=parseApp(fs.readFileSync(path.join(root,'index.html'),'utf8')).inject('window.__test={run:source=>eval(source)};');
-  const calls=[],held=[],errors=[];let respond=()=>({value:37,name:'Reading'});
+  const calls=[],held=[],errors=[],requestWaiters=new Set();let respond=()=>({value:37,name:'Reading'});
   try{
     context.on('page',page=>page.on('pageerror',error=>errors.push(error.message)));
     await context.route(api+'/**',async route=>{
       const request=route.request(),url=new URL(request.url());
       if(request.method()==='OPTIONS')return route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST','access-control-allow-headers':'authorization, content-type, idempotency-key'}});
       const call={url:url.href,path:url.pathname,method:request.method(),headers:request.headers(),body:request.postData(),at:Date.now()};calls.push(call);
+      for(const waiter of [...requestWaiters])if(waiter.matches(request))waiter.finish(null,request);
       const result=await respond(call,route);if(result===null)return;
       try{await route.fulfill({contentType:'application/json',headers:{'access-control-allow-origin':'*'},...(result?.response||{body:JSON.stringify(result)})});}
       catch(error){if(!/closed|disposed|Invalid|cancelled|aborted/i.test(error.message))throw error;}
@@ -30,10 +31,22 @@ async function app(fn){
     const page=await context.newPage();page.on('dialog',dialog=>dialog.accept());await page.goto(origin+'/index.html');
     const run=source=>page.evaluate(async source=>{await __test.run('appReady');return __test.run(source);},source);await run('appStarted');
     const defer=()=>{const gate={};gate.promise=new Promise(resolve=>gate.resolve=resolve);held.push(gate);return gate;};
-    const next=(method='GET',path='/reading')=>page.waitForRequest(request=>request.method()===method&&request.url()===api+path);
+    // Playwright's request event can precede the route handler. Resolve only after
+    // that handler has captured headers/body in calls, without waiting for a reply.
+    const next=(method='GET',path='/reading')=>{
+      const promise=new Promise((resolve,reject)=>{
+        const waiter={matches:request=>request.method()===method&&request.url()===api+path&&request.frame().page()===page,
+          finish(error,request){clearTimeout(timer);requestWaiters.delete(waiter);if(error)reject(error);else resolve(request);}};
+        const timer=setTimeout(()=>waiter.finish(new Error('Timed out waiting for routed '+method+' '+path)),30000);
+        timer.unref?.();requestWaiters.add(waiter);
+      });
+      // An earlier assertion may fail before its caller awaits this request. Fixture
+      // teardown still rejects/cancels the waiter without an unhandled rejection.
+      promise.catch(()=>{});return promise;
+    };
     await fn({page,run,context,directory,calls,defer,next,setResponse:fn=>{respond=fn;}});
     assert.deepEqual(errors,[],'editor, Run and HTML have no uncaught errors');
-  }finally{for(const gate of held)gate.resolve(null);await context.close();fs.rmSync(directory,{recursive:true,force:true});}
+  }finally{for(const gate of held)gate.resolve(null);for(const waiter of [...requestWaiters])waiter.finish(new Error('HTTP fixture closed'));await context.close();fs.rmSync(directory,{recursive:true,force:true});}
 }
 const bind=(index,port='value')=>({uid:'http-auto-'+index,port});
 const emitterScript=`({apiVersion:2,eventApi:1,inputs:{},outputs:{value:{type:'string',event:true}},compute(inputs,state){return {value:state.value};},

@@ -28,8 +28,9 @@ editor. Returning to editing discards preview changes; explicit result downloads
 Stages 6.1/6.2, automated HTTP reads in 6.4, and the HTTP POST portion of 6.5 are implemented on
 the branch: transient host-owned results, typed/JSON hybrid outputs, bounded nonblocking requests,
 explicit action/completion events, polling/change/startup policies and per-artifact credential
-inclusion. MQTT Config/Subscribe (6.3) and MQTT Publish (remaining 6.5) stay deferred. Optional
-authoring extensions remain proposals.
+inclusion. MQTT Config/Subscribe (6.3) adds explicitly shared WebSocket connections, typed
+readings and fresh-message events with retained-message baselines. MQTT Publish (remaining 6.5)
+stays deferred. Optional authoring extensions remain proposals.
 Stage 3 closes with the complete data-workflow, persistence, offline-reader, and visual-authoring pass below.
 The delivery tables define their intended order and prerequisites.
 The feedback and sequential-logic milestone is implemented on the same branch: bounded settling,
@@ -235,7 +236,7 @@ Publish/Receive endpoints, shared Dataset discovery, and workspace/sketch settin
 contract across sketches while retaining all existing signals and triggers. Stage 5 completes
 isolated Run preview and the Edit/binding workflow with an explicit discard/download policy.
 Stage 6 delivers the shared integration foundation, manual and automated HTTP GET, and explicit
-HTTP POST described below. MQTT remains deferred. Shared buses are explicitly outside the
+HTTP POST plus MQTT Config/Subscribe described below. MQTT Publish remains deferred. Shared buses are explicitly outside the
 feedback milestone.
 The stage numbers give the proposed planning order, not a requirement to finish every earlier feature before starting
 the next. Embedded tables, a full Run/Preview mode, and visible wires are not prerequisites
@@ -253,7 +254,7 @@ Share runtime helpers between editor and export throughout.
 | 3N. Native data and document tools — implemented on branch | Typed JSON extract/build/edit, deterministic date parsing/formatting/durations, declared page-query inputs, internal tab navigation with scalar query parameters, and visible-character text processing | Demo tabs 29–31 connect these tools to existing controls/displays in the editor and offline HTML. Missing/wrong-type JSON and invalid dates have explicit status outputs; URL data comes from the opened reader; visible-character/code-point semantics remain selectable. |
 | 4. Events and local outputs — complete on branch | Hybrid typed ports, bounded atomic routing, scalar transformations, shared origins, Reprocess, selection events, signal/event adapters, and completion notifications. Wiring exposes reception, activity, and the latest payload. A shared dispatcher handles declared local actions; Whole workspace execution, explicit Publish/Receive endpoints, shared Dataset discovery, and settings inheritance extend ownership across sketches. Existing signals remain available. | Repeated equal submissions stay distinct; related branches recombine once. Current-value refreshes do not invent events. Actions and completion notifications respect ownership, simulation lifecycle, and no-replay restoration. The authored editor workflow survives save/reopen and a fresh offline HTML export; closeout fixes and verification evidence are recorded below. |
 | 5. Authoring and reader workflow — complete on branch | Isolated Run preview, reusable property controls, searchable binding sources with repair feedback, and discard-on-return with explicit result downloads; initial visual wiring is delivered in stage 3 | An author places, configures and connects components, operates a preview with layout tools hidden, returns without changing the source, then saves, reopens and exports the workspace. Spreadsheet retains its specialized editor. |
-| 6. External integrations — HTTP increments on branch; MQTT deferred | Shared host contracts, manual/automated HTTP GET and explicit JSON POST | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT still needs its own acceptance checks below. Workers remain isolated. |
+| 6. External integrations — HTTP and MQTT reads on branch; MQTT Publish deferred | Shared host contracts, manual/automated HTTP GET, explicit JSON POST and MQTT Config/Subscribe | Typed/JSON hybrid outputs, completion events, independent asynchronous instances, visible failures and editor/Run/HTML behavior. Polling never overlaps; writes require explicit captured actions. MQTT connections share explicit Config references, preserve retained-message baselines, and recover with stale/reconnect status. Workers remain isolated. |
 
 Stage 6 is deliberately split into reviewable deliveries:
 
@@ -261,13 +262,13 @@ Stage 6 is deliberately split into reviewable deliveries:
 | --- | --- | --- |
 | 6.1 Shared integration foundation — implemented on branch | Stage 1 value graph and stage 4 shared dispatcher; declared host operations, transient source revisions, restricted credentials, lifecycle ownership and execution/export policies | Simulated delayed sources and browser workflows exercise independent instances, stale-response rejection, no replay on restoration, and explicit credential persistence choices. |
 | 6.2 Manual HTTP GET — implemented on branch | 6.1; a bounded JSON GET initiated by Refresh, one mapped scalar plus complete compact JSON text | The newest accepted result drives a display; another source, clock and slider continue during pending requests. Errors remain visible in editor, Run and downloaded HTML. |
-| 6.3 MQTT Config and Subscribe — deferred | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
+| 6.3 MQTT Config and Subscribe — implemented on branch | 6.1; configured connections and a subscribed scalar reading, with both credential export modes | Independent Config instances and copied documents route correctly; reconnect and retained readings do not cause actions. Manual connection and explicitly enabled deployment startup work in downloaded HTML. |
 | 6.4 Automated HTTP reads — implemented on branch | 6.2; bounded polling, debounced URL/pointer changes, signal/event triggers and explicit Run/HTML startup | Initial/restored values do not replay edges. Enabled gates all automatic origins, manual Refresh remains available, repeated responses emit events, and pause/visibility suspend schedules without catch-up bursts. |
 | 6.5 Explicit external writes — HTTP POST implemented; MQTT Publish deferred | 6.1 and the relevant transport; captured JSON POST from Send/button/signal/event | One accepted Send produces one host intent; redraw, Undo, reload and input changes do not replay it. No automatic retries; optional server-supported idempotency, HTTP status and empty acknowledgements distinguish a write from its response. |
 
-HTTP read/write work now spans 6.1, 6.2, 6.4 and the HTTP part of 6.5. Step 6.3 can build
-independently on the shared foundation, with MQTT Publish following its own connection contract.
-The entire integration stage remains open until those separately scoped MQTT increments are delivered.
+HTTP read/write work spans 6.1, 6.2, 6.4 and the HTTP part of 6.5. Step 6.3 now adds MQTT
+readings on that shared foundation. The integration stage remains open for explicit MQTT Publish
+in the remaining part of 6.5; its command delivery policy is still a separate decision.
 
 Keep nested components, a marketplace, automatic library upgrades, shared-definition migration,
 and a complete visual programming editor outside these milestones unless actual examples justify them.
@@ -372,7 +373,8 @@ Text to number, Text compose, Text transform, Text replace, and Text selector br
 URL parameter, and Go to tab bring it to 89 entries / 80 API v2 components. JSON edit brings the
 catalog to 90 entries / 81 API v2 components. Page settings brings it to 91 entries / 82 API v2
 components. Signal → event and Event → pulse brought it to 93 entries / 84 API v2 components.
-Workspace settings, Publish, Receive, HTTP source and HTTP POST bring the current catalog to **98 entries / 89 API v2 components**.
+Workspace settings, Publish, Receive, HTTP source and HTTP POST bring it to 98 entries / 89 API v2 components.
+MQTT Config and MQTT Subscribe bring the current catalog to **100 entries / 91 API v2 components**.
 The additional Countdown timer source
 remains a standalone example, outside the built-in catalog and demo library.
 Timer now uses API v2; the other six retain their existing
@@ -2677,8 +2679,8 @@ does not promise any of those rights. These additions are outside the closed sta
 
 ## Shared integration foundations — step 6.1 implemented on branch
 
-These contracts are shared between the editor, Run and exported runtime. HTTP GET and POST use
-the same host-owned service; later MQTT adapters can reuse the ownership and credential rules.
+These contracts are shared between the editor, Run and exported runtime. HTTP GET/POST and
+MQTT Config/Subscribe use host-owned services with the same ownership and credential rules.
 Scalar transports do not require table datasets or visible wires.
 
 ### Initial manual-read delivery and shared contracts
@@ -2766,7 +2768,8 @@ The following shared rules also apply to subsequent transports and write operati
   allowing automatic startup. Imported/restored values establish trigger baselines and never
   replay a Send. Authored polling starts after its interval in an active execution scope; an
   immediate opening read requires the explicit Run/HTML startup flag. Credential inclusion,
-  field visibility and startup remain separate choices. MQTT deployment startup is still deferred.
+  field visibility and startup remain separate choices. MQTT Config likewise requires explicit
+  Connect or its opt-in Connect on opening in Run / HTML policy; editor restoration never connects.
 
 For every added transport, verify these contracts with a simulated source and a recorded
 intent sink: repeated instances stay isolated, stale responses are rejected, restoration causes
@@ -2781,7 +2784,7 @@ that should work as soon as its HTML document opens.
 | Export mode | Credential values | Reader behavior |
 | --- | --- | --- |
 | **Ask on use** (default) | Credential fields are exported empty. | The reader enters the required values and connects. |
-| **Ready to use** | The author explicitly selects which configured credentials to include in the HTML. | The HTTP source follows its separately selected manual/polling/startup policy. Including credentials never switches that policy on; POST still requires Send. MQTT startup remains deferred. |
+| **Ready to use** | The author explicitly selects which configured credentials to include in the HTML. | HTTP follows its separately selected manual/polling/startup policy; MQTT Config follows its manual or opt-in Connect on opening policy. Including credentials never enables startup, and POST still requires Send. |
 
 A password input needs both masked presentation and a persistence policy. By default its
 value exists only for the current session and is excluded from autosave, sketch/workspace
@@ -2794,7 +2797,7 @@ HTML. The choice identifies the credential fields and the artifact receiving the
 including them in an HTML export must not silently enable their inclusion in ordinary autosave.
 On loading an explicitly credential-bearing artifact, restore those values through the host's
 sensitive configuration path, never into ordinary script state. An HMI-style HTTP document can
-carry its explicit polling/startup choices separately; future MQTT auto-connect follows the same separation.
+carry its explicit polling/startup choices separately; MQTT Config's Connect on opening setting follows the same separation.
 Hiding the input fields changes their reader presentation while preserving
 their configuration and bindings. Embedded credentials remain readable from the file even if
 their fields are masked or hidden; the export UI should state this plainly. Saving or exporting
@@ -2807,7 +2810,8 @@ without credential values, so the copied source requires its own credentials.
 The shared `integrationApi:1` host service now supports **HTTP source** GET automation and a
 separate **HTTP POST** built-in. Both use bounded typed/JSON results and the editor/Run/HTML
 runtime. Worker network access stays blocked; neither operation waits for its response in the
-workspace action queue. MQTT remains a separate deferred transport.
+workspace action queue. MQTT Config/Subscribe use the same host boundary with their separate
+connection/subscription lifecycle described below; MQTT Publish remains deferred.
 
 ### GET trigger policies
 
@@ -2913,115 +2917,133 @@ catalog port-metadata mismatch and synchronized the Live Dataset browser test wi
 committed action and accepted graph, without replaying mutations. All three self-contained
 HTML demos were regenerated and checked against the shared HTTP runtime.
 
-## MQTT and configurable connections — proposed steps 6.3 and 6.5
+## MQTT connections and readings — step 6.3 implemented on branch
 
-Support MQTT as another transport in the host-managed integration service. This belongs to
-the component runtime shared by the editor and exported HTML; the separate deployment-plugin
-experiment is not a dependency. MQTT uses the shared input, transient-value, credential, and
-execution contracts from step 6.1. It is future work, beyond the implemented value/table API v2.
+MQTT Config and MQTT Subscribe use the same host-managed integration boundary as HTTP. Workers
+remain network-blocked; neither a socket nor credentials enter component scripts. Browser MQTT
+uses a broker WebSocket endpoint (`ws://` or `wss://`). The bundled MQTT.js browser client and
+adapter are included in the editor and exported HTML, without a CDN, deployment plugin or runtime
+build step. Live telemetry still requires a reachable broker. MQTT Publish remains deferred.
 
-Browser clients require MQTT over WebSockets: a broker must expose a `ws://` or `wss://`
-endpoint, or be reachable through a gateway providing one. Prefer secure WebSockets for hosted
-deployments. A normal MQTT TCP endpoint alone is insufficient for a browser client. A client
-such as MQTT.js can supply the protocol implementation; see its
-[browser transport documentation](https://github.com/mqttjs/MQTT.js#browser).
+### Components and deliberate connection references
 
-### Components and wiring
-
-| Component | Inputs or configuration | Result |
+| Component | Configuration | Result |
 | --- | --- | --- |
-| Shared input fields | Author-supplied defaults or values entered by the reader | Ordinary typed values can use scalar bindings; sensitive fields supply restricted host references to credential configuration. |
-| **MQTT Config** | Broker URL, username, password, optional client ID, and connection policy | A host-owned connection referenced by Subscribe/Publish components, with connection status and errors. |
-| **MQTT Subscribe** | An MQTT Config instance, topic/filter, and payload mapping | A validated scalar `value`, last-message timestamp, and availability/error status. |
-| **MQTT Publish** | An MQTT Config instance, topic, payload value, and an explicit trigger | A publish request and its completion/error status. Broker acknowledgement is distinct from a device applying a command. |
+| **MQTT Config** | Broker URL, optional client ID, session credentials, explicit Connect and opt-in reader startup | One host-owned connection, with connected/status/error outputs. |
+| **MQTT Subscribe** | Explicit Config reference, topic/filter, text/JSON format, JSON pointer and scalar type | Typed `value`, complete `json` in JSON mode, availability/stale/error/status, last topic and timestamp. |
+| **MQTT Publish — later** | Explicit Config reference, topic/payload and accepted Send | One write intent and its result; broker acknowledgement must remain distinct from device execution. |
 
-```mermaid
-flowchart LR
-    U["Broker URL input"] --> C["MQTT Config"]
-    N["Username input"] --> C
-    P["Password input"] --> C
-    C -->|"Connection reference"| S["MQTT Subscribe"]
-    C -->|"Connection reference"| W["MQTT Publish"]
-    S -->|"Numeric value"| G["Gauge"]
-    V["Setpoint input"] --> W
-    B["Send button"] --> W
-```
+The Subscribe Edit inspector selects a Config by sketch and component name. The saved reference
+contains stable sketch/component IDs, not display names or arbitrary string values. It is a
+host relationship separate from ordinary signal/event wiring. A copied connected selection or
+workspace remaps references to Configs that travel with it. Missing/deleted Configs remain broken
+until the author selects a replacement. Cross-sketch references are supported only when Whole
+workspace execution keeps the owning Config active.
 
-The author can supply literal non-sensitive connection values or link shared input fields to
-MQTT Config. The same controls and policies apply to HTTP. Credential values use the sensitive
-configuration path from step 6.1 rather than ordinary saved literals. They are consumed by the
-host connection service; connection/status outputs do not expose passwords or a live client
-object to component scripts.
+Subscribers referencing the same Config share its socket/subscriptions. Different Config instances
+remain independent. Empty Client ID generates a fresh identity per Config in each document session;
+independent Run/exported copies cannot accidentally reuse the default ID. Duplicate explicit IDs
+among active Configs in one document are rejected. Authors supplying an explicit client ID across
+separate documents remain responsible for the intended broker identity.
 
-Subscribe and Publish reference a specific Config instance. The host can share its connection
-and subscriptions among those consumers. Separate Config instances remain independent, even
-when they use the same broker or script. Connection references need explicit serialization,
-copy/remapping, and missing-reference behavior; the current scalar-port contract does not yet
-define them. Keep references document-scoped and remap them when copying a complete connected
-selection, just like existing component bindings. Generate a fresh default MQTT client ID for
-each Config instance in each opened document session; independent Config instances and exported
-copies must not accidentally reuse one client ID. Explicit IDs need a defined collision policy.
+### Agreed connection and event defaults
 
-### Connection lifecycle and live values
+- **Manual connection:** Apply / Connect captures the current URL/client ID and connects. Typing or
+  changing a bound input only edits the draft. Disconnect retires the connection intent and stops
+  reconnect attempts until another Connect.
+- **Startup:** Connect on opening in Run / HTML is an explicit option, off by default. Editor import,
+  reload and Undo do not initiate a connection. Startup and credential inclusion remain separate choices.
+- **Reconnect:** use increasing delays bounded at 30 seconds, with visible connecting/reconnecting/error
+  status. Old generations cannot deliver into replacement Configs, subscriptions or documents.
+- **Reading freshness:** disconnection marks an accepted reading stale and unavailable; status and the
+  last timestamp remain visible. It must not silently become a fresh zero/empty downstream value.
+- **Initial/retained messages:** the first valid message after subscribing/reconnecting and every retained
+  message establish current readings without emitting events. Adding a Subscribe or changing its
+  payload mapping requests a retained baseline even when its Config already subscribes to that filter;
+  this retained delivery does not invent actions for existing consumers. Later live messages emit
+  captured hybrid events, including equal values. One JSON message gives `value`/`json` the same origin.
+- **Execution scope:** Whole workspace retains a connection across visible-sketch changes. Leaving an
+  Active sketch scope retires its Config and requires Connect when returning. Pausing or hiding the
+  browser suspends sockets while retaining connection intent for resume. Closing/replacing the workspace
+  and returning from Run retire its connections.
+- **Delivery:** version 1 uses MQTT 3.1.1, clean sessions and QoS 0 subscriptions. There is no offline
+  message queue, command publishing or queued-command replay.
 
-Use **Apply / Connect** to commit edited connection inputs. Typing into a URL or password
-field should not reconnect after every character. Support **Connect automatically on opening**
-as a separate policy for unattended displays, subject to step 6.1's deployment execution rules.
-Configuration changes retire the old connection generation; messages arriving from it must not
-update the replacement configuration or another
-document. Define connection lifetime against the selected workspace execution mode in step 6.1.
-Whole workspace mode must not retire an enabled source merely because another sketch becomes
-visible; Active sketch only needs an explicit suspend/reconnect and freshness policy for inactive
-sources. Closing or replacing the owning workspace retires its connections. Use bounded reconnect
-backoff and visible connected/reconnecting/error status. These transport policies do not authorize
-network startup on their own.
+Text and JSON payloads map to bounded number/string/Boolean values. JSON mode also exposes the whole
+compact JSON string; text mode leaves `json` empty and emits only its typed value. The limits are
+16 connections per runtime, 64 KiB transport/payload buffering, 2,000-character text/JSON outputs and
+60 messages per second per connection. A rate-limit violation disconnects visibly and requires
+manual Apply / Connect. Malformed payloads show an error without corrupting the document. Network
+results remain transient: no source undo entries or autosave on every message. Consumers such as
+Memo can deliberately retain accepted payloads.
 
-Incoming messages use the shared transient-source contract and invalidate downstream computations.
-They do not add undo entries or autosave the sketch on every message. Start with bounded text
-or JSON payloads mapped to number, string, or boolean ports, with payload-size and update-rate
-limits. Separate a current reading from its availability and age; disconnection must not make
-a stale measurement look current. An initial or retained reading establishes the current value
-and must not be treated as a fresh reader action that publishes a command.
+The runtime captures one integration snapshot for each resolved source request in a graph pass.
+New packets are picked up by the next pass, rather than repeatedly invalidating an accepted gesture
+or mixing readings between settling rounds. Shared HTTP/MQTT redraws coalesce through the gesture
+queue. MQTT skips captured-event preparation when no enabled event receiver needs it; value-only
+Gauges still receive current readings. Event consumers retain the message's original topic and
+timestamp alongside its payload, even when later wildcard messages arrive before delivery.
 
-Keep `compute()` pure and preserve the Worker network restriction. Start publishing with an
-explicit **Send** action. Opening, redrawing, undoing, restoring state, and reconnecting must not
-publish or replay queued commands. Later input-based publishing needs an explicit trigger
-policy, loop prevention, and a clear distinction between updating a displayed value and
-requesting an external action. Define QoS, retained-message, and retry policies separately for
-readings and commands; do not infer application-level exactly-once behavior from transport
-acknowledgements.
+### Credentials, editor, Run and HTML
 
-Bundle the required MQTT client and host adapter into the exported HTML so it does not depend
-on deployment plugins or a CDN. Live telemetry still requires broker access. Offline, the
-document can show an explicitly saved last-known snapshot with a timestamp and stale status.
-Connection controls should explain when a broker is unavailable, and reconnecting must not
-replay earlier Send actions. Keep the integration optional through a dedicated runtime setting,
-separate from whether component authoring controls are visible.
+The Config's Credentials dialog stores username/password in the host-owned session store. It does
+not expose them through ordinary inputs, output ports, Workers or component state. Autosave and
+component/library copies omit credentials. Saving JSON or exporting HTML asks which Config credentials
+to include in that artifact; omitted values are requested for the session when needed. Included values
+are readable from the artifact. Run inherits the session configuration into its own service and
+credential store, uses fresh default client IDs and discards its live results on return.
 
-### Step 6.3 delivery and acceptance
+The WebSocket broker/proxy must permit the document's origin, including Run's isolated origin when
+using it. Browser local-network permissions and secure-page mixed-content rules still apply.
+`networkIntegrations:false` disables MQTT as well as HTTP. Static rendering, thumbnails and export
+generation do not connect. The bundled client keeps HTML self-contained, but this increment does
+not persist offline reading snapshots; explicitly saved last-known snapshots remain a follow-up.
 
-Step **6.3** starts with **one subscribed numeric topic driving the existing Gauge**, using MQTT Config
-and reusable credential input fields. Support manual connection, connection status, reconnect
-handling, and both credential export modes in the editor and exported HTML. Add explicit
-publishing in step **6.5**. Use a 0–100 payload for the existing Gauge; other measurements can
-use a value label. Neither subscription nor manual publishing depends on HTTP polling.
+### Example and acceptance
 
-- A broker message updates the gauge without changing undo history or repeatedly saving the
-  drawing; malformed or oversized messages leave a clear error and preserve the document.
-- Repeated Subscribe instances route values independently, while consumers of the same Config
-  instance share its connection. Copying a whole example remaps its Config references.
-- Applying new configuration or closing a document prevents late messages from the old
-  connection from reaching the new one. Opening two exported copies uses distinct default
-  client IDs.
-- **Ask on use** omits credential values from every saved representation. **Ready to use**
-  includes only the explicitly selected values, supports hidden configuration fields, and
-  connects automatically only when that policy is enabled.
-- An exported HTML file contains its MQTT runtime and works when its configured broker is
-  reachable. Offline snapshots remain readable and clearly stale.
+The separate [MQTT workspace](../examples/mqtt-integrations.json) and
+[self-contained reader](../examples/mqtt-integrations.html) contain two sketches. One Config feeds
+numeric/JSON and text subscribers, a Gauge, a status label and a fresh-message Memo log; a second
+sketch selects that same Config for another view. A local development helper,
+`node tools/serve-mqtt-example.cjs`, serves the editor/reader and a broker at
+`ws://127.0.0.1:8001/mqtt`, with retained baselines and a new reading/status every second.
 
-For step **6.5**, one accepted Send action produces one host publish intent. Redraw, reload,
-undo, retained readings, and reconnect do not replay it; device acknowledgement and duplicate
-handling are tested separately from broker delivery.
+The closeout checks cover editor/Run/HTML manual connections, shared versus independent Configs,
+reference transfer, missing targets, startup opt-in, credential inclusion, stale/reconnect state,
+retained/initial message suppression, fresh equal messages, payload/rate bounds and generation
+cleanup. A continuous-telemetry browser regression drives 80 Gauges while accepting a released
+control click; another queues wildcard messages and verifies each value keeps its original topic.
+`mqtt-event-receivers.test.cjs` covers receiver discovery and stable per-pass integration snapshots.
+The existing HTTP and component tests remain regression gates.
+
+Validation on 2026-10-23: MQTT foundation checks passed 25/25, and real-broker browser checks
+passed 18/18 in Chromium and 18/18 in WebKit. Catalog and bundled-client parity checks passed;
+all four self-contained readers were regenerated and passed the export dependency audit.
+The final full Chromium run passed 1,666/1,669. Two failures were assertion reads racing a
+replaced graph in the choice-list and Memo tests; those tests now await the existing accepted-graph
+helper without repeating edits. The third was an intermittent Playwright “Resulting promise was
+garbage collected” failure in the existing cross-sketch export test; it passed unchanged on rerun
+and remains unexplained. The combined follow-up covering those files, HTTP automation and export
+dependencies passed 28/28. This is separate focused verification, not a claim of a wholly green
+full-suite rerun. HTTP request assertions also now wait for the test route to capture the request
+body, correcting a race found in the earlier full run.
+
+Additional broker compatibility validation on 2026-10-23 used Mosquitto 2.1.2, with native TCP
+publishers feeding a real WebSocket listener. All four scenarios passed in Chromium and all four
+in WebKit: editor/shared typed and JSON readings, retained/live event behavior and broker restart;
+isolated Run and freshly downloaded self-contained HTML; opt-in startup; and password authentication
+with explicit credential inclusion in HTML. No application changes were needed. The optional
+`mqtt-mosquitto-browser.test.cjs` suite creates and cleans up localhost-only brokers when executable
+paths are supplied; it does not enable a system service. This verifies `ws://`, not deployment TLS
+certificates, `wss://` reverse proxies or their origin policies.
+
+### Remaining 6.5: explicit MQTT Publish
+
+Publishing starts with explicit Send only. Opening, redraw, Undo, retained readings and reconnect
+must never publish or replay earlier commands. Decide publish QoS, retain, acknowledgement and
+retry/duplicate handling separately from the reading policy. A broker acknowledgement cannot
+prove that a device applied a command. Keep Publish on the existing Config/reference/credential
+contract; it does not require redesigning Subscribe or HTTP.
 
 ## Decisions before each stage
 
@@ -3055,6 +3077,7 @@ handling are tested separately from broker delivery.
    independent requests, credentials and explicit artifact inclusion underpin manual/automated
    GET and captured JSON POST. Polling/change/startup policies stay separate from Send; completion
    events preserve repeated responses. Object/table response contracts and offline snapshots remain extensions.
-6. **Deferred MQTT steps 6.3 and remaining 6.5:** Define client-ID, reconnect, QoS, retained-reading
-   and publish acknowledgement rules before implementation. Keep execution settings separate from
+6. **Step 6.3 — implemented on branch; remaining MQTT 6.5 deferred:** Config/Subscribe establish
+   client IDs, reconnect, QoS 0 readings and retained-message baselines. Decide publish acknowledgement,
+   retain and retry/duplicate handling before adding commands. Keep execution settings separate from
    optional authoring, and the runtime independent of the deployment-plugin experiment.

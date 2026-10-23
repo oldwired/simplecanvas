@@ -35,11 +35,13 @@ async function app(fn){
     await run(`window.choiceScript=${JSON.stringify(script)};cancelGesture();items=[];datasets={states:parseDatasetText('Text,Key\\nGreen,go\\nRed,stop','states.csv')};
       const def=eval('('+window.choiceScript+')');items=[{type:'smart',uid:'choice-editor',componentApi:2,componentName:'Operating mode',script:window.choiceScript,
         x:80,y:100,...def.initStyle(),state:def.initState(),inputValues:{select:0},bindings:{}}];selection=[0];setTool('select');render();save();`);
-    await run('ensureEditorComponentGraph()');await fn({page,run});assert.deepEqual(errors,[]);
+    await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');await fn({page,run});assert.deepEqual(errors,[]);
   }finally{await context.close();}
 }
+// Undo/Redo and dialog closure can replace a pending paint. Await the accepted
+// graph through the host's bounded read retry; never replay the edit itself.
 async function open(run,page){await run('selection=[0];openComponentBindings()');await page.locator('[data-component-choices="choices"]').waitFor();}
-async function save(run,page){await page.locator('#componentBindingsSave').click();await page.locator('#componentBindingsDialog').waitFor({state:'hidden'});await run('ensureEditorComponentGraph()');}
+async function save(run,page){await page.locator('#componentBindingsSave').click();await page.locator('#componentBindingsDialog').waitFor({state:'hidden'});await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');}
 
 test('editable choice rows validate live, preserve drafts, and save or cancel atomically with undo',async()=>app(async({page,run})=>{
   const original=await run('items[0].state.choices');await open(run,page);
@@ -56,9 +58,9 @@ test('editable choice rows validate live, preserve drafts, and save or cancel at
   assert.equal(await run('items[0].state.choices'),original,'editing rows does not mutate the scene');
   await save(run,page);
   assert.deepEqual(JSON.parse(await run('items[0].state.choices')),[{text:'Waiting',key:'waiting'},{text:'Finished',key:'finished'},{text:'Stopped',key:'stopped'}]);
-  assert.equal(await run('(async()=>(await ensureEditorComponentGraph()).get(items[0]).io.outputs.text)()'),'Waiting');
-  await run('undo()');await run('ensureEditorComponentGraph()');assert.equal(await run('items[0].state.choices'),original);
-  await run('redo()');await run('ensureEditorComponentGraph()');const saved=await run('items[0].state.choices');
+  assert.equal(await run('(async()=>(await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)).get(items[0]).io.outputs.text)()'),'Waiting');
+  await run('undo()');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');assert.equal(await run('items[0].state.choices'),original);
+  await run('redo()');await run('resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)');const saved=await run('items[0].state.choices');
   await open(run,page);await page.getByRole('textbox',{name:'Choice 0 text',exact:true}).fill('Discard me');
   await page.locator('#componentBindingsCancel').click();assert.equal(await run('items[0].state.choices'),saved);
   await open(run,page);await page.getByRole('textbox',{name:'Choice 0 text',exact:true}).fill('x'.repeat(2000));
@@ -74,12 +76,12 @@ test('switching between local choices and a dataset preserves the edited list an
   await page.locator('#datasetFileInput-data').setInputFiles({name:'states.csv',mimeType:'text/csv',buffer:Buffer.from('Text,Key\nGreen,go\nRed,stop')});
   await page.getByLabel('textColumn value',{exact:true}).selectOption('Text');
   await page.getByLabel('keyColumn value',{exact:true}).selectOption('Key');await save(run,page);
-  const output=await run('(async()=>(await ensureEditorComponentGraph()).get(items[0]).io.outputs)()');
+  const output=await run('(async()=>(await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)).get(items[0]).io.outputs)()');
   assert.deepEqual(output,{index:0,key:'go',text:'Green',valid:true});
   assert.equal(JSON.parse(await run('items[0].state.choices'))[0].text,'Local draft');
   await open(run,page);await page.locator('#component-setting-source').selectOption('list');
   await page.getByLabel('data dataset',{exact:true}).waitFor({state:'detached'});await save(run,page);
-  assert.equal(await run('(async()=>(await ensureEditorComponentGraph()).get(items[0]).io.outputs.text)()'),'Local draft');
+  assert.equal(await run('(async()=>(await resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)).get(items[0]).io.outputs.text)()'),'Local draft');
   const saved=await run('makeDocument(items,assets,{},datasets)');assert.equal(saved.items[0].state.source,'list');
   assert.equal(JSON.parse(saved.items[0].state.choices)[0].text,'Local draft');assert.equal(saved.items[0].inputValues.select,0,'serialization preserves the selected first row');
 }));

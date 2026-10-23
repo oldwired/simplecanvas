@@ -1,7 +1,7 @@
 # SimpleCanvas
 
-A small, zero-dependency browser sketching canvas. Open `index.html` directly; no build step or
-runtime installation is needed.
+A self-contained browser sketching canvas. Open `index.html` directly; no build step or runtime
+installation is needed. MQTT support includes a bundled browser client, with no CDN dependency.
 
 Try the [public demo](https://oldwired.github.io/simplecanvas/) or the
 [Really Simple demo](https://oldwired.github.io/simplecanvas/reallysimple/), which uses the same
@@ -273,10 +273,10 @@ related controls, operations, and displays together; Data covers tables and stru
 | Text | Text input, Text label, Memo, Dropdown, Text lookup, text operations, text/number conversion, JSON extract/build/edit, URL parameter |
 | Displays | Gauge, Value label, Text label, Memo, Status indicator, Seven-segment display, LED matrix (8×8), Chart, Data bar chart, Dataset editor, and clocks/timers |
 | Tools & time | Clock, Live clock, Stopwatch, Timer, Ruler, Delay, Counter, Random integer, Sample & hold (integer/Boolean), Pulse generator, Edge to pulse, Signal → event, Event → pulse, Date parse, Date format, Date difference, Sketch settings, Workspace settings |
-| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, URL parameter, Publish, Receive |
+| Data | Dataset, Capture row, Table filter, Table sort, Table aggregate, Dataset editor, Spreadsheet, Data bar chart, Download table, Dropdown, Text lookup, JSON extract/build/edit, HTTP source, HTTP POST, MQTT Config/Subscribe, URL parameter, Publish, Receive |
 | Drawing | Rectangle, Ellipse, Arrow, Arc, Ruler, Minimal, Blank |
 
-The catalog includes 98 entries, including 89 connected API v2 components. Every smart-shape
+The catalog includes 100 entries, including 91 connected API v2 components. Every smart-shape
 template is available in **Built-in**. Drill template and Race start timer remain in the
 importable [demo library](examples/demo-shapes-library.json) and as standalone example scripts.
 
@@ -392,6 +392,9 @@ previews outputs without adding a second formula or layout editor.
 - [HTTP integration example](examples/http-integrations.json) and its
   [self-contained reader](examples/http-integrations.html): independent manual JSON requests,
   mapped readings and JSON extraction alongside a live clock and responsive slider.
+- [MQTT integration example](examples/mqtt-integrations.json) and its
+  [self-contained reader](examples/mqtt-integrations.html): shared broker connections, typed
+  readings, retained-message baselines, and fresh-message events across two sketches.
 - [Scripting API](SMART_SHAPES.md#connected-components-api-v2) and
   [design brief](docs/smart-components-brief.md): custom components and the development roadmap.
 
@@ -458,7 +461,7 @@ server honoring the key; a timeout or cancellation cannot prove the write did no
 POST exposes the same scalar, JSON and completion outputs. A successful 204/205 response emits
 `completed` with empty text and shows **Sent**, without inventing a scalar result. **HTTP status**
 lets you distinguish a received HTTP response from an unavailable response; a JSON/mapping error
-after HTTP 2xx is a response problem and does not undo the write. MQTT remains deferred.
+after HTTP 2xx is a response problem and does not undo the write. MQTT Publish remains deferred.
 
 To try the supplied endpoint files, serve the repository root and open the HTTP example:
 
@@ -481,6 +484,60 @@ disappear on server restart; this helper is not a production service. If deploye
 `/canvas/examples/…`. Downloaded HTML contains its runtime; live reads still need a reachable
 endpoint. Its drawing remains usable offline, with visible request errors rather than saved
 readings presented as fresh data.
+
+### Receive MQTT readings
+
+Place **MQTT Config** and set its broker WebSocket URL in **Edit…** (`ws://` locally or `wss://`
+for a secure deployment). Place **MQTT Subscribe**, choose that Config in its Edit inspector,
+and set the topic/filter, payload format and value type. JSON payloads also use a JSON pointer,
+for example `/value`. The Config is a specific component reference, not a name lookup or an
+ordinary value wire. Several Subscribe components can share it, including across sketches in
+Whole workspace mode.
+
+Click **Apply / Connect** on the Config to connect. Editing its URL or client ID only changes
+the draft; Apply / Connect commits those changes. **Disconnect** stops reconnection until you
+connect again. **Connect on opening in Run / HTML** is a separate opt-in setting, off by default.
+The editor never connects merely because a workspace was opened. Leave Client ID empty for a
+fresh per-instance, per-document-session ID; use explicit IDs only when their broker identity
+is intentional.
+
+Subscribe exposes a typed hybrid `value`, complete compact `json` in JSON mode, availability,
+stale/error/status, the last topic and a timestamp. Initial readings after subscribe/reconnect
+and all retained messages establish current values without firing events. Later live messages
+emit captured hybrid events, including equal readings. A connected Memo can therefore log new
+messages without treating reopening or reconnecting as a new action. Received values stay outside
+undo and autosave; a consumer that deliberately stores a payload, such as Memo, can retain it.
+
+Connections retry with bounded increasing delays and visible status. A disconnected reading
+becomes unavailable and stale, rather than silently supplying zero. Hiding the browser or pausing
+the simulation suspends connections; resuming reconnects the configurations that were connected.
+Whole workspace mode keeps a Config active while switching sketches. Active sketch mode retires
+it when its sketch is left; returning requires Connect. The first version subscribes with QoS 0
+and clean sessions, without an offline message queue. It does not publish commands. Each runtime
+allows 16 connections; payloads are bounded at 64 KiB, text/JSON outputs at 2,000 characters, and
+a connection exceeding 60 messages/second is disconnected with a visible error.
+
+**Credentials…** stores broker username/password in the same host-owned session store used by
+HTTP. Credentials stay out of scripts, autosave and copies. Saving JSON or HTML offers explicit
+per-Config inclusion; included credentials are readable from that file. Run gets a separate
+connection lifetime and fresh default client IDs. Its isolated browser origin still applies;
+a broker or reverse proxy must permit that WebSocket origin. Browser local-network and mixed-content
+rules still apply. The MQTT client is bundled into the editor and exported HTML, with no CDN request.
+
+Try the two-sketch example with the development broker:
+
+```sh
+npm ci
+node tools/serve-mqtt-example.cjs
+```
+
+Open `http://127.0.0.1:8001/examples/mqtt-integrations.html`, or import
+`examples/mqtt-integrations.json` into the editor at `http://127.0.0.1:8001/index.html`.
+Click **Apply / Connect**. The helper sends a JSON reading and a text status once per second,
+with retained initial values. Stop/restart it to try reconnect behavior, or switch to the second
+sketch to see another Subscribe sharing the same Config. It is a local testing broker, not a
+production service. A downloaded reader is self-contained but live readings still need a reachable
+broker. Saved offline reading snapshots and MQTT Publish remain later work.
 
 ### Demo library
 
@@ -565,7 +622,7 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 | `shapeLibraryManagement` | Hides library actions and disables pins, category organization, copying/duplication, shape and library import/export, rename, replace, and delete. Bypasses saved personal-library storage and uses the fixed deployment starter. The browser and direct placement remain available. |
 | `smartShapeAuthoring` | Disables creating and editing scripts, copying smart definitions into My shapes, and adding them through pins, imports, or selections. Existing smart shapes remain browsable and placeable, with working interactive handles. |
 | `smartComponents` | Hides component templates, source editing, and Edit; blocks adding component definitions through pins, copies, scripts, imports, or selections. Ordinary smart-shape authoring stays available. Existing components remain browsable and placeable; their controls, connections, and HTML exports keep working. |
-| `networkIntegrations` | Disables host-managed HTTP requests independently of component authoring. Ordinary controls, embedded data and drawing keep working. |
+| `networkIntegrations` | Disables host-managed HTTP requests and MQTT connections independently of component authoring. Ordinary controls, embedded data and drawing keep working. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 
@@ -615,8 +672,9 @@ either settings file, test dependencies, regression tests, the example generator
 ## Development and releases
 
 Developer checks, browser setup, and regression-test commands are described in
-[tests/README.md](tests/README.md). Test dependencies are for development only; the app itself
-requires no build step or runtime dependencies.
+[tests/README.md](tests/README.md). Node dependencies support tests and the development-only
+example broker. The app requires no build step or runtime installation. The pinned MQTT.js browser
+client and its MIT license are documented in [vendor/README.md](vendor/README.md).
 
 ### Update the demo library
 
@@ -639,6 +697,7 @@ node tools/update-builtin-catalog.cjs --check
 node tools/update-example-workspace.cjs
 node tools/update-workspace-runtime-example.cjs
 node tools/update-http-integrations-example.cjs
+node tools/update-mqtt-integrations-example.cjs
 ```
 
 The main demo uses an explicit `exampleSource` filename on smart items instead of inferring a
