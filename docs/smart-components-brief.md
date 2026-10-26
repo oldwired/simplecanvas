@@ -3258,6 +3258,37 @@ no skips and local Mosquitto scenarios enabled. The final HTTP table and Live Da
 checks pass **15/15 in WebKit**. Live source waiting preserves the existing one-time errors for
 broken references and incompatible schemas; only transient unavailable publications wait quietly.
 
+### Pre-merge correctness fixes — 2026-10-26
+
+- Transition and Reprocess event deliveries retain the settled graph's dataset pool, ownership
+  and query context. Replace, Append, Capture row and Download therefore resolve the same tables
+  as directly submitted events in the editor, Run and HTML reader.
+- Undo/Redo preserves session HTTP/MQTT credentials for surviving components in their own sketch.
+  Credentials remain outside history and default saved documents; deletion, copies and a changed script
+  do not recover them. Endpoint-origin restrictions still apply.
+- Queued HTTP completions carry their own response snapshot for scalar and table results,
+  including status, timestamp and availability. A later success cannot supply metadata or values
+  to an earlier success, failure or empty response.
+- Spreadsheet's **Copy dataset to editable cells** resolves shared workspace datasets through
+  the inspector's workspace-aware pool, while retaining staged local imports. Cancel leaves the
+  source and cells unchanged; Save creates an independent editable copy with normal Undo/Redo.
+- PNG, SVG, clipboard images and print freeze current HTTP/MQTT readings before asynchronous
+  rendering. Export does not issue requests or save transient responses. Run and interactive
+  HTML keep their fresh-session behavior; library previews remain inert.
+
+Regression coverage exercises actual controls, queued completions, downloads and fresh readers
+in both Chromium and WebKit. The self-contained demos are regenerated from the corrected runtime.
+The full run also reproduced DevTools losing an already-completed gesture promise in an HTTP
+automation test. Its helper now observes settled gesture state instead of returning that promise;
+the click still runs once and all request/event assertions remain. The affected file and 20
+repeated runs of that scenario pass after the observation fix.
+
+Final verification with Node 24: the complete Chromium suite passes **1,781/1,781**. WebKit
+passes **1,778**, with the three existing Chromium-only touch tests skipped and no failures.
+Both runs enable the real local Mosquitto scenarios. Catalog consistency checks all **101**
+entries; generated-example and exported-reader dependency checks pass **31/31**. No commit or
+merge is part of this fix pass.
+
 ## Decisions before each stage
 
 1. **Stage 2 — established:** Format 2 defines category-tag memberships, a named category registry,

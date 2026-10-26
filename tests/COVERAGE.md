@@ -222,6 +222,9 @@ Rejected completion notifications roll back their event receivers while retainin
 simulation state and downstream signals; editor and reader expose a delivery error.
 `tests/component-action-events-contracts.test.cjs` and `tests/component-action-events-runtime.test.cjs`
 cover typed Dataset import/reload and Capture row results, failures, cancellation, and Undo.
+`tests/component-transition-data-actions.test.cjs` drives Replace, Append, Capture row and
+Download from transition and Reprocess events in the editor, Run and freshly exported HTML,
+checking the captured table context, completion payloads and reader isolation.
 `tests/component-wire-activity-contracts.test.cjs` checks bounded transient wire inspection records;
 the event wiring runtime tests verify committed activity, safe payload text, failure rollback,
 values-only appearance, and read-only HTML inspection.
@@ -580,6 +583,12 @@ publication, including rollback and concurrent-edit protection.
 - `integration-foundation.test.cjs` covers host-managed transient results, request generations,
   response limits and validation, independent source instances, cancellation, stale delivery,
   captured writes, rate limits and completion retention across visibility changes.
+- `integration-history-events.test.cjs` checks session credentials after unrelated Undo/Redo,
+  deletion and identity boundaries, authenticated Run/HTML, and queued scalar GET/POST events
+  retaining their own status, time and availability through failures and empty acknowledgements.
+- `integration-static-export.test.cjs` checks PNG, SVG, clipboard images and print snapshots of
+  live scalar/table HTTP and cross-sketch MQTT readings without new I/O or persisted responses.
+  Held rendering verifies snapshot consistency while new responses arrive; Run and HTML remain fresh.
 - `http-scheduling.test.cjs` uses a deterministic clock to check debounce, startup baselines,
   non-overlapping polls, pause/resume without catch-up, and queued timer invalidation when a
   manual request starts or configuration, scope or Enabled changes.
@@ -595,7 +604,7 @@ publication, including rollback and concurrent-edit protection.
 - `http-integrations-example-contracts.test.cjs` checks stable example identities, resolvable
   local endpoint files, independent sources, JSON extract wiring, unrelated clock/slider controls,
   transient component presentation, automation/POST wiring, empty-response presentation and
-  atomic publication of the three-sketch JSON/HTML example pair.
+  atomic publication of the four-sketch JSON/HTML example pair.
 - `http-example-server.test.cjs` covers the development server's fixture-only CORS responses,
   controllable delay/failures, changing readings, method restrictions, path confinement and
   in-memory JSON POST/idempotency behavior. Accepted writes can precede delayed responses.

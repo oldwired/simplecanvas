@@ -231,6 +231,31 @@ test('a captured table completion samples its own sorted rows while preserving s
   assert.equal(JSON.stringify(scene),before,'cancelling a captured graph pass leaves authored state untouched');
 });
 
+test('captured scalar failures and empty acknowledgements cannot expose a later reading or retained JSON',async()=>{
+  const definition=vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../examples/http-post.js'),'utf8'));
+  const state={...definition.initState(),valueType:'string'},source={...item(),state,inputValues:{url:'https://data.test/value',path:'/value',body:'{}',idempotencyKey:''}};
+  const declared={apiVersion:2,integrationApi:1,compute:true,inputs:definition.inputs(state),outputs:definition.outputs(state),httpSource:definition.httpSource(state)};
+  const value={...item('value'),script:'value',inputValues:{},bindings:{text:{uid:source.uid,port:'value'}}};
+  const jsonText={...item('jsonText'),script:'jsonText',inputValues:{},bindings:{text:{uid:source.uid,port:'json'}}};
+  const textCaps={apiVersion:2,compute:true,inputs:{text:{type:'string'}},outputs:{text:{type:'string'}}};
+  const call=async(subject,hook,args)=>hook==='caps'?(subject===source?declared:textCaps):subject===source?definition.compute(...args):{text:args[0].text};
+  const scene=[source,value,jsonText],latest={status:'ready',available:true,loading:false,stale:false,error:'',json:'{"value":"latest"}',jsonAvailable:true,httpStatus:202,value:'latest',lastUpdated:4};
+  const graph=await api.runComponentEvaluation(scene,call,()=>true,{datasets:{},integrationSource:()=>latest});
+  for(const earlier of [
+    {...latest,status:'error',available:false,stale:true,error:'HTTP 503',httpStatus:503,lastUpdated:2,value:'retained',json:'{"value":"retained"}'},
+    {status:'ready',available:false,loading:false,stale:false,error:'',json:'',jsonAvailable:false,httpStatus:204,lastUpdated:3}
+  ]){
+    const captured=await api.componentHttpResponseRecords(scene,source,earlier,call,()=>true,graph);
+    assert.equal(captured.get(source).io.outputs.httpStatus,earlier.httpStatus);
+    assert.equal(captured.get(source).io.outputs.lastUpdated,earlier.lastUpdated);
+    assert.equal(captured.get(source).io.outputs.value,undefined);
+    assert.equal(captured.get(source).io.outputs.json,undefined);
+    assert.ok(captured.get(value).error);assert.ok(captured.get(jsonText).error);
+    assert.equal(captured.get(value).io.outputs.text,undefined);assert.equal(captured.get(jsonText).io.outputs.text,undefined);
+    assert.equal(graph.get(value).io.outputs.text,'latest','preparing an earlier completion does not mutate the accepted graph');
+  }
+});
+
 test('manual requests launch independently, return immediately and only the newest completion publishes',async()=>{
   const requests=[],notifications=[],source=item(),other=item('other'),before=JSON.stringify(source);
   const service=api.createComponentIntegrationService({fetch:(url,options)=>{const pending=deferred();requests.push({url,options,...pending});return pending.promise;},

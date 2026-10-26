@@ -75,7 +75,11 @@ async function handle(run,index,id){return run(`(async()=>{const item=items[${in
 async function click(page,run,index,id){
   await run(`selection=[${index}];editingSmartIdx=${index};render()`);const h=await handle(run,index,id);assert.ok(h,id+' handle exists');
   const p=await run(`toWorld(items[${index}],items[${index}].x+${h.x},items[${index}].y+${h.y})`),box=await page.locator('#canvas').boundingBox();
-  await page.mouse.click(box.x+p.x,box.y+p.y);await run('smartHitSettled');
+  await page.mouse.click(box.x+p.x,box.y+p.y);
+  // Observe the completed gesture/render rather than returning its task promise
+  // through DevTools, whose weak promise observation can fail after it has finished.
+  // The click happens once; request, event and output assertions still follow below.
+  await page.waitForFunction(()=>__test.run('smartGestureRecords.size===0 && smartCurrentPress===null && smartHitPending===null'));
 }
 async function logs(page,run,index,count){await page.waitForFunction(({index,count})=>__test.run(`items[${index}].state.values.length`)===count,{index,count});return run(`items[${index}].state.values`);}
 async function readerReady(frame,index=0){await frame.waitForFunction(index=>document.querySelector('[data-smart-index="'+index+'"]')?.dataset.smartReady==='true',index);}

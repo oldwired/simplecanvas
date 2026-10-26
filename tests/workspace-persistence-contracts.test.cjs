@@ -231,6 +231,7 @@ function historyScope(){
     tabs:[{id:'a'},{id:'b'}],activeTabId:'a',items:[item('a',{state:{value:1}})],datasets:{},
     undoStack:[],redoStack:[],workspaceHistoryEnabled:false,workspaceUndoStack:[],workspaceRedoStack:[],
     mode:'whole workspace',unsavedTabs:new Set(),tabDocument:id=>documents.get(id),
+    editorIntegrationCredentials:{replaceItems(){}},
   });
   scope.workspaceExecutionMode=()=>scope.mode;
   const start=html.indexOf('  function historySnapshot('),end=html.indexOf('  const snap =',start);

@@ -787,6 +787,20 @@ const createIntegrationCredentialStore=function createIntegrationCredentialStore
       get:item=>values.get(item),
       set(item,value){if(value)values.set(item,normalizeIntegrationCredential(value));else values.delete(item);},
       clear(){values.clear();},
+      replaceItems(previous,next){
+        const unique=list=>{
+          const byUid=new Map();
+          for(const item of list)if(item.uid)byUid.set(item.uid,byUid.has(item.uid)?null:item);
+          return byUid;
+        };
+        const before=unique(previous),after=unique(next);
+        for(const item of previous){
+          const credential=values.get(item),replacement=after.get(item.uid);values.delete(item);
+          if(credential && before.get(item.uid)===item && replacement && item.type==='smart' &&
+            replacement.type===item.type && replacement.componentApi===item.componentApi && replacement.script===item.script)
+            values.set(replacement,credential);
+        }
+      },
       reconcile(scene){const current=new Set(scene);for(const item of values.keys())if(!current.has(item))values.delete(item);},
       mqtt(item,{url}){
         const credential=values.get(item);if(!credential)return {};
@@ -1743,8 +1757,7 @@ const componentHttpResponseEventState=function componentHttpResponseEventState(i
       [Symbol.for('simplecanvas.events')]:{value:events},
       [Symbol.for('simplecanvas.eventBatch')]:{value:true}
     });
-    if(success && snapshot.available && caps.httpSource.valueType==='table')
-      Object.defineProperty(state,Symbol.for('simplecanvas.httpTableResponse'),{value:snapshot});
+    Object.defineProperty(state,Symbol.for('simplecanvas.httpResponse'),{value:snapshot});
     return state;
   };
 const captureHttpHostIntent=function captureHttpHostIntent(item,record,provenance){
@@ -3237,7 +3250,7 @@ const prepareAcceptedComponentEvents=async function prepareAcceptedComponentEven
       return (await requestSmartSandbox({method:'call',src:item.script,fn,args},item,owners.get(item))).result;
     };
     try{
-      const captured=next[Symbol.for('simplecanvas.httpTableResponse')];
+      const captured=next[Symbol.for('simplecanvas.httpResponse')];
       if(captured && componentHasEventReceivers(scene,source,records,componentReplyEvents(next).map(event=>event.port)))
         records=await componentHttpResponseRecords(scene,source,captured,call,valid,records);
       return await prepareComponentEventDelivery(scene,source,next,call,valid,records);
@@ -3245,7 +3258,8 @@ const prepareAcceptedComponentEvents=async function prepareAcceptedComponentEven
     finally{for(const owner of owners.values())disposeSmartExecution(owner);}
   };
 const componentHttpResponseRecords=async function componentHttpResponseRecords(scene,source,snapshot,call,valid,records){
-    // A queued completion samples its own table, even after a later reply arrived.
+    // A queued completion samples its own values, availability and metadata, even after
+    // a later reply arrived. Failed/empty responses must not borrow that later reading.
     // Recompute only its pure descendants; stored values and unrelated sources keep
     // the accepted graph's baseline. This pass cannot run transitions or host actions.
     const affected=new Set([source]),byUid=new Map(scene.map(item=>[item.uid,item]));
@@ -4484,6 +4498,9 @@ const runComponentEvaluation=async function runComponentEvaluation(list,call,val
           });
           attachComponentWorkspace(eventScene,componentWorkspace(list));
           const eventRecords=new Map(eventScene.map(item=>[item,eventNodes.get(item).record])),subject=eventScene.find(item=>eventNodes.get(item)===source);
+          // Transition and Reprocess occurrences use the settled graph's table snapshot,
+          // including workspace identities and ownership, just like direct submissions.
+          eventRecords.datasets=pool;eventRecords.datasetOwners=datasetOwners;eventRecords.query=query;
           const eventCall=(item,hook,args)=>invoke(eventNodes.get(item),hook,args);
           const next=queued?Object.defineProperty({...subject.state},Symbol.for('simplecanvas.events'),{value:queued.events}):
             await transformComponentEvent(subject,source.caps,source.caps.eventTransform.reprocess,null,subject.state,source.record.io,eventCall);

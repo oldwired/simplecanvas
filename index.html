@@ -1434,6 +1434,9 @@
     for(const entry of entries){
       if(!tabs.some(tab=>tab.id===entry.id))continue; // Deleting a sketch remains a structural deletion.
       const restored=JSON.parse(entry.items),pool={...entry.datasets};
+      // History replaces objects, not the surviving source's session identity. Remap only
+      // current instances in this sketch; deleted sources and copied UIDs regain no secrets.
+      editorIntegrationCredentials.replaceItems(entry.id===activeTabId?items:tabDocument(entry.id).items,restored);
       if(entry.id===activeTabId){items=restored;datasets=pool;}
       else{const doc=tabDocument(entry.id);doc.items=restored;doc.datasets=pool;}
       unsavedTabs.add(entry.id);
@@ -4086,7 +4089,7 @@ self.onmessage = function(e){
       return (await requestSmartSandbox({method:'call',src:item.script,fn,args},item,owners.get(item))).result;
     };
     try{
-      const captured=next[Symbol.for('simplecanvas.httpTableResponse')];
+      const captured=next[Symbol.for('simplecanvas.httpResponse')];
       if(captured && componentHasEventReceivers(scene,source,records,componentReplyEvents(next).map(event=>event.port)))
         records=await componentHttpResponseRecords(scene,source,captured,call,valid,records);
       return await prepareComponentEventDelivery(scene,source,next,call,valid,records);
@@ -4094,7 +4097,8 @@ self.onmessage = function(e){
     finally{for(const owner of owners.values())disposeSmartExecution(owner);}
   }
   async function componentHttpResponseRecords(scene,source,snapshot,call,valid,records){
-    // A queued completion samples its own table, even after a later reply arrived.
+    // A queued completion samples its own values, availability and metadata, even after
+    // a later reply arrived. Failed/empty responses must not borrow that later reading.
     // Recompute only its pure descendants; stored values and unrelated sources keep
     // the accepted graph's baseline. This pass cannot run transitions or host actions.
     const affected=new Set([source]),byUid=new Map(scene.map(item=>[item.uid,item]));
@@ -5712,6 +5716,9 @@ self.onmessage = function(e){
           });
           attachComponentWorkspace(eventScene,componentWorkspace(list));
           const eventRecords=new Map(eventScene.map(item=>[item,eventNodes.get(item).record])),subject=eventScene.find(item=>eventNodes.get(item)===source);
+          // Transition and Reprocess occurrences use the settled graph's table snapshot,
+          // including workspace identities and ownership, just like direct submissions.
+          eventRecords.datasets=pool;eventRecords.datasetOwners=datasetOwners;eventRecords.query=query;
           const eventCall=(item,hook,args)=>invoke(eventNodes.get(item),hook,args);
           const next=queued?Object.defineProperty({...subject.state},Symbol.for('simplecanvas.events'),{value:queued.events}):
             await transformComponentEvent(subject,source.caps,source.caps.eventTransform.reprocess,null,subject.state,source.record.io,eventCall);
@@ -6859,7 +6866,27 @@ self.onmessage = function(e){
     });
     return snapshot;
   }
-  async function warmSmartExportCache(itemList,strict=false,componentContext=itemList,dataPool=datasets,query,includeEditorOnly=false,signal){
+  function captureSmartExportIntegrationRead(){
+    // Images and print capture the visible reading, without starting I/O or writing a
+    // response into the document. Freeze before the first asynchronous rendering step.
+    // Portable HTML and library previews deliberately do not opt into this snapshot.
+    const context=editorRuntimeContext(),graph=editorIntegrationGraph;
+    if(graph?.scene!==context.scene || graph.signature!==componentGraphSignature(context.scene))return undefined;
+    const snapshots=new Map();
+    for(const [item,record] of graph.records){
+      const caps=record.caps,source=record.io?.source;
+      if(!source || context.duplicates.has(item.uid))continue;
+      snapshots.set(item.uid,{script:item.script,descriptor:JSON.stringify(caps.httpSource||caps.mqttConfig||caps.mqttSource||caps.mqttPublish),
+        inputs:JSON.stringify(record.io.inputs),source:clone(source)});
+    }
+    return (item,caps,inputs)=>{
+      const captured=snapshots.get(item.uid);
+      if(captured?.script!==item.script || captured.descriptor!==JSON.stringify(caps.httpSource||caps.mqttConfig||caps.mqttSource||caps.mqttPublish) ||
+        inputs!==undefined && captured.inputs!==JSON.stringify(inputs))return undefined;
+      return captured.source;
+    };
+  }
+  async function warmSmartExportCache(itemList,strict=false,componentContext=itemList,dataPool=datasets,query,includeEditorOnly=false,signal,integrationSource){
     if(signal?.aborted)throw smartCancelled();
     // A clipboard image paints only the selection, but resolves its original inputs from a
     // frozen whole-document context. Editable clipboard data keeps separate, remapped IDs.
@@ -6888,7 +6915,7 @@ self.onmessage = function(e){
       const graph=await evaluateComponentGraph(scene,async(it,fn,args)=>{
         const reply=await requestSmartSandbox({method:fn==='caps'?'caps':'call',src:it.script,fn,args},it,ownerFor(it));
         return fn==='caps'?reply.caps:reply.result;
-      },()=>!signal?.aborted && componentGraphSignature(scene)===signature,{datasets:dataPool,query});
+      },()=>!signal?.aborted && componentGraphSignature(scene)===signature,{datasets:dataPool,query,integrationSource});
       for(const it of itemList){
         if(it.type!=='smart')continue;
         try{
@@ -10770,8 +10797,7 @@ self.onmessage = function(e){
       [Symbol.for('simplecanvas.events')]:{value:events},
       [Symbol.for('simplecanvas.eventBatch')]:{value:true}
     });
-    if(success && snapshot.available && caps.httpSource.valueType==='table')
-      Object.defineProperty(state,Symbol.for('simplecanvas.httpTableResponse'),{value:snapshot});
+    Object.defineProperty(state,Symbol.for('simplecanvas.httpResponse'),{value:snapshot});
     return state;
   }
   function createComponentHttpCompletions(options){
@@ -11047,6 +11073,20 @@ self.onmessage = function(e){
       get:item=>values.get(item),
       set(item,value){if(value)values.set(item,normalizeIntegrationCredential(value));else values.delete(item);},
       clear(){values.clear();},
+      replaceItems(previous,next){
+        const unique=list=>{
+          const byUid=new Map();
+          for(const item of list)if(item.uid)byUid.set(item.uid,byUid.has(item.uid)?null:item);
+          return byUid;
+        };
+        const before=unique(previous),after=unique(next);
+        for(const item of previous){
+          const credential=values.get(item),replacement=after.get(item.uid);values.delete(item);
+          if(credential && before.get(item.uid)===item && replacement && item.type==='smart' &&
+            replacement.type===item.type && replacement.componentApi===item.componentApi && replacement.script===item.script)
+            values.set(replacement,credential);
+        }
+      },
       reconcile(scene){const current=new Set(scene);for(const item of values.keys())if(!current.has(item))values.delete(item);},
       mqtt(item,{url}){
         const credential=values.get(item);if(!credential)return {};
@@ -13497,13 +13537,14 @@ safe-buffer/index.js:
   // (background off, so pasting a selection into another app's canvas doesn't carry an opaque backdrop).
   async function itemsToSVGMarkup(itemList, opts){
     opts = opts || {};
+    const integrationSource=opts.liveSmart?undefined:captureSmartExportIntegrationRead();
     // Smart evaluation awaits Worker replies. Freeze state and geometry together so a
     // running signal or edit cannot invalidate the export or change its measured bounds.
     itemList=snapshotSmartExportItems(itemList);
     const assetPool=opts.assets || assets;
     // Resolve children before measuring as well as painting, so both use the same export result.
     // A portable HTML's initial SVG uses defaults; its own URL is read when it opens.
-    const cache=await warmSmartExportCache(itemList,false,itemList,opts.datasets??datasets,opts.liveSmart?'':undefined,false,opts.signal);
+    const cache=await warmSmartExportCache(itemList,false,itemList,opts.datasets??datasets,opts.liveSmart?'':undefined,false,opts.signal,integrationSource);
     if(opts.signal?.aborted)throw smartCancelled();
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
@@ -13540,6 +13581,7 @@ safe-buffer/index.js:
   // cannot render an SVG clipboard entry.
   async function itemsToPngBlob(itemList, opts){
     opts = opts || {};
+    const integrationSource=captureSmartExportIntegrationRead();
     itemList=snapshotSmartExportItems(itemList);
     const componentContext=opts.componentContext
       ?attachComponentWorkspace(clone(opts.componentContext),componentWorkspace(opts.componentContext)):itemList;
@@ -13548,7 +13590,7 @@ safe-buffer/index.js:
     // offscreen canvas below, nothing may yield back to the event loop until it's restored, or a live
     // render() triggered by something else entirely (e.g. an unrelated mouse move) could interleave
     // and paint to the wrong canvas. See warmSmartExportCache's own comment.
-    const cache=await warmSmartExportCache(itemList,false,componentContext);
+    const cache=await warmSmartExportCache(itemList,false,componentContext,datasets,undefined,false,undefined,integrationSource);
     const prevExportCache = smartExportCache;
     smartExportCache = cache;
     try{
@@ -24694,7 +24736,9 @@ safe-buffer/index.js:
       const caps=await requestSmartCaps(proposal,owner);
       if(!valid())throw smartCancelled();
       if(!caps?.importTable || caps.apiVersion!==2 || caps.inputs[name]?.type!=='table')throw new Error('This component cannot copy that dataset into cells.');
-      let reference=proposal.inputValues?.[name],pool=session.datasets;
+      // Direct table references may name another sketch. Resolve them through the
+      // same workspace pool as the inspector preview, including staged local data.
+      let reference=proposal.inputValues?.[name],pool=componentInspectorPool(session);
       const binding=proposal.bindings?.[name];
       if(binding){
         // Capture published values from the graph frozen when Edit opened. Inspection may

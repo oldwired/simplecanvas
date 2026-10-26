@@ -1119,13 +1119,17 @@ Those session credentials belong to the source and endpoint origin. **Use for th
 autosave, clipboard and library/sketch copies. Saving a sketch/workspace or HTML offers a separate,
 unchecked per-source inclusion choice for that artifact. Included credentials remain readable
 from the file. Restoring them does not itself enable polling/startup or Send.
+Undo/Redo preserves session credentials for a surviving source. Deleting a source clears its
+credentials; undoing that deletion does not restore secrets from history.
 
 Response snapshots are transient. An explicit consumer can capture a response/event into stored
 content such as Memo; the HTTP component itself does not save the reading. Deletion, replacement,
 changed request configuration and scope departure invalidate pending delivery. Run inherits
 session credentials into its separate host store; returning cancels pending delivery and discards
-local reader changes, without undoing writes at the server. Static artwork and HTML generation
-never issue requests. `features.networkIntegrations:false` disables all requests independently
+local reader changes, without undoing writes at the server. PNG, SVG, clipboard images and print
+capture the current HTTP/MQTT readings without issuing requests. Interactive HTML starts with
+fresh integration sessions and does not embed those transient readings. Neither kind of export
+starts network activity while generating the file. `features.networkIntegrations:false` disables all requests independently
 of component authoring.
 
 Endpoints must permit browser requests. Run retains its opaque `Origin: null`, even for a server

@@ -187,6 +187,14 @@ test('MQTT credentials stay in host memory and require explicit inclusion in eac
   await dialog.locator('[data-integration-save]').click();await dialog.waitFor({state:'detached'});
   assert.equal(broker.stats.connections.length,0,'setting credentials does not connect');
   await action(run);await waitOutput(page,'reading','value',35);
+  await run("beginHistory();items.find(item=>item.uid==='control').x+=40;commitHistory();render();");
+  await page.keyboard.press('ControlOrMeta+z');await output(run,'config');
+  assert.equal(await run("items.find(item=>item.uid==='control').x"),50);
+  assert.equal(await run('editorIntegrationCredentials.size'),1,'unrelated history restoration retains the connection credentials');
+  assert.equal(broker.stats.connections.length,1,'Undo does not reconnect');
+  await action(run);await waitOutput(page,'reading','value',35);
+  assert.equal(broker.stats.connections.length,2,'the restored Config authenticates again with the session credentials');
+  assert.ok(!(await run('JSON.stringify({undoStack,redoStack})')).includes(secret),'credentials never enter history');
   assert.ok(!(await run('JSON.stringify(items)')).includes(secret));await run('persistWorkspace()');
   assert.ok(!JSON.stringify(await run('readSavedWorkspace()')).includes(secret));
   assert.ok(!(await run('buildWorkspaceHtml(captureWorkspaceHtml())')).includes(secret));

@@ -92,9 +92,9 @@ Keep generated HTML self-contained and verify actual shipped readers after regen
 `python3 tools/optimize-builtin-thumbnails.py` (Pillow, development only); inspect previews afterward.
 The [detailed catalog](COVERAGE.md#workspace-execution-and-cross-sketch-ownership) links their coverage.
 
-The HTTP example has three sketches: manual reads, automatic reads/event logs and explicit JSON POST. Run
+The HTTP example has four sketches: manual reads, automatic reads/event logs, explicit JSON POST and table responses. Run
 `node tools/serve-http-example.cjs` to serve the repository root with CORS enabled only for its
-`/examples/http-reading.json`, alternate, and `/examples/api/reading`/`echo` endpoints, including
+reading/stock JSON files and `/examples/api/reading`, `echo` and `stock` endpoints, including
 CORS for Run's isolated origin and POST preflights. API writes/idempotency records live only in
 the server process; `?delay=2500`, `?status=503` and POST `?status=204` exercise request outcomes.
 Browser local-network permissions still apply. `http-local-network.test.cjs` uses the real
@@ -108,6 +108,17 @@ superseding responses, credentials, automated reads and captured POST bodies wit
 node --test tests/integration-foundation.test.cjs tests/http-scheduling.test.cjs tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-table-components.test.cjs tests/http-table-runtime.test.cjs tests/http-integrations-example-contracts.test.cjs tests/http-example-server.test.cjs tests/http-local-network.test.cjs
 BROWSER_ENGINE=webkit node --test tests/http-integration-runtime.test.cjs tests/http-automation-runtime.test.cjs tests/http-table-runtime.test.cjs tests/http-local-network.test.cjs
 ```
+
+Pre-merge regressions cover transition/Reprocess dataset actions, credentials surviving unrelated
+Undo, queued HTTP response metadata, shared Spreadsheet copies, and static export snapshots:
+
+```sh
+node --test tests/component-transition-data-actions.test.cjs tests/integration-history-events.test.cjs tests/spreadsheet-datasets.test.cjs tests/integration-static-export.test.cjs
+BROWSER_ENGINE=webkit node --test tests/component-transition-data-actions.test.cjs tests/integration-history-events.test.cjs tests/spreadsheet-datasets.test.cjs tests/integration-static-export.test.cjs
+```
+
+These exercise editor, Run and freshly generated HTML where applicable. Image/print snapshots
+must retain current readings without new I/O or saved response data; Run and HTML start fresh.
 
 For the rendering/library-preview benchmark:
 

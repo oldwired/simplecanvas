@@ -250,6 +250,65 @@ test('copying a connected dataset stages an editable snapshot, saves once, and s
   await run('redo()');assert.equal(await run('items[1].state.source'),undefined);assert.ok((await childrenText(run,1)).includes('8'));
 }));
 
+test('a shared Dataset copies into independent Spreadsheet cells and remains independent in Run and HTML',async()=>app(async({page,run,context})=>{
+  await run(`(()=>{
+    const make=(key,uid,x,y,extra={})=>({...clone(BUILTIN_LIBRARY_DEFINITIONS.find(def=>def.key===key).items[0]),uid,x,y,...extra});
+    const settings=make('workspaceSettings','settings',900,40,{state:{executionMode:'whole workspace',initialSketchId:'dashboard',tabVisibility:[]}});
+    const source=make('dataSource','owner',60,70,{datasetShared:true,state:{updateMode:'Manual',allowReaderImport:true},inputValues:{data:{datasetId:'fleet'}}});
+    const sheet=${JSON.stringify(sheet({}, {inputValues:{data:{datasetId:'fleet',sketchId:'services'}}}))};
+    openWorkspaceFile(new File([JSON.stringify({app:'SimpleCanvasWorkspace',version:FORMAT_VERSION,activeIndex:1,tabs:[
+      {id:'services',name:'Services',items:[settings,source],assets:{},datasets:{fleet:${JSON.stringify(fleet)}}},
+      {id:'dashboard',name:'Dashboard',items:[sheet],assets:{},datasets:{}}
+    ]})],'shared-sheet.json',{type:'application/json'}));
+  })()`);
+  await page.waitForFunction(()=>__test.run("tabs.length===2 && activeTabId==='dashboard'"));
+  await run("setTool('select');resolveAcceptedComponentGraph(ensureEditorComponentGraph,()=>true)");
+  assert.ok((await childrenText(run)).includes('Aurora'),'shared table displays before copying');
+  const original=await snapshot(run),sourceBefore=await run("clone(tabDocument('services').datasets)");
+  await openInputs(page,run);
+  assert.deepEqual(await run('Object.keys(componentDialogSession.datasets)'),[],'the selected table is outside the local pool');
+  await page.getByRole('button',{name:'Copy dataset to editable cells',exact:true}).click();
+  await page.waitForFunction(()=>__test.run("componentDialogSession?.proposal.state.cells.A2===\"'Aurora\""));
+  assert.equal(await page.locator('#componentBindingsError').textContent(),'');
+  assert.deepEqual(await snapshot(run),original,'copy remains a cancelable draft');
+  await page.locator('#componentBindingsCancel').click();assert.deepEqual(await snapshot(run),original);
+  await openInputs(page,run);await page.getByRole('button',{name:'Copy dataset to editable cells',exact:true}).click();await saveInputs(page);
+  assert.equal(await run('items[0].inputValues.data'),undefined,'Save removes the shared association');
+  assert.equal(await run('undoStack.length'),original.undo.length+1);
+  await editCell(page,run,'B2','99');assert.equal(await run('items[0].state.cells.B2'),'99');
+  assert.deepEqual(await run("clone(tabDocument('services').datasets)"),sourceBefore,'editing copied cells never writes to the source');
+  const copied=await run('clone(items[0])');
+  await run('undo();undo()');assert.deepEqual(await run('clone(items)'),original.items,'Undo restores the original remote association');
+  await run('redo();redo()');assert.deepEqual(await run('clone(items[0])'),copied);
+
+  const sourceHandle=await run(`(async()=>{const it=tabDocument('services').items.find(item=>item.uid==='owner');return (await requestSmartSandbox({method:'call',src:it.script,fn:'handles',args:[it.state,it.w,it.h,smartResolvedStyle(it)]},it)).result.find(h=>h.id==='loadData');})()`);
+  const exercise=async(reader,isPreview)=>{
+    const dashboard=reader.locator('.tab-panel[data-tab-id="dashboard"]');
+    await reader.waitForFunction(()=>{const host=document.querySelector('.tab-panel[data-tab-id="dashboard"] [data-smart-index="0"]');return host?.dataset.smartReady==='true'&&host.textContent.includes('Aurora')&&host.textContent.includes('99');});
+    await reader.locator('.tab-select[data-tab-id="services"]').click();
+    const host=reader.locator('.tab-panel[data-tab-id="services"] [data-smart-index="1"]');
+    await reader.waitForFunction(host=>host.dataset.smartReady==='true',await host.elementHandle());
+    const point=await host.evaluate((host,handle)=>{const p=new DOMPoint(handle.x,handle.y).matrixTransform(host.firstElementChild.getScreenCTM());return {x:p.x,y:p.y};},sourceHandle);
+    const offset=isPreview?await page.locator('#runPreviewFrame').boundingBox():{x:0,y:0};
+    await (isPreview?page:reader).mouse.click(offset.x+point.x,offset.y+point.y);
+    const dialog=reader.locator('dialog[data-component-data-action="importDataset"]');await dialog.waitFor();
+    await dialog.locator('[data-data-action-file]').setInputFiles({name:'changed.csv',mimeType:'text/csv',buffer:Buffer.from('Boat,Points\nChanged source,42')});
+    await dialog.getByRole('button',{name:'Replace data',exact:true}).click();await dialog.waitFor({state:'detached'});
+    await reader.waitForFunction(()=>{const host=document.querySelector('.tab-panel[data-tab-id="services"] [data-smart-index="1"]');return host?.dataset.smartReady==='true'&&host.textContent.includes('1 row');});
+    await reader.locator('.tab-select[data-tab-id="dashboard"]').click();await dashboard.waitFor({state:'visible'});
+    await reader.waitForFunction(()=>{const host=document.querySelector('.tab-panel[data-tab-id="dashboard"] [data-smart-index="0"]');return host?.dataset.smartReady==='true'&&host.textContent.includes('Aurora')&&host.textContent.includes('99')&&!host.textContent.includes('Changed source');});
+  };
+  await page.locator('#runPreviewBtn').click();await page.locator('#runPreviewPanel[data-state="ready"]').waitFor();
+  const frame=await(await page.locator('#runPreviewFrame').elementHandle()).contentFrame();await exercise(frame,true);
+  await page.locator('#exitPreviewBtn').click();await page.locator('#runPreviewPanel').waitFor({state:'hidden'});
+  assert.deepEqual(await run("clone(tabDocument('services').datasets)"),sourceBefore,'Run discards source replacement');
+  assert.deepEqual(await run('clone(items[0])'),copied);
+  const {reader,errors,requests}=await openReader(page,run,context);await exercise(reader,false);
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  assert.deepEqual(await run("clone(tabDocument('services').datasets)"),sourceBefore,'HTML has its own data lifetime');
+  assert.deepEqual(await run('clone(items[0])'),copied);
+}));
+
 test('copying a live table keeps its published values instead of recomputing a configuration preview',async()=>app(async({page,run})=>{
   const script=`({apiVersion:2,inputs:{value:{type:'number',default:0}},outputs:{data:{type:'table'}},
     _table(value){return {data:{table:{name:'Stored reading',columns:[{key:'value',name:'Value',type:'number'}],rows:[[value]]}}};},
