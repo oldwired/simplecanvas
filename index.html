@@ -8089,7 +8089,7 @@ self.onmessage = function(e){
   const selectionFor = hit => { const g = items[hit].group; return (g!=null && g!==editingGroupId) ? itemsInGroup(g) : [hit]; };
   const sameSelection = (a,b) => a.length===b.length && a.every((v,i)=>v===b[i]);
   let clickCycle = null;   // {x,y,stack,depth} — repeated clicks on the same spot walk down the stack
-  // Keep the first press's target for smart double-clicks, before either release advances the
+  // Keep the first press's target for editor-opening double-clicks, before either release advances the
   // selection cycle. The record can finish asynchronously when an earlier smart hit test settles.
   let selectionPress = null, firstMouseSelectionPress = null;
   // With several objects stacked at one spot, a plain hitTest always hands back the topmost — the
@@ -26700,11 +26700,12 @@ safe-buffer/index.js:
     // objects (see pickWithClickCycle), selection already correctly names the item the user is
     // now on — a fresh hitTest here would ignore that and always jump back to the topmost one.
     let hit = selection.length===1 ? selection[0] : hitTestWithGroupBox(x,y);
-    // Enter the smart controls the gesture started on, even if its two releases cycled to other
-    // layers. Separate clicks still cycle immediately; ordinary shapes retain their existing
-    // double-click behavior. Identity and completed-press checks exclude drags and stale targets.
+    // Open the editor for the text, table or smart control the gesture started on, even if its
+    // two releases cycled to other layers. Separate clicks still cycle immediately; geometric
+    // shapes retain their point-edit behavior. Identity and completed-press checks exclude drags
+    // and stale targets.
     if(firstPress?.click && lastPress?.click && lastPress.it && firstPress.tab===activeTabId && lastPress.tab===activeTabId &&
-       firstPress.it?.type==='smart' && items.includes(firstPress.it) &&
+       ['text','table','smart'].includes(firstPress.it?.type) && items.includes(firstPress.it) &&
        pressedOn(firstPress.it,firstPress.x,firstPress.y) && pressedOn(firstPress.it,x,y)){
       hit=items.indexOf(firstPress.it);
       editingGroupId=firstPress.group;

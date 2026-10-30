@@ -12,6 +12,10 @@ embedded assets, tab switching, group transforms, and current document data afte
 Markdown checks cover cropped PNG/SVG/clipboard output and editor alignment. Native Office paste
 still requires a manual integration check.
 
+`text-edit-overlap.test.cjs` checks mouse double-click and touch double-tap editing of stacked
+text, selected covered labels, table cells, and grouped text's two-stage editor entry. Separate
+clicks still cycle through the stack, dragging moves the selected layer, and text edits undo normally.
+
 An iPad-sized touch scenario exercises endpoint cycling and double-tap point editing in Chromium
 and WebKit. Mouse checks cover undo/reload/import, curve tangents, and preserving heads during drags.
 Raw touch-drag and library-hold scenarios use Chromium's CDP interface and are skipped in WebKit. A physical iPad
