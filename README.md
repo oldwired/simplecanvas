@@ -11,7 +11,7 @@ app with all optional features disabled and the page title **Really SimpleCanvas
 - [Draw and edit](#draw-and-edit)
 - [Save and reopen](#save-and-reopen)
 - [Export and print](#export-and-print)
-- [Shape libraries and smart shapes](#shape-libraries-and-smart-shapes)
+- [Reusable shapes](#reusable-shapes)
 - [Deployment and settings](#deployment-and-settings)
 - [Development and releases](#development-and-releases)
 
@@ -33,8 +33,7 @@ for how autosave, downloaded files, and library files differ.
   proportions; Ctrl/Cmd resizes from the center.
 - **Groups:** select several objects and press Ctrl/Cmd+G to group them. Double-click a grouped
   object to edit individual members without ungrouping. Click outside the group, press Escape,
-  or switch tools to leave group editing. A second double-click opens a member's text editor or
-  smart-shape controls.
+  or switch tools to leave group editing. A second double-click opens a member's text or table-cell editor.
 - **Text and tables:** drag with the Text tool to create a text box. Choose table dimensions and
   click to place a table. Double-click or long-press text or a table cell to edit it.
   **Shift+Enter** inserts a newline; **Enter**, **Escape**, or clicking away commits the text.
@@ -90,7 +89,7 @@ Tool shortcuts: **V** Select, **P** Pen, **M** Highlighter, **B** Felt-tip, **E*
 
 Sketches and tabs are saved automatically to this browser's local storage and restored on the
 next visit. This storage is local to the browser; downloadable JSON files let you keep a backup
-or move your work elsewhere. Sketch/workspace JSON retains smart-shape scripts and saved state.
+or move your work elsewhere.
 
 | File action | Scope |
 | --- | --- |
@@ -109,26 +108,8 @@ Library changes are separate from sketch saves and autosave: use **Export librar
 ## Export and print
 
 **Export PNG** and **Export SVG** capture the active sketch, cropped to its painted content with
-margins. Both capture a static reading of live smart shapes. PNG exports use 2× resolution;
+margins. PNG exports use 2× resolution;
 SVG preserves vector geometry.
-
-**Export HTML** creates a self-contained copy of all working tabs at the current canvas size,
-with live smart-shape controls. Images are embedded in the file, and each tab retains its own
-content and group rotations, including changes that could not be saved automatically. When
-workspace controls are disabled, HTML export includes only the active sketch.
-
-### Interactive HTML
-
-Exported HTML keeps clocks live and smart controls interactive, directly on the page, offline.
-Shape positions and sizes stay fixed unless the script's `exportBehavior` permits moving,
-rotating, or resizing either dimension. In the ruler's edit mode, **HTML: move / rotate** enables
-both moving and rotating; **HTML: extend** enables width changes for that instance. These
-authoring controls stay out of the export. Changes in an exported page stay in memory across
-its tab switches; reloading or reopening the file restores the exported state.
-Click a shape to show its rotation handle; click elsewhere or press **Escape** to hide it.
-Hold **Shift** while rotating to snap to 15° increments, just as in the editor.
-See [Smart Shapes](SMART_SHAPES.md#html-export-behavior) for script permissions and the
-`editorOnly` marker.
 
 ### Print
 
@@ -160,66 +141,36 @@ or overlap, or Fit to page if the drawing needs more.
 
 ### Physical scale
 
-The ruler and drilling template share a scale of **96 canvas px = 1 inch = 25.4 mm**. Resizing the
-drilling template changes hole spacing while its diameter stays fixed in millimeters. Export SVG
-and print at **Actual size / 100%**, with page fitting disabled, for physical templates. SVG keeps
-fractional dimensions to preserve this scale. PNG exports use 2× resolution: one inch spans 192
-image pixels, so use **192 pixels per inch** when placing/printing them at the intended size.
-Both exports include margins; the complete image width exceeds the ruler's marked length. Screen
-display size does not guarantee physical dimensions.
+Canvas geometry uses **96 px = 1 inch = 25.4 mm**. Export SVG and print at **Actual size / 100%**,
+with page fitting disabled, when physical dimensions matter. SVG keeps fractional dimensions;
+PNG exports use 2× resolution, so one inch spans 192 image pixels. Export margins add to the
+image dimensions. Screen display size does not guarantee physical output size.
 
-## Shape libraries and smart shapes
+## Reusable shapes
 
-The shape library is optional. Open the library picker and choose **Add selection** to save
-selected canvas objects, or **Manage → Import…** to open your own library file. **Manage** is
-available even before a library exists, including **Add smart shape…**. Click a saved shape to
-place it; **Manage** also lets you rename, delete, or replace an entry with the current selection.
-For smart shapes, **Edit** opens their existing script in the authoring dialog. Library
-edits, replacements, and deletions do not change already-placed objects. Save changes, then
-export the library to keep the updated code and preview. Images cannot be included in library entries.
+Open the shape library picker and choose **Add selection** to save selected drawing objects as
+one reusable shape. Click a library entry, then click the canvas to place a copy. **Manage** lets
+you rename, replace, or delete entries and import/export a library. Changing a library entry
+leaves existing placed copies independent. Images cannot be included in library entries.
 
-**Export library…** downloads the entire active library as `shapes-library.json`. Library
-changes last only for the current visit and are separate from sketch saves and autosave.
-An indicator shows unexported changes; importing another library or leaving the page warns
-before those changes are discarded. Import your exported file to use it on another visit.
-
-Libraries include PNG thumbnails, which display without running shape scripts. Ordinary missing
-previews are generated automatically. Smart shapes with missing previews show placeholders and ask
-before running their scripts to generate pictures; **Use placeholders** still loads the library.
-**Generate missing previews…** lets you generate them later. Export the library to retain new previews.
-
-### Smart shapes
-
-**Manage → Add smart shape…** creates script-defined shapes from templates such as Clock,
-Live clock, Stopwatch, Ruler, Timer, Arrow, Arc, and Chart. Double-click a placed smart shape to
-edit its handles, then double-click again or click outside to leave. If it belongs to a group,
-the first double-click enters group editing and the second opens its smart controls. Clicks
-and drags support undo/redo.
-
-Scripts run in an isolated Worker with blocked network access, and generated shapes are
-validated before rendering or export. The app still works as a single local HTML file.
-Authoring details are in [SMART_SHAPES.md](SMART_SHAPES.md).
+**Export library…** downloads the active library as `shapes-library.json`. Library changes last
+for the current visit and are separate from sketch autosave. Export the library to keep them;
+import that file on another visit. PNG previews are included and missing previews are generated
+automatically from the static drawing objects.
 
 ### Demo library
 
-The public demo library includes thirteen shapes. Open the shape library in the toolbar,
-choose a shape, then click the canvas to place it. All demo entries include saved previews.
-You can also import [examples/demo-shapes-library.json](examples/demo-shapes-library.json)
-through **Manage → Import…** when using the app locally.
+The public demo includes six reusable static sailing drawings: two boats, start and finish
+lines, a course mark, and a wind arrow. Import
+[examples/demo-shapes-library.json](examples/demo-shapes-library.json) to use them locally.
 
-| Shapes | What they do |
-| --- | --- |
-| Six sailing shapes | Two boats, start and finish lines, a course mark, and a wind arrow |
-| **Clock** | Manually adjustable clock; double-click to drag its hands |
-| **Bar chart** | Drag bars and add/remove them with the +/− controls in edit mode |
-| **[Drill template](examples/drill-template.js)** | Handles adjust hole diameter and position; resizing changes hole spacing while diameter stays fixed in millimeters |
-| **[Race start timer](examples/race-start-timer.js)** | A draggable clock hand and clickable mast controls for changing flags |
-| **[Live clock](examples/live-clock.js)** | Follows local time |
-| **[Stopwatch](examples/stopwatch.js)** | Start/Pause and Reset controls in edit mode; a running stopwatch continues across tab switches and reloads |
-| **[Ruler](examples/ruler.js)** | Extends its markings at fixed spacing; in edit mode, click the unit label to cycle cm with mm divisions, inches with sixteenth-inch divisions, and pixels |
+### Older scripted drawings
 
-Live clock, Stopwatch, and Ruler are also templates under **Manage → Add smart shape…**.
-See [Physical scale](#physical-scale) for printing rulers and drilling templates.
+SimpleCanvas no longer creates or executes smart shapes and no longer exports interactive HTML.
+Older scripted objects in sketches appear as labelled static placeholders. Their original
+scripts and state remain in sketch/workspace JSON exports, so they can be opened in
+[Paperwire](https://github.com/oldwired/paperwire). Static objects in those drawings remain editable.
+Libraries containing scripted objects are rejected without replacing the active library.
 
 ### Import icons
 
@@ -266,15 +217,13 @@ nonempty string; omit it to keep **SimpleCanvas — Quick Sketches**. For exampl
 
 | Feature | Effect when `false` |
 | --- | --- |
-| `workspace` | Hides tabs, Add tab, and workspace open/save. Edits and HTML exports use the active sketch. Previously saved tabs are preserved and return when enabled again. |
+| `workspace` | Hides tabs, Add tab, and workspace open/save. Edits use the active sketch. Previously saved tabs are preserved and return when enabled again. |
 | `shapeLibrary` | Hides the entire library and skips loading `shapes-library.json`. Objects in existing drawings still render and remain editable. |
 | `shapeLibraryManagement` | Hides Manage and all library additions; blocks library import/export, rename, replace, and delete. Users can place shapes from the deployed library. |
-| `smartShapeAuthoring` | Disables creating and editing scripts, including adding script-bearing library entries through imports or selections. Existing smart shapes remain placeable, with working interactive handles. |
 | `iconify` | Disables Iconify search and import. Previously imported icons remain usable. |
 | `customPrinting` | Uses regular browser printing instead of the custom paper preview, for both File → Print and Ctrl/Cmd+P. |
 
-Disabling `shapeLibrary` also disables its management. Disabling management also disables smart-shape
-authoring and Iconify additions, regardless of their individual switches. A fixed library with a
+Disabling `shapeLibrary` also disables its management. Disabling management also disables Iconify additions, regardless of their individual switches. A fixed library with a
 single-sketch interface therefore needs only:
 
 ```json
@@ -321,11 +270,8 @@ requires no build step or runtime dependencies.
 ### Update the demo library
 
 Import `examples/demo-shapes-library.json`, edit it in **Manage**, export the library, and save
-the download back as `examples/demo-shapes-library.json`. The contributor shapes embed their
-complete `.js` example scripts: keep the drilling template and race-start timer examples and
-library sources in sync. Live clock, Stopwatch, and Ruler also have embedded authoring templates
-in `index.html`; update those copies, their `.js` examples, library sources, and saved previews
-together when changing a script.
+the download back as `examples/demo-shapes-library.json`. Demo entries contain only reusable
+static drawing objects and their PNG previews.
 
 ### Releases
 
