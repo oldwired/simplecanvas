@@ -9,21 +9,14 @@ The branch/provenance notes below describe earlier development. The current app 
 PR #2 changes: complete working documents and image/history state live in `tabDocuments`, independently
 of browser storage. Failed autosave shows a persistent warning with a workspace-download action.
 
-HTML export retains smart-shape scripts/state in an offline SVG runtime using the same Worker
-sandbox, validators, and primitive/SVG renderers. Scripted controls run directly with `editing=true`;
-`editorOnly:true` marks authoring-only children AND handles. Static exports filter marked children too.
-`exportBehavior` is either `{move,rotate,resizeWidth,resizeHeight}` or a function of state returning
-that object; all permissions default off. The ruler's marked editor controls set per-instance state
-permissions, binding move and rotate to one toggle. The editor and export share Shift-to-15° rotation
-snapping, including original group/own angles.
-Rotation preserves script-local hit testing; resizing anchors the opposite edge.
-Keep example sources, embedded templates, and the demo library scripts in sync.
+Smart-shape authoring/execution and interactive HTML export have been removed. Libraries contain
+reusable static drawing objects; Iconify import remains supported. Older scripted objects become
+labelled static rectangles with opaque `unsupportedShape` recovery data. `itemsForFile` restores
+that original object type in JSON exports for Paperwire. Never execute imported scripts or silently
+lose their source/state. Static library import rejects scripted entries before replacing the library.
 
-PR #3 adds structured JSON plus PNG clipboard output, whole-workspace HTML export, and Markdown.
-Paste validates SimpleCanvas JSON before using the PNG fallback. HTML export reads working documents
-and passes each document's items/assets to SVG serialization; do not clear or swap the live asset pool.
-Painted export bounds cover plain text and Markdown separately from geometry/pivot bounds. Markdown
-requires an exact `---` first line in a text item; table cells are excluded in both renderer and editor.
+Clipboard output retains editable JSON plus a PNG fallback. PNG/SVG bounds include wrapped text
+and Markdown. Markdown requires an exact `---` first line; table cells remain plain text.
 
 In Select mode, endpoint clicks/taps cycle each line or open curve head through None, Open, Filled,
 Open inverted, Filled inverted, then None. Endpoint drags retain the head style. Double-click/tap
@@ -54,7 +47,7 @@ Automated Playwright regressions are checked in under `tests/`; see `tests/READM
 and WebKit commands and the remaining manual Office/iPad checks. They are development dependencies
 only; opening `index.html` still requires no build step or runtime dependency.
 
-## Provenance
+## Historical provenance
 
 - Upstream: https://github.com/oldwired/simplecanvas (maintainer: oldwired)
 - This repo (`regattahero/simplecanvas`) is a fork with a large feature branch
@@ -141,14 +134,7 @@ not this branch.
   A `text/html` entry with inline `<svg>` was tried and then removed —
   Office's paste-special never picked it up as vector content anyway
   (showed an empty box), so `image/png` alone covers this now.
-- **HTML export** (`exportHtml()`, new menu item) — a standalone `.html`
-  file that opens in any browser, no SimpleCanvas needed. Reproduces the
-  canvas **1:1** at its current `cssW`×`cssH` viewport size (no auto-crop) —
-  deliberately different from SVG export/copy, which still tight-crop to
-  the items' own bbox + margin. `itemsToSVGMarkup(itemList, {width, height})`
-  is the shared builder behind both: the opt-in full-canvas mode skips all
-  bbox/crop math; the default (no `{width,height}`) stays the original
-  tight-crop, used by `saveSvg()`/copy.
+
 - **Markdown in a plain text item**: recognized only when the item's first
   line is bare `---` (matches YAML front-matter, deliberately not
   `---markdown`). Supports `#`/`##`/`###` headings (forced bold, sized

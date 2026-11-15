@@ -165,16 +165,6 @@
   .library-dialog p{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
   .library-dialog label{font-size:13px;display:block;margin-bottom:6px}
   .library-dialog input{box-sizing:border-box;width:100%;font:inherit;padding:9px;border:1px solid var(--line);border-radius:7px}
-  .library-dialog textarea{box-sizing:border-box;width:100%;font:12px ui-monospace,monospace;padding:9px;border:1px solid var(--line);border-radius:7px;resize:vertical}
-  .library-dialog code{font:12px ui-monospace,monospace}
-  #smartObjectDialog{width:520px}
-  .smart-template-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
-  .smart-template-row[hidden]{display:none}
-  .smart-template-label{font-size:13px;color:var(--muted)}
-  .smart-template-select{-webkit-appearance:none;appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);
-    font:inherit;font-size:13px;padding:6px 28px 6px 10px;border-radius:7px;cursor:pointer;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat:no-repeat;background-position:right 8px center}
   .library-dialog .dialog-error{color:var(--danger);min-height:18px;margin:6px 0}
   .library-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .library-dialog-actions button{padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
@@ -304,7 +294,6 @@
   }
   .select:focus-visible{border-color:var(--accent)}
 
-
   /* ---------- Canvas ---------- */
   .stage{
     flex:1 1 auto;position:relative;min-height:0;
@@ -412,10 +401,6 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M4 17c2-9 5-9 8 0s6 9 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/><circle cx="20" cy="17" r="1.6" fill="currentColor"/></svg>
         Export SVG
       </button>
-      <button data-act="html" role="menuitem">
-        <svg viewBox="0 0 24 24" fill="none"><path d="m8 7-5 5 5 5M16 7l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Export HTML
-      </button>
       <button data-act="print" role="menuitem">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1M6 14h12v7H6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Print
@@ -483,7 +468,6 @@
         <div class="shape-picker-heading"><strong id="shapePickerLabel">Shape library</strong><button type="button" id="manageShapesBtn" aria-pressed="false">Manage</button></div>
         <div class="shape-library-status" id="shapeLibraryStatus" role="status"></div>
         <div class="shape-grid" id="shapeGrid"></div>
-        <div class="shape-library-actions" id="generateShapePreviews" hidden><button type="button" id="generateShapePreviewsBtn">Generate missing previews…</button></div>
         <div class="shape-picker-footer" id="shapePickerFooter">
           <button type="button" id="addSelectionFooterBtn" title="Add the selected canvas objects to the library"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add selection</button>
           <button type="button" id="addIconFooterBtn" title="Search Iconify and add an icon to the library"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" stroke-width="1.8"/><path d="m15 15 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Add icon</button>
@@ -493,7 +477,7 @@
           <div class="shape-library-actions"><button type="button" id="importLibraryBtn">Import…</button><button type="button" id="exportLibraryBtn">Export library…</button></div>
           <div class="shape-library-help">Library changes last for this visit. Export to keep them; import the file next time.</div>
           <div class="shape-library-help">For automatic import place the exported file next to index.html as shapes-library.json (via FTP).</div>
-          <div class="shape-library-actions"><button type="button" id="newSmartObjectBtn">Add smart shape…</button><button type="button" id="addIconBtn">Add icon…</button></div>
+          <div class="shape-library-actions"><button type="button" id="addIconBtn">Add icon…</button></div>
         </div>
         <input type="file" id="shapeLibraryInput" accept="application/json,.json" style="display:none">
       </div>
@@ -675,33 +659,6 @@
     <div class="library-dialog-actions"><button type="button" id="libraryDialogCancel">Cancel</button><button type="submit" class="primary" id="libraryDialogSubmit">Add shape</button></div>
   </form>
 </dialog>
-<dialog class="library-dialog" id="smartObjectDialog" aria-labelledby="smartObjectDialogTitle">
-  <form id="smartObjectDialogForm">
-    <h2 id="smartObjectDialogTitle">Add smart shape</h2>
-    <p>A smart shape is a container whose visible content is generated by a script you write. Its own Fill/Stroke/Stroke-width/Text-color are set the normal way; the script decides which of its children use them.</p>
-    <div class="smart-template-row" id="smartTemplateRow">
-      <label class="smart-template-label" for="smartTemplateSelect">Template:</label>
-      <select id="smartTemplateSelect" class="smart-template-select">
-        <option value="clock">Clock</option>
-        <option value="liveClock">Live clock</option>
-        <option value="stopwatch">Stopwatch</option>
-        <option value="ruler">Ruler</option>
-        <option value="arrow">Arrow</option>
-        <option value="arc">Arc</option>
-        <option value="timer">Timer</option>
-        <option value="chart">Chart</option>
-        <option value="minimal">Minimal</option>
-        <option value="blank">Blank</option>
-      </select>
-    </div>
-    <div><label for="smartObjectNameInput">Name</label><input id="smartObjectNameInput" autocomplete="off"></div>
-    <div><label for="smartObjectScriptInput">Script (a JS expression evaluating to <code>{children(state,style,w,h){...}, initState(){...}, hitEdit, dragEdit}</code>)</label>
-      <textarea id="smartObjectScriptInput" spellcheck="false" rows="10"></textarea>
-    </div>
-    <p class="dialog-error" id="smartObjectDialogError" role="alert"></p>
-    <div class="library-dialog-actions"><button type="button" id="smartObjectDialogCancel">Cancel</button><button type="submit" class="primary" id="smartObjectDialogSubmit">Create</button></div>
-  </form>
-</dialog>
 <dialog class="library-dialog" id="iconDialog" aria-labelledby="iconDialogTitle">
   <form id="iconSearchForm">
     <h2 id="iconDialogTitle">Add icon</h2>
@@ -818,7 +775,7 @@
   const docKey = id => id==='legacy' ? LEGACY_STORE_KEY : 'simplecanvas:doc:' + id;
   const FORMAT_VERSION = 3;     // 2: stroke-independent group pivots; 3: polygon fill rules
   // Deployment settings are optional and never saved into a sketch or browser storage.
-  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,smartShapeAuthoring:true,iconify:true,customPrinting:true});
+  const DEFAULT_FEATURES = Object.freeze({workspace:true,shapeLibrary:true,shapeLibraryManagement:true,iconify:true,customPrinting:true});
   let features = DEFAULT_FEATURES;
   let appStarted = false;
   function normalizeFeatures(raw){
@@ -827,12 +784,14 @@
     const overrides=raw.features===undefined ? {} : raw.features;
     if(!overrides || typeof overrides!=='object' || Array.isArray(overrides)) throw new Error('Expected a features object');
     for(const [name,value] of Object.entries(overrides)){
+      if(name==='smartShapeAuthoring')continue;
       if(!Object.hasOwn(DEFAULT_FEATURES,name)) throw new Error('Unknown feature: '+name);
       if(typeof value!=='boolean') throw new Error('Feature '+name+' must be true or false');
     }
-    const flags={...DEFAULT_FEATURES,...overrides};
+    const flags={...DEFAULT_FEATURES};
+    for(const [name,value] of Object.entries(overrides))if(name!=='smartShapeAuthoring')flags[name]=value;
     flags.shapeLibraryManagement=flags.shapeLibrary && flags.shapeLibraryManagement;
-    flags.smartShapeAuthoring=flags.shapeLibraryManagement && flags.smartShapeAuthoring;
+
     flags.iconify=flags.shapeLibraryManagement && flags.iconify;
     return Object.freeze(flags);
   }
@@ -900,7 +859,6 @@
   let polyDraft = null;         // {color,size,fill,fillColor,points} while clicking out a polygon
   let longPressTimer = null;    // pending "open text for editing" timer while a click sits still on a text item
   let alignClickTimer = null;   // pending "set alignment" timer — cancelled if a dblclick follows (which only edits)
-  let pendingDoubleClicks = 0;
   let assetSeq = 0;
   let assets = {};              // current tab's image data, including images retained by its history
   let imgCache = new Map();     // current tab's decoded images
@@ -917,25 +875,9 @@
   let handledPointerUp = false; // a handle gesture must not also become a double-tap tool change
   const HANDLE_SUB = 9.6;       // control-handle hit radius (px) — 20% bigger than the original 8, for easier touch targeting
   const KAPPA = 0.5522847498;   // 4-point cubic-bezier circle/ellipse approximation constant
-  // ---------- smart objects (script-driven interactive canvas items) ----------
-  let editingSmartIdx = null;   // index into items[] currently in smart-object edit mode; null = not in this mode
-  let smartDrag = null;         // active script handle; its press owns state/history and async replies
-  let smartDragToken = 0;
-  let smartHitPending = null;
+
   // Includes all replies and history commits for completed presses, in their input order.
-  let smartHitSettled = null;
-  let smartGestureEpoch = 0;
-  let smartGestureQueue = Promise.resolve();
-  let smartCurrentPress = null;
-  const ignoredSmartPointers = new Set();
-  const ignoredSmartPointerUps = new WeakSet();
-  let smartMutationOwner = null;
-  let smartReplay = false;
-  const smartGestureRecords = new Set();
-  let shapePlacementEpoch = 0;
-  let shapePlacementQueue = Promise.resolve();
-  let shapePlacementOwner = false;
-  const shapePlacementRequests = new Set();
+
   const CONVERTIBLE_TYPES = new Set(['line','arrow','rect','ellipse','polygon']);
   // ---------- group "enter" edit mode ----------
   // Lets a group's own members be browsed, moved/resized/recolored/deleted, and edited one at a
@@ -970,23 +912,11 @@
     for(const it of list){ if(typeof it.uid !== 'string' || seen.has(it.uid)) it.uid = newUid(); seen.add(it.uid); }
     return list;
   }
-  const snap = () => {
-    ensureUids(items);
-    const pending=[...smartGestureRecords].filter(p=>p.sd && !p.cancelled);
-    if(!pending.length) return JSON.stringify(items);
-    const copy=clone(items);
-    // In-flight handle state is visible on canvas, but belongs to its own transaction.
-    for(const p of pending){
-      const it=copy.find(it=>it.uid===p.it.uid);
-      if(it) it.state=clone(p.sd.originalState);
-    }
-    return JSON.stringify(copy);
-  };
+  const snap = () => { ensureUids(items); return JSON.stringify(items); };
 
   function beginHistory(){
     lastInsert=null;
-    if(!shapePlacementOwner) shapePlacementEpoch++;
-    if(!smartMutationOwner) cancelSmartGestures(true);
+
     historyBefore = snap();
   }
   function commitHistory(){
@@ -1005,12 +935,8 @@
   // Everything that comes from outside the running app (a saved file, the autosave) goes through
   // here before it may touch live state: unknown types and malformed geometry are dropped, colors
   // and numbers are normalized, images must have a real data-URL asset, text fonts are rebuilt.
-  const ITEM_TYPES = ['path','line','arrow','rect','ellipse','polygon','text','table','image','smart'];
-  // MAX_SCRIPT: 50,000 -- generous headroom above the longest shipped example (race-start-timer.js,
-  // ~37,300 chars with its full explanatory header comment). SMART_SHAPES.md tells readers to paste a
-  // reference script's ENTIRE file, comments included, so the cap needs to comfortably fit that, not
-  // just a minimal/stripped script.
-  const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000, MAX_SCRIPT = 50000, MAX_STATE_JSON = 4000;
+  const ITEM_TYPES = ['path','line','arrow','rect','ellipse','polygon','text','table','image'];
+  const MAX_ITEMS = 5000, MAX_POINTS = 20000, MAX_TEXT = 2000;
   textInput.maxLength = MAX_TEXT;   // the same limit the loader enforces, so nothing typed is cut on reload
   const isNum = v => typeof v === 'number' && Number.isFinite(v);
   const isColor = v => typeof v === 'string' && /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);   // CSS hex: 3, 4, 6 or 8 digits
@@ -1023,7 +949,18 @@
     return (color==='#ffffff' && !fillVisible) ? '#000000' : color;
   }
   function normalizeItem(raw, assetsIn){
-    if(!raw || typeof raw !== 'object' || ITEM_TYPES.indexOf(raw.type) < 0) return null;
+    if(!raw || typeof raw!=='object')return null;
+    if(raw.type==='smart'){
+      if(typeof raw.script!=='string' || raw.script.length>50000)return null;
+      try{
+        if(JSON.stringify(raw.state ?? {}).length>4000)return null;
+        const original=clone(raw);
+        const placeholder=normalizeItem({...raw,type:'rect',w:isNum(raw.w)?raw.w:100,h:isNum(raw.h)?raw.h:100},assetsIn);
+        if(placeholder)placeholder.unsupportedShape=original;
+        return placeholder;
+      }catch{return null;}
+    }
+    if(ITEM_TYPES.indexOf(raw.type)<0)return null;
     const it = { type: raw.type };
     const num = (k, d) => { const v = raw[k]; if(isNum(v)) return norm(v); if(d === undefined) throw new Error(k); return d; };
     const pts = min => {
@@ -1056,8 +993,8 @@
           if(raw.hs) it.hs = true;
           if(raw.he === false) it.he = false;
           break;
-        case 'rect': case 'ellipse': case 'image': case 'table': case 'text': case 'smart': {
-          const dflt = it.type==='text' ? 40 : it.type==='smart' ? 100 : undefined;
+        case 'rect': case 'ellipse': case 'image': case 'table': case 'text': {
+          const dflt = it.type==='text' ? 40 : undefined;
           it.x = num('x'); it.y = num('y'); it.w = num('w', dflt); it.h = num('h', dflt); break;
         }
       }
@@ -1100,14 +1037,8 @@
         const okAlign = a => a==='left' || a==='right' || a==='center';
         it.aligns = raw.aligns.slice(0, it.rows).map(row=>Array.isArray(row) ? row.slice(0, it.cols).map(v=>okAlign(v)?v:'center') : []);
       }
-      if(it.type === 'smart'){
-        // The script is the whole point of the item -- reject rather than silently degrade to an empty box.
-        if(typeof raw.script !== 'string' || !raw.script.trim() || raw.script.length > MAX_SCRIPT) return null;
-        it.script = raw.script;
-        // Missing state keeps the legacy empty default. Supplied state obeys the same contract as
-        // hook results, so an imported item cannot become permanently uneditable at its first reply.
-        it.state = normalizeSmartState(raw.state===undefined ? {} : raw.state);
-      }
+
+      if(raw.unsupportedShape?.type==='smart' && typeof raw.unsupportedShape.script==='string' && raw.unsupportedShape.script.length<=50000)it.unsupportedShape=clone(raw.unsupportedShape);
       if(isNum(raw.rotation) && raw.rotation) it.rotation = raw.rotation;
       if(typeof raw.group === 'string' && raw.group.length <= 64){
         it.group = raw.group;
@@ -1219,8 +1150,17 @@
   function rememberActiveTab(){
     if(activeTabId) tabDocuments.set(activeTabId, {items, assets, ui, undoStack, redoStack, imgCache});
   }
+  function itemsForFile(list){
+    return list.map(it=>{
+      if(!it.unsupportedShape)return it;
+      const {unsupportedShape,...frame}=it;
+      const original={...unsupportedShape,...frame,type:'smart'};
+      for(const key of ['group','groupRotation','rotation'])if(!Object.hasOwn(frame,key))delete original[key];
+      return original;
+    });
+  }
   function documentForFile(doc){
-    return {version:FORMAT_VERSION, items:doc.items, assets:assetsUsedBy(doc.items, doc.assets),
+    return {version:FORMAT_VERSION, items:itemsForFile(doc.items), assets:assetsUsedBy(doc.items, doc.assets),
             ui:{...doc.ui, tool:doc.ui.tool==='shape' ? 'select' : doc.ui.tool, pendingShape:null}};
   }
   function updateAutosaveWarning(){
@@ -1251,6 +1191,7 @@
   // what a load had to leave out, as a short phrase ('' when nothing was)
   function sceneLoadNote(scene){
     const parts = [];
+    if(scene.items.some(it=>it.unsupportedShape))parts.push('smart shapes are shown as placeholders; open their JSON in Paperwire for interactive controls');
     if(scene.dropped) parts.push(scene.dropped + ' unreadable object' + (scene.dropped===1?'':'s') + ' skipped');
     if(scene.ungrouped) parts.push(scene.ungrouped + ' object' + (scene.ungrouped===1?'':'s') + ' ungrouped');
     return parts.join(', ');
@@ -1346,7 +1287,7 @@
   const strokeOf = it => strokeOn(it) ? it.color : 'none';
   // line-style: 'tight'/'wide' dashed, or unset/'solid' for a plain line. Dash lengths scale with the
   // item's own stroke width so the pattern reads the same regardless of how thick the line is.
-  const DASHABLE = t => t==='line' || t==='arrow' || t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text' || t==='smart';
+  const DASHABLE = t => t==='line' || t==='arrow' || t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
   function dashArrayFor(kind, size){
     const w = Math.max(1, size||2);
     // 'tight' grows with the SQUARE ROOT of width, not linearly — a thicker line would otherwise blow
@@ -1358,683 +1299,6 @@
   }
   const dashOf = it => dashArrayFor(it.dash, it.size);
   const boxStyle = it => ({ fill:fillOf(it), stroke:strokeOf(it), width:it.size, join:'round', dash:dashOf(it) });
-  // Smart objects: a script (a JS expression string, shipped with the library entry) defines how a
-  // container's children are generated. It is untrusted and never executed in this scope -- see the
-  // sandbox below, which does the compiling and calling the old compileSmartScript() used to do
-  // directly, inside an isolated Worker instead.
-  // ---------- Smart-shape sandbox ----------
-  // The trusted srcdoc bridge owns a Worker in an opaque-origin frame. Its CSP is inherited by
-  // the Blob Worker and blocks network and external code loads even through native prototypes.
-  // User scripts are messages, never interpolated into the frame's HTML. Only the Worker evaluates
-  // them; the bridge remains responsive so it can terminate a hung Worker.
-  //
-  // A Worker is also necessary for interruptible execution: an infinite loop must not block the
-  // trusted bridge's timer, and Worker.terminate() stops it independently of the page event loop.
-  // A `<iframe sandbox>` built the same way was tried first and rejected: it still shares the page's
-  // own main thread in this engine, so a synchronous infinite loop inside one freezes the entire tab,
-  // including the parent's own "detect and kill it" timer -- which can never fire while that same
-  // thread is busy -- and merely removing the iframe element does NOT interrupt an already-running
-  // synchronous loop either (only Worker.terminate() is specified to do that).
-  //
-  // Every call crosses postMessage and is therefore asynchronous -- see the render-loop cache, the
-  // true-async export path, and the interactive hit-test/drag state machine for how each of those
-  // three call shapes copes with that. Nothing outside this sandbox calls `new Function` on
-  // `it.script` anywhere in the file.
-  const SMART_MAX_REPLY = 524288;
-  const SMART_HOOKS = new Set(['children','handles','hitEdit','dragEdit','initState','initStyle','refreshMs','exportBehavior']);
-  const SMART_WORKER_SRC = `
-"use strict";
-const stringify = JSON.stringify.bind(JSON), transmit = self.postMessage.bind(self);
-const encoder = new TextEncoder();
-const send = value => {
-  const json = stringify(value,(_,v)=>{if(typeof v==='number' && !Number.isFinite(v))throw new Error('Non-finite result');return v;});
-  transmit(encoder.encode(json).length <= 524288 ? json : stringify({id:value.id,ok:false,error:'Result exceeds 512 KiB'}));
-};
-send({ready:true});
-for(const g of ['fetch','XMLHttpRequest','WebSocket','EventSource','importScripts','Worker','SharedWorker','indexedDB','caches','BroadcastChannel','Notification']){
-  try{ delete self[g]; }catch(e){}
-  try{ self[g] = undefined; }catch(e){}
-}
-try{ if(self.navigator) self.navigator.sendBeacon = undefined; }catch(e){}
-let source, compiled;
-function compile(src){
-  if(source!==undefined){if(source!==src)throw new Error('Worker source changed');return compiled;}
-  source=src;
-  var def = null;
-  try{
-    def = new Function('"use strict";return ('+src+');')();
-    if(!def || typeof def.children !== 'function') def = null;
-  }catch(e){ def = null; }
-  return compiled=def;
-}
-self.onmessage = function(e){
-  var msg = e.data || {};
-  var id = msg.id;
-  try{ var def = compile(msg.src || ''); if(msg.method === 'caps'){
-    send({id:id, ok:!!def, caps: def ? {
-      children: typeof def.children==='function', handles: typeof def.handles==='function',
-      hitEdit: typeof def.hitEdit==='function', dragEdit: typeof def.dragEdit==='function',
-      initState: typeof def.initState==='function', initStyle: typeof def.initStyle==='function',
-      refreshMs: typeof def.refreshMs==='function',
-      exportBehavior: typeof def.exportBehavior==='function' || (!!def.exportBehavior && typeof def.exportBehavior==='object')
-    } : null});
-    return;
-  }
-  if(msg.method === 'call'){
-    const hook=def && def[msg.fn];
-    const result = msg.fn==='exportBehavior' && hook && typeof hook==='object' ? hook
-      : typeof hook==='function' ? hook.apply(def, msg.args || []) : null;
-    const reply={id:id, ok:true, result:result===undefined ? null : result};
-    if(msg.fn==='children' && msg.refresh===true){
-      const interval=typeof def.refreshMs==='function' ? def.refreshMs((msg.args || [])[0] || {}) : null;
-      // Invalid intervals must not prevent valid children from crossing the JSON-only transport.
-      reply.refreshMs=interval==null ? null : typeof interval==='number' && Number.isFinite(interval) ? interval : 'invalid';
-    }
-    send(reply);
-    return;
-  }
-  }catch(e){ send({id:id,ok:false,error:'Script hook failed'}); }
-};
-`;
-
-  let smartSandboxFrame = null;
-  let smartSandboxPort = null;
-  let smartSandboxGeneration = 0;
-  let smartSandboxReady = null;
-  let smartSandboxStartupReject = null;
-  let smartSandboxRetiring = Promise.resolve();
-  const smartSandboxPending = new Map();  // queued and active requests, in input order
-  let smartSandboxActive = null;
-  let smartSandboxReqSeq = 0;
-  const SMART_CALL_TIMEOUT_MS = 250;
-  const SMART_STARTUP_TIMEOUT_MS = 2000;
-  const SMART_MAX_RESIDENT_WORKERS = 4;
-  const smartItemExecutions = new WeakMap(); // object identity, never UID or script equality
-  let smartExecutionSeq = 0;
-  const smartRuntimeStats = {resident:0,peak:0,created:0,retired:0};
-
-  function smartCancelled(){const err=new Error('Smart shape operation cancelled');err.cancelled=true;return err;}
-  function createSmartExecution(subject,valid=()=>true){
-    return {id:'instance-'+(++smartExecutionSeq),subject,source:subject.script,valid,active:true,failedUntil:0};
-  }
-  function smartExecutionCurrent(owner){return owner.active && owner.subject.script===owner.source && owner.valid();}
-  function smartItemExecution(it){
-    const scene=items.includes(it)?items:null,tab=activeTabId;
-    let owner=smartItemExecutions.get(it);
-    if(owner && (!smartExecutionCurrent(owner) || owner.document!==scene)){disposeSmartExecution(owner);owner=null;}
-    if(!owner){
-      owner=createSmartExecution(it,()=>!scene || (items===scene && activeTabId===tab && scene.includes(it)));
-      owner.document=scene;
-      smartItemExecutions.set(it,owner);
-    }
-    return owner;
-  }
-  function stopSmartOwnerRequests(owner,error,cooldown=false){
-    if(cooldown) owner.failedUntil=Date.now()+SMART_BACKOFF_MS;
-    try{smartSandboxPort?.postMessage({retire:owner.id});}catch(_){}
-    for(const [id,p] of smartSandboxPending){
-      if(p.owner!==owner) continue;
-      clearTimeout(p.timer);smartSandboxPending.delete(id);
-      if(smartSandboxActive===id) smartSandboxActive=null;
-      p.reject(error);
-    }
-    dispatchSmartSandboxNext();
-  }
-  function disposeSmartExecution(owner){
-    if(!owner?.active) return;
-    owner.active=false;stopSmartOwnerRequests(owner,smartCancelled());
-  }
-
-  function createSmartSandbox(){
-    const gen = ++smartSandboxGeneration;
-    const frame = document.createElement('iframe');
-    frame.hidden = true; frame.tabIndex = -1; frame.setAttribute('aria-hidden','true');
-    frame.setAttribute('sandbox','allow-scripts');
-    smartSandboxFrame = frame;
-    const channel = new MessageChannel();
-    smartSandboxPort = channel.port1;
-    const bridge = `"use strict";
-      let port, workerUrl; const workers=new Map();
-      const emit = value => port && port.postMessage(JSON.stringify(value));
-      const lifecycle = event => emit({version:1,lifecycle:event,resident:workers.size});
-      const stop = (slot,error) => {
-        if(workers.get(slot.owner)!==slot)return;
-        workers.delete(slot.owner);clearTimeout(slot.timer);slot.worker.terminate();lifecycle('retired');
-        if(error && slot.job)emit({version:1,owner:slot.owner,id:slot.job.id,error});
-        slot.job=null;
-      };
-      const send = slot => {
-        clearTimeout(slot.timer);
-        const job=slot.job;
-        slot.timer=setTimeout(()=>stop(slot,'Smart shape timed out'),${SMART_CALL_TIMEOUT_MS});
-        emit({version:1,owner:slot.owner,id:job.id,started:true});
-        try{slot.worker.postMessage({id:job.id,method:job.method,src:job.src,fn:job.fn,args:job.args,refresh:job.refresh===true});}
-        catch(_){stop(slot,'Smart shape request failed');}
-      };
-      const obtain = owner => {
-        let slot=workers.get(owner);
-        if(slot){workers.delete(owner);workers.set(owner,slot);return slot;}
-        if(workers.size>=${SMART_MAX_RESIDENT_WORKERS}){
-          const idle=[...workers.values()].find(s=>!s.job);
-          if(!idle)throw new Error('No idle execution slot');
-          stop(idle); // terminate the old realm before creating its replacement
-        }
-        const worker=new Worker(workerUrl);
-        slot={owner,worker,ready:false,job:null,timer:null};workers.set(owner,slot);lifecycle('created');
-        slot.timer=setTimeout(()=>stop(slot,'Smart shape Worker did not start'),${SMART_STARTUP_TIMEOUT_MS});
-        worker.onerror=e=>{e.preventDefault();stop(slot,'Smart shape Worker failed');};
-        worker.onmessage=e=>{
-          if(workers.get(owner)!==slot)return;
-          if(typeof e.data!=='string' || e.data.length>524288 || new TextEncoder().encode(e.data).length>524288){stop(slot,'Invalid smart shape response');return;}
-          let data;try{data=JSON.parse(e.data);}catch(_){stop(slot,'Invalid smart shape response');return;}
-          if(!data || typeof data!=='object' || Array.isArray(data)){stop(slot,'Invalid smart shape response');return;}
-          if(!slot.ready){
-            if(data.ready!==true)return;
-            slot.ready=true;clearTimeout(slot.timer);if(slot.job)send(slot);return;
-          }
-          const job=slot.job;
-          if(!job || data.id!==job.id)return;
-          const reply=JSON.stringify({version:1,owner,id:job.id,payload:data});
-          if(reply.length>${SMART_MAX_REPLY+1024} || new TextEncoder().encode(reply).length>${SMART_MAX_REPLY+1024}){
-            stop(slot,'Smart shape response exceeds transport limit');return;
-          }
-          clearTimeout(slot.timer);slot.job=null;
-          // Ownership comes from this Worker callback and its trusted active job, never the payload.
-          port.postMessage(reply);
-        };
-        return slot;
-      };
-      window.addEventListener('message', e => {
-        if(e.source!==parent || port || e.data!=='connect' || e.ports.length!==1) return;
-        port=e.ports[0];
-        port.onmessage = e => {
-          const job=e.data;
-          if(job?.terminate){for(const slot of [...workers.values()])stop(slot);URL.revokeObjectURL(workerUrl);emit({stopped:true});return;}
-          if(job?.retire){const slot=workers.get(job.retire);if(slot)stop(slot);return;}
-          if(!job || job.version!==1 || !Number.isSafeInteger(job.id) || typeof job.owner!=='string')return;
-          try{
-            const slot=obtain(job.owner);
-            if(slot.job)throw new Error('Execution already active');
-            slot.job=job;if(slot.ready)send(slot);
-          }catch(_){emit({version:1,owner:job.owner,id:job.id,error:'Smart shape execution unavailable'});}
-        };
-        port.start();
-        try{
-          workerUrl=URL.createObjectURL(new Blob([${JSON.stringify(SMART_WORKER_SRC)}],{type:'text/javascript'}));
-          emit({ready:true});
-        }catch(_){emit({fatal:true,error:'Smart shape sandbox unavailable'});}
-      });`;
-    frame.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; connect-src \'none\'; script-src \'unsafe-inline\' \'unsafe-eval\' blob:; worker-src blob:;">'
-      + '<script>'+bridge+'</scr'+'ipt>';
-    return new Promise((resolve,reject)=>{
-      smartSandboxStartupReject = reject;
-      const startupTimer = setTimeout(()=>{ if(gen===smartSandboxGeneration) regenerateSmartSandbox(); reject(new Error('Smart shape sandbox did not start')); },SMART_STARTUP_TIMEOUT_MS);
-      let ready = false;
-      channel.port1.onmessage = e=>{
-        if(gen!==smartSandboxGeneration) return;
-        try{
-          if(typeof e.data!=='string' || e.data.length>SMART_MAX_REPLY+1024 || new TextEncoder().encode(e.data).length>SMART_MAX_REPLY+1024) throw new Error('Invalid smart shape response');
-          const data = JSON.parse(e.data);
-          if(!data || typeof data!=='object' || data.fatal) throw new Error(data && data.error || 'Smart shape sandbox failed');
-          if(!ready){
-            if(data.ready!==true) return;
-            ready=true; clearTimeout(startupTimer); smartSandboxStartupReject=null; resolve(gen); return;
-          }
-          if(data.version!==1) return;
-          if(data.lifecycle){
-            smartRuntimeStats.resident=data.resident;
-            smartRuntimeStats.peak=Math.max(smartRuntimeStats.peak,data.resident);
-            smartRuntimeStats[data.lifecycle==='created'?'created':'retired']++;
-            return;
-          }
-          const pending = smartSandboxPending.get(data.id);
-          if(!pending || pending.generation !== gen || data.id!==smartSandboxActive || data.owner!==pending.owner.id) return;
-          if(data.started){
-            clearTimeout(pending.timer);
-            pending.timer=setTimeout(()=>stopSmartOwnerRequests(pending.owner,new Error('Smart shape reply timed out'),true),SMART_CALL_TIMEOUT_MS+250);
-            return;
-          }
-          if(data.error){stopSmartOwnerRequests(pending.owner,new Error(data.error),true);return;}
-          smartSandboxPending.delete(data.id);
-          clearTimeout(pending.timer);
-          smartSandboxActive=null;
-          try{
-            if(!smartExecutionCurrent(pending.owner)){disposeSmartExecution(pending.owner);throw smartCancelled();}
-            pending.resolve(validateSmartReply(data.payload,pending.message));
-          }
-          catch(err){ if(!err.cancelled)reportSmartError(pending.message.src,pending.message.fn||'script',err.message); pending.reject(err); }
-          dispatchSmartSandboxNext();
-        }catch(err){ clearTimeout(startupTimer); reject(err); regenerateSmartSandbox(); }
-      };
-      frame.addEventListener('load',()=>{ if(gen===smartSandboxGeneration) frame.contentWindow.postMessage('connect','*',[channel.port2]); },{once:true});
-      document.body.appendChild(frame);
-    });
-  }
-  function ensureSmartSandbox(){
-    if(!smartSandboxReady) smartSandboxReady = smartSandboxRetiring.then(()=>createSmartSandbox());
-    return smartSandboxReady;
-  }
-  // Whole-frame recovery is reserved for trusted bridge/transport failure. A script failure retires
-  // only its own Worker. Wait for bridge termination before a replacement frame can create Workers.
-  function regenerateSmartSandbox(){
-    const frame=smartSandboxFrame, port=smartSandboxPort;
-    if(port && frame){
-      smartSandboxRetiring=new Promise(resolve=>{
-        let timer;
-        const finish=()=>{clearTimeout(timer);port.close();frame.remove();resolve();};
-        port.onmessage=e=>{try{if(JSON.parse(e.data).stopped)finish();}catch(_){}};
-        timer=setTimeout(finish,100);
-        try{port.postMessage({terminate:true});}catch(_){finish();}
-      });
-    }
-    smartSandboxFrame = null; smartSandboxPort = null;
-    smartSandboxReady = null;
-    smartSandboxGeneration++;
-    if(smartSandboxStartupReject){ smartSandboxStartupReject(new Error('Smart shape sandbox stopped')); smartSandboxStartupReject=null; }
-    for(const p of smartSandboxPending.values()){ clearTimeout(p.timer); p.reject(new Error('smart sandbox regenerated')); }
-    smartSandboxPending.clear();
-    smartSandboxActive=null;
-    smartRuntimeStats.resident=0;
-  }
-  // Queue waiting consumes neither startup nor execution time. Serial dispatch preserves input
-  // ordering; the bounded Worker set supplies instance isolation, not implicit shared state.
-  function dispatchSmartSandboxNext(){
-    if(smartSandboxActive!==null || !smartSandboxPending.size || !smartSandboxPort) return;
-    while(smartSandboxPending.size){
-      const [id,pending]=smartSandboxPending.entries().next().value;
-      if(!smartExecutionCurrent(pending.owner) || Date.now()<pending.owner.failedUntil){
-        smartSandboxPending.delete(id);pending.reject(smartCancelled());continue;
-      }
-      smartSandboxActive=id;
-      pending.timer=setTimeout(()=>stopSmartOwnerRequests(pending.owner,new Error('Smart shape Worker did not start'),true),SMART_STARTUP_TIMEOUT_MS+500);
-      try{smartSandboxPort.postMessage({...pending.message,version:1,owner:pending.owner.id,id});}
-      catch(_){regenerateSmartSandbox();}
-      return;
-    }
-  }
-  function requestSmartSandbox(message,subject=null,execution=null){
-    if(typeof message.src!=='string' || !message.src.trim() || message.src.length>MAX_SCRIPT ||
-       (message.method!=='caps' && (message.method!=='call' || !SMART_HOOKS.has(message.fn))))
-      return Promise.reject(new Error('Invalid smart shape request'));
-    const temporary=!subject && !execution;
-    const owner=execution || (subject ? smartItemExecution(subject) : createSmartExecution({script:message.src}));
-    if(!smartExecutionCurrent(owner) || owner.source!==message.src || Date.now()<owner.failedUntil) return Promise.reject(smartCancelled());
-    return ensureSmartSandbox().then(gen=>new Promise((resolve, reject)=>{
-      if(gen !== smartSandboxGeneration){ reject(new Error('stale smart sandbox generation')); return; }
-      if(!smartExecutionCurrent(owner)){reject(smartCancelled());return;}
-      const id = ++smartSandboxReqSeq;
-      smartSandboxPending.set(id, {resolve, reject, timer:null, generation:gen, message,owner});
-      dispatchSmartSandboxNext();
-    })).catch(err=>{if(!err.cancelled)reportSmartError(message.src,message.fn||'script',err.message);throw err;})
-      .finally(()=>{if(temporary)disposeSmartExecution(owner);});
-  }
-  const scriptOf = s => typeof s === 'string' ? s : (s && s.script) || '';
-  // Calls one hook (children/handles/hitEdit/dragEdit/initState/initStyle) inside the sandbox; resolves
-  // to its centrally validated return value, or null on any failure/timeout/
-  // missing hook -- a broken or hostile script can't crash rendering, same as before this sandbox
-  // existed, just asynchronously now. `scriptOrItem` may be a plain script string (the "Add smart
-  // shape" dialog, before an item even exists) or an item object (everywhere else).
-  function requestSmartCall(scriptOrItem, fn, args,execution=null){
-    return requestSmartSandbox({method:'call', src:scriptOf(scriptOrItem), fn, args},typeof scriptOrItem==='object'?scriptOrItem:null,execution)
-      .then(r=>r.ok ? r.result : null)
-      .catch(()=>null);
-  }
-  // Which hooks a script defines -- replaces every `typeof def.xxx === 'function'` guard. Resolves to
-  // null if the script doesn't even compile to a valid object.
-  function requestSmartCaps(scriptOrItem,execution=null){
-    return requestSmartSandbox({method:'caps', src:scriptOf(scriptOrItem)},typeof scriptOrItem==='object'?scriptOrItem:null,execution)
-      .then(r=>r.ok ? r.caps : null)
-      .catch(()=>null);
-  }
-
-  // Every consumer, including callers that bypass requestSmartCall, receives this same contract.
-  const smartScriptErrors = new Map();
-  function reportSmartError(src,hook,message){
-    const key=src+'|'+hook+'|'+message;
-    if(smartScriptErrors.has(key)) return;
-    smartScriptErrors.set(key,true);
-    if(smartScriptErrors.size>128) smartScriptErrors.delete(smartScriptErrors.keys().next().value);
-    toast('Smart shape: '+hook+': '+message);
-  }
-  function smartNumber(v,label,min=-1000000,max=1000000){
-    if(!isNum(v) || v<min || v>max) throw new Error(label+' must be a finite number in range');
-    return v;
-  }
-  function normalizeSmartRefresh(value,src){
-    if(value==null || value===0) return 0;
-    if(!isNum(value) || value<0){
-      reportSmartError(src,'refreshMs','Expected a positive number of milliseconds, or 0 to stop');
-      return 0;
-    }
-    return Math.max(100,Math.min(60000,value));
-  }
-  function normalizeSmartState(value){
-    if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('State must be a JSON object');
-    let count=0;
-    function copy(v,depth){
-      if(depth>16 || ++count>4000) throw new Error('State is too deeply nested or complex');
-      if(v===null || typeof v==='boolean' || typeof v==='string') return v;
-      if(typeof v==='number') return smartNumber(v,'State number',-Number.MAX_VALUE,Number.MAX_VALUE);
-      if(Array.isArray(v)) return v.map(x=>copy(x,depth+1));
-      if(!v || typeof v!=='object') throw new Error('State must contain only JSON data');
-      const out={};
-      for(const key of Object.keys(v)){
-        if(['__proto__','prototype','constructor'].includes(key)) throw new Error('Unsupported state key');
-        out[key]=copy(v[key],depth+1);
-      }
-      return out;
-    }
-    const out=copy(value,0);
-    if(JSON.stringify(out).length>MAX_STATE_JSON) throw new Error('State exceeds 4000 characters');
-    return out;
-  }
-  function normalizeSmartChild(raw,budget){
-    if(!raw || typeof raw!=='object' || Array.isArray(raw) || !['rect','ellipse','line','arrow','polygon','path','text'].includes(raw.type))
-      throw new Error('Unsupported child shape');
-    const out={type:raw.type};
-    const number=(key,min,max)=>out[key]=smartNumber(raw[key],key,min,max);
-    const point=p=>{
-      if(!p || typeof p!=='object') throw new Error('Invalid point');
-      const q={x:smartNumber(p.x,'Point x'),y:smartNumber(p.y,'Point y')};
-      for(const key of ['c1','c2']) if(p[key]) q[key]={x:smartNumber(p[key].x,key+' x'),y:smartNumber(p[key].y,key+' y')};
-      if(p.arcTo){
-        const a=p.arcTo;
-        q.arcTo={cx:smartNumber(a.cx,'Arc cx'),cy:smartNumber(a.cy,'Arc cy'),r:Math.max(0,smartNumber(a.r,'Arc radius')),
-          a1:smartNumber(a.a1,'Arc start'),a2:smartNumber(a.a2,'Arc end')};
-      }
-      return q;
-    };
-    if(raw.type==='line' || raw.type==='arrow') for(const key of ['x1','y1','x2','y2']) number(key);
-    else if(raw.type==='path' || raw.type==='polygon'){
-      if(!Array.isArray(raw.points) || raw.points.length<(raw.type==='path'?1:2)) throw new Error('Invalid points');
-      budget.points+=raw.points.length;
-      if(budget.points>MAX_POINTS) throw new Error('Point budget exceeded');
-      out.points=raw.points.map(point);
-      if(raw.type==='path') out.mode=['pen','marker','brush'].includes(raw.mode)?raw.mode:'pen';
-      else {
-        out.closed=raw.closed!==false;
-        if(out.closed && out.points.length<3) throw new Error('Closed polygon needs three points');
-        if(raw.fillRule!==undefined){
-          if(!['nonzero','evenodd'].includes(raw.fillRule))throw new Error('Invalid fill rule');
-          if(raw.fillRule==='evenodd')out.fillRule='evenodd';
-        }
-      }
-    } else for(const key of ['x','y','w','h']) number(key);
-    for(const key of ['color','fillColor','textColor']) if(raw[key]!==undefined){
-      if(!isColor(raw[key])) throw new Error('Invalid '+key); out[key]=raw[key];
-    }
-    for(const key of ['fill','strokeOn','hs','he','editorOnly']) if(raw[key]!==undefined){
-      if(typeof raw[key]!=='boolean') throw new Error('Invalid '+key); out[key]=raw[key];
-    }
-    if(raw.size!==undefined) number('size',0,60);
-    if(raw.dash!==undefined){ if(!['solid','tight','wide'].includes(raw.dash)) throw new Error('Invalid dash'); out.dash=raw.dash; }
-    for(const key of ['hsStyle','heStyle']) if(raw[key]!==undefined){ if(!HEAD_STYLES.has(raw[key])) throw new Error('Invalid arrowhead'); out[key]=raw[key]; }
-    if(raw.type==='text'){
-      if(typeof raw.text!=='string' || raw.text.length>MAX_TEXT) throw new Error('Text exceeds 2000 characters or is not text');
-      budget.text+=raw.text.length;
-      if(budget.text>20000) throw new Error('Text budget exceeded');
-      out.text=raw.text;
-      if(raw.align!==undefined){ if(!['left','center','right'].includes(raw.align)) throw new Error('Invalid alignment'); out.align=raw.align; }
-      const font=typeof raw.font==='string'?raw.font:'';
-      if(font.length>256 || /[;{}<>]/.test(font)) throw new Error('Invalid font');
-      const px=/(\d+(?:\.\d+)?)px/.exec(font);
-      const size=smartNumber(px?+px[1]:(raw.fontSize===undefined?16:raw.fontSize),'Font size',0,400);
-      const family=raw.fontFamily===undefined?familyOf({font}):raw.fontFamily;
-      if(!Object.hasOwn(FONTS,family)) throw new Error('Invalid font family');
-      const weight=/^(?:italic\s+)?(bold|[1-9]00)\s+/.exec(font);
-      out.font=(/^italic\s/.test(font)?'italic ':'')+(weight?weight[1]+' ':'600 ')+size+'px '+FONTS[family];
-    }
-    return out;
-  }
-  function validateSmartReply(data,message){
-    if(typeof data.ok!=='boolean' || !data.ok) throw new Error(typeof data.error==='string'?data.error.slice(0,160):'Script failed');
-    if(message.method==='caps'){
-      if(!data.caps || data.caps.children!==true) throw new Error('Script needs children()');
-      const caps={}; for(const hook of SMART_HOOKS) caps[hook]=data.caps[hook]===true;
-      return {ok:true,caps};
-    }
-    let value=data.result;
-    if(message.fn==='children'){
-      if(!Array.isArray(value)) throw new Error('Expected an array of child shapes');
-      if(value.length>1000) throw new Error('More than 1000 child shapes');
-      const budget={points:0,text:0}, kids=[];
-      value.forEach((raw,i)=>{
-        try{ kids.push(normalizeSmartChild(raw,budget)); }
-        catch(err){ if(/budget exceeded/.test(err.message)) throw err; reportSmartError(message.src,'children','Child '+(i+1)+': '+err.message); }
-      });
-      value=kids;
-    } else if(message.fn==='exportBehavior'){
-      if(value!==null && (!value || typeof value!=='object' || Array.isArray(value))) throw new Error('Expected an export behavior object');
-      const out={};
-      for(const key of ['move','rotate','resizeWidth','resizeHeight']){
-        if(value?.[key]!==undefined && typeof value[key]!=='boolean') throw new Error('Invalid export behavior '+key);
-        out[key]=value?.[key]===true;
-      }
-      value=out;
-    } else if(message.fn==='refreshMs'){
-      value=normalizeSmartRefresh(value,message.src);
-    } else if(message.fn==='handles'){
-      if(value===null) value=[];   // optional hook
-      if(!Array.isArray(value) || value.length>128) throw new Error('Expected at most 128 handles');
-      const ids=new Set();
-      value=value.map(h=>{
-        if(!h || typeof h.id!=='string' || !h.id || h.id.length>64 || ids.has(h.id)) throw new Error('Invalid or duplicate handle ID');
-        ids.add(h.id);
-        if(h.kind!==undefined && h.kind!=='drag' && h.kind!=='click') throw new Error('Invalid handle kind');
-        if(h.editorOnly!==undefined && typeof h.editorOnly!=='boolean') throw new Error('Invalid editorOnly marker');
-        return {id:h.id,x:smartNumber(h.x,'Handle x'),y:smartNumber(h.y,'Handle y'),kind:h.kind||'drag',...(h.editorOnly===true?{editorOnly:true}:{})};
-      });
-    } else if(message.fn==='hitEdit'){
-      if(value!==null && (typeof value!=='string' || !value || value.length>64)) throw new Error('Expected a handle ID or null');
-    } else if(message.fn==='initState' || message.fn==='dragEdit'){
-      value=value===null?null:normalizeSmartState(value);
-    } else if(message.fn==='initStyle'){
-      if(value!==null){
-        if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('Expected a style object');
-        const out={};
-        const field=(key,check)=>{
-          if(value[key]===undefined) return;
-          try{out[key]=check(value[key]);}catch(err){reportSmartError(message.src,'initStyle',err.message);}
-        };
-        for(const key of ['color','fillColor','textColor']) field(key,v=>{if(!isColor(v))throw new Error('Invalid '+key);return v;});
-        for(const key of ['fill','strokeOn']) field(key,v=>{if(typeof v!=='boolean')throw new Error('Invalid '+key);return v;});
-        for(const key of ['size','fontSize','w','h']) field(key,v=>{
-          smartNumber(v,key,-Number.MAX_VALUE,Number.MAX_VALUE);
-          return Math.min(key==='size'?60:key==='fontSize'?400:2000,Math.max(key==='size'?1:key==='fontSize'?6:20,key==='size'?v:Math.round(v)));
-        });
-        field('fontFamily',v=>{if(!Object.hasOwn(FONTS,v))throw new Error('Invalid font family');return v;});
-        value=out;
-      }
-    }
-    return {ok:true,result:value,...(message.fn==='children' && message.refresh===true
-      ? {refreshMs:normalizeSmartRefresh(data.refreshMs,message.src)} : {})};
-  }
-  // ---------- Smart-shape children()/handles(): sync render-loop cache + true-async export ----------
-  // shapeOps/render() need a children()/handles() result SYNCHRONOUSLY on every call (many times a
-  // second during any drag, not just a smart one -- see shapeOps' 'smart' case), but the sandbox can
-  // only ever answer asynchronously. Bridged the same way getImg() already bridges a loading image:
-  // keep the last-known-good result, synchronously return whatever's cached right now (empty on an
-  // item's very first-ever draw -- it may render blank for one tick before popping in, same category
-  // of effect getImg already has), and kick off a background refresh whenever the relevant inputs
-  // changed, re-rendering once it lands. Keyed by item `uid` (every live scene item has one via
-  // ensureUids) plus a cheap signature of the inputs that matter, so an unrelated render() call
-  // (dragging something else entirely) never re-asks.
-  const smartChildrenCache = new Map();   // uid -> {sig, kids}
-  const smartHandlesCache = new Map();    // uid -> {sig, hs}
-  const smartInFlight = new Set();        // uids with a children() request currently outstanding
-  const smartHandlesInFlight = new Set();
-  // Failure belongs to one instance. Keep its last valid drawing and schedule one retry after a
-  // backoff, without requiring unrelated user input or rejecting healthy owners' queued work.
-  const SMART_BACKOFF_MS = 3000;
-  const smartBackoffUntil = new Map();
-  const smartRetryTimers = new Map();
-  const smartCacheOwners = new Map();  // only items in the active document, with their current source
-  const smartStyleCache = new WeakMap();
-  const smartSignatureCache = new WeakMap();
-  const smartPaintCache = new WeakMap();
-  let smartSignatureRevision = 0;
-  // One app-owned timer for the active document. Scripts only request an interval; no script timer
-  // owns drawing or durable state. Deadlines use a monotonic clock and never touch undo or storage.
-  let smartRefreshTimer = null;
-  function scheduleSmartRefresh(){
-    clearTimeout(smartRefreshTimer);smartRefreshTimer=null;
-    if(document.hidden) return;
-    let due=Infinity;
-    for(const [uid,cached] of smartChildrenCache){
-      const owner=smartCacheOwners.get(uid);
-      if(owner && smartCacheOwnerCurrent(owner.item,owner)) due=Math.min(due,cached.nextRefresh ?? Infinity);
-    }
-    if(!Number.isFinite(due)) return;
-    smartRefreshTimer=setTimeout(()=>{
-      smartRefreshTimer=null;
-      if(document.hidden) return;
-      const now=performance.now();
-      for(const [uid,cached] of smartChildrenCache){
-        if(cached.nextRefresh<=now){
-          cached.expired=true;cached.nextRefresh=Infinity;
-          smartHandlesCache.delete(uid);
-        }
-      }
-      render();scheduleSmartRefresh();
-    },Math.max(1,due-performance.now()));
-  }
-  document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden){
-      for(const cached of smartChildrenCache.values()) if(cached.refreshMs){cached.expired=true;cached.nextRefresh=Infinity;}
-      render();
-    }
-    scheduleSmartRefresh();
-  });
-  function clearSmartRetry(uid){
-    clearTimeout(smartRetryTimers.get(uid));smartRetryTimers.delete(uid);smartBackoffUntil.delete(uid);
-  }
-  function retrySmartCache(it,owner){
-    if(!smartCacheOwnerCurrent(it,owner))return;
-    const now=Date.now(), previous=smartBackoffUntil.get(it.uid);
-    const until=previous>now ? previous : now+SMART_BACKOFF_MS;
-    smartBackoffUntil.set(it.uid,until);
-    if(smartRetryTimers.has(it.uid))return;
-    smartRetryTimers.set(it.uid,setTimeout(()=>{
-      smartRetryTimers.delete(it.uid);
-      if(smartCacheOwnerCurrent(it,owner))render();
-    },Math.max(0,until-Date.now())+10));
-  }
-  function dropSmartCache(uid){
-    const it=smartCacheOwners.get(uid)?.item;
-    if(it){
-      disposeSmartExecution(smartItemExecutions.get(it));
-      smartStyleCache.delete(it);smartSignatureCache.delete(it);smartPaintCache.delete(it);
-    }
-    clearSmartRetry(uid);
-    smartCacheOwners.delete(uid);smartChildrenCache.delete(uid);smartHandlesCache.delete(uid);
-    smartInFlight.delete(uid);smartHandlesInFlight.delete(uid);smartBackoffUntil.delete(uid);
-    scheduleSmartRefresh();
-  }
-  function pruneSmartCaches(){
-    if(!smartCacheOwners.size) return;
-    const live=new Set(items);
-    for(const [uid,owner] of smartCacheOwners){
-      if(!live.has(owner.item) || owner.item.uid!==uid || owner.item.type!=='smart' || owner.script!==owner.item.script) dropSmartCache(uid);
-    }
-  }
-  function smartCacheOwner(it){
-    let owner=smartCacheOwners.get(it.uid);
-    if(!owner || owner.item!==it || owner.script!==it.script){
-      dropSmartCache(it.uid);owner={item:it,script:it.script};smartCacheOwners.set(it.uid,owner);
-    }
-    return owner;
-  }
-  function smartCacheOwnerCurrent(it,owner){
-    return smartCacheOwners.get(it.uid)===owner && it.script===owner.script && items.includes(it);
-  }
-  function smartSig(it, extra){
-    const style=smartResolvedStyle(it);
-    let cached=smartSignatureCache.get(it);
-    if(!cached || cached.script!==it.script || cached.style!==style){
-      cached={script:it.script,style,revision:++smartSignatureRevision};smartSignatureCache.set(it,cached);
-    }
-    // State can be edited in place. It is bounded by the hook contract, unlike the potentially
-    // 50 KB source: serialize state, but retain source/style behind an instance-local revision.
-    return cached.revision+'|'+JSON.stringify(it.state||{})+'|'+it.w+','+it.h+(extra?'|'+extra:'');
-  }
-  // Cache only validated replies. The convenience wrapper's null-on-failure contract cannot
-  // distinguish an empty drawing from a failed request; failures need their own retry path.
-  function smartChildrenFor(it, editing){
-    if(smartExportCache && smartExportCache.has(it)) return smartExportCache.get(it);
-    const owner=smartCacheOwner(it);
-    const sig = smartSig(it, editing?'E':'');
-    const cached = smartChildrenCache.get(it.uid);
-    const backoff = smartBackoffUntil.get(it.uid);
-    if(!smartInFlight.has(it.uid) && (!cached || cached.sig !== sig || cached.expired) && (backoff==null || Date.now()>=backoff)){
-      smartInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'children',refresh:true, args:[it.state||{}, smartResolvedStyle(it), it.w, it.h, editing]},it)
-        .then(r=>{
-          if(!smartCacheOwnerCurrent(it,owner))return;
-          smartChildrenCache.set(it.uid,{sig,kids:r.result,refreshMs:r.refreshMs,nextRefresh:r.refreshMs?performance.now()+r.refreshMs:Infinity});
-          smartInFlight.delete(it.uid);clearSmartRetry(it.uid);render();scheduleSmartRefresh();
-        })
-        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartInFlight.delete(it.uid); retrySmartCache(it,owner); });
-    }
-    return cached ? cached.kids : [];
-  }
-  function smartHandlesFor(it){
-    const owner=smartCacheOwner(it);
-    const sig = smartSig(it);
-    const cached = smartHandlesCache.get(it.uid);
-    const backoff = smartBackoffUntil.get(it.uid);
-    if(!smartHandlesInFlight.has(it.uid) && (!cached || cached.sig !== sig) && (backoff==null || Date.now()>=backoff)){
-      smartHandlesInFlight.add(it.uid);
-      requestSmartSandbox({method:'call', src:scriptOf(it), fn:'handles', args:[it.state||{}, it.w, it.h, smartResolvedStyle(it)]},it)
-        .then(r=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesCache.set(it.uid, {sig, hs:r.result}); smartHandlesInFlight.delete(it.uid); clearSmartRetry(it.uid); render(); })
-        .catch(()=>{ if(!smartCacheOwnerCurrent(it,owner))return;smartHandlesInFlight.delete(it.uid); retrySmartCache(it,owner); });
-    }
-    return cached ? cached.hs : [];
-  }
-  // One-shot export (SVG/PNG/HTML, Shape Library thumbnails) needs the real, fresh answer every time,
-  // not a possibly-stale cache -- but can't simply await mid-paint either: itemsToPngBlob temporarily
-  // swaps the module-level `ctx` to an offscreen canvas, and an await in the middle of that would let
-  // a live render() (e.g. from an unrelated mouse move elsewhere on the page) interleave and paint to
-  // the wrong canvas. So export resolves every top-level smart item's children() up front, by object
-  // identity (not uid -- a library/clipboard item being exported may not have a stable one), into
-  // smartExportCache; the synchronous paint pass that follows (unchanged shapeOps/drawItem/itemToSVG)
-  // then finds every answer already waiting via smartChildrenFor's identity check above and never asks
-  // the sandbox itself. Child validation forbids nested smart shapes and asset-referencing images.
-  let smartExportCache = null;
-  async function warmSmartExportCache(itemList,strict=false){
-    const map = new Map();
-    for(const it of itemList){
-      if(it.type !== 'smart') continue;
-      const temporary=!items.includes(it);
-      const execution=temporary?createSmartExecution(it):smartItemExecution(it);
-      try{
-        const r=await requestSmartSandbox({method:'call',src:scriptOf(it),fn:'children',args:[it.state||{},smartResolvedStyle(it),it.w,it.h,false]},it,execution);
-        map.set(it,r.result.filter(child=>!child.editorOnly));
-      }catch(err){
-        if(strict) throw err;
-        const cached=smartChildrenCache.get(it.uid);
-        const owner=smartCacheOwners.get(it.uid);
-        map.set(it,owner && smartCacheOwnerCurrent(it,owner) && cached?.sig===smartSig(it)?cached.kids.filter(child=>!child.editorOnly):[]);
-      }finally{if(temporary)disposeSmartExecution(execution);}
-    }
-    return map;
-  }
-  // The plain, resolved style a script's children() receives -- exactly the fields the toolbar's
-  // Fill/Stroke/Stroke-width/Text-color dropdowns already write onto the container itself. A child
-  // descriptor that OMITS a field inherits it (via shapeOps' merge); one that sets it explicitly hard-codes it.
-  const smartStyleFields=['color','fillColor','fill','strokeOn','textColor','size','dash','fontFamily','fontSize','font'];
-  const smartPresetColors=Object.keys(PRESETS);
-  function smartResolvedStyle(it){
-    const cached=smartStyleCache.get(it);
-    if(cached && smartStyleFields.every((key,i)=>cached.fields[i]===it[key]))return cached.style;
-    const style={ color:it.color, fillColor:it.fillColor, fill:!!it.fill, strokeOn:strokeOn(it), textColor:it.textColor, size:it.size, dash:it.dash,
-              fontFamily:it.fontFamily||'sans', fontSize:it.fontSize||16, font:it.font||fontStr(it.fontFamily||'sans', it.fontSize||16),
-              // the toolbar's own color-swatch palette, in its own display order -- lets a script size
-              // itself (or anything else) off "however many colors the toolbar actually offers" instead
-              // of hard-coding a duplicate, driftable copy of that count/list.
-              presetColors:smartPresetColors };
-    smartStyleCache.set(it,{fields:smartStyleFields.map(key=>it[key]),style});
-    return style;
-  }
   // text sits 6px in from the left/right edge, or on the center line
   function textAnchorX(x, w, align){ return align==='left' ? x+6 : align==='right' ? x+w-6 : x+w/2; }
   // Greedy word-wrap to fit maxWidth — ctx.font must already be set. A single word wider than
@@ -2392,10 +1656,6 @@ self.onmessage = function(e){
     const segs = [];
     for(let i=0, last=closed?n:n-1; i<last; i++){
       const a = pts[i], b = pts[(i+1)%n];
-      // a.arcTo (see shapeOps' 'polygon' case) marks the segment LEAVING this point as a circular
-      // arc rather than a straight line/bezier -- smart-object-child use only (see CLAUDE.md), never
-      // set by any real, user-drawn/Point-Edit polygon, so bbox()/snapshotOf()/translateItem() etc.
-      // never need to know about it.
       segs.push({ a, b, c1:a.c1||a, c2:b.c2||b, arc:a.arcTo });
     }
     return segs;
@@ -2534,8 +1794,6 @@ self.onmessage = function(e){
     const w = toWorld(it, it.points[activeAnchor].x, it.points[activeAnchor].y);
     return {x:w.x+16, y:w.y-16};
   }
-  // Only withdraw a tentative insertion if nothing has changed its item or either history stack.
-  // Restoring just that polygon preserves unrelated smart instances and their Worker ownership.
   const samePointEditHistory=(a,b)=>a.length===b.length && a.every((entry,i)=>entry===b[i]);
 
   // How close a press has to land to the outline to insert an anchor there.
@@ -2695,35 +1953,12 @@ self.onmessage = function(e){
     return ops;
   }
   function shapeOps(it, skipCell){
-    if(it.type!=='smart') return primitiveShapeOps(it,skipCell);
-    const ops=[];
-    // The container itself never renders a visible box -- its fill/fillColor/strokeOn/color/
-    // textColor/size fields exist purely as a style bus the toolbar writes to and a script reads
-    // from (via smartResolvedStyle below), not as its own drawable rect. A script decides which of
-    // ITS OWN children (e.g. the clock's face circle) actually show that fill/stroke.
-    // 2nd arg to smartChildrenFor: true only for the one instance currently in interactive edit
-    // mode (by identity, not just type/uid -- render() always calls shapeOps on the live items[]
-    // entries, so this correctly picks out just that one object). HTML uses true for operating
-    // controls; editorOnly children and handles distinguish authoring controls from those.
-    const kids = smartChildrenFor(it, it===items[editingSmartIdx]);
-    const style=smartResolvedStyle(it);
-    let cached=smartPaintCache.get(it);
-    if(!cached || cached.kids!==kids || cached.style!==style){
-      const localOps=[];
-      for(const raw of kids){
-        // Geometry builders only read descriptors. Leave cached points, controls and arc
-        // centers in local coordinates; translate the paint group instead of cloning/mutating
-        // every child on every repaint. Only the universal defaults are inherited.
-        try{
-          const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
-          localOps.push(...shapeOps(child));
-        }catch(e){}
-      }
-      cached={kids,style,ops:localOps};smartPaintCache.set(it,cached);
+    if(it.unsupportedShape){
+      const frame={...it,fill:true,fillColor:'#f3f4f6',strokeOn:true,color:'#9ca3af',size:1};
+      const label={type:'text',x:it.x,y:it.y,w:it.w,h:it.h,text:'Smart shape\nOpen in Paperwire',font:'12px sans-serif',textColor:'#6b7280',color:'#6b7280',size:1,fill:false,strokeOn:false};
+      return [...primitiveShapeOps(frame),...primitiveShapeOps(label)];
     }
-    ops.push({kind:'group',x:it.x,y:it.y,ops:cached.ops});
-
-    return ops;
+    return primitiveShapeOps(it,skipCell);
   }
 
   // ---------- canvas renderer ----------
@@ -2880,16 +2115,7 @@ self.onmessage = function(e){
         const pad=padded ? (it.size||2)/2+2 : 0;   // the stroke straddles the edge
         return {x:x-pad,y:y-pad,w:Math.abs(it.w)+pad*2,h:Math.abs(it.h)+pad*2};
       }
-      case 'smart':{
-        // Unlike a rect/ellipse/etc., the container never draws its own stroke (see shapeOps) --
-        // it.size is purely a style bus for children, not a real stroke width for this box itself.
-        // Padding here must NOT scale with it.size, or the selection outline/resize handles would
-        // visibly grow as the Stroke-width dropdown changes, even though nothing about the box's own
-        // (invisible) rendering does.
-        const x=Math.min(it.x,it.x+it.w), y=Math.min(it.y,it.y+it.h);
-        const pad=padded ? 2 : 0;
-        return {x:x-pad,y:y-pad,w:Math.abs(it.w)+pad*2,h:Math.abs(it.h)+pad*2};
-      }
+
       case 'image':
         return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'polygon':{
@@ -2998,7 +2224,7 @@ self.onmessage = function(e){
     const pts = [];
     const norm4 = (x,y,w,h)=>({ x0:Math.min(x,x+w), y0:Math.min(y,y+h), W:Math.abs(w), H:Math.abs(h) });
     switch(it.type){
-      case 'rect': case 'image': case 'text': case 'smart': {
+      case 'rect': case 'image': case 'text': {
         const {x0,y0,W,H} = norm4(it.x,it.y,it.w,it.h);
         for(const fx of [0,.5,1]) for(const fy of [0,.5,1]) pts.push({x:x0+W*fx, y:y0+H*fy});
         break;
@@ -3271,7 +2497,7 @@ self.onmessage = function(e){
   // new geometry fresh from this untouched snapshot rather than compounding rounding error.
   function snapshotOf(it){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': case 'smart': return {x:it.x, y:it.y, w:it.w, h:it.h};
+      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': return {x:it.x, y:it.y, w:it.w, h:it.h};
       case 'line': case 'arrow': return {x1:it.x1, y1:it.y1, x2:it.x2, y2:it.y2};
       case 'path': case 'polygon': return {points: it.points.map(p=>({
         x:p.x, y:p.y,
@@ -3285,7 +2511,7 @@ self.onmessage = function(e){
   function scalePt(p, ax, ay, sx, sy){ return { x: ax+(p.x-ax)*sx, y: ay+(p.y-ay)*sy }; }
   function applyScaleFromSnapshot(it, snap, ax, ay, sx, sy){
     switch(it.type){
-      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': case 'smart': {
+      case 'rect': case 'ellipse': case 'image': case 'table': case 'text': {
         const p1 = scalePt({x:snap.x,y:snap.y}, ax,ay,sx,sy);
         const p2 = scalePt({x:snap.x+snap.w,y:snap.y+snap.h}, ax,ay,sx,sy);
         it.x = Math.min(p1.x,p2.x); it.y = Math.min(p1.y,p2.y);
@@ -3333,13 +2559,6 @@ self.onmessage = function(e){
         p.x=norm(p.x+dx); p.y=norm(p.y+dy);
         if(p.c1){ p.c1.x=norm(p.c1.x+dx); p.c1.y=norm(p.c1.y+dy); }
         if(p.c2){ p.c2.x=norm(p.c2.x+dx); p.c2.y=norm(p.c2.y+dy); }
-        // arcTo's own embedded cx/cy (see shapeOps' 'polygon' case) is a center point just like a
-        // point's own x/y -- forgetting this left an arc's actual drawn position (tracePath/svgArcD
-        // both read arcTo.cx/cy directly) stuck in the smart-object child's LOCAL frame while the
-        // rest of the same polygon's points were already correctly shifted to world coordinates by
-        // the two lines above, producing a wildly wrong, jumped-apart arc (real bug, found via actual
-        // use: the arc rendered far outside the item's own selection box, joined to the correctly-
-        // positioned straight segments by a long stray line).
         if(p.arcTo){ p.arcTo.cx=norm(p.arcTo.cx+dx); p.arcTo.cy=norm(p.arcTo.cy+dy); }
       }); break;
       case 'line':case 'arrow': it.x1=norm(it.x1+dx);it.y1=norm(it.y1+dy);it.x2=norm(it.x2+dx);it.y2=norm(it.y2+dy); break;
@@ -3928,18 +3147,12 @@ self.onmessage = function(e){
        selection.some(i => !items[i] || items[i].group!==editingGroupId)) exitGroupEdit();
   }
   // Same convention as syncPointEdit -- selecting something else (or nothing) implicitly leaves edit mode.
-  function syncSmartEdit(){
-    if(editingSmartIdx!=null && !(selection.length===1 && selection[0]===editingSmartIdx &&
-       items[editingSmartIdx] && items[editingSmartIdx].type==='smart')){
-      editingSmartIdx = null;
-    }
-  }
 
   // ---------- render ----------
   function render(){
-    pruneSmartCaches();
+
     syncPointEdit();
-    syncSmartEdit();
+
     syncGroupEdit();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,cssW,cssH);
@@ -3996,14 +3209,6 @@ self.onmessage = function(e){
         ctx.strokeRect(u.x-4, u.y-4, u.w+8, u.h+8);
         ctx.restore();
       }
-      // group edit mode: the browsed group's own outline (same style as above) plus solid blue
-      // corner squares -- same 10x10 convention as smart-object edit mode / Point-Edit's own anchors
-      // below, so it reads as "you're inside this group now, working with its members one at a
-      // time" at a glance, exactly like those other special modes. The group's own corner handles
-      // are no longer real (draggable) resize handles while this is active -- resizing/rotating the
-      // whole group requires leaving the mode first and reselecting it as a whole -- so these
-      // squares occupy that same position but solid instead of hollow, same convention smart-edit
-      // mode already established for the identical "this position isn't a plain handle anymore" cue.
       if(editingGroupId!=null){
         // Mid-gesture the group's rotation is temporarily folded into its members (bakeForGesture);
         // draw the box from what the group will be once it's folded back out, so it doesn't visibly
@@ -4024,10 +3229,7 @@ self.onmessage = function(e){
         }
         ctx.restore();
       }
-      // resize handles — 4 corners of the lone item's box, or of the whole group's box. Suppressed
-      // for a smart object currently in edit mode -- resize itself is suppressed there too (see
-      // onDown's editingSmartIdx branch), and the solid-blue squares drawn below take their place.
-      if(selection.length && !(editingSmartIdx!=null && selection.length===1 && selection[0]===editingSmartIdx)){
+      if(selection.length){
         const rp = resizePivotFor(selection);
         if(rp){
           const b = rp.box;
@@ -4041,41 +3243,7 @@ self.onmessage = function(e){
           ctx.restore();
         }
       }
-      // smart-object edit mode: solid blue corner squares (same 10x10 size/position as the normal
-      // resize handles, just filled solid instead of white) -- the same visual convention Point-Edit
-      // already uses for its own anchor squares below, so it's clear at a glance this is a special
-      // edit mode, not plain selection (dragging inside moves a handle the script defines, not the
-      // whole object, and the corner squares here are a pure indicator, not themselves draggable).
-      if(editingSmartIdx!=null && selection.length===1 && selection[0]===editingSmartIdx){
-        const sit = items[editingSmartIdx];
-        if(sit){
-          const b = bbox(sit);
-          const cx=b.x+b.w/2, cy=b.y+b.h/2;
-          ctx.save();
-          if(sit.group!=null && sit.groupRotation){
-            const piv=groupPivot(sit.group);
-            ctx.translate(piv.cx,piv.cy);ctx.rotate(sit.groupRotation);ctx.translate(-piv.cx,-piv.cy);
-          }
-          if(sit.rotation){ ctx.translate(cx,cy); ctx.rotate(sit.rotation); ctx.translate(-cx,-cy); }
-          ctx.setLineDash([]);
-          ctx.fillStyle = '#6366f1';
-          for(const [hx,hy] of [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]){
-            ctx.beginPath(); ctx.rect(hx-5, hy-5, 10, 10); ctx.fill();
-          }
-          // script-defined interactive handles (e.g. a clock's hour/minute hands, an arrow's own
-          // adjustment points) drawn as small solid circles -- distinct from the square corner
-          // markers above, so it's clear at a glance WHERE to drag, not just THAT you're in edit
-          // mode. A script with no handles() just shows the 4 corner squares above (smartHandlesFor
-          // returns [] for one with no handles() the same way it does while a fresh request is
-          // still in flight -- visually indistinguishable, which is fine either way).
-          for(const hpt of smartHandlesFor(sit)){
-            if(!hpt || !Number.isFinite(hpt.x) || !Number.isFinite(hpt.y)) continue;
-            if(hpt.kind === 'click') continue;   // draws its own glyph in children() instead
-            ctx.beginPath(); ctx.arc(sit.x+hpt.x, sit.y+hpt.y, 6, 0, Math.PI*2); ctx.fill();
-          }
-          ctx.restore();
-        }
-      }
+
       // point-edit overlay: solid indigo squares mark every anchor (always visible in this mode);
       // the active anchor gets a hollow highlight plus its two hollow-square handles on thin stems
       // — same 10x10 square as the corner-resize handles, just filled/hollow to tell them apart
@@ -4219,10 +3387,7 @@ self.onmessage = function(e){
   const isSecondaryPress = e => (e.button!==undefined && e.button!==0) || (isMac && !!e.ctrlKey);
   function onDown(e){
     if(isSecondaryPress(e)) return;
-    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
-      if(e.pointerId!==smartCurrentPress.e.pointerId) ignoredSmartPointers.add(e.pointerId);
-      return;
-    }
+
     handledPointerUp = false;
     if(textInput.style.display==='block'){ commitText(); }
     const {x,y} = pos(e);
@@ -4245,37 +3410,8 @@ self.onmessage = function(e){
           }
         }
       }
-      // smart-object edit mode: a press either grabs one of the script's own handles, or (missing
-      // every handle but still on the item's own body) does nothing rather than falling through to a
-      // whole-item drag -- same "a press must only ever move a handle" precedent as Point-Edit below.
-      // A press elsewhere exits edit mode and falls through to normal selection/deselection.
-      //
-      // Each press retains its movement and release until its ordered hit-test/action completes.
-      if(editingSmartIdx!=null){
-        const sit = items[editingSmartIdx];
-        if(sit){
-          // toLocal only ever undoes ROTATION -- it still returns world coordinates (matching it.x/it.y),
-          // same convention tableCellAt already relies on. A script's hitEdit/dragEdit need real
-          // origin-relative coordinates (matching its own children()'s (0,0)-(w,h) frame), so subtract
-          // the container's own position here.
-          const wp = toLocal(sit, x, y);
-          const lp = { x: wp.x - sit.x, y: wp.y - sit.y };
-          const pending = {idx:editingSmartIdx,it:sit,script:sit.script,tab:activeTabId,epoch:smartGestureEpoch,
-            x,y,lp,e,latest:null,released:false,mode:'pending',cancelled:false,sd:null};
-          pending.releaseDone=new Promise(resolve=>pending.release=resolve);
-          smartCurrentPress=pending;
-          smartGestureRecords.add(pending);
-          smartHitPending = pending;
-          smartGestureQueue=smartGestureQueue.then(()=>processSmartGesture(pending)).catch(()=>{}).finally(()=>{
-            smartGestureRecords.delete(pending);
-            if(smartCurrentPress===pending) smartCurrentPress=null;
-            if(smartHitPending===pending) smartHitPending=null;
-          });
-          smartHitSettled=smartGestureQueue;
-          return;
-        }
-      }
-      continueOnDownAfterSmartHitEdit(x, y, e);
+
+      continueSelectPress(x, y, e);
       return;
     }
     if(ui.tool==='table'){ placeTable(x,y); return; }
@@ -4308,10 +3444,7 @@ self.onmessage = function(e){
     }
     render();
   }
-  // The rest of onDown's select-tool handling, run either synchronously (no smart object in edit
-  // mode) or after hitEdit's async reply resolves "no handle, and not even a body hit" (see
-  // processSmartGesture) -- normal selection uses the same code for immediate and delayed presses.
-  function continueOnDownAfterSmartHitEdit(x, y, e){
+  function continueSelectPress(x, y, e){
       // point-edit mode: the active anchor's own handles first (smaller target, drawn on top), then
       // any anchor square (clicking one makes it active AND starts dragging it)
       // Choose the closest point/handle within the hit radius. Larger touch targets must not let
@@ -4552,16 +3685,11 @@ self.onmessage = function(e){
     render();
   }
   function onMove(e){
-    if(ignoredSmartPointers.has(e.pointerId)) return;
+
     const p = pos(e);
     if(ui.tool==='eraser' && !erasing){ cursorPt = p; render(); }   // track ring while idle
-    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
-      if(e.pointerId!==smartCurrentPress.e.pointerId) return;
-      const press=smartCurrentPress;press.latest={...p,e};
-      if(press.mode==='pending' || press.mode==='body') return;
-      if(press.mode==='handle'){ runSmartDragMove(p.x,p.y,press.sd); return; }
-    }
-    if(!current && !drag && !resizing && !erasing && !marquee && !rotating && !endDrag && !editingAnchor && !smartDrag && !smartHitPending){
+
+    if((((((((!(current) && !(drag)) && !(resizing)) && !(erasing)) && !(marquee)) && !(rotating)) && !(endDrag)) && !(editingAnchor))){
       updateInsertHover(p,e);
       return;
     }
@@ -4777,125 +3905,9 @@ self.onmessage = function(e){
   // "send this instead, next" rather than firing a second parallel call. This caps in-flight requests
   // at exactly one regardless of mouse-move rate or round-trip latency; no reply is ever discarded
   // for being superseded, it just triggers sending the next (newest) one immediately afterward.
-  function runSmartDragMove(x, y, sd=smartDrag){
-    if(!sd || !smartGestureValid(sd.press)) return;
-    sd.moved = true;
-    // click-kind handles resolve exactly once, in onUp, regardless of how far the pointer
-    // wanders while still pressed -- see onDown's kind lookup.
-    if(sd.kind === 'click') return;
-    const it = sd.press.it;
-    const wp = toLocal(it, x, y);
-    const lp = { x: wp.x - it.x, y: wp.y - it.y };   // world (de-rotated) -> origin-relative, see onDown
-    requestSmartDragEdit(it, sd, lp);
-  }
-  function requestSmartDragEdit(it, sd, lp){
-    sd.latest = { lp, w: it.w, h: it.h, style: smartResolvedStyle(it) };
-    if(sd.inFlight){ sd.pendingAfterInFlight = true; return; }
-    sendNextSmartDragEdit(it, sd);
-  }
-  function sendNextSmartDragEdit(it, sd){
-    const payload = sd.latest;
-    sd.inFlight = true;
-    sd.pendingAfterInFlight = false;
-    const myToken = sd.token;
-    requestSmartCall(it, 'dragEdit', [it.state||{}, sd.handle, payload.lp.x, payload.lp.y, payload.w, payload.h, payload.style])
-      .then(result => onSmartDragEditReply(it, sd, myToken, result))
-      .catch(()=> onSmartDragEditReply(it, sd, myToken, null));
-  }
-  function onSmartDragEditReply(it, sd, myToken, result){
-    sd.inFlight = false;
-    if(sd.token !== myToken || !smartGestureValid(sd.press)){
-      sd.pendingAfterInFlight=false;
-      if(sd.onSettle){const settle=sd.onSettle;sd.onSettle=null;settle();}
-      return;
-    }
-    if(result) it.state = result;
-    render();
-    if(sd.pendingAfterInFlight) sendNextSmartDragEdit(it, sd);
-    else if(sd.onSettle){ const fn = sd.onSettle; sd.onSettle = null; fn(); }
-  }
-  function smartGestureValid(p){ return !p.cancelled && p.it.script===p.script && p.epoch===smartGestureEpoch && p.tab===activeTabId && items.includes(p.it); }
-  function cancelSmartGestures(preserveReleased=false){
-    smartGestureEpoch++;
-    for(const p of smartGestureRecords){
-      if(preserveReleased && p.released){p.epoch=smartGestureEpoch;continue;}
-      p.cancelled=true;
-      if(p.sd && p.tab===activeTabId && items.includes(p.it)) p.it.state=clone(p.sd.originalState);
-      p.release();
-      if(p.sd?.onSettle){const settle=p.sd.onSettle;p.sd.onSettle=null;settle();}
-    }
-    smartCurrentPress=null;smartHitPending=null;smartDrag=null;
-  }
-  function replayPointer(e,x,y){
-    const r=canvas.getBoundingClientRect();
-    return {clientX:r.left+x,clientY:r.top+y,pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,
-      shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey};
-  }
-  async function processSmartGesture(p){
-    if(!smartGestureValid(p)) return;
-    const it=p.it;
-    let handle=null, hs=[];
-    if(editingSmartIdx===p.idx){
-      handle=await requestSmartCall(it,'hitEdit',[it.state||{},p.lp.x,p.lp.y,it.w,it.h,smartResolvedStyle(it)]);
-      if(handle) hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
-    }
-    if(!smartGestureValid(p)) return;
-    const h=hs.find(h=>h.id===handle);
-    if(handle && !h){reportSmartError(it.script,'hitEdit','Unknown handle ID');handle=null;}
-    if(smartHitPending===p) smartHitPending=null;
-    handledPointerUp=!!handle;
-    if(handle){
-      const sd={press:p,handle,kind:h.kind,moved:false,lx:p.lp.x,ly:p.lp.y,token:++smartDragToken,
-        inFlight:false,latest:null,pendingAfterInFlight:false,onSettle:null,originalState:clone(it.state||{})};
-      p.sd=sd;p.mode='handle';
-      if(smartCurrentPress===p && !p.released) smartDrag=sd;
-      if(p.latest) runSmartDragMove(p.latest.x,p.latest.y,sd);
-      await p.releaseDone;
-      if(!smartGestureValid(p)) return;
-      if(sd.kind==='click' || !sd.moved){
-        const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle,sd.lx,sd.ly,it.w,it.h,smartResolvedStyle(it)]);
-        if(!smartGestureValid(p)) return;
-        if(next) it.state=next;
-      } else {
-        if(sd.inFlight) await new Promise(resolve=>sd.onSettle=resolve);
-      }
-      if(!smartGestureValid(p)) return;
-      if(JSON.stringify(it.state||{})!==JSON.stringify(sd.originalState)){
-        // A completed click may settle during or after another edit. Commit only its state, using
-        // the other transaction's baseline when still open; keep that transaction independently undoable.
-        const before=historyBefore===null ? snap() : historyBefore;
-        if(historyBefore!==null){
-          const next=JSON.parse(historyBefore), target=next.find(item=>item.uid===it.uid);
-          if(target) target.state=clone(it.state);
-          historyBefore=JSON.stringify(next);
-        }
-        undoStack.push(before);
-        if(undoStack.length>80) undoStack.shift();
-        redoStack=[];clickCycle=null;save();updateButtons();
-      }
-      p.sd=null;render();return;
-    }
-    if(editingSmartIdx===p.idx && hitTest(p.x,p.y)===p.idx){p.mode='body';await p.releaseDone;return;}
-    // A miss outside the body is a normal gesture, even when its release already happened.
-    editingSmartIdx=null;p.mode='normal';
-    smartMutationOwner=p;smartReplay=true;
-    try{
-      continueOnDownAfterSmartHitEdit(p.x,p.y,p.e);
-      if(p.latest) onMove(replayPointer(p.latest.e,p.latest.x,p.latest.y));
-      if(p.released) onUp(replayPointer(p.upEvent,p.upPoint.x,p.upPoint.y));
-    }finally{smartMutationOwner=null;smartReplay=false;}
-    await p.releaseDone;
-  }
+
   function onUp(e){
-    if(ignoredSmartPointers.delete(e.pointerId)){ignoredSmartPointerUps.add(e);return;}
-    if(!smartReplay && smartCurrentPress && !smartCurrentPress.released){
-      const p=smartCurrentPress;
-      if(e.pointerId!==p.e.pointerId) return;
-      if(e.type==='pointercancel'){cancelSmartGestures(true);render();return;}
-      p.released=true;p.upEvent=e;p.upPoint=pos(e);p.release();
-      if(p.sd===smartDrag) smartDrag=null;
-      if(p.mode!=='normal') return;
-    }
+
     if(erasing){
       if(erasing.removed) commitHistory(); else historyBefore=null;
       erasing=null;
@@ -4956,7 +3968,7 @@ self.onmessage = function(e){
           const {x,y} = pos(e);
           // ...and only for a click on the text/table itself, not one in an empty gap of its group's
           // box that merely resolved to it as the group's representative (see groupBoxHit)
-          if(!pendingDoubleClicks && it && (it.type==='text' || it.type==='table') && pressedOn(it,x,y)){
+          if(it && (it.type==='text' || it.type==='table') && pressedOn(it,x,y)){
             // delayed: a dblclick is two of these clicks in a row — if one follows shortly, it should
             // only open the editor, not also change the alignment first
             if(alignClickTimer) clearTimeout(alignClickTimer);
@@ -5174,40 +4186,11 @@ self.onmessage = function(e){
   }
   // Initialize a fresh copy; omitted/invalid optional results keep the definition's saved defaults.
   // The same ordering applies to authoring and placement: state first, then style/size.
-  async function initializeSmartItem(it,caps,valid=()=>true,execution=null){
-    const owner=execution || createSmartExecution(it,valid);
-    const check=()=>{if(!valid() || !smartExecutionCurrent(owner))throw smartCancelled();};
-    try{
-      check();caps=caps || await requestSmartCaps(it,owner);check();
-      if(!caps) throw new Error('Smart shape could not be initialized');
-      if(caps.initState){const state=await requestSmartCall(it,'initState',[],owner);check();if(state!==null)it.state=state;}
-      if(caps.initStyle){const style=await requestSmartCall(it,'initStyle',[],owner);check();Object.assign(it,style || {});}
-      it.font=fontStr(it.fontFamily,it.fontSize);
-      return it;
-    }finally{if(!execution)disposeSmartExecution(owner);}
-  }
-  function shapePlacementValid(p){return p.epoch===shapePlacementEpoch && p.tab===activeTabId && p.items===items;}
-  function hasPendingShapePlacement(){return [...shapePlacementRequests].some(shapePlacementValid);}
-  // Ordinary shapes remain synchronous. Smart placements initialize in click order before opening
-  // a history entry, so cancellation cannot add a late shape to another document or transaction.
-  function placeShapeAt(tpl, x, y){
-    if(!features.shapeLibrary) return;
-    if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){ toast('That shape could not be placed'); return; }
-    const list=clone(tpl.items),name=tpl.name;
-    if(!list.some(it=>it.type==='smart')){commitShapePlacement(list,name,x,y);return;}
-    const p={epoch:shapePlacementEpoch,tab:activeTabId,items};
-    shapePlacementRequests.add(p);
-    shapePlacementQueue=shapePlacementQueue.then(async()=>{
-      for(const it of list){
-        if(!shapePlacementValid(p)) return;
-        if(it.type==='smart') await initializeSmartItem(it,null,()=>shapePlacementValid(p));
-      }
-      if(!shapePlacementValid(p)) return;
-      shapePlacementOwner=true;
-      try{commitShapePlacement(list,name,x,y);}finally{shapePlacementOwner=false;}
-    }).catch(()=>{if(shapePlacementValid(p))toast('Could not initialize "'+name+'"');})
-      .finally(()=>shapePlacementRequests.delete(p));
-    return shapePlacementQueue;
+
+  function placeShapeAt(tpl,x,y){
+    if(!features.shapeLibrary)return;
+    if(!tpl || !Array.isArray(tpl.items) || !tpl.items.length){toast('That shape could not be placed');return;}
+    commitShapePlacement(clone(tpl.items),tpl.name,x,y);
   }
   function commitShapePlacement(list,name,x,y){
     const box = unionBoxOf(list, false);   // center after initialization, including any size overrides
@@ -5410,8 +4393,7 @@ self.onmessage = function(e){
   // drag/resize/rotate...) together with its pending history transaction, so that swapping the
   // document out from under it can never commit a stale snapshot.
   function cancelGesture(){
-    shapePlacementEpoch++;
-    cancelSmartGestures();editingSmartIdx=null;
+
     unbakeAfterGesture();   // never leave a group in the mid-gesture encoding
     current=null; polyDraft=null; drag=null; marquee=null; resizing=null; rotating=null; erasing=null;
     endDrag=null; snapPt=null; snapCursorPt=null; nudging=false;
@@ -5431,8 +4413,7 @@ self.onmessage = function(e){
     selection = expandSelection(sel);
   }
   function undo(){
-    shapePlacementEpoch++;
-    cancelSmartGestures();
+
     if(!undoStack.length) return;
     cancelGesture();
     const keep = selectedUids();
@@ -5442,8 +4423,7 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function redo(){
-    shapePlacementEpoch++;
-    cancelSmartGestures();
+
     if(!redoStack.length) return;
     cancelGesture();
     const keep = selectedUids();
@@ -5453,7 +4433,7 @@ self.onmessage = function(e){
     save(); render(); updateButtons();
   }
   function clearAll(){
-    if(!items.length){shapePlacementEpoch++;return;}
+    if(!items.length){return;}
     if(!confirm('Erase everything on the canvas?')) return;
     cancelGesture();
     beginHistory();
@@ -5667,7 +4647,7 @@ self.onmessage = function(e){
     // text/html would produce in apps that don't render inline SVG from pasted HTML.
     if(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined'){
       const jsonPayload = { app:'SimpleCanvas', kind:'objects', version:FORMAT_VERSION,
-                             items:clipboard, assets:clipboardAssets };
+                             items:itemsForFile(clipboard), assets:clipboardAssets };
       navigator.clipboard.write([
         new ClipboardItem({
           'text/plain': new Blob([JSON.stringify(jsonPayload)], {type:'text/plain'}),
@@ -5724,13 +4704,12 @@ self.onmessage = function(e){
   let managingShapes = false;
   const shapePreviewJobs = new WeakMap();
   const shapePreviewFailures = new WeakMap();
-  const smartPreviewConsent = new WeakSet();
-  const previewQuestionsOffered = new WeakSet();
+
   const shapePreviewVersions = new WeakMap();
   const shapePreviewKeys = new WeakMap();
   const shapeThumbnailValidation = new WeakMap();
   const shapePreviewButtons = new WeakMap();
-  const missingSmartPreviews = new Set();
+
   const pendingShapePreviews = new Set();
   let shapePreviewFrame = null;
   let shapeEntryLibrary = null, shapeEntryList = null, shapeLibraryEntries = new Set();
@@ -5760,7 +4739,7 @@ self.onmessage = function(e){
         if(button?.isConnected)paintShapePreview(entry,button);
       }
       pendingShapePreviews.clear();
-      document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
+
     });
   }
 
@@ -5825,7 +4804,7 @@ self.onmessage = function(e){
   function ensureShapeThumbnail(tpl){
     if(!activeLibraryShape(tpl))return Promise.resolve();
     if(validShapeThumbnail(tpl)) return Promise.resolve();
-    if(tpl.items.some(it=>it.type==='smart') && !smartPreviewConsent.has(tpl)) return Promise.resolve();
+    if(tpl.items.some(it=>false))return Promise.resolve();
     // An edit may supersede the running job. Export callers must also await its replacement,
     // rather than downloading an entry before the newly edited preview has been generated.
     if(shapePreviewJobs.has(tpl)) return shapePreviewJobs.get(tpl).then(()=>ensureShapeThumbnail(tpl));
@@ -5841,18 +4820,6 @@ self.onmessage = function(e){
       .finally(()=>{shapePreviewJobs.delete(tpl);if(activeLibraryShape(tpl))queueShapePreview(tpl);});
     shapePreviewJobs.set(tpl,job);return job;
   }
-  async function offerMissingSmartPreviews(lib,again=false){
-    if(!lib || lib!==shapeLibrary || (!again && previewQuestionsOffered.has(lib))) return;
-    const missing=lib.shapes.filter(tpl=>tpl.items.some(it=>it.type==='smart') && !validShapeThumbnail(tpl) && (again || !smartPreviewConsent.has(tpl)));
-    if(!missing.length) return;
-    previewQuestionsOffered.add(lib);
-    const answer=await askLibrary({title:'Generate missing previews?',
-      message:'Generating missing previews runs scripts included in this library. Only proceed if you trust its source. Cancel keeps placeholders and still lets you use the library.',
-      submit:'Generate previews',cancel:'Use placeholders'});
-    if(answer===null || lib!==shapeLibrary) return;
-    missing.forEach(tpl=>{smartPreviewConsent.add(tpl);shapePreviewFailures.delete(tpl);});
-    await Promise.all(missing.map(ensureShapeThumbnail));
-  }
 
   function selectionAsShapeItems(){
     if(ui.tool!=='select' || !selection.length){ toast('Select something on the canvas first'); return null; }
@@ -5862,6 +4829,7 @@ self.onmessage = function(e){
       toast("Shapes can't include images — remove the image from the selection first");
       return null;
     }
+    if(sel.some(i=>items[i].unsupportedShape)){toast('Only static drawing objects can be added to the library');return null;}
     const list = sel.map(i=>clone(items[i]));
     const groups = new Map();
     for(const it of list){ if(it.group!=null){ if(!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); } }
@@ -5900,12 +4868,11 @@ self.onmessage = function(e){
     if(!features.shapeLibraryManagement) return;
     const list = selectionAsShapeItems();
     if(!list) return;
-    if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
     const name = await askLibrary({title:'Add selection to library', message:'This adds one reusable shape. Export the library when you want to keep your changes.', name:'', submit:'Add shape', validate:validateShapeName});
     if(name===null) return;
     if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
     shapeLibrary.shapes.push({name, savedAt:new Date().toISOString(), items:list});
-    smartPreviewConsent.add(shapeLibrary.shapes[shapeLibrary.shapes.length-1]);
+
     shapeLibraryChanged();
     managingShapes = false;
     setShapePicker(true);
@@ -5924,11 +4891,10 @@ self.onmessage = function(e){
     if(!features.shapeLibraryManagement) return;
     const list = selectionAsShapeItems();
     if(!list) return;
-    if(!features.smartShapeAuthoring && list.some(it=>it.type==='smart')){toast('Adding smart shapes is disabled');return;}
     if(!await askLibrary({title:'Replace shape', message:'Replace "'+tpl.name+'" with the current canvas selection? Shapes already placed on the canvas will stay as they are.', submit:'Replace shape'})) return;
     if(!shapeLibrary.shapes.includes(tpl)) return;
     tpl.items = list;
-    invalidateShapePreview(tpl);smartPreviewConsent.add(tpl);
+    invalidateShapePreview(tpl);
     tpl.savedAt = new Date().toISOString();
     shapeLibraryChanged();
     toast('Replaced "'+tpl.name+'" — export to keep the change');
@@ -5966,7 +4932,7 @@ self.onmessage = function(e){
       shapeLibrary = lib;
       shapeLibraryRevision++;
       updateShapeLibraryUI();
-      lib.shapes.filter(tpl=>!tpl.items.some(it=>it.type==='smart')).forEach(ensureShapeThumbnail);
+      lib.shapes.filter(tpl=>!tpl.items.some(it=>false)).forEach(ensureShapeThumbnail);
     }catch(e){ /* drawing works even without a readable sibling library */ }
   }
 
@@ -5984,9 +4950,9 @@ self.onmessage = function(e){
     document.getElementById('redo').disabled = redoStack.length===0;
   }
   // shapes that can carry a fill (and so a second, fill color)
-  const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text' || t==='smart';
+  const FILLABLE = t => t==='rect' || t==='ellipse' || t==='polygon' || t==='table' || t==='text';
   const STROKABLE = t => t !== 'image';   // everything but an image takes a stroke color; only FILLABLE shapes can switch the outline off
-  const FONTABLE = t => t==='text' || t==='table' || t==='smart';
+  const FONTABLE = t => t==='text' || t==='table';
   function strokeOn(it){ return it.strokeOn !== false; }   // default true, for old saved files without the field
   // selected items whose color can be edited (images have none); empty outside the select tool
   function colorableSelection(){
@@ -6006,10 +4972,6 @@ self.onmessage = function(e){
       setDisp(strokeNoneSwatch, fillable.length>0);
       const sized = sel;   // every shape (including text, for its border) has a stroke width
       const dashable = sel.filter(it=>DASHABLE(it.type));
-      // Font controls also apply to a smart object now (its own fontFamily/fontSize, read by a
-      // script via style.font/fontFamily/fontSize) -- alignment stays text/table-only separately
-      // (smart objects have no align field, and script-drawn text positions itself however the
-      // script wants).
       const texts = sel.filter(it=>FONTABLE(it.type));
       const textColorable = texts;
       setDisp(sizeGroup, sized.length>0); setDisp(sizeSep, sized.length>0 && texts.length>0);
@@ -6030,12 +4992,9 @@ self.onmessage = function(e){
     ungroupBtn.disabled = !selection.some(i=>items[i] && items[i].group!=null);
   }
 
-  // ---------- export ----------
-  // Text and smart children may overflow their box. Include painted content without changing
-  // the geometry bounds used for handles, hit testing, or item/group rotation pivots.
   function paintedWorldBBox(it, sceneItems=items){
     const box = worldBBox(it,sceneItems);
-    if(it.type!=='text' && it.type!=='table' && it.type!=='smart') return box;
+    if(it.type!=='text' && it.type!=='table' && true) return box;
     let minX=box.x, minY=box.y, maxX=box.x+box.w, maxY=box.y+box.h;
     const includeRect = (left,top,right,bottom)=>{
       for(const [x,y] of [[left,top],[right,top],[right,bottom],[left,bottom]]){
@@ -6050,23 +5009,7 @@ self.onmessage = function(e){
       includeRect(x-m.actualBoundingBoxLeft-1,y-m.actualBoundingBoxAscent-1,
                   x+m.actualBoundingBoxRight+1,y+m.actualBoundingBoxDescent+1);
     };
-    if(it.type==='smart'){
-      // Children may deliberately draw beyond the editable container. Expand only painted bounds;
-      // changing bbox() would move rotation pivots and selection/resize geometry.
-      for(const raw of smartChildrenFor(it)){
-        const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},clone(raw));
-        translateItem(child,it.x,it.y);
-        const b=paintedWorldBBox(child,[]);
-        includeRect(b.x,b.y,b.x+b.w,b.y+b.h);
-        // Arc descriptors can sweep beyond their endpoints. The complete circle is a conservative
-        // bound, including the child's outline, without altering its stored polygon geometry.
-        for(const point of child.points||[]) if(point.arcTo){
-          const a=point.arcTo, r=Math.max(0,a.r)+(child.size||0)/2+2;
-          includeRect(a.cx-r,a.cy-r,a.cx+r,a.cy+r);
-        }
-      }
-      return {x:minX,y:minY,w:maxX-minX,h:maxY-minY};
-    }
+
     ctx.save();
     try{
       ctx.textBaseline='alphabetic';
@@ -6180,9 +5123,9 @@ self.onmessage = function(e){
     }
     return '';
   }
-  function itemToSVG(it, sceneItems=items, assetPool=assets, smartIndex=null){
+  function itemToSVG(it, sceneItems=items, assetPool=assets){
     let inner = shapeOps(it).map(op=>opToSVG(op,assetPool)).join('');
-    if(it.type==='smart' && smartIndex!==null) inner=`<g data-smart-index="${smartIndex}">${inner}</g>`;
+
     // rotation wrapper, matching drawItem's transform order (group rotation outer, own rotation inner)
     let transform = '';
     if(it.group!=null && it.groupRotation){
@@ -6196,41 +5139,37 @@ self.onmessage = function(e){
     transform = transform.trim();
     return transform ? `<g transform="${transform}">${inner}</g>` : inner;
   }
-  // Self-contained SVG markup for any list of items -- shared by the whole-canvas SVG/HTML
+  // Self-contained SVG markup for any list of items -- shared by the whole-canvas SVG
   // exports (background on, matching how they've always looked) and the copy-to-clipboard feature
   // (background off, so pasting a selection into another app's canvas doesn't carry an opaque backdrop).
   async function itemsToSVGMarkup(itemList, opts){
     opts = opts || {};
-    // Resolve children before measuring as well as painting, so both use the same export result.
-    const cache=await warmSmartExportCache(itemList);
-    const prevExportCache = smartExportCache;
-    smartExportCache = cache;
-    try{
-      let w, h, ox, oy;
-      if(opts.width != null && opts.height != null){
-        // Exact canvas dimensions, no auto-crop -- items keep their own on-screen x/y as-is, so the
-        // result matches the live canvas 1:1 (including any empty space around the actual objects).
-        w = opts.width; h = opts.height; ox = 0; oy = 0;
-      } else {
-        // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
-        // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
-        // of surrounding empty canvas that happened to be visible at the time.
-        const m = opts.margin!=null ? opts.margin : 24;
-        let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-        for(const it of itemList){
-          const b = paintedWorldBBox(it,itemList);
-          minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
-          maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
-        }
-        w = (maxX-minX) + m*2; h = (maxY-minY) + m*2;
-        ox = -minX + m; oy = -minY + m;
+
+    let w, h, ox, oy;
+    if(opts.width != null && opts.height != null){
+      // Exact canvas dimensions, no auto-crop -- items keep their own on-screen x/y as-is, so the
+      // result matches the live canvas 1:1 (including any empty space around the actual objects).
+      w = opts.width; h = opts.height; ox = 0; oy = 0;
+    } else {
+      // Default: crop tightly to the actual objects (+ a fixed margin on every side) -- what
+      // saveSvg()/copy-to-clipboard want, since a "sketch" file shouldn't carry a viewport's worth
+      // of surrounding empty canvas that happened to be visible at the time.
+      const m = opts.margin!=null ? opts.margin : 24;
+      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      for(const it of itemList){
+        const b = paintedWorldBBox(it,itemList);
+        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
       }
-      let body = '';
-      itemList.forEach((it,i)=>{body += itemToSVG(it,itemList,opts.assets || assets,opts.liveSmart?i:null);});
-      const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
-      return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-        + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
-    }finally{smartExportCache = prevExportCache;}
+      w = (maxX-minX) + m*2; h = (maxY-minY) + m*2;
+      ox = -minX + m; oy = -minY + m;
+    }
+    let body = '';
+    itemList.forEach(it=>{body += itemToSVG(it,itemList,opts.assets || assets);});
+    const bgRect = opts.background===false ? '' : `<rect x="0" y="0" width="${w}" height="${h}" fill="${BG}"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+      + bgRect + `<g transform="translate(${ox} ${oy})">${body}</g>` + `</svg>`;
+
   }
   // Renders any item list through drawItem() to a PNG Blob for downloads and clipboard output.
   // The default background, 24px margin and 2x scale also define saved PNGs; clipboard callers
@@ -6239,34 +5178,27 @@ self.onmessage = function(e){
   async function itemsToPngBlob(itemList, opts){
     opts = opts || {};
     const m = opts.margin!=null ? opts.margin : 24, scale = opts.scale!=null ? opts.scale : 2;
-    // Resolve every smart item's children() BEFORE touching `ctx` at all: once it's swapped to the
-    // offscreen canvas below, nothing may yield back to the event loop until it's restored, or a live
-    // render() triggered by something else entirely (e.g. an unrelated mouse move) could interleave
-    // and paint to the wrong canvas. See warmSmartExportCache's own comment.
-    const cache=await warmSmartExportCache(itemList);
-    const prevExportCache = smartExportCache;
-    smartExportCache = cache;
-    try{
-      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-      for(const it of itemList){
-        const b = paintedWorldBBox(it,itemList);
-        minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
-        maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
-      }
-      const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
-      const off = document.createElement('canvas');
-      off.width = Math.max(1, Math.round(w*scale));
-      off.height = Math.max(1, Math.round(h*scale));
-      const octx = off.getContext('2d');
-      octx.setTransform(scale,0,0,scale,0,0);
-      octx.translate(-minX + m, -minY + m);
-      if(opts.background !== false){ octx.fillStyle = BG; octx.fillRect(minX - m, minY - m, w, h); }
-      const real = ctx;
-      ctx = octx;
-      try { for(const it of itemList) drawItem(it); }
-      finally { ctx = real; }
-      return new Promise(resolve=>off.toBlob(blob=>resolve(blob), 'image/png'));
-    } finally { smartExportCache = prevExportCache; }
+
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    for(const it of itemList){
+      const b = paintedWorldBBox(it,itemList);
+      minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+      maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+    }
+    const w = (maxX-minX) + m*2, h = (maxY-minY) + m*2;
+    const off = document.createElement('canvas');
+    off.width = Math.max(1, Math.round(w*scale));
+    off.height = Math.max(1, Math.round(h*scale));
+    const octx = off.getContext('2d');
+    octx.setTransform(scale,0,0,scale,0,0);
+    octx.translate(-minX + m, -minY + m);
+    if(opts.background !== false){ octx.fillStyle = BG; octx.fillRect(minX - m, minY - m, w, h); }
+    const real = ctx;
+    ctx = octx;
+    try { for(const it of itemList) drawItem(it); }
+    finally { ctx = real; }
+    return new Promise(resolve=>off.toBlob(blob=>resolve(blob), 'image/png'));
+
   }
   async function saveSvg(){
     if(!items.length){ toast('Nothing to export yet'); return; }
@@ -6420,7 +5352,7 @@ self.onmessage = function(e){
     if(printDialog.open) return;
     closeOtherPopovers();
     if(textInput.style.display==='block') commitText();
-    cancelSmartGestures(true);
+
     const seq=++printSnapshotSeq, tab=activeTabId;
     printSnapshot=null;printPreviewReady=false;printSubmit.disabled=true;printClip.checked=false;
     printPageNav.hidden=true;
@@ -6428,7 +5360,7 @@ self.onmessage = function(e){
     printSummary.textContent='Preparing snapshot…';printError.textContent='';printWarning.hidden=true;
     printDialog.showModal();
     try{
-      await smartHitSettled;await shapePlacementQueue;
+
       if(seq!==printSnapshotSeq || !printDialog.open || activeTabId!==tab) return;
       const scene=clone(items), imageAssets={...assetsUsedBy(scene,assets)};
       if(!scene.length){printDialog.close();toast('Nothing to print yet');return;}
@@ -6473,313 +5405,13 @@ self.onmessage = function(e){
     else void openPrintDialog();
   },true);
 
-  // This function is shipped into HTML exports. Shared trusted helpers are inserted into its
-  // lexical scope below; shape source is JSON data and is evaluated only by the existing sandbox.
-  function htmlSmartRuntime(documents){
-    'use strict';
-    /* shared smart runtime */
-    let items=[],activeTabId=null;
-    const assets={},ctx=document.createElement('canvas').getContext('2d');
-    let smartSandboxFrame=null,smartSandboxPort=null,smartSandboxGeneration=0,smartSandboxReady=null;
-    let smartSandboxStartupReject=null,smartSandboxRetiring=Promise.resolve(),smartSandboxActive=null;
-    let smartSandboxReqSeq=0,smartExecutionSeq=0;
-    const smartSandboxPending=new Map(),smartItemExecutions=new WeakMap(),smartStyleCache=new WeakMap();
-    const smartRuntimeStats={resident:0,peak:0,created:0,retired:0},mdMaxDigitLabelCache=new Map(),errors=new Set();
-    function reportSmartError(src,hook,message){
-      const key=hook+': '+message;
-      if(errors.has(key))return;
-      if(errors.size>=128)errors.clear();errors.add(key);console.warn('Smart shape: '+key);
-    }
-    let entries=[],epoch=0,timer=null,currentPress=null,selected=null,gestureQueue=Promise.resolve();
-    const presses=new Set();
-    const current=e=>e.epoch===epoch && !document.hidden;
-    function select(entry){
-      if(selected===entry)return;
-      const previous=selected;selected=entry;
-      for(const e of [previous,selected]){
-        const handle=e?.local.querySelector('[data-rotate]');
-        if(handle)handle.style.display=e===selected?'':'none';
-      }
-    }
-    function schedule(){
-      clearTimeout(timer);timer=null;
-      if(document.hidden)return;
-      const due=Math.min(...entries.map(e=>e.next));
-      if(Number.isFinite(due))timer=setTimeout(()=>{
-        timer=null;for(const e of entries)if(e.next<=performance.now())void refresh(e);
-        // Browser timers can fire before a fractional deadline; keep the nearest deadline armed.
-        schedule();
-      },Math.max(1,due-performance.now()));
-    }
-    function position(e){
-      const it=e.item;
-      e.local.setAttribute('transform',`translate(${it.x+e.offset.x} ${it.y+e.offset.y})`
-        +(e.angle?` rotate(${e.angle*180/Math.PI} ${it.w/2} ${it.h/2})`:''));
-    }
-    function paint(e){
-      const it=e.item,ops=[];
-      for(const raw of e.kids){
-        const child=Object.assign({color:it.color,textColor:it.textColor,size:it.size,dash:it.dash},raw);
-        ops.push(...primitiveShapeOps(child));
-      }
-      const target=`<rect width="${it.w}" height="${it.h}" fill="transparent" pointer-events="all"/>`;
-      const handles=e.handles.filter(h=>h.kind==='drag').map(h=>
-        `<circle cx="${h.x}" cy="${h.y}" r="4" fill="#6366f1" stroke="#fff" stroke-width="1" pointer-events="none"/>`).join('');
-      const resize=e.behavior.resizeWidth ? `<rect data-resize-width="true" x="${it.w-6}" y="${it.h/2-12}" width="12" height="24" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ew-resize"><title>Change width</title></rect>` : '';
-      const resizeHeight=e.behavior.resizeHeight ? `<rect data-resize-height="true" x="${it.w/2-12}" y="${it.h-6}" width="24" height="12" rx="3" fill="#fff" stroke="#6366f1" style="cursor:ns-resize"><title>Change height</title></rect>` : '';
-      const rotate=e.behavior.rotate ? `<g data-rotate="true" style="cursor:grab${selected===e?'':';display:none'}"><title>Rotate</title>
-        <line x1="${it.w/2}" y1="0" x2="${it.w/2}" y2="-30" stroke="#6366f1" pointer-events="none"/>
-        <circle cx="${it.w/2}" cy="-30" r="16" fill="transparent"/>
-        <circle cx="${it.w/2}" cy="-30" r="9" fill="#fff" stroke="#6366f1" stroke-width="2" pointer-events="none"/></g>` : '';
-      e.local.innerHTML=target+ops.map(op=>opToSVG(op)).join('')+handles+resize+resizeHeight+rotate;
-      position(e);
-      e.host.style.cursor=e.behavior.move?'grab':'default';
-    }
-    async function refresh(e){
-      if(!current(e))return;
-      if(e.busy){e.dirty=true;return;}
-      e.busy=true;e.dirty=false;e.next=Infinity;
-      const it=e.item,state=it.state,w=it.w,h=it.h;
-      try{
-        const caps=e.caps || await requestSmartCaps(it);
-        if(!caps)throw new Error('Smart shape unavailable');
-        e.caps=caps;
-        const behavior=(caps.exportBehavior ? await requestSmartCall(it,'exportBehavior',[state]) : null) || {move:false,rotate:false,resizeWidth:false,resizeHeight:false};
-        const drawing=await requestSmartSandbox({method:'call',src:it.script,fn:'children',refresh:true,args:[state,smartResolvedStyle(it),w,h,true]},it);
-        const handles=caps.handles ? await requestSmartCall(it,'handles',[state,w,h,smartResolvedStyle(it)]) || [] : [];
-        if(!current(e))return;
-        if(it.state!==state || it.w!==w || it.h!==h){e.dirty=true;return;}
-        e.behavior=behavior;e.kids=drawing.result.filter(c=>!c.editorOnly);
-        e.handles=handles.filter(h=>!h.editorOnly);paint(e);
-        e.host.dataset.smartReady='true';
-        e.next=drawing.refreshMs?performance.now()+drawing.refreshMs:Infinity;
-      }catch(err){if(current(e))e.next=performance.now()+SMART_BACKOFF_MS;}
-      finally{
-        e.busy=false;
-        if(current(e) && e.dirty)void refresh(e);
-        schedule();
-      }
-    }
-    function point(e,event,parent=false){
-      const matrix=(parent?e.host:e.local).getScreenCTM();
-      return matrix?new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix.inverse()):null;
-    }
-    function valid(p){return !p.cancelled && current(p.entry);}
-    function cancelPresses(){
-      for(const p of presses){
-        p.cancelled=true;p.release();
-        if(p.original && !p.finished){
-          p.entry.item.state=p.original.state;p.entry.item.w=p.original.w;p.entry.item.h=p.original.h;
-          p.entry.offset=p.original.offset;p.entry.angle=p.original.angle;
-          if(current(p.entry)){paint(p.entry);void refresh(p.entry);}
-        }
-      }
-      currentPress=null;
-    }
-    async function processPress(p){
-      const e=p.entry,it=e.item;
-      if(!valid(p))return;
-      p.original={state:it.state,w:it.w,h:it.h,offset:{...e.offset},angle:e.angle};
-      const start=point(e,p.down),parentStart=point(e,p.down,true);
-      if(!start || !parentStart)return;
-      const center={x:it.x+e.offset.x+it.w/2,y:it.y+e.offset.y+it.h/2};
-      const startAngle=Math.atan2(parentStart.y-center.y,parentStart.x-center.x);
-      let handle=null;
-      if(p.rotate){if(e.behavior.rotate)p.mode='rotate';}
-      else if(p.resize){if(e.behavior[p.resize==='width'?'resizeWidth':'resizeHeight'])p.mode=p.resize;}
-      else{
-        const id=await requestSmartCall(it,'hitEdit',[it.state||{},start.x,start.y,it.w,it.h,smartResolvedStyle(it)]);
-        if(!valid(p))return;
-        // Resolve fresh descriptors, including editorOnly handles, before considering body movement.
-        const hs=await requestSmartCall(it,'handles',[it.state||{},it.w,it.h,smartResolvedStyle(it)]) || [];
-        if(!valid(p))return;
-        const hit=hs.find(h=>h.id===id);
-        if(hit?.editorOnly)return;
-        handle=hit;
-        if(handle)p.mode='handle';else if(e.behavior.move)p.mode='move';
-      }
-      if(!p.mode)return;
-      let sequence=0,applied=-1;
-      p.update=()=>{sequence++;p.wake?.();p.wake=null;};
-      const apply=async event=>{
-        if(!valid(p))return;
-        const at=point(e,event),parentAt=point(e,event,true);
-        if(!at || !parentAt)return;
-        if(p.mode==='move'){
-          e.offset={x:p.original.offset.x+parentAt.x-parentStart.x,y:p.original.offset.y+parentAt.y-parentStart.y};
-          position(e);
-        }else if(p.mode==='rotate'){
-          const delta=Math.atan2(parentAt.y-center.y,parentAt.x-center.x)-startAngle;
-          // Snap the visible angle, including the rotations encoded in the frozen SVG wrappers.
-          const base=(it.rotation||0)+(it.group!=null?(it.groupRotation||0):0);
-          const angle=base+p.original.angle+Math.atan2(Math.sin(delta),Math.cos(delta));
-          e.angle=snapRotation(angle,event.shiftKey)-base;
-          position(e);
-        }else if(p.mode==='width' || p.mode==='height'){
-          const c=Math.cos(p.original.angle),s=Math.sin(p.original.angle);
-          const dx=parentAt.x-parentStart.x,dy=parentAt.y-parentStart.y;
-          if(p.mode==='width')it.w=Math.max(20,Math.min(1000000,p.original.w+c*dx+s*dy));
-          else it.h=Math.max(20,Math.min(1000000,p.original.h-s*dx+c*dy));
-          // Preserve the opposite edge as the center pivot shifts with the new dimensions.
-          const halfW=(it.w-p.original.w)/2,halfH=(it.h-p.original.h)/2;
-          e.offset={x:p.original.offset.x+(c-1)*halfW-s*halfH,y:p.original.offset.y+s*halfW+(c-1)*halfH};
-          position(e);
-          void refresh(e);
-        }else{
-          const next=await requestSmartCall(it,'dragEdit',[it.state||{},handle.id,at.x,at.y,it.w,it.h,smartResolvedStyle(it)]);
-          if(valid(p) && next){it.state=next;void refresh(e);}
-        }
-      };
-      // Coalesce moves while a hook runs, retaining the final position and processing quick
-      // released clicks in order. Click-kind handles run exactly once on release.
-      while(valid(p) && !p.released){
-        if(handle?.kind!=='click' && p.latest && sequence!==applied){
-          applied=sequence;await apply(p.latest);
-        }else await new Promise(resolve=>{p.wake=resolve;});
-      }
-      if(!valid(p))return;
-      // Like the editor, preserve the last moved angle if Shift is released before pointerup.
-      if(p.mode==='rotate'){if(p.latest)await apply(p.latest);}
-      else if(handle?.kind==='click' || (handle && !p.latest))await apply(p.down);
-      else if(p.latest || p.up)await apply(p.up || p.latest);
-      if(valid(p))p.finished=true;
-    }
-    function activate(id){
-      cancelPresses();select(null);
-      for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));
-      epoch++;clearTimeout(timer);timer=null;activeTabId=id;
-      const doc=documents.find(d=>d.id===id);entries=doc?.entries || [];items=entries.map(e=>e.item);
-      for(const e of entries){e.epoch=epoch;e.next=Infinity;e.caps=null;void refresh(e);}
-    }
-    for(const doc of documents){
-      const panel=documents.length===1?document.body:[...document.querySelectorAll('.tab-panel')].find(p=>p.dataset.tabId===doc.id);
-      doc.entries=doc.shapes.map(({index,item})=>{
-        const host=panel.querySelector(`[data-smart-index="${index}"]`),local=host.firstElementChild;
-        const e={item,host,local,offset:{x:0,y:0},angle:0,behavior:{move:false,rotate:false,resizeWidth:false,resizeHeight:false},kids:[],handles:[],epoch:-1,next:Infinity};
-        host.style.touchAction='none';host.style.userSelect='none';
-        host.addEventListener('pointerdown',event=>{
-          if(event.button!==0 || currentPress || document.hidden || event.target.closest('a'))return;
-          event.preventDefault();
-          const p={entry:e,down:{clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey},pointerId:event.pointerId,
-            resize:event.target.closest('[data-resize-width]')?'width':event.target.closest('[data-resize-height]')?'height':null,
-            rotate:!!event.target.closest('[data-rotate]'),released:false};
-          select(e);
-          p.release=()=>{p.released=true;p.wake?.();p.wake=null;};
-          currentPress=p;presses.add(p);host.setPointerCapture(event.pointerId);
-          gestureQueue=gestureQueue.then(()=>processPress(p)).catch(()=>{}).finally(()=>presses.delete(p));
-        });
-        return e;
-      });
-    }
-    window.addEventListener('pointerdown',event=>{
-      if(event.button===0 && !currentPress && !event.target.closest('[data-smart-index]'))select(null);
-    });
-    window.addEventListener('pointermove',event=>{
-      const p=currentPress;if(!p || p.pointerId!==event.pointerId)return;
-      p.latest={clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey};p.update?.();
-    });
-    window.addEventListener('pointerup',event=>{
-      const p=currentPress;if(!p || p.pointerId!==event.pointerId)return;
-      p.up={clientX:event.clientX,clientY:event.clientY,shiftKey:event.shiftKey};currentPress=null;p.release();
-    });
-    window.addEventListener('pointercancel',event=>{
-      if(currentPress?.pointerId===event.pointerId)cancelPresses();
-    });
-    window.addEventListener('keydown',event=>{if(event.key==='Escape'){cancelPresses();select(null);}});
-    document.addEventListener('visibilitychange',()=>{
-      if(document.hidden){cancelPresses();for(const it of items)disposeSmartExecution(smartItemExecutions.get(it));clearTimeout(timer);timer=null;}
-      else for(const e of entries){e.epoch=epoch;void refresh(e);}
-    });
-    window.addEventListener('pagehide',()=>{cancelPresses();clearTimeout(timer);regenerateSmartSandbox();});
-    window.addEventListener('pageshow',event=>{if(event.persisted)activate(activeTabId);});
-    document.querySelectorAll('.tab-select').forEach(btn=>btn.addEventListener('click',()=>activate(btn.dataset.tabId)));
-    activate(documents[0].id);
-  }
-  function htmlSmartSource(documents){
-    // Share the actual sandbox, validators and drawing primitives. No second implementation of
-    // the script contract, text layout, arcs or style inheritance is maintained for exports.
-    const values={SMART_MAX_REPLY,SMART_WORKER_SRC,SMART_CALL_TIMEOUT_MS,SMART_STARTUP_TIMEOUT_MS,SMART_MAX_RESIDENT_WORKERS,SMART_BACKOFF_MS,
-      MAX_SCRIPT,MAX_STATE_JSON,MAX_POINTS,MAX_TEXT,FONTS,NIB_ANGLE,NIB_THICK,NIB_SPEED_EASE,MD_HEADING_SCALE,MD_LINK_COLOR,MD_TOP_PAD,
-      smartStyleFields,smartPresetColors};
-    let source=Object.entries(values).map(([key,value])=>`const ${key}=${JSON.stringify(value)};`).join('\n');
-    source+=`\nconst SMART_HOOKS=new Set(${JSON.stringify([...SMART_HOOKS])}),HEAD_STYLES=new Set(${JSON.stringify([...HEAD_STYLES])}),MD_INLINE_RE=${MD_INLINE_RE};\n`;
-    source+=[isNum,isColor,norm,scriptOf,smartCancelled,createSmartExecution,smartExecutionCurrent,smartItemExecution,stopSmartOwnerRequests,
-      disposeSmartExecution,createSmartSandbox,ensureSmartSandbox,regenerateSmartSandbox,dispatchSmartSandboxNext,requestSmartSandbox,requestSmartCall,requestSmartCaps,
-      smartNumber,normalizeSmartRefresh,normalizeSmartState,normalizeSmartChild,validateSmartReply,smartResolvedStyle,snapRotation,
-      strokeOn,strokeWidthOf,headsOf,headVariantOf,arrowHeadGeom,arrowHeadSegments,arrowHeadOp,fillOf,strokeOf,dashArrayFor,dashOf,boxStyle,
-      nibWidths,chiselOps,smoothSegments,polyCurveSegments,polyBridgeSegments,curveEndFrom,primitiveShapeOps,
-      fontStr,familyOf,fontPxOf,textAnchorX,wrapTextToWidth,layoutWrappedText,markdownBodyOf,parseInline,parseMarkdownBlocks,safeHref,mdBlockFontPx,mdFontString,
-      MD_MAX_DIGIT_LABEL_W,tokenizeRuns,isListBlock,mdBlockGapAfter,layoutMarkdownBlocks,escXml,svgArcD,pathD,styleAttrs,opToSVG]
-      .map(fn=>`const ${fn.name}=${fn.toString()};`).join('\n');
-    const data=JSON.stringify(documents).replace(/</g,'\\u003c');
-    return `(${htmlSmartRuntime.toString().replace('/* shared smart runtime */',()=>source)})(${data});`.replace(/<\/script/gi,'<\\/script');
-  }
-
-  // With workspace controls enabled, exports every tab, each as its own full-canvas
-  // SVG (1:1, no crop, same as before), switchable via a tab bar that visually matches the app's own
-  // (click to switch, without renaming or closing). Smart shapes retain their scripted controls.
-  // Read each working document just like exportWorkspace(): localStorage can be stale or unavailable.
-  // Pass its own items/assets through serialization without modifying the active document's state.
-  // With workspace controls disabled, only the active sketch is exported. cssW/cssH are shared.
-  async function exportHtml(){
-    if(textInput.style.display==='block') commitText();
-    cancelSmartGestures(true);
-    await smartHitSettled;await shapePlacementQueue;
-    rememberActiveTab();
-    const exportTabs=features.workspace ? tabs : tabs.filter(t=>t.id===activeTabId);
-    const tabData = await Promise.all(exportTabs.map(async t=>{
-      const doc = tabDocument(t.id),scene=clone(doc.items);
-      const svg = await itemsToSVGMarkup(scene, {width:cssW, height:cssH, assets:doc.assets,liveSmart:true});
-      return { id:t.id, name:t.name, items:scene, svg };
-    }));
-
-    if(tabData.every(t=>t.items.length===0)){ toast('Nothing to export yet'); return; }
-
-    let html;
-    if(tabData.length < 2){
-      // A single sketch needs no tab bar. Its SVG also provides the no-JavaScript fallback.
-      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title></head><body style="margin:0">${tabData[0].svg}</body></html>`;
-    } else {
-      const css = `body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-      .tabbar{display:flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border-bottom:1px solid #e5e7eb;overflow-x:auto}
-      .tab-select{appearance:none;border:1px solid transparent;background:transparent;height:28px;padding:0 10px;border-radius:6px;font-size:14px;font-weight:550;color:#1f2937;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
-      .tab-select:hover{background:#f3f4f6}
-      .tab-select.active{background:#eef2ff;color:#6366f1}`;
-      const bar = `<div class="tabbar">${tabData.map((t,i)=>
-        `<button type="button" class="tab-select${i===0?' active':''}" data-tab-id="${escXml(t.id)}">${escXml(t.name)}</button>`
-      ).join('')}</div>`;
-      const panels = tabData.map((t,i)=>
-        `<div class="tab-panel" data-tab-id="${escXml(t.id)}"${i===0?'':' style="display:none"'}>${t.svg}</div>`
-      ).join('');
-      const script = `document.querySelectorAll('.tab-select').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          var id = btn.dataset.tabId;
-          document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display = (p.dataset.tabId===id ? '' : 'none'); });
-          document.querySelectorAll('.tab-select').forEach(function(b){ b.classList.toggle('active', b===btn); });
-        });
-      });`;
-      html = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Sketch</title><style>${css}</style></head><body>${bar}${panels}<script>${script}<\/script></body></html>`;
-    }
-    if(tabData.some(t=>t.items.some(it=>it.type==='smart'))){
-      const data=tabData.map(t=>({id:t.id,shapes:t.items.flatMap((item,index)=>item.type==='smart'?[{index,item}]:[])}));
-      html=html.replace('</body>',()=>`<script>${htmlSmartSource(data)}<\/script></body>`);
-    }
-    const blob = new Blob([html], {type:'text/html'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.html';
-    a.click();
-    URL.revokeObjectURL(url);
-    toast('Saved HTML');
-  }
   // ---------- save / open the sketch as a file (our own JSON format) ----------
   function exportProject(){
     const data = {
       app: 'SimpleCanvas',
       version: FORMAT_VERSION,
       savedAt: new Date().toISOString(),
-      items,
+      items:itemsForFile(items),
       assets: referencedAssets()
     };
     downloadJSON('sketch-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json', data);
@@ -6915,7 +5547,7 @@ self.onmessage = function(e){
   // ---------- toolbar wiring ----------
   function setTool(t){
     if(t==='shape' && !features.shapeLibrary) return;
-    if(t!==ui.tool){lastInsert=null;insertHover=null;if(!shapePlacementOwner)shapePlacementEpoch++;cancelSmartGestures();editingSmartIdx=null;}
+    if(t!==ui.tool){lastInsert=null;insertHover=null;}
     if(ui.tool==='polygon' && polyDraft && t!=='polygon') cancelPolygon();
     ui.tool = t;
     document.querySelectorAll('[data-tool].btn').forEach(b=>{
@@ -7143,7 +5775,7 @@ self.onmessage = function(e){
     shapeLibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if(open){
       renderShapeLibrary(); fitShapePicker();
-      offerMissingSmartPreviews(shapeLibrary);
+
     }
   }
   function fitShapePicker(){
@@ -7182,890 +5814,7 @@ self.onmessage = function(e){
   });
   document.getElementById('importLibraryBtn').addEventListener('click', ()=>shapeLibraryInput.click());
   document.getElementById('exportLibraryBtn').addEventListener('click', exportShapeLibrary);
-  document.getElementById('generateShapePreviewsBtn').addEventListener('click',()=>offerMissingSmartPreviews(shapeLibrary,true));
 
-  // ---------- smart-object authoring dialog ----------
-  // Prefilled into a fresh dialog as a working, editable starting point -- see CLAUDE.md's smart-object
-  // notes for the script contract this (and any other smart object) must implement.
-  const CLOCK_EXAMPLE_SCRIPT = `({
-  // Default state for a freshly-placed instance -- classic "watch ad" time.
-  initState(){ return { h:10, m:10 }; },
-
-  // Called fresh on every render. state = the current time; style = the container's own resolved
-  // Fill/Stroke/Stroke-width/Text-color (whatever the toolbar dropdowns currently show for THIS
-  // object); w/h = the box's current size (changes live while resizing).
-  children(state, style, w, h){
-    const cx = w/2, cy = h/2;              // box center, in local (0,0)-(w,h) coordinates
-    const r = Math.min(w,h)/2;             // face radius
-
-    // Face + ticks always use HALF the dropdown's stroke width (min 1px), regardless of how thick
-    // the hands themselves are.
-    const thin = Math.max(1, (style.size||4)/2);
-
-    const items = [
-      // Face: color AND fill follow the container's own style (style.color / style.fill / style.fillColor)
-      { type:'ellipse', x:0, y:0, w, h,
-        color: style.color, strokeOn:true, size: thin,
-        fill: style.fill, fillColor: style.fillColor },
-    ];
-
-    // 12 hour ticks, arranged radially, with a 4px gap from the face's own edge
-    for(let i=0; i<12; i++){
-      const a = i/12 * 2*Math.PI;          // this tick's angle (0 = 12 o'clock, clockwise)
-      items.push({
-        type:'line', color: style.color, size: thin,
-        x1: cx + Math.sin(a)*(r-12), y1: cy - Math.cos(a)*(r-12),   // inner end
-        x2: cx + Math.sin(a)*(r-4),  y2: cy - Math.cos(a)*(r-4),    // outer end (4px short of the face edge)
-      });
-    }
-
-    // Hour/minute hand angles, derived from the current state
-    const hourA = ((state.h % 12) + state.m/60) / 12 * 2*Math.PI;   // hour hand also drifts with the minutes
-    const minA  = state.m/60 * 2*Math.PI;
-
-    // Hour hand: short (50% of radius), full dropdown stroke width
-    items.push({
-      type:'line', x1:cx, y1:cy,
-      x2: cx + Math.sin(hourA)*r*0.5, y2: cy - Math.cos(hourA)*r*0.5,
-      color: style.color, size: style.size||4,
-    });
-
-    // Minute hand: longer (70% of radius), 1px thinner than the hour hand
-    items.push({
-      type:'line', x1:cx, y1:cy,
-      x2: cx + Math.sin(minA)*r*0.7, y2: cy - Math.cos(minA)*r*0.7,
-      color: style.color, size: Math.max(1, (style.size||4)-1),
-    });
-
-    return items;
-  },
-
-  // Marks where each hand can be grabbed in edit mode (small solid circles drawn by the app itself
-  // -- this only reports positions, it doesn't draw anything). Same points hitEdit checks against.
-  handles(state, w, h){
-    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
-    const hourA = ((state.h%12) + state.m/60) / 12 * 2*Math.PI;
-    const minA = state.m/60 * 2*Math.PI;
-    return [
-      { id:'minute', x: cx + Math.sin(minA)*r*0.7, y: cy - Math.cos(minA)*r*0.7 },
-      { id:'hour',   x: cx + Math.sin(hourA)*r*0.5, y: cy - Math.cos(hourA)*r*0.5 },
-    ];
-  },
-
-  // Called on every click while the object is in edit mode (lx/ly = click position, relative to
-  // the box's own top-left corner). Returns which hand was grabbed, or null for a miss.
-  hitEdit(state, lx, ly, w, h){
-    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
-    const hourA = ((state.h%12) + state.m/60) / 12 * 2*Math.PI;
-    const minA = state.m/60 * 2*Math.PI;
-
-    // "close enough to this hand's tip" (14px tolerance)
-    const near = (ang, len) => Math.hypot(
-      lx - (cx + Math.sin(ang)*len),
-      ly - (cy - Math.cos(ang)*len)
-    ) < 14;
-
-    if(near(minA, r*0.7)) return 'minute';   // minute hand checked first (usually the longer, outer one)
-    if(near(hourA, r*0.5)) return 'hour';
-    return null;   // missed both hands -- no drag starts
-  },
-
-  // Called on every mouse move while a hand is being dragged. Computes the new angle from the
-  // pointer position and turns it into the new time for whichever hand is currently grabbed.
-  dragEdit(state, handle, lx, ly, w, h){
-    const cx = w/2, cy = h/2;
-    // angle of the mouse relative to the center, 0 = straight up (12 o'clock), clockwise
-    let a = Math.atan2(lx-cx, -(ly-cy));
-    if(a < 0) a += 2*Math.PI;   // normalize to [0, 2*PI)
-
-    if(handle === 'minute') return { ...state, m: Math.round(a/(2*Math.PI)*60) % 60 };
-    if(handle === 'hour'){
-      const hf = a/(2*Math.PI)*12;
-      return { ...state, h: Math.floor(hf)%12 || 12 };   // "|| 12", not 0, so noon/midnight isn't stored as 0
-    }
-    return state;   // unknown handle -- leave state unchanged
-  },
-})`;
-  // Office's "block arrow" shape: two draggable adjustment handles control the arrowhead's
-  // proportions relative to the shaft, independent of the container's own w/h (which only sets the
-  // arrow's overall size/aspect ratio, same as resizing any other shape).
-  const ARROW_EXAMPLE_SCRIPT = `({
-  // shaftRatio: shaft thickness as a fraction of the box's own half-height.
-  // headLenRatio: arrowhead length as a fraction of the box's own width.
-  initState(){ return { shaftRatio: 0.5, headLenRatio: 0.35 }; },
-
-  // A single 7-point polygon (shaft rectangle + triangular head), fully following the container's
-  // own style -- unlike the clock, nothing here is hard-coded, since there's only one shape and no
-  // reason to override the toolbar's own Fill/Stroke/Text-color choices.
-  children(state, style, w, h){
-    const cy = h/2;
-    const headStart = w * (1 - state.headLenRatio);   // x where the head starts widening
-    const shaftHalf = (h/2) * state.shaftRatio;        // half the shaft's own thickness
-
-    return [{
-      type:'polygon',
-      points: [
-        {x:0,         y:cy-shaftHalf},
-        {x:headStart, y:cy-shaftHalf},
-        {x:headStart, y:0},            // back corner of the head (top)
-        {x:w,         y:cy},           // tip
-        {x:headStart, y:h},            // back corner of the head (bottom)
-        {x:headStart, y:cy+shaftHalf},
-        {x:0,         y:cy+shaftHalf},
-      ],
-      color: style.color, size: style.size||4,
-      fill: style.fill, fillColor: style.fillColor, strokeOn: style.strokeOn,
-    }];
-  },
-
-  // Same two points hitEdit checks against -- marked as small solid circles in edit mode.
-  handles(state, w, h){
-    const cy = h/2;
-    const headStart = w * (1 - state.headLenRatio);
-    const shaftHalf = (h/2) * state.shaftRatio;
-    return [
-      { id:'headLen', x: headStart, y: 0 },
-      { id:'shaft', x: headStart/2, y: cy-shaftHalf },
-    ];
-  },
-
-  // 'shaft' handle sits on the shaft's own top edge; 'headLen' sits on the head's back corner.
-  // Both are recomputed from the CURRENT state, so they track the shape as it's being adjusted.
-  hitEdit(state, lx, ly, w, h){
-    const cy = h/2;
-    const headStart = w * (1 - state.headLenRatio);
-    const shaftHalf = (h/2) * state.shaftRatio;
-    const near = (x,y) => Math.hypot(lx-x, ly-y) < 12;
-
-    if(near(headStart, 0)) return 'headLen';
-    if(near(headStart/2, cy-shaftHalf)) return 'shaft';
-    return null;
-  },
-
-  // Dragging 'shaft' up/down changes the shaft's thickness; dragging 'headLen' left/right changes
-  // how much of the arrow's length the head takes up. shaftRatio's upper clamp is 1 (not less) so
-  // the shaft can be widened all the way up to the head's own back-corner width -- headLenRatio's
-  // upper clamp stays short of 1 since a head consuming the whole box would leave no shaft at all.
-  dragEdit(state, handle, lx, ly, w, h){
-    if(handle === 'shaft'){
-      const r = Math.max(0.05, Math.min(1, Math.abs(ly - h/2)/(h/2)));
-      return { ...state, shaftRatio: r };
-    }
-    if(handle === 'headLen'){
-      const r = Math.max(0.05, Math.min(0.9, 1 - lx/w));
-      return { ...state, headLenRatio: r };
-    }
-    return state;
-  },
-})`;
-  // "Arc": two independently draggable legs (a1, a2) define a circular arc. Fully
-  // inherits the container's own style (line color, stroke width, fill on/off + fill color), like
-  // Arrow -- nothing hard-coded, since there's only one shape and no reason to override the
-  // toolbar's own choices. The first template to use the 'A' (arc) path-segment support (see the
-  // script-contract section above) -- a single 'polygon' child whose points carry an arcTo marker
-  // instead of drawing the arc as many straight segments.
-  //
-  // state.a1/a2 are in this app's own angle convention (0 = top/12 o'clock, positive = clockwise --
-  // same as Clock/Chart). The swept arc always runs CLOCKWISE from a1 to a2 (wrapping around if a2
-  // is numerically "before" a1), matching how two independently rotatable legs would work.
-  //
-  // Fill on ("!= none"): the arc closes back through the center -- a full pie wedge, one CLOSED
-  // polygon (center, arc-start, arc-end). Fill off: just the bow itself -- an OPEN polygon
-  // (arc-start, arc-end only), no center point, so nothing connects the two legs' tips.
-  const ARC_EXAMPLE_SCRIPT = `({
-  initState(){ return { a1: 0, a2: Math.PI/2 }; },   // a visible quarter-turn by default
-
-  children(state, style, w, h){
-    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
-    const a1 = state.a1;
-    const sweep = ((state.a2 - state.a1) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
-    const a2 = a1 + sweep;   // numerically >= a1, so ctx.arc/svgArcD sweep the intended direction
-    const arcStart = { x: cx+r*Math.sin(a1), y: cy-r*Math.cos(a1), arcTo:{cx,cy,r,a1,a2} };
-    const arcEnd = { x: cx+r*Math.sin(a2), y: cy-r*Math.cos(a2) };
-    const points = style.fill ? [{x:cx,y:cy}, arcStart, arcEnd] : [arcStart, arcEnd];
-
-    return [{
-      type:'polygon', points, closed: !!style.fill,
-      color: style.color, size: style.size||4, dash: style.dash,
-      fill: style.fill, fillColor: style.fillColor, strokeOn: style.strokeOn,
-    }];
-  },
-
-  handles(state, w, h){
-    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
-    return [
-      { id:'a1', x: cx+r*Math.sin(state.a1), y: cy-r*Math.cos(state.a1) },
-      { id:'a2', x: cx+r*Math.sin(state.a2), y: cy-r*Math.cos(state.a2) },
-    ];
-  },
-
-  hitEdit(state, lx, ly, w, h){
-    const cx = w/2, cy = h/2, r = Math.min(w,h)/2;
-    const near = a => Math.hypot(lx-(cx+r*Math.sin(a)), ly-(cy-r*Math.cos(a))) < 14;
-    if(near(state.a1)) return 'a1';
-    if(near(state.a2)) return 'a2';
-    return null;
-  },
-
-  dragEdit(state, handle, lx, ly, w, h){
-    if(handle !== 'a1' && handle !== 'a2') return state;
-    const cx = w/2, cy = h/2;
-    let a = Math.atan2(lx-cx, -(ly-cy)); if(a < 0) a += 2*Math.PI;
-    return { ...state, [handle]: a };
-  },
-})`;
-  // A 60-minute visual countdown timer (like the well-known "Time Timer" product): a red pie wedge
-  // shows time remaining and shrinks as the hand is dragged toward the top. Structurally a sibling of
-  // the Clock reference template (same face/tick-mark/hand pattern), but with a single value instead
-  // of hour+minute, and a filled wedge instead of two hands.
-  //
-  // state.value is NEGATIVE minutes remaining (-60 = just started/full disk, 0 = time's up/empty),
-  // counting UP toward zero -- a countdown-display convention (like a "T-minus" readout), per explicit
-  // request. minutesRemaining = -state.value (0..60) drives the wedge's sweep angle.
-  //
-  // The wedge uses the 'A' (arc) path-segment support added for the Arc reference template -- a
-  // single 'polygon' child (center, arcStart-with-arcTo, arcEnd, closed) instead of approximating the
-  // curve with dozens of straight segments. Text labels reuse the bar chart's own fix: 'text' children
-  // need explicit strokeOn:false/fill:false, or the 'text' op's own "box on unless told off" default
-  // draws a stray border behind every number.
-  //
-  // initStyle() starts the font at 12px (matching Chart's own precedent) -- the toolbar's normal
-  // 28px default, applied to 12 labels packed around a 180px dial, both overlaps neighboring labels
-  // and (see labelW below) forces the numbers ring so far inward there's no room left for the tick
-  // marks. A script-chosen small starting size, still fully adjustable afterward via the ordinary
-  // Font-size dropdown like any other template, is the same fix Chart already established.
-  const TIMER_EXAMPLE_SCRIPT = `({
-  // Starts at 45 minutes remaining (not a full 60) -- a freshly-placed instance, and its own Shape
-  // Library thumbnail, shows the red wedge immediately at a partial, recognizable 3/4 sweep instead
-  // of a plain full disk that could be mistaken for an unset/empty state.
-  initState(){ return { value: -45 }; },
-  // fillColor defaults to red (the iconic look of this kind of timer), but -- unlike the fixed,
-  // non-toolbar-driven red the wedge started with -- it's just the normal starting value of an
-  // ordinary styleable field now, changeable afterward via the toolbar's own Fill-color dropdown
-  // like any other item. w/h are 30% bigger than the generic 180x180 default (234x234, still
-  // square) -- with 12 numbers plus 60 tick marks packed around the dial, the extra room reads
-  // noticeably less cramped than the generic size, per explicit request.
-  // h = the 234px dial plus room for the "N Minutes left" line under it (see _dial)
-  initStyle(){ return { fontSize: 12, fillColor: '#dc2626', w: 234, h: 278 }; },
-
-  // Radial layout, innermost to outermost: the arc, then the tick ring (5-minute major ticks and
-  // 1-minute minor ticks sharing the same outer edge), then the numbers -- sized off the ACTUAL
-  // font size (not a fixed guess) so the two-digit labels never wrap no matter what the toolbar's
-  // Size dropdown is set to. Real bug this replaced: a fixed 28x18 label box wrapped every number
-  // into two stacked lines at the toolbar's default 28px font (see initStyle() above for the other
-  // half of that fix -- a smaller starting size so the ring isn't forced this far inward to begin with).
-  // Shared between children() (drawing) and handles()/hitEdit() (hit-testing the hand, which sits
-  // exactly wedgeR from center -- see below) so both can never drift out of sync with each other,
-  // the exact class of bug the reversed-numbering fix hit earlier this session.
-  _layout(style, w, h){
-    const r = Math.min(w,h)/2;
-    const fontSize = (style && style.fontSize) || 16;
-    // capped at the container's own width -- an absurdly large toolbar font size (up to 400px) makes
-    // even a no-wrap-sized box wider than the whole dial; past that point wrapping returns rather than
-    // the box poking outside the item's own selection rectangle (same "script owns its own bounds"
-    // precedent as the Minimal template's radius clamp).
-    const labelW = Math.min(w-4, Math.max(30, fontSize*1.4 + 14));
-    const labelH = Math.min(h-4, Math.max(18, fontSize*1.3));
-    const numR = Math.max(0, Math.min(r*0.94, r - labelW/2 - 2, r - labelH/2 - 2));
-    const tickOuter = numR - labelH/2 - 4;
-    const tickInnerMajor = tickOuter - Math.max(8, r*0.12);
-    const tickInnerMinor = tickOuter - Math.max(4, r*0.06);
-    // never negative: scaled down far enough, the rings above eat the whole radius
-    const wedgeR = Math.max(0, tickInnerMajor - 6);
-    return { r, labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR };
-  },
-
-  // The box holds the dial on top and the "N Minutes left" line under it, so the readout stays inside
-  // the item's own selection rectangle. The readout scales with the box (twice the numbering font, at
-  // least 12% of the width) but is capped so the widest readout, "59 Minutes left" (about 7 em in this
-  // bold font, 8.6 leaves room for wider system fonts), fits the box's wrap width -- so it never wraps. D is the dial's diameter; every hook takes cx/cy from
-  // here so drawing and hit-testing agree.
-  _dial(style, w, h){
-    const fontSize = (style && style.fontSize) || 16;
-    const bigPx = Math.floor(Math.min(Math.max(fontSize*2, w*0.12), (w-12)/8.6));   // a text box wraps at w-12
-    const showText = bigPx >= 6;   // below the smallest font size the line is dropped, not squeezed
-    const textH = showText ? Math.ceil(bigPx*1.3) : 0, gap = showText ? Math.min(8, h*0.03) : 0;
-    const D = Math.max(0, Math.min(w, h - textH - gap));
-    return { bigPx, showText, textH, textY: D + gap, D, cx: w/2, cy: D/2 };
-  },
-
-  children(state, style, w, h){
-    const { bigPx, showText, textH, textY, D, cx, cy } = this._dial(style, w, h);
-    const minutesRemaining = Math.max(0, Math.min(60, -state.value));
-    // SVG's endpoint-form arc command can't represent an EXACT full-circle sweep (start/end point
-    // coincide, degenerating to nothing) -- clamped a hair short of 2*PI so "60 min remaining"
-    // (the initial state) still renders as a genuinely full-looking disk in both canvas and SVG.
-    const sweepLen = Math.min((minutesRemaining/60) * 2*Math.PI, 2*Math.PI - 0.0001);
-    // With the dial's numbering reversed (60/0 at top, counting DOWN clockwise -- see the number
-    // loop below), the red wedge must run FROM the current-time boundary CLOCKWISE UP TO the top,
-    // not from the top clockwise outward as before the numbers were reversed. boundaryAngle is
-    // where red meets white; the wedge always spans [boundaryAngle, boundaryAngle+sweepLen], and
-    // boundaryAngle+sweepLen is always exactly 2*PI (the top) by construction.
-    const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
-
-    const { r, labelW, labelH, numR, tickOuter, tickInnerMajor, tickInnerMinor, wedgeR } = this._layout(style, D, D);
-
-    const items = [
-      // face, always visible, follows the container's own stroke color -- like the clock's face
-      { type:'ellipse', x:cx-D/2, y:0, w:D, h:D, color: style.color, strokeOn:true, size: Math.max(1,(style.size||4)/2), fill:false },
-    ];
-
-    // the wedge -- always filled regardless of the container's own Fill toggle (a timer showing no
-    // color at all wouldn't make sense), but its COLOR follows the toolbar's Fill-color dropdown like
-    // any other filled shape; only the STARTING value (red) is hard-set, via initStyle() above.
-    // Skipped entirely at 0 (a zero-sweep arc is a degenerate sliver, not worth drawing).
-    if(minutesRemaining > 0 && wedgeR > 1){
-      const arcStart = { x: cx+wedgeR*Math.sin(boundaryAngle), y: cy-wedgeR*Math.cos(boundaryAngle),
-        arcTo:{cx, cy, r:wedgeR, a1:boundaryAngle, a2:boundaryAngle+sweepLen} };
-      const arcEnd = { x: cx, y: cy-wedgeR };   // a2 == boundaryAngle+sweepLen == 2*PI exactly == the top
-      items.push({ type:'polygon', points:[{x:cx,y:cy}, arcStart, arcEnd], closed:true,
-        color: style.fillColor, fill:true, fillColor: style.fillColor, strokeOn:false });
-    }
-
-    // 60 tick marks -- one per minute. The 12 five-minute marks are longer AND thicker; the other 48
-    // one-minute marks sit in between them (same outer edge, shorter, half the line width) -- the
-    // classic analog-dial look. Both follow the container's own stroke color, like the clock's ticks.
-    const thin = Math.max(1,(style.size||4)/2);
-    for(let i=0;i<60;i++){
-      const a = i/60 * 2*Math.PI;
-      const major = (i%5===0);
-      items.push({ type:'line', color: style.color, size: major ? thin : Math.max(0.5, thin*0.5),
-        x1:cx+Math.sin(a)*(major?tickInnerMajor:tickInnerMinor), y1:cy-Math.cos(a)*(major?tickInnerMajor:tickInnerMinor),
-        x2:cx+Math.sin(a)*tickOuter, y2:cy-Math.cos(a)*tickOuter });
-    }
-
-    // The dial numbers -- outermost ring, counting DOWN clockwise from the top: 0 sits at the top
-    // (never "60" -- that position is the SAME spot, so only the 0 is ever drawn there), 55 just
-    // clockwise of it, ..., 5 just counter-clockwise of it. This is the reverse of a normal clock
-    // face (which counts UP clockwise) -- matches the reference product's own convention.
-    for(let i=0;i<12;i++){
-      const a = i/12 * 2*Math.PI;
-      const value = (60 - i*5) % 60;
-      const lx = cx+Math.sin(a)*numR, ly = cy-Math.cos(a)*numR;
-      items.push({ type:'text', text:String(value), x:lx-labelW/2, y:ly-labelH/2, w:labelW, h:labelH,
-        align:'center', font: style.font, color: style.textColor, strokeOn:false, fill:false });
-    }
-
-    // the hand -- sitting right at the wedge's own boundary, and now exactly wedgeR long (the
-    // arc's own radius, "die Schenkellänge des Arcs"), same point handles()/hitEdit use below.
-    items.push({ type:'line', x1:cx, y1:cy, x2: cx+Math.sin(boundaryAngle)*wedgeR, y2: cy-Math.cos(boundaryAngle)*wedgeR,
-      color: style.color, size: style.size||4 });
-
-    // the big readout under the dial, inside the box -- sized in _dial so it never wraps
-    if(showText){
-      const bigFont = String(style.font || '').replace(/\\d+px/, bigPx+'px');
-      items.push({ type:'text', text: minutesRemaining + (minutesRemaining===1 ? ' Minute left' : ' Minutes left'),
-        x:0, y:textY, w, h:textH, align:'center', font: bigFont, color: style.textColor, strokeOn:false, fill:false });
-    }
-
-    return items;
-  },
-
-  // style is optional (added after handles()/hitEdit() first shipped, backward compatible) --
-  // needed here because wedgeR (and thus the hand's own length) depends on style.fontSize via the
-  // shared _layout() above; without it the hand's hit-test/marker position would drift away from
-  // where children() actually draws it the moment someone changes the toolbar's Font-size dropdown.
-  handles(state, w, h, style){
-    const { cx, cy, D } = this._dial(style||{}, w, h);
-    const { wedgeR } = this._layout(style||{}, D, D);
-    const minutesRemaining = Math.max(0, Math.min(60, -state.value));
-    const sweepLen = (minutesRemaining/60) * 2*Math.PI;
-    const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
-    return [{ id:'hand', x: cx+Math.sin(boundaryAngle)*wedgeR, y: cy-Math.cos(boundaryAngle)*wedgeR }];
-  },
-
-  hitEdit(state, lx, ly, w, h, style){
-    const { cx, cy, D } = this._dial(style||{}, w, h);
-    const { wedgeR } = this._layout(style||{}, D, D);
-    const minutesRemaining = Math.max(0, Math.min(60, -state.value));
-    const sweepLen = (minutesRemaining/60) * 2*Math.PI;
-    const boundaryAngle = (2*Math.PI - sweepLen) % (2*Math.PI);
-    const hx = cx+Math.sin(boundaryAngle)*wedgeR, hy = cy-Math.cos(boundaryAngle)*wedgeR;
-    return Math.hypot(lx-hx, ly-hy) < 14 ? 'hand' : null;
-  },
-
-  // Dragging all the way back to the top always resolves to 0 (not 60) -- the dial position at the
-  // top is inherently ambiguous between "just started" and "time's up" (a full sweep and a zero
-  // sweep look identical there), same wrap-around the clock's own hands already have at m=0/m=60.
-  // A genuinely full (60-minute) dial is only reachable via state.value directly (e.g. hand-editing
-  // saved JSON), not through initState() (now -45, see above) or through dragging the hand -- the
-  // hand alone can only reach 1..59 plus this one ambiguous 0/60 point, which resolves to 0
-  // (time's up reads as the more useful default of the two).
-  //
-  // 'a' is the raw pointer angle (boundaryAngle's own convention); inverted back to minutesRemaining
-  // to match the dial's reversed numbering -- dragging to the position labeled "N" now sets N
-  // minutes remaining, not the raw clockwise angle directly like before the numbers were reversed.
-  dragEdit(state, handle, lx, ly, w, h, style){
-    if(handle !== 'hand') return state;
-    const { cx, cy } = this._dial(style||{}, w, h);
-    let a = Math.atan2(lx-cx, -(ly-cy)); if(a<0) a += 2*Math.PI;
-    const minutes = Math.round(((2*Math.PI - a) % (2*Math.PI)) / (2*Math.PI) * 60) % 60;
-    return { ...state, value: -minutes };
-  },
-})`;
-  // A 4-bar chart with an editable bar COUNT, not just editable bar heights -- demonstrates
-  // children()'s editing flag (the "-"/"+" pair only renders while actually in edit mode),
-  // handles()'s kind:'click' (both are one-shot actions, not continuous drags -- see the comment
-  // on onDown's kind lookup for the bug this fixes), and initStyle() (12px starting font, no frame
-  // border, a wider-than-tall 240x160 starting size instead of the generic square default).
-  // Bar colors come from style.presetColors (the toolbar's own palette) rather than a hard-coded
-  // list, with white/black/"Dark" excluded (none of the three read well as a bar fill) and
-  // Red/Green/Blue/Yellow guaranteed first regardless of PRESETS' own declared order.
-  const BARCHART_EXAMPLE_SCRIPT = `({
-  initState(){ return { values: [30, 60, 45, 80] }; },
-  initStyle(){ return { fontSize: 12, strokeOn: false, w: 240, h: 160 }; },
-
-  children(state, style, w, h, editing){
-    const PRIORITY = ['#ef4444','#22c55e','#3b82f6','#eab308'];   // Red, Green, Blue, Yellow first
-    const EXCLUDE = ['#ffffff','#000000','#1f2937'];
-    const all = (style.presetColors && style.presetColors.length) ? style.presetColors : PRIORITY;
-    const COLORS = PRIORITY.concat(all.filter(c => !PRIORITY.includes(c) && !EXCLUDE.includes(c)));
-    const n = state.values.length;
-    const marginX = w*0.056, marginTop = h*0.105, marginBottom = h*0.105, gap = w*0.04;
-    const baseline = h - marginBottom;
-    const colW = (w - marginX*2 - gap*Math.max(0,n-1)) / n;
-    const maxBarH = baseline - marginTop;
-    const fontPx = style.fontSize || 16;
-
-    const items = [
-      // background (toolbar Fill) + enclosing frame (toolbar Stroke), spanning the whole container
-      { type:'rect', x:0, y:0, w, h, color:style.color, size:style.size||4,
-        fill:style.fill, fillColor:style.fillColor, strokeOn:style.strokeOn },
-      // axis: always solid black, 1px -- fixed, follows nothing
-      { type:'line', x1:marginX, y1:baseline, x2:w-marginX, y2:baseline, color:'#000000', size:1 },
-    ];
-
-    state.values.forEach((v,i) => {
-      const x = marginX + i*(colW+gap);
-      const barH = Math.max(0, Math.min(100, v))/100 * maxBarH, barTop = baseline-barH;
-      items.push({ type:'rect', x, y:barTop, w:colW, h:barH, color:COLORS[i%COLORS.length], fill:true, fillColor:COLORS[i%COLORS.length], strokeOn:false });
-      // value label, above the bar's own top edge -- toolbar font family/size, toolbar text color.
-      // strokeOn:false/fill:false keeps the text item's own default "box on unless told off" from
-      // drawing a stray border/fill behind every number.
-      items.push({ type:'text', text:String(Math.round(v)), x, y:barTop-fontPx*1.3, w:colW, h:fontPx*1.2,
-        align:'center', font:style.font, color:style.textColor, strokeOn:false, fill:false });
-    });
-
-    if(editing){
-      // ONE shared "-"/"+" pair, not one delete icon per bar -- deleting always drops the LAST bar,
-      // so there was never a reason to target a specific one. Centered together under the axis.
-      const cy = baseline + 12, iconGap = 12;
-      const mr = 5, mx = w/2 - iconGap;
-      items.push({ type:'line', x1:mx-mr, y1:cy, x2:mx+mr, y2:cy, color:'#dc2626', size:2 });
-      if(n < COLORS.length){
-        const pr = 6, px = w/2 + iconGap;
-        items.push({ type:'line', x1:px-pr, y1:cy, x2:px+pr, y2:cy, color:'#16a34a', size:2 });
-        items.push({ type:'line', x1:px, y1:cy-pr, x2:px, y2:cy+pr, color:'#16a34a', size:2 });
-      }
-    }
-    return items;
-  },
-
-  // Bar-top drag points get the generic blue-dot marker (kind defaults to 'drag'). "-"/"+" are
-  // marked kind:'click' -- draws their own glyph in children() instead AND tells onDown/onMove/onUp
-  // to resolve them once at release, not continuously while the pointer merely passes over them.
-  handles(state, w, h){
-    const marginX = w*0.056, marginTop = h*0.105, marginBottom = h*0.105, gap = w*0.04;
-    const baseline = h - marginBottom;
-    const n = state.values.length;
-    const colW = (w - marginX*2 - gap*Math.max(0,n-1)) / n;
-    const maxBarH = baseline - marginTop;
-    const hs = state.values.map((v,i) => {
-      const x = marginX + i*(colW+gap) + colW/2;
-      const barH = Math.max(0, Math.min(100, v))/100 * maxBarH;
-      return { id:'bar'+i, x, y: baseline-barH };
-    });
-    const cy = baseline + 12, iconGap = 12;
-    hs.push({ id:'del', x: w/2-iconGap, y: cy, kind:'click' });
-    hs.push({ id:'add', x: w/2+iconGap, y: cy, kind:'click' });
-    return hs;
-  },
-
-  hitEdit(state, lx, ly, w, h){
-    const n = state.values.length;
-    const marginX = w*0.056, marginTop = h*0.105, marginBottom = h*0.105, gap = w*0.04;
-    const baseline = h - marginBottom;
-    const colW = (w - marginX*2 - gap*Math.max(0,n-1)) / n;
-    const maxBarH = baseline - marginTop;
-    const cy = baseline + 12, iconGap = 12;
-    if(Math.hypot(lx-(w/2-iconGap), ly-cy) < 12) return 'del';
-    if(Math.hypot(lx-(w/2+iconGap), ly-cy) < 12) return 'add';
-    for(let i=0;i<n;i++){
-      const x = marginX + i*(colW+gap) + colW/2;
-      const barH = Math.max(0, Math.min(100, state.values[i]))/100 * maxBarH;
-      if(Math.hypot(lx-x, ly-(baseline-barH)) < 14) return 'bar'+i;
-    }
-    return null;
-  },
-
-  dragEdit(state, handle, lx, ly, w, h, style){
-    if(handle === 'add'){
-      const PRIORITY = ['#ef4444','#22c55e','#3b82f6','#eab308'];
-      const EXCLUDE = ['#ffffff','#000000','#1f2937'];
-      const all = (style && style.presetColors && style.presetColors.length) ? style.presetColors : PRIORITY;
-      const max = PRIORITY.concat(all.filter(c => !PRIORITY.includes(c) && !EXCLUDE.includes(c))).length;
-      if(state.values.length >= max) return state;
-      const v = Math.round(10 + Math.random()*80);   // 10..90, so a new bar is never empty or full-height
-      return { ...state, values: [...state.values, v] };
-    }
-    if(handle === 'del'){
-      if(state.values.length <= 1) return state;   // always keep at least one bar
-      return { ...state, values: state.values.slice(0, -1) };   // always the LAST bar
-    }
-    const barM = /^bar(\\d+)$/.exec(handle);
-    if(barM){
-      const i = Number(barM[1]);
-      const marginTop = h*0.105, marginBottom = h*0.105;
-      const baseline = h - marginBottom;
-      const maxBarH = baseline - marginTop;
-      const barH = Math.max(0, Math.min(maxBarH, baseline-ly));
-      const values = state.values.slice();
-      values[i] = Math.round(barH/maxBarH*100);
-      return { ...state, values };
-    }
-    return state;
-  },
-})`;
-  // A small, complete worked example -- a circle with one draggable handle that resizes it -- kept
-  // short enough to read end to end in one sitting. Demonstrates the smallest useful shape of a fully
-  // interactive smart object: one child, one state field, one handle. The drag is clamped on BOTH
-  // ends (min radius, and max radius capped at the container's own half-size) -- children are never
-  // auto-clipped to the container box (see shapeOps' 'smart' case), so a script that only clamps the
-  // lower bound can let its own geometry grow past the container's edges; every shipped template
-  // keeps its geometry a function of w/h for exactly this reason.
-  const MINIMAL_EXAMPLE_SCRIPT = `({
-  // The only state this object needs: its own radius. initState() has no w/h to work with (the
-  // container's size isn't decided yet when it runs), so this is a plain literal -- tuned to fill
-  // half the box's own half-size at the default 180x180 creation size, same proportion it filled
-  // at the old 120x120 default (30/60 there == 45/90 here).
-  initState(){ return { r: 45 }; },
-
-  // One child: a circle centered in the box, fully following the container's own style.
-  children(state, style, w, h){
-    return [{
-      type:'ellipse', x:w/2-state.r, y:h/2-state.r, w:state.r*2, h:state.r*2,
-      color: style.color, size: style.size, strokeOn: style.strokeOn,
-      fill: style.fill, fillColor: style.fillColor,
-    }];
-  },
-
-  // One handle, on the circle's own right edge -- same point handles() reports and hitEdit checks.
-  handles(state, w, h){ return [{ id:'r', x: w/2+state.r, y: h/2 }]; },
-
-  hitEdit(state, lx, ly, w, h){
-    const near = Math.hypot(lx-(w/2+state.r), ly-h/2) < 12;
-    return near ? 'r' : null;
-  },
-
-  // Clamped both ways: never smaller than 5px, never bigger than half the container's own box --
-  // that upper clamp is what keeps the circle from growing past the container's own edges.
-  dragEdit(state, handle, lx, ly, w, h){
-    if(handle !== 'r') return state;
-    const maxR = Math.min(w, h) / 2;
-    const r = Math.max(5, Math.min(maxR, Math.hypot(lx-w/2, ly-h/2)));
-    return { ...state, r };
-  },
-})`;
-  // Minimal, valid starting point for writing a smart object from scratch -- just the one required
-  // function, returning nothing yet.
-  const BLANK_EXAMPLE_SCRIPT = `({
-  initState(){ return {}; },
-  children(state, style, w, h){
-    return [];
-  },
-})`;
-  const LIVE_CLOCK_EXAMPLE_SCRIPT = `// Live local time. The app calls refreshMs after a live drawing and schedules the next refresh.
-// No interval, mutable counter, or persistent Worker is needed. Image exports are static snapshots; HTML stays live.
-({
-  initState(){ return {}; },
-  initStyle(){ return { w:180, h:208, strokeOn:false, fontSize:14 }; },
-  refreshMs(){ return 1000; },
-  children(state, style, w, h){
-    const now=new Date();
-    const d=Math.max(1,Math.min(w,h-28)), cx=w/2, cy=d/2, r=d/2;
-    const thin=Math.max(1,(style.size||2)/2);
-    const items=[{type:'ellipse',x:cx-r,y:0,w:d,h:d,color:style.color,size:thin,
-      strokeOn:true,fill:style.fill,fillColor:style.fillColor}];
-    for(let i=0;i<12;i++){
-      const a=i/12*Math.PI*2;
-      items.push({type:'line',x1:cx+Math.sin(a)*r*.84,y1:cy-Math.cos(a)*r*.84,
-        x2:cx+Math.sin(a)*r*.95,y2:cy-Math.cos(a)*r*.95,color:style.color,size:thin});
-    }
-    const seconds=now.getSeconds(), minutes=now.getMinutes()+seconds/60;
-    const hours=now.getHours()%12+minutes/60;
-    for(const [value,total,length,size,color] of [
-      [hours,12,.5,style.size||2,style.color],
-      [minutes,60,.72,style.size||2,style.color],
-      [seconds,60,.82,thin,style.textColor]
-    ]){
-      const a=value/total*Math.PI*2;
-      items.push({type:'line',x1:cx,y1:cy,x2:cx+Math.sin(a)*r*length,
-        y2:cy-Math.cos(a)*r*length,color,size});
-    }
-    const pad=n=>String(n).padStart(2,'0');
-    items.push({type:'text',x:0,y:d+4,w,h:24,
-      text:[now.getHours(),now.getMinutes(),seconds].map(pad).join(':'),
-      align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    return items;
-  },
-})
-`;
-  const STOPWATCH_EXAMPLE_SCRIPT = `// Double-click to reveal Start/Pause and Reset. Time is derived from saved timestamps, rather than
-// counting redraws. A running stopwatch continues across tab switches, backgrounding, and reloads.
-// Placement starts a fresh, stopped instance. Exported images capture the current reading; HTML keeps the controls and live timing.
-({
-  initState(){ return { elapsedMs:0, startedAt:null }; },
-  initStyle(){ return { w:260, h:110, fontSize:24, strokeOn:false }; },
-  _running(state){ return typeof state.startedAt==='number' && Number.isFinite(state.startedAt); },
-  _elapsed(state){
-    return Math.max(0,Number(state.elapsedMs)||0)+(this._running(state)?Math.max(0,Date.now()-state.startedAt):0);
-  },
-  refreshMs(state){ return this._running(state)?100:0; },
-  children(state, style, w, h, editing){
-    const tenths=Math.floor(this._elapsed(state)/100), pad=n=>String(n).padStart(2,'0');
-    const text=pad(Math.floor(tenths/36000))+':'+pad(Math.floor(tenths/600)%60)+':'+pad(Math.floor(tenths/10)%60)+'.'+tenths%10;
-    const running=this._running(state);
-    const items=[
-      {type:'rect',x:0,y:0,w,h,color:style.color,size:style.size,strokeOn:style.strokeOn,fill:style.fill,fillColor:style.fillColor},
-      {type:'text',x:0,y:0,w,h:h*.6,text,align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false}
-    ];
-    if(editing){
-      for(const [x,label] of [[0,running?'Pause':'Start'],[w/2,'Reset']]){
-        items.push({type:'rect',x:x+2,y:h*.64,w:Math.max(1,w/2-4),h:h*.32,
-          color:style.color,size:1,strokeOn:true,fill:false});
-        items.push({type:'text',x,y:h*.64,w:w/2,h:h*.32,text:label,align:'center',
-          font:style.font,color:style.textColor,strokeOn:false,fill:false});
-      }
-    }else{
-      items.push({type:'text',x:0,y:h*.64,w,h:h*.32,text:running?'Running':'Stopped',align:'center',
-        font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    }
-    return items;
-  },
-  handles(state, w, h){
-    return [{id:'toggle',x:w/4,y:h*.8,kind:'click'},{id:'reset',x:w*.75,y:h*.8,kind:'click'}];
-  },
-  hitEdit(state, lx, ly, w, h){
-    if(ly<h*.64 || ly>h*.96 || lx<0 || lx>w) return null;
-    return lx<w/2?'toggle':'reset';
-  },
-  dragEdit(state, handle){
-    if(handle==='reset') return {...state,elapsedMs:0,startedAt:null};
-    if(handle==='toggle') return this._running(state)
-      ? {...state,elapsedMs:this._elapsed(state),startedAt:null}
-      : {...state,startedAt:Date.now()};
-    return state;
-  },
-})
-`;
-  const RULER_EXAMPLE_SCRIPT = `// The same physical scale as drill-template.js: 96 canvas px = 1 inch = 25.4 mm.
-// Extending the ruler reveals more divisions without stretching them. Resize vertically to change
-// its height. Double-click, then click the unit label to cycle cm/mm, inch, and px.
-// In edit mode, the two HTML controls opt this instance into moving/rotating and/or extending in HTML.
-// Physical size is reliable in SVG printed at actual size; screens and browser printing may scale.
-({
-  initState(){ return { unit:'cm', allowMove:false, allowExtend:false }; },
-  exportBehavior(state){ return {move:state.allowMove===true,rotate:state.allowMove===true,resizeWidth:state.allowExtend===true}; },
-  initStyle(){ return { w:378, h:76, fontSize:12, strokeOn:false }; },
-  // Adjust these definitions to make a custom scale. minor is the spacing of the smallest tick;
-  // unitPx is the distance represented by one numbered unit. Both are in canvas pixels.
-  _scales:{
-    cm:{minor:96/25.4,majorEvery:10,unitPx:96/2.54,label:'cm / mm',radix:10},
-    in:{minor:96/16,majorEvery:16,unitPx:96,label:'inch',radix:2},
-    px:{minor:10,majorEvery:5,unitPx:1,label:'px',radix:10}
-  },
-  _unit(state){ return ['cm','in','px'].includes(state.unit)?state.unit:'cm'; },
-  children(state, style, w, h, editing){
-    const unit=this._unit(state), scale=this._scales[unit];
-    // Keep large imported/resized rulers within the app's child budget, dropping fine divisions
-    // first. Every remaining tick still uses the original physical scale.
-    const stride=Math.pow(scale.radix,Math.max(0,Math.ceil(Math.log(Math.max(1,w/scale.minor/400))/Math.log(scale.radix))));
-    const step=scale.minor*stride, majorEvery=Math.max(1,Math.round(scale.majorEvery/stride));
-    const baseline=h-4, majorLength=Math.min(22,h*.3), minorLength=majorLength*.45;
-    const baselineWidth=Math.max(1,style.size||1);
-    const items=[
-      {type:'rect',x:0,y:0,w,h,color:style.color,size:style.size,strokeOn:style.strokeOn,fill:style.fill,fillColor:style.fillColor},
-      // Filled strips have flat ends. A stroked line's rounded cap would protrude past zero.
-      {type:'rect',x:0,y:baseline-baselineWidth/2,w,h:baselineWidth,strokeOn:false,fill:true,fillColor:style.color}
-    ];
-    for(let i=0;i<=Math.floor(w/step+1e-9);i++){
-      const x=i*step, major=i%majorEvery===0;
-      const half=(unit==='cm' || unit==='in') && majorEvery>1 && majorEvery%2===0 && i%(majorEvery/2)===0;
-      // Zero starts at the left edge, with a normal tick and its label inside the scale.
-      const length=major?majorLength:half?majorLength*.72:minorLength;
-      const size=Math.max(1,(style.size||2)/2)*(unit==='cm' && !major ? .65 : 1);
-      // Keep the stroke's visible area inside the scale, including at zero and at thick settings.
-      const left=Math.max(0,x-size/2), right=Math.min(w,x+size/2);
-      items.push({type:'rect',x:left,y:baseline-length,w:right-left,h:length,strokeOn:false,fill:true,fillColor:style.color});
-      if(major)items.push({type:'text',x:i===0?0:x-20,y:baseline-majorLength-21,w:40,h:18,
-        text:String(Math.round(x/scale.unitPx*1000)/1000),align:i===0?'left':'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    }
-    const buttonW=Math.min(88,w), buttonX=w-buttonW;
-    if(w>180)items.push({type:'text',x:0,y:0,w:w-buttonW-8,h:20,align:'left',
-      text:(w/scale.unitPx).toFixed(unit==='px'?0:2)+' '+(unit==='in'?'in':unit),
-      font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    if(editing)items.push({type:'rect',x:buttonX,y:0,w:buttonW,h:22,color:style.color,size:1,strokeOn:true,fill:false,editorOnly:true});
-    items.push({type:'text',x:buttonX,y:0,w:buttonW,h:22,text:scale.label+(editing?' ↻':''),
-      align:'center',font:style.font,color:style.textColor,strokeOn:false,fill:false});
-    if(editing){
-      for(const [x,label,on] of [[0,'HTML: move / rotate',state.allowMove],[w/2,'HTML: extend',state.allowExtend]]){
-        items.push({type:'rect',x,y:h+6,w:w/2-4,h:24,strokeOn:true,color:style.color,size:1,
-          fill:true,fillColor:on?'#eef2ff':'#ffffff',editorOnly:true});
-        items.push({type:'text',x,y:h+6,w:w/2-4,h:24,text:label+(on?' ✓':' □'),align:'center',
-          font:style.font,color:style.textColor,strokeOn:false,fill:false,editorOnly:true});
-      }
-    }
-    return items;
-  },
-  handles(state, w, h){ return [
-    {id:'units',x:w-Math.min(88,w)/2,y:11,kind:'click'},
-    {id:'htmlMove',x:w/4,y:h+18,kind:'click',editorOnly:true},
-    {id:'htmlExtend',x:w*.75,y:h+18,kind:'click',editorOnly:true}
-  ]; },
-  hitEdit(state, lx, ly, w, h){
-    if(ly>=h+6 && ly<=h+30 && lx>=0 && lx<=w)return lx<w/2?'htmlMove':'htmlExtend';
-    return lx>=w-Math.min(88,w) && lx<=w && ly>=0 && ly<=22?'units':null;
-  },
-  dragEdit(state, handle){
-    if(handle==='htmlMove')return {...state,allowMove:!state.allowMove};
-    if(handle==='htmlExtend')return {...state,allowExtend:!state.allowExtend};
-    if(handle!=='units') return state;
-    const units=['cm','in','px'];return {...state,unit:units[(units.indexOf(this._unit(state))+1)%units.length]};
-  },
-})
-`;
-  const SMART_TEMPLATES = {
-    clock: { name:'Clock', script:CLOCK_EXAMPLE_SCRIPT },
-    liveClock: { name:'Live clock', script:LIVE_CLOCK_EXAMPLE_SCRIPT },
-    stopwatch: { name:'Stopwatch', script:STOPWATCH_EXAMPLE_SCRIPT },
-    ruler: { name:'Ruler', script:RULER_EXAMPLE_SCRIPT },
-    arrow: { name:'Arrow', script:ARROW_EXAMPLE_SCRIPT },
-    arc: { name:'Arc', script:ARC_EXAMPLE_SCRIPT },
-    timer: { name:'Timer', script:TIMER_EXAMPLE_SCRIPT },
-    chart: { name:'Chart', script:BARCHART_EXAMPLE_SCRIPT },
-    minimal: { name:'Minimal', script:MINIMAL_EXAMPLE_SCRIPT },
-    blank: { name:'', script:BLANK_EXAMPLE_SCRIPT },
-  };
-  const smartObjectDialog = document.getElementById('smartObjectDialog');
-  const smartObjectNameInput = document.getElementById('smartObjectNameInput');
-  const smartObjectScriptInput = document.getElementById('smartObjectScriptInput');
-  const smartObjectDialogError = document.getElementById('smartObjectDialogError');
-  const smartObjectDialogSubmit = document.getElementById('smartObjectDialogSubmit');
-  const smartTemplateSelect = document.getElementById('smartTemplateSelect');
-  let smartObjectEdit = null;
-  let smartObjectSubmitSeq = 0;
-  function configureSmartObjectDialog(edit){
-    smartObjectEdit=edit;smartObjectSubmitSeq++;
-    document.getElementById('smartObjectDialogTitle').textContent=edit?'Edit smart shape source':'Add smart shape';
-    document.getElementById('smartTemplateRow').hidden=!!edit;
-    smartObjectDialogSubmit.textContent=edit?'Save changes':'Create';
-    smartObjectDialogSubmit.disabled=false;
-    smartObjectDialogError.textContent='';
-  }
-  function editLibrarySmartSource(tpl,item){
-    if(!features.smartShapeAuthoring) return;
-    if(!shapeLibrary?.shapes.includes(tpl) || !tpl.items.includes(item) || item.type!=='smart') return;
-    configureSmartObjectDialog({library:shapeLibrary,entry:tpl,item,script:item.script});
-    smartObjectNameInput.value=tpl.name;
-    smartObjectScriptInput.value=item.script;
-    smartObjectDialog.showModal();smartObjectScriptInput.focus();
-    return new Promise(resolve=>smartObjectDialog.addEventListener('close',()=>resolve(),{once:true}));
-  }
-  function selectSmartTemplate(key){
-    const tpl = SMART_TEMPLATES[key];
-    if(!tpl) return;
-    smartObjectNameInput.value = tpl.name;
-    smartObjectScriptInput.value = tpl.script;
-    smartTemplateSelect.value = key;
-  }
-  smartTemplateSelect.addEventListener('change', ()=>selectSmartTemplate(smartTemplateSelect.value));
-  document.getElementById('newSmartObjectBtn').addEventListener('click', ()=>{
-    if(!features.smartShapeAuthoring) return;
-    configureSmartObjectDialog(null);
-    selectSmartTemplate('clock');
-    smartObjectDialog.showModal();
-    smartObjectNameInput.focus(); smartObjectNameInput.select();
-  });
-  document.getElementById('smartObjectDialogCancel').addEventListener('click', ()=>smartObjectDialog.close());
-  smartObjectDialog.addEventListener('close',()=>{smartObjectEdit=null;smartObjectSubmitSeq++;smartObjectDialogSubmit.disabled=false;});
-  smartObjectDialog.addEventListener('click', e=>e.stopPropagation());
-  smartObjectDialog.addEventListener('keydown', e=>e.stopPropagation());
-  document.getElementById('smartObjectDialogForm').addEventListener('submit', async e=>{
-    e.preventDefault();
-    if(!features.smartShapeAuthoring) return;
-    if(smartObjectDialogSubmit.disabled) return;
-    const edit=smartObjectEdit;
-    const name = smartObjectNameInput.value.trim();
-    const nameErr = validateShapeName(name,edit?.entry);
-    if(nameErr){ smartObjectDialogError.textContent = nameErr; return; }
-    const script = smartObjectScriptInput.value;
-    const seq=++smartObjectSubmitSeq;
-    const current=()=>seq===smartObjectSubmitSeq && smartObjectDialog.open && smartObjectEdit===edit &&
-      smartObjectNameInput.value.trim()===name && smartObjectScriptInput.value===script;
-    const execution=createSmartExecution({script},current);
-    smartObjectDialogSubmit.disabled=true;
-    try{
-      const caps = await requestSmartCaps(script,execution);
-      if(!current()) return;
-      if(!caps || !caps.children){
-        smartObjectDialogError.textContent = 'The script must be a JS expression evaluating to an object with a children(state, style, w, h) function.';
-        return;
-      }
-      if(edit){
-        if(shapeLibrary!==edit.library || !shapeLibrary.shapes.includes(edit.entry) || !edit.entry.items.includes(edit.item) || edit.item.script!==edit.script){
-          smartObjectDialogError.textContent='This library entry changed while you were editing. Reopen its source to continue.';
-          return;
-        }
-        if(name===edit.entry.name && script===edit.item.script){smartObjectDialog.close();return;}
-        edit.entry.name=name;
-        if(script!==edit.item.script){
-          edit.item.script=script;
-          invalidateShapePreview(edit.entry);smartPreviewConsent.add(edit.entry);
-        }
-        edit.entry.savedAt=new Date().toISOString();
-        shapeLibraryChanged();smartObjectDialog.close();setShapePicker(true);
-        toast('Updated "'+name+'" — export the library to keep your changes');
-        return;
-      }
-      const st = styleFor('smart');
-      let w = 180, h = 180;   // bigger than the old 120x120 -- a script's own initStyle() may override it below
-      // A brand-new definition shouldn't inherit whatever color/fill happened to be left over from
-      // the last unrelated action on some other object -- always start black/no-fill, regardless of
-      // the shared toolbar state. fillColor/textColor/size/font still come from the toolbar since fill
-      // is off anyway (so fillColor is inert until explicitly turned on) and there's no similar "which
-      // action last touched it" complaint for those.
-      //
-      // strokeOn always starts true (fill stays false) regardless of which template pill is selected
-      // or whether the script was hand-written from scratch. This used to be a per-template
-      // "styleDefaults" table (Arrow:true, Clock/Blank:false) tied to whichever pill happened to be
-      // selected at submit time -- but that's fragile the moment someone edits/replaces the script
-      // text without touching the picker (or writes a fresh script under "Blank"): ANY child that
-      // follows style.strokeOn (the natural thing to do, and what both shipped examples with a
-      // visible outline do) then renders invisible until the Stroke dropdown is touched by hand,
-      // exactly like Arrow originally did. A hard-coded-visibility script (like Clock's face, which
-      // never reads style.strokeOn) is unaffected by this either way, so there's no real downside to
-      // making it the universal default.
-      const item = {
-        type:'smart', x:-w/2, y:-h/2, w, h,
-        color:'#000000',fillColor:st.fillColor,fill:false,strokeOn:true,textColor:st.textColor,size:st.size,
-        fontFamily:st.fontFamily,fontSize:st.fontSize,script,state:{},
-      };
-      await initializeSmartItem(item,caps,current,execution);
-      item.x=-item.w/2;item.y=-item.h/2;
-      if(!current()) return;
-      const latestNameErr=validateShapeName(name);
-      if(latestNameErr){smartObjectDialogError.textContent=latestNameErr;return;}
-      if(!shapeLibrary) shapeLibrary = {app:'SimpleCanvasShapeLibrary', version:1, shapes:[]};
-      shapeLibrary.shapes.push({name, savedAt:new Date().toISOString(), items:[item]});
-      smartPreviewConsent.add(shapeLibrary.shapes[shapeLibrary.shapes.length-1]);
-      shapeLibraryChanged();
-      smartObjectDialog.close();
-      managingShapes = false;
-      setShapePicker(true);
-      toast('Added "'+name+'" to the library — export to keep it');
-    }catch(err){if(current() && !err.cancelled)smartObjectDialogError.textContent=err.message;}
-    finally{disposeSmartExecution(execution);if(seq===smartObjectSubmitSeq) smartObjectDialogSubmit.disabled=false;}
-  });
   shapeLibraryInput.addEventListener('change', e=>{
     const file = e.target.files[0];
     e.target.value = '';
@@ -8340,6 +6089,7 @@ self.onmessage = function(e){
       if(names.has(name)) throw new Error('Duplicate shape name: '+name);
       names.add(name);
       if(entry.items.length>MAX_ITEMS) throw new Error('Too many objects in shape: '+name);
+      if(entry.items.some(it=>it?.type==='smart' || it?.unsupportedShape))throw new Error('This library contains smart shapes. Open it in Paperwire; SimpleCanvas libraries support static shapes only.');
       const list = entry.items.map(r=>normalizeItem(r, {}));
       if(list.some(it=>!it)) throw new Error('Invalid object or unsupported image in shape: '+name);
       // Templates are independent of live canvas groups, including while rendering their thumbnails.
@@ -8365,32 +6115,21 @@ self.onmessage = function(e){
     const inner = list.map(it=>itemToSVG(it,list,{})).join('');
     return `<svg width="128" height="128" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`;
   }
-  // Resolve smart children before creating the SVG image used to rasterize a bundled PNG preview.
-  async function shapeThumbSVGAsync(list){
-    const cache=await warmSmartExportCache(list,true);
-    const prevExportCache = smartExportCache;
-    smartExportCache = cache;
-    try{ return shapeThumbSVGSync(list); }
-    finally{ smartExportCache = prevExportCache; }
-  }
+  async function shapeThumbSVGAsync(list){return shapeThumbSVGSync(list);}
 
   function paintShapePreview(tpl,b){
     b.replaceChildren();
     const thumbnail=validShapeThumbnail(tpl);
-    if(!thumbnail && tpl.items.some(it=>it.type==='smart'))missingSmartPreviews.add(tpl);
-    else missingSmartPreviews.delete(tpl);
     if(thumbnail){
       const img=document.createElement('img');img.alt='';img.src=thumbnail.png;b.appendChild(img);
       img.onerror=()=>{
         if(tpl.thumbnail?.png!==thumbnail.png || tpl.thumbnail?.source!==thumbnail.source) return;
         delete tpl.thumbnail;
-        // A rejected bundled image is a missing preview. Ordinary entries regenerate automatically;
-        // smart entries need fresh consent before their scripts may run.
-        shapePreviewFailures.delete(tpl);smartPreviewConsent.delete(tpl);
-        previewQuestionsOffered.delete(shapeLibrary);
+        shapePreviewFailures.delete(tpl);
+
         // Import can rebuild the grid before the first image fails. Recover the active entry even
         // when that particular image element has already been replaced.
-        if(activeLibraryShape(tpl)){queueShapePreview(tpl);offerMissingSmartPreviews(shapeLibrary);}
+        if(activeLibraryShape(tpl)){queueShapePreview(tpl);}
       };
     } else {
       const placeholder=document.createElement('span');placeholder.className='preview-placeholder';placeholder.textContent='?';b.appendChild(placeholder);
@@ -8416,9 +6155,8 @@ self.onmessage = function(e){
     if(managingShapes && features.shapeLibraryManagement){
       const actions = document.createElement('div');
       actions.className = 'shape-entry-actions';
-      const smartItems=tpl.items.filter(it=>it.type==='smart');
-      const editActions=features.smartShapeAuthoring ? smartItems.map((it,i)=>[smartItems.length===1?'Edit':'Edit '+(i+1),()=>editLibrarySmartSource(tpl,it)]) : [];
-      for(const [text, action] of [...editActions,['Rename', renameLibraryShape], ['Replace', replaceLibraryShape], ['Delete', deleteLibraryShape]]){
+
+      for(const [text, action] of [['Rename', renameLibraryShape], ['Replace', replaceLibraryShape], ['Delete', deleteLibraryShape]]){
         const btn = document.createElement('button');
         btn.type = 'button'; btn.textContent = text;
         btn.setAttribute('aria-label', text+' '+tpl.name);
@@ -8435,10 +6173,9 @@ self.onmessage = function(e){
     shapeGrid.appendChild(entry);
   }
 
-
   function renderShapeLibrary(){
     if(!features.shapeLibraryManagement) managingShapes=false;
-    syncShapeLibraryEntries(true);missingSmartPreviews.clear();
+    syncShapeLibraryEntries(true);
     const entries = shapeLibrary ? shapeLibrary.shapes : [];
     shapeGrid.innerHTML = '';
     shapeGrid.classList.toggle('managing', managingShapes);
@@ -8447,7 +6184,7 @@ self.onmessage = function(e){
     document.getElementById('shapeLibraryStatus').hidden = !managingShapes;
     shapePickerManage.hidden = !managingShapes;
     for(const tpl of entries) addShapeButton(tpl);
-    document.getElementById('generateShapePreviews').hidden=!missingSmartPreviews.size;
+
     // Icon search needs Iconify. navigator.onLine=false reliably means no network at all; true only
     // means "some network", so a LAN without internet still shows the button and the dialog reports it.
     document.getElementById('addIconBtn').hidden = !features.iconify || !navigator.onLine;
@@ -8459,7 +6196,6 @@ self.onmessage = function(e){
   window.addEventListener('online', renderShapeLibrary);
   window.addEventListener('offline', renderShapeLibrary);
 
-
   function importShapeLibraryFile(file){
     if(!features.shapeLibraryManagement) return;
     const request = ++shapeLibraryImportSeq;
@@ -8469,7 +6205,6 @@ self.onmessage = function(e){
       let lib;
       try{ lib = normalizeShapeLibrary(JSON.parse(r.result)); }
       catch(err){ toast(err instanceof SyntaxError ? 'That file is not valid JSON' : err.message); return; }
-      if(!features.smartShapeAuthoring && lib.shapes.some(tpl=>tpl.items.some(it=>it.type==='smart'))){toast('Importing smart shapes is disabled');return;}
       if(shapeLibraryDirty && !await askLibrary({title:'Replace active library?', message:'The library has unexported changes. Importing will replace it and discard those changes. Cancel and export first if you want to keep them.', submit:'Discard and import'})) return;
       if(request!==shapeLibraryImportSeq) return;
       shapeLibrary = lib;
@@ -8651,7 +6386,6 @@ self.onmessage = function(e){
       s.classList.toggle('active', isNone ? fillC==='none' : s.dataset.c===fillC);
     });
     syncCustomSwatch(fillPicker, fillC);
-    // text color: a separate attribute from stroke, only meaningful for text/table/smart
     const textSrc = colorableSelection().find(it=>FONTABLE(it.type));
     const textC = (textSrc ? textSrc.textColor : null) || ui.textColor;
     textColorBar.setAttribute('fill', textC);
@@ -8778,7 +6512,6 @@ self.onmessage = function(e){
     fontSizeSel.value = px;
     [...fontSizeSel.options].forEach(o=>{ if(o.dataset.temp && +o.value!==px) o.remove(); });
   }
-  // Font controls edit selected text, table and smart items, or the defaults for the next one.
   function applyFont(fn){
     const texts = colorableSelection().filter(it=>FONTABLE(it.type));
     if(!texts.length){ fn(ui); return; }
@@ -8814,7 +6547,7 @@ self.onmessage = function(e){
     newTab: newTab,
     png: savePng,
     svg: saveSvg,
-    html: exportHtml,
+
     print: openPrintDialog,
     clear: clearAll,
   };
@@ -8907,14 +6640,13 @@ self.onmessage = function(e){
     if(textInput.style.display==='block' || isTextTarget(e.target)) return;
     if(isControlTarget(e.target) && !e.metaKey && !e.ctrlKey && CONTROL_KEYS.test(e.key)) return;
     if(e.key==='Escape'){
-      if(hasPendingShapePlacement()){shapePlacementEpoch++;ui.pendingShape=null;setTool('select');render();return;}
       if(ui.tool==='polygon' && polyDraft){ cancelPolygon(); return; }
       if(current){ current=null; snapPt=null; snapCursorPt=null; historyBefore=null; render(); return; }   // cancel an in-progress draw, before the button is even lifted
       if(pointEditIdx!=null){   // one Escape drops the active handles, a second leaves point-edit mode
         if(activeAnchor!=null){ activeAnchor=null; render(); return; }
         pointEditIdx=null; render(); return;
       }
-      if(editingSmartIdx!=null){ cancelSmartGestures();editingSmartIdx=null; render(); return; }
+
       if(editingGroupId!=null){ exitGroupEdit(); render(); return; }   // back out to the group as a whole
       if(!menu.hidden){ setMenu(false); return; }
       if(!tablePicker.hidden){ setTablePicker(false); return; }
@@ -8986,20 +6718,13 @@ self.onmessage = function(e){
   // iOS Safari does not turn two taps into a dblclick, so recognise a double tap ourselves (two lifts
   // within 300ms and 25px, touch or pen) and hand it to the very same handler the mouse uses
   let lastTap = null;
-  async function onTapUp(e){   // registered after onUp, so the second tap's own vertex/selection has landed first
-    if(e.pointerType==='mouse' || ignoredSmartPointerUps.has(e)) return;
-    const now = performance.now();
-    const epoch=smartGestureEpoch, tab=activeTabId;
-    const tap={t:now,x:e.clientX,y:e.clientY};
+  function onTapUp(e){
+    if(e.pointerType==='mouse')return;
+    if(handledPointerUp){lastTap=null;return;}
+    const now=performance.now(),tap={t:now,x:e.clientX,y:e.clientY};
     const doubleTap=lastTap && now-lastTap.t<300 && Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<25;
-    lastTap=doubleTap ? null : tap;
-    // Recognise the second lift before waiting: replayed clicks must not arm an alignment timer
-    // while this double-tap is waiting for its own smart hit tests.
-    if(doubleTap){await onDoubleClick(e);return;}
-    // handledPointerUp may still be settling (a smart object's own hitEdit crossing the sandbox
-    // asynchronously -- see onDoubleClick's own identical await) -- wait for that before reading it.
-    if(smartHitSettled) await smartHitSettled;
-    if(epoch!==smartGestureEpoch || tab!==activeTabId || handledPointerUp){if(lastTap===tap)lastTap=null;}
+    lastTap=doubleTap?null:tap;
+    if(doubleTap)onDoubleClick(e);
   }
   canvas.addEventListener('dblclick', onDoubleClick);
   // touch-action:none on canvas/textInput doesn't reliably stop Safari's native double-tap-to-zoom
@@ -9022,21 +6747,8 @@ self.onmessage = function(e){
   }
   canvas.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
   textInput.addEventListener('touchend', preventDoubleTapZoom, { passive:false });
-  async function onDoubleClick(e){
-    if(hasPendingShapePlacement()) return;
+  function onDoubleClick(e){
     if(alignClickTimer){clearTimeout(alignClickTimer);alignClickTimer=null;}
-    const epoch=smartGestureEpoch, tab=activeTabId;
-    // A smart object's own hitEdit crosses the sandbox asynchronously now -- a real double-click's two
-    // presses each kick one off (see onDown), and this native 'dblclick' event fires right after the
-    // second press's onUp, before either request can possibly have resolved yet. Wait for the latest
-    // one to settle before reading handledPointerUp, which it may still go on to set (see
-    // processSmartGesture) -- otherwise a double-click on one of a smart object's own handles would
-    // read this flag too early and run the generic exit-toggle below on top of the handle's own,
-    // already-correct resolution (exactly the bug this flag exists to prevent).
-    pendingDoubleClicks++;
-    try{if(smartHitSettled) await smartHitSettled;}
-    finally{pendingDoubleClicks--;}
-    if(epoch!==smartGestureEpoch || tab!==activeTabId) return;
     if(handledPointerUp) return;
     if(performance.now() - polygonClosedByClickAt < 500){
       // the click/tap that started this gesture already closed the polygon by itself (it landed on
@@ -9115,16 +6827,9 @@ self.onmessage = function(e){
       if(cell) openText(hit, null, null, cell);
       return;
     }
-    // Grouped smart objects nest a THIRD stage on top of text/table's own two: a grouped instance's
-    // FIRST double-click enters group edit mode (now via the single consolidated check above, same as
-    // every other type), a SECOND (once already browsing THIS item's own group) enters the smart
-    // object's own script-edit mode, and a THIRD (its own pre-existing re-double-click toggle) exits
-    // script-edit mode back to plain group edit mode. editingGroupId stays set alongside
-    // editingSmartIdx the whole time -- harmless, since the smart-edit branch in onDown fully owns
-    // interaction while active.
-    if(hit>=0 && items[hit].type==='smart'){
-      if(editingSmartIdx===hit){ editingSmartIdx=null; render(); return; }   // re-double-click: exit
-      editingSmartIdx = hit; selection = [hit]; render();
+    if(hit>=0 && false){
+      if((null === hit)){  render(); return; }   // re-double-click: exit
+       selection = [hit]; render();
       return;
     }
     if(hit>=0 && selection.length===1 && hit===selection[0] &&
@@ -9357,7 +7062,7 @@ self.onmessage = function(e){
     }
     shapeLibWrap.hidden=!features.shapeLibrary;
     manageShapesBtn.hidden=!features.shapeLibraryManagement;
-    document.getElementById('newSmartObjectBtn').hidden=!features.smartShapeAuthoring;
+
     document.getElementById('addSelectionFooterBtn').hidden=!features.shapeLibraryManagement;
     loadTabList();
     enterTab(activeTabId);

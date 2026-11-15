@@ -1,11 +1,10 @@
 {
   "version": 1,
-  "title": "SimpleCanvas — Quick Sketches",
+  "title": "SimpleCanvas \u2014 Quick Sketches",
   "features": {
     "workspace": true,
     "shapeLibrary": true,
     "shapeLibraryManagement": true,
-    "smartShapeAuthoring": true,
     "iconify": true,
     "customPrinting": true
   }
